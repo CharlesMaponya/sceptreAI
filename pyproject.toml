@@ -27,6 +27,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.2",
+    "pytest-cov>=5",
     "ruff>=0.5",
 ]
 ml = [
@@ -71,3 +72,22 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["apps/api", "apps/ui", "packages"]
+
+[tool.coverage.run]
+branch = true
+source = ["automl_api", "streamlit_app"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+[tool.coverage.xml]
+output = "coverage.xml"

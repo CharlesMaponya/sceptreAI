@@ -1,5 +1,9 @@
 # SMME-Safe Tabular AutoML Platform
 
+[![CI](https://github.com/CharlesMaponya/sceptreAI/actions/workflows/ci.yml/badge.svg)](https://github.com/CharlesMaponya/sceptreAI/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB.svg)](https://www.python.org/downloads/)
+[![Coverage gate](https://img.shields.io/badge/coverage-%E2%89%A540%25-brightgreen.svg)](#quality-gates)
+
 This repository contains a multi-tenant, Kubernetes-native AutoML platform focused on tabular data and small shared clusters.
 
 ## Architecture
@@ -42,6 +46,29 @@ Run syntax checks:
 ```bash
 python -m compileall apps packages alembic tests
 ```
+
+## Quality Gates
+
+Pull requests and pushes to `main` or `develop` must pass every CI job:
+
+| Gate | Command | Coverage |
+| --- | --- | --- |
+| Ruff lint | `ruff check apps packages alembic tests` | Imports, correctness, modernization, and style |
+| Test suite | `pytest tests/ -v --tb=short --cov --cov-fail-under=40` | Unit, API contract, UI navigation, profiling, training, and validation |
+| Syntax | `python -m compileall apps packages alembic tests` | Python 3.11 syntax and import compilation |
+
+Coverage uses branch measurement across the executable `automl_api` and
+`streamlit_app` packages. CI publishes `coverage.xml` and the browsable `htmlcov`
+report for 14 days. The current measured coverage is 43.50%, and the suite
+contains 59 tests covering:
+
+- dataset format inspection, schema extraction, and Unix temporal inference
+- exact and Dask profiling, statistics, distributions, and preparation plans
+- authentication tokens, password hashing, 24-hour sessions, and route contracts
+- Streamlit navigation, token refresh, and large-integer rendering
+- Kubernetes resource estimation, adaptive deadlines, and pod failure diagnostics
+- task-specific evaluation metrics, estimator catalogs, and leaderboard ranking
+- external validation, MinIO model recovery, and mixed-type SHAP preparation
 
 Start the Minikube PostgreSQL service for local development:
 

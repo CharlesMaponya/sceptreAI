@@ -39,6 +39,7 @@ pip-delete-this-directory.txt
 .pytest_cache/
 .coverage
 .coverage.*
+coverage.xml
 htmlcov/
 .tox/
 .hypothesis/
