@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: automl-platform-config
+  namespace: automl
+data:
+  OBJECT_STORE_TYPE: minio
+  DATASET_CACHE_SIZE_GB: "5"
+  GPU_ENABLED: "false"
+  MAX_CLUSTER_CPU_PERCENT: "70"
+  MAX_NODE_AVAILABLE_FRACTION_PER_JOB: "0.60"
+  MAX_CONCURRENT_JOBS: "2"
+  MLFLOW_TRACKING_URI: http://automl-mlflow:5000
+  TRAINING_NAMESPACE: automl
+  TRAINING_IMAGE: automl-training:local
+  TRAINING_ACTIVE_DEADLINE_SECONDS: "3600"

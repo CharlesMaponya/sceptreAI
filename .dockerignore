@@ -1,0 +1,12 @@
+.git
+.automl_object_store
+apps/api/automl_api/.automl_object_store
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.venv
+tests
+docs
+infra
+alembic

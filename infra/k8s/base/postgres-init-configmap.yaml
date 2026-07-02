@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: automl-postgres-init
+  namespace: automl
+data:
+  01-create-mlflow.sql: |
+    SELECT 'CREATE DATABASE mlflow OWNER automl'
+    WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'mlflow')\gexec

@@ -1,0 +1,8 @@
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: automl-low
+value: -1000
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: Low-priority AutoML workloads remain subordinate to production workloads.

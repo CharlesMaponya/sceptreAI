@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: automl-postgres
+    environment:
+      POSTGRES_DB: automl
+      POSTGRES_USER: automl
+      POSTGRES_PASSWORD: automl
+    ports:
+      - "55432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U automl -d automl"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres-bootstrap:
+    image: postgres:16-alpine
+    environment:
+      PGHOST: postgres
+      PGDATABASE: automl
+      PGUSER: automl
+      PGPASSWORD: automl
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./scripts/create_mlflow_database.sql:/bootstrap/create_mlflow_database.sql:ro
+    command:
+      - psql
+      - --set
+      - ON_ERROR_STOP=1
+      - --file
+      - /bootstrap/create_mlflow_database.sql
+    restart: "no"
+
+volumes:
+  postgres-data:

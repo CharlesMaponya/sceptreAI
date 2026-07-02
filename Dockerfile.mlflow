@@ -1,0 +1,4 @@
+FROM ghcr.io/mlflow/mlflow:v3.1.0
+
+RUN pip install --no-cache-dir psycopg2-binary==2.9.10
+COPY scripts/mlflow_migrate_if_initialized.py /opt/automl/mlflow_migrate_if_initialized.py

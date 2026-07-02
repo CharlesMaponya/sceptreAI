@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: automl-dataset-cache
+  namespace: automl
+  annotations:
+    automl.platform/cache-size-config-key: DATASET_CACHE_SIZE_GB
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi

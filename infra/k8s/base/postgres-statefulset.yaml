@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: automl-postgres
+  namespace: automl
+spec:
+  serviceName: automl-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: automl-postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: automl-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - name: postgres
+              containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: automl-postgres-secrets
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - automl
+                - -d
+                - automl
+            periodSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - automl
+                - -d
+                - automl
+            periodSeconds: 15
+            failureThreshold: 4
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: automl-postgres-data
+        - name: init
+          configMap:
+            name: automl-postgres-init
