@@ -38,15 +38,7 @@ def test_parquet_upload_is_deferred_without_optional_parser() -> None:
 def test_unix_millisecond_column_is_temporal() -> None:
     result = inspect_tabular_bytes(
         "events.csv",
-        (
-            b"event_epoch,value\n"
-            b"1704067200000,1\n"
-            b"1704153600000,2\n"
-            b"1704240000000,3\n"
-        ),
+        (b"event_epoch,value\n1704067200000,1\n1704153600000,2\n1704240000000,3\n"),
     )
 
-    assert (
-        result.inferred_types_json["event_epoch"]["semantic_type"]
-        == "temporal"
-    )
+    assert result.inferred_types_json["event_epoch"]["semantic_type"] == "temporal"

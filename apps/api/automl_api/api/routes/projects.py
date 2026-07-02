@@ -36,7 +36,9 @@ def list_projects(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> list[ProjectRead]:
-    return [ProjectRead.model_validate(project) for project in list_visible_projects(db, current_user)]
+    return [
+        ProjectRead.model_validate(project) for project in list_visible_projects(db, current_user)
+    ]
 
 
 @router.post("", response_model=ProjectRead, status_code=status.HTTP_201_CREATED)
@@ -138,4 +140,3 @@ def accept_share_link(
     db.commit()
     db.refresh(project)
     return ProjectRead.model_validate(project)
-

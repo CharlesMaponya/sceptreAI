@@ -19,9 +19,7 @@ def test_project_navigation_uses_native_streamlit_page() -> None:
 
 
 def test_project_page_guards_auth_with_shared_session_state() -> None:
-    project_page = (STREAMLIT_ROOT / "pages" / "1_Project.py").read_text(
-        encoding="utf-8"
-    )
+    project_page = (STREAMLIT_ROOT / "pages" / "1_Project.py").read_text(encoding="utf-8")
 
     assert '"access_token" not in st.session_state' in project_page
     assert 'st.session_state.get("selected_project_id")' in project_page

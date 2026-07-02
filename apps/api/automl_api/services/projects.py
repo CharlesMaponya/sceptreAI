@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import secrets
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy import Select, or_, select
@@ -23,7 +23,7 @@ ROLE_RANK = {
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _active_membership_clause() -> tuple:
@@ -34,7 +34,9 @@ def _active_membership_clause() -> tuple:
     )
 
 
-def _membership_query(user_id: uuid.UUID, project_id: uuid.UUID) -> Select[tuple[ProjectMembership]]:
+def _membership_query(
+    user_id: uuid.UUID, project_id: uuid.UUID
+) -> Select[tuple[ProjectMembership]]:
     return select(ProjectMembership).where(
         ProjectMembership.user_id == user_id,
         ProjectMembership.project_id == project_id,
@@ -205,4 +207,3 @@ def accept_project_share_link(db: Session, user: User, invite_token: str) -> Pro
     if project is None:
         raise ValueError("Invite project no longer exists.")
     return project
-

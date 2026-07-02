@@ -6,7 +6,7 @@ import hmac
 import json
 import secrets
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 
@@ -42,7 +42,7 @@ def create_signed_token(
     expires_delta: timedelta,
     extra: dict[str, Any] | None = None,
 ) -> str:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload: dict[str, Any] = {
         "sub": subject,
         "email": email,
@@ -94,8 +94,7 @@ def decode_token(token: str, *, secret: str, expected_type: str | None = None) -
         raise TokenError("Unexpected token type.")
 
     expires_at = int(payload.get("exp", 0))
-    if expires_at <= int(datetime.now(timezone.utc).timestamp()):
+    if expires_at <= int(datetime.now(UTC).timestamp()):
         raise TokenError("Token has expired.")
 
     return payload
-

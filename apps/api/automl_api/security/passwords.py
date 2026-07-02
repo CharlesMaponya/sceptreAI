@@ -43,4 +43,3 @@ def verify_password(password: str, password_hash: str | None) -> bool:
         iterations,
     )
     return secrets.compare_digest(actual_digest, expected_digest)
-

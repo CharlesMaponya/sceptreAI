@@ -34,8 +34,7 @@ def profile_dataset_with_dask(
     dataframe = _load_dataframe(version)
     row_count = int(dataframe.shape[0].compute())
     profiles = [
-        _profile_column(dataframe[column], str(column), row_count)
-        for column in dataframe.columns
+        _profile_column(dataframe[column], str(column), row_count) for column in dataframe.columns
     ]
     profile_by_name = {profile.name: profile for profile in profiles}
     relationships, relationship_warnings = _relationships(
@@ -122,13 +121,11 @@ def _profile_column(
         else:
             top_values = present.value_counts().nlargest(15).compute()
             distribution = [
-                {"label": str(value), "count": int(count)}
-                for value, count in top_values.items()
+                {"label": str(value), "count": int(count)} for value, count in top_values.items()
             ]
             statistics_json = {
                 "top_values": [
-                    [str(value), int(count)]
-                    for value, count in top_values.head(10).items()
+                    [str(value), int(count)] for value, count in top_values.head(10).items()
                 ]
             }
             distribution_type = "bar"
@@ -141,14 +138,10 @@ def _profile_column(
     else:
         top_values = present.value_counts().nlargest(15).compute()
         distribution = [
-            {"label": str(value), "count": int(count)}
-            for value, count in top_values.items()
+            {"label": str(value), "count": int(count)} for value, count in top_values.items()
         ]
         statistics_json = {
-            "top_values": [
-                [str(value), int(count)]
-                for value, count in top_values.head(10).items()
-            ]
+            "top_values": [[str(value), int(count)] for value, count in top_values.head(10).items()]
         }
         distribution_type = "bar"
         has_outliers = False
@@ -208,7 +201,9 @@ def _infer_semantic_type(
                 lambda value: len(str(value).split()) >= 6 or len(str(value)) > 80
             ),
             meta=("text_like", "bool"),
-        ).sum().compute()
+        )
+        .sum()
+        .compute()
     )
     if text_count >= threshold:
         return "text", numeric_values, None
@@ -225,10 +220,7 @@ def _dask_unix_timestamp_unit(
         return None
     seconds = values.astype("float64") / UNIX_UNIT_SCALES[unit]
     valid_count = int(
-        (
-            (seconds >= MIN_UNIX_SECONDS)
-            & (seconds <= MAX_UNIX_SECONDS)
-        ).sum().compute()
+        ((seconds >= MIN_UNIX_SECONDS) & (seconds <= MAX_UNIX_SECONDS)).sum().compute()
     )
     required = max(1, math.ceil(present_count * 0.8))
     return unit if valid_count >= required else None
@@ -256,10 +248,7 @@ def _unix_temporal_profile(
 def _unix_histogram_label(label: str, unit: str) -> str:
     bounds = [part.strip() for part in label.split(" - ", maxsplit=1)]
     try:
-        converted = [
-            unix_timestamp_iso(float(bound), unit)[:10]
-            for bound in bounds
-        ]
+        converted = [unix_timestamp_iso(float(bound), unit)[:10] for bound in bounds]
     except ValueError:
         return label
     return " - ".join(converted)
@@ -326,9 +315,7 @@ def _numeric_profile(
     if iqr > 0:
         lower_bound = q1 - 1.5 * iqr
         upper_bound = q3 + 1.5 * iqr
-        has_outliers = bool(
-            ((values < lower_bound) | (values > upper_bound)).any().compute()
-        )
+        has_outliers = bool(((values < lower_bound) | (values > upper_bound)).any().compute())
     return statistics_json, distribution, has_outliers
 
 
@@ -403,10 +390,9 @@ def _relationships(
     for column, profile in profiles.items():
         if column == target_column:
             continue
-        if (
-            profile.semantic_type.startswith("numerical")
-            and target_profile.semantic_type.startswith("numerical")
-        ):
+        if profile.semantic_type.startswith(
+            "numerical"
+        ) and target_profile.semantic_type.startswith("numerical"):
             value = _numeric_relationship(dataframe, column, target_column)
             method = "pearson"
         else:
@@ -471,21 +457,16 @@ def _categorical_relationship(
     if counts.empty or int(counts.sum()) < 2:
         return None
     table = Counter(
-        {
-            (str(source), str(target)): int(count)
-            for (source, target), count in counts.items()
-        }
+        {(str(source), str(target)): int(count) for (source, target), count in counts.items()}
     )
     row_labels = sorted({source for source, _ in table})
     column_labels = sorted({target for _, target in table})
     total = sum(table.values())
     row_totals = {
-        source: sum(table[(source, target)] for target in column_labels)
-        for source in row_labels
+        source: sum(table[(source, target)] for target in column_labels) for source in row_labels
     }
     column_totals = {
-        target: sum(table[(source, target)] for source in row_labels)
-        for target in column_labels
+        target: sum(table[(source, target)] for source in row_labels) for target in column_labels
     }
     chi_square = 0.0
     for source in row_labels:

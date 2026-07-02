@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -16,7 +16,7 @@ from automl_api.security.tokens import TokenError, create_signed_token, decode_t
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def register_user(db: Session, payload: RegisterRequest) -> User:
@@ -142,7 +142,9 @@ def rotate_refresh_token(
 
 
 def logout_refresh_token(db: Session, refresh_token: str) -> None:
-    existing = db.scalar(select(RefreshToken).where(RefreshToken.token_hash == token_hash(refresh_token)))
+    existing = db.scalar(
+        select(RefreshToken).where(RefreshToken.token_hash == token_hash(refresh_token))
+    )
     if existing is not None:
         existing.revoked_at = _now()
 
@@ -205,4 +207,3 @@ def confirm_password_reset(db: Session, reset_token: str, new_password: str) -> 
     user.password_hash = hash_password(new_password)
     user.token_version += 1
     stored_token.used_at = _now()
-

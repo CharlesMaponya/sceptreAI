@@ -46,6 +46,7 @@
 
 - Kubernetes capacity, PVC, PriorityClass, and runtime dependency checks: implemented
 - Dynamic CPU and memory requests/limits capped at 60% of node headroom: implemented
+- Resource-derived parallelism across additional Kubernetes nodes: implemented
 - Cluster-wide concurrency guardrails and transaction-locked admission: implemented
 - One-active-run-per-project fairness across concurrent users: implemented
 - Low-priority preemptible Kubernetes Jobs with CPU/GPU deadlines: implemented
@@ -64,6 +65,7 @@
 - HTTP and authenticated WebSocket log streaming: implemented
 - Live Kubernetes Metrics API headroom with conservative request fallback: implemented
 - Kubernetes/metadata reconciliation before multi-user admission checks: implemented
+- Workload-aware 6-to-24-hour Job deadlines with explicit expiry diagnostics: implemented
 
 ## Phase 6: Validation and Explainability
 

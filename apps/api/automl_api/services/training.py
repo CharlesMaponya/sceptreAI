@@ -46,24 +46,17 @@ def estimate_training_run(
     _validate_evaluation_column(version, payload)
     _validate_candidate_models(payload)
     selected_candidate_count = (
-        len(payload.candidate_models)
-        if payload.candidate_models
-        else payload.candidate_limit
+        len(payload.candidate_models) if payload.candidate_models else payload.candidate_limit
     )
     selected_names = set(payload.candidate_models)
     selected_specs = [
         candidate
         for candidate in candidate_catalog(payload.task_type)
-        if (
-            candidate.name in selected_names
-            if selected_names
-            else candidate.default_selected
-        )
+        if (candidate.name in selected_names if selected_names else candidate.default_selected)
     ][:selected_candidate_count]
     cost_weights = {"low": 1.0, "medium": 1.25, "high": 1.75}
     model_cost_factor = (
-        sum(cost_weights[candidate.cost_tier] for candidate in selected_specs)
-        / len(selected_specs)
+        sum(cost_weights[candidate.cost_tier] for candidate in selected_specs) / len(selected_specs)
         if selected_specs
         else 1.0
     )
@@ -93,15 +86,11 @@ def estimate_training_run(
     ]
     _reconcile_active_runs(db, k8s, active_statuses)
     active_db_runs = int(
-        db.scalar(
-            select(func.count(ModelRun.id)).where(ModelRun.status.in_(active_statuses))
-        )
-        or 0
+        db.scalar(select(func.count(ModelRun.id)).where(ModelRun.status.in_(active_statuses))) or 0
     )
     if active_db_runs >= estimate.max_concurrent_jobs:
         blocker = (
-            f"Database concurrency limit reached "
-            f"({active_db_runs}/{estimate.max_concurrent_jobs})."
+            f"Database concurrency limit reached ({active_db_runs}/{estimate.max_concurrent_jobs})."
         )
         estimate.blockers = [*estimate.blockers, blocker]
         estimate.can_launch = False
@@ -324,9 +313,7 @@ def restart_training_run(
         expected_minutes=int(source_params.get("expected_minutes", 10)),
         candidate_limit=int(source_params.get("candidate_limit", 5)),
         candidate_models=list(source_params.get("candidate_models") or []),
-        optimization_iterations=int(
-            source_params.get("optimization_iterations", 5)
-        ),
+        optimization_iterations=int(source_params.get("optimization_iterations", 5)),
         cv_folds=int(source_params.get("cv_folds", 3)),
         run_name=f"{source.run_name or source.id} restart"[:255],
         params=source_params,
@@ -343,9 +330,7 @@ def restart_training_run(
         "restarted_by_run_id": str(restarted.id),
     }
     db.flush()
-    return result.model_copy(
-        update={"run": ModelRunRead.model_validate(restarted)}
-    )
+    return result.model_copy(update={"run": ModelRunRead.model_validate(restarted)})
 
 
 def add_models_to_training_run(
@@ -376,12 +361,8 @@ def add_models_to_training_run(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Each added model must be selected only once.",
         )
-    available_models = {
-        candidate.name for candidate in candidate_catalog(parent.task_type)
-    }
-    unknown_models = [
-        name for name in requested_models if name not in available_models
-    ]
+    available_models = {candidate.name for candidate in candidate_catalog(parent.task_type)}
+    unknown_models = [name for name in requested_models if name not in available_models]
     if unknown_models:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -392,15 +373,12 @@ def add_models_to_training_run(
         for entry in parent.tags.get("leaderboard", [])
         if entry.get("status") == "succeeded"
     }
-    already_completed = [
-        name for name in requested_models if name in completed_models
-    ]
+    already_completed = [name for name in requested_models if name in completed_models]
     if already_completed:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "These models already completed successfully: "
-                f"{', '.join(already_completed)}."
+                f"These models already completed successfully: {', '.join(already_completed)}."
             ),
         )
 
@@ -416,10 +394,7 @@ def add_models_to_training_run(
         candidate_models=requested_models,
         optimization_iterations=request.optimization_iterations,
         cv_folds=request.cv_folds,
-        run_name=(
-            f"{parent.run_name or parent.id} add "
-            f"{', '.join(requested_models)}"
-        )[:255],
+        run_name=(f"{parent.run_name or parent.id} add {', '.join(requested_models)}")[:255],
         params=source_params,
     )
     result = launch_training_run(db, user, project_id, payload, client)
@@ -437,9 +412,7 @@ def add_models_to_training_run(
         "extension_run_ids": extension_run_ids,
     }
     db.flush()
-    return result.model_copy(
-        update={"run": ModelRunRead.model_validate(extension)}
-    )
+    return result.model_copy(update={"run": ModelRunRead.model_validate(extension)})
 
 
 def training_logs(
@@ -469,19 +442,13 @@ def training_leaderboard(
     run = get_training_run(db, user, project_id, run_id)
     leaderboard_run = _leaderboard_parent(db, run)
     entries = leaderboard_run.tags.get("leaderboard", [])
-    metric_names = {
-        name
-        for entry in entries
-        for name in entry.get("metrics", {})
-    }
+    metric_names = {name for entry in entries for name in entry.get("metrics", {})}
     return TrainingLeaderboardRead(
         run_id=run.id,
         status=run.status,
         primary_metric=leaderboard_run.tags.get("leaderboard_primary_metric"),
         winner=leaderboard_run.tags.get("winner"),
-        metric_directions={
-            name: metric_direction(name) for name in sorted(metric_names)
-        },
+        metric_directions={name: metric_direction(name) for name in sorted(metric_names)},
         entries=entries,
     )
 
@@ -495,11 +462,7 @@ def _leaderboard_parent(db: Session, run: ModelRun) -> ModelRun:
     except ValueError:
         return run
     parent = db.get(ModelRun, parent_uuid)
-    if (
-        parent is None
-        or parent.project_id != run.project_id
-        or parent.run_kind != RunKind.TRAINING
-    ):
+    if parent is None or parent.project_id != run.project_id or parent.run_kind != RunKind.TRAINING:
         return run
     return parent
 
@@ -516,10 +479,7 @@ def list_training_estimators(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="A concrete task type is required.",
         )
-    return [
-        EstimatorRead.model_validate(item)
-        for item in estimator_catalog_payload(task_type)
-    ]
+    return [EstimatorRead.model_validate(item) for item in estimator_catalog_payload(task_type)]
 
 
 def _sync_run_status(
@@ -539,9 +499,7 @@ def _sync_run_status(
     elif state in {"failed", "missing"}:
         run.status = RunStatus.FAILED
         if state == "failed":
-            failure_code, failure_message = client.job_failure_details(
-                run.k8s_job_name or ""
-            )
+            failure_code, failure_message = client.job_failure_details(run.k8s_job_name or "")
         else:
             failure_code = "KUBERNETES_JOB_MISSING"
             failure_message = "The Kubernetes Job no longer exists."
@@ -551,6 +509,12 @@ def _sync_run_status(
             run.plain_english_failure = (
                 "Training exceeded its adaptive memory limit. Reduce the model "
                 "budget or search iterations, or make more node memory available."
+            )
+        elif failure_code == "JOB_DEADLINE_EXCEEDED":
+            run.plain_english_failure = (
+                "Training reached the Kubernetes runtime safety deadline. "
+                "Restart it with a longer expected duration or reduce the "
+                "candidate and optimization budget."
             )
         elif failure_code == "POD_EVICTED":
             run.plain_english_failure = (
@@ -571,9 +535,7 @@ def _reconcile_active_runs(
     client: KubernetesTrainingClient,
     active_statuses: list[RunStatus],
 ) -> None:
-    active_runs = db.scalars(
-        select(ModelRun).where(ModelRun.status.in_(active_statuses))
-    ).all()
+    active_runs = db.scalars(select(ModelRun).where(ModelRun.status.in_(active_statuses))).all()
     for run in active_runs:
         if not run.k8s_job_name:
             continue
@@ -607,10 +569,7 @@ def _get_dataset_version(
 def _validate_target(version: DatasetVersion, target_column: str | None) -> None:
     if target_column is None:
         return
-    columns = {
-        column.get("name")
-        for column in version.schema_json.get("columns", [])
-    }
+    columns = {column.get("name") for column in version.schema_json.get("columns", [])}
     if target_column not in columns:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -629,16 +588,12 @@ def _validate_evaluation_column(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="An evaluation column is only supported for clustering.",
         )
-    columns = {
-        column.get("name")
-        for column in version.schema_json.get("columns", [])
-    }
+    columns = {column.get("name") for column in version.schema_json.get("columns", [])}
     if payload.evaluation_column not in columns:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=(
-                f"Evaluation column '{payload.evaluation_column}' "
-                "was not found in the dataset."
+                f"Evaluation column '{payload.evaluation_column}' was not found in the dataset."
             ),
         )
 
@@ -646,13 +601,8 @@ def _validate_evaluation_column(
 def _validate_candidate_models(payload: TrainingEstimateRequest) -> None:
     if not payload.candidate_models:
         return
-    available = {
-        item["name"]
-        for item in estimator_catalog_payload(payload.task_type)
-    }
-    unknown = [
-        name for name in payload.candidate_models if name not in available
-    ]
+    available = {item["name"] for item in estimator_catalog_payload(payload.task_type)}
+    unknown = [name for name in payload.candidate_models if name not in available]
     if unknown:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

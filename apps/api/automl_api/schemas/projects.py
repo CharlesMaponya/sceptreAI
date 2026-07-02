@@ -76,4 +76,3 @@ class ProjectMemberRead(BaseModel):
     role: ProjectRole
     accepted_at: datetime | None = None
     expires_at: datetime | None = None
-

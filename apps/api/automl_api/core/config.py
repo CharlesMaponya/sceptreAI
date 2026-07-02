@@ -76,7 +76,9 @@ class Settings:
     training_namespace: str = "automl"
     training_image: str = "automl-training:local"
     training_service_account: str = "default"
-    training_active_deadline_seconds: int = 3600
+    training_active_deadline_seconds: int = 6 * 60 * 60
+    training_max_active_deadline_seconds: int = 24 * 60 * 60
+    training_deadline_multiplier: int = 6
 
     @property
     def sqlalchemy_database_url(self) -> str:
@@ -143,9 +145,7 @@ def get_settings() -> Settings:
         mlflow_tracking_uri=str(
             _get_env("MLFLOW_TRACKING_URI", Settings.mlflow_tracking_uri, dotenv)
         ),
-        training_namespace=str(
-            _get_env("TRAINING_NAMESPACE", Settings.training_namespace, dotenv)
-        ),
+        training_namespace=str(_get_env("TRAINING_NAMESPACE", Settings.training_namespace, dotenv)),
         training_image=str(_get_env("TRAINING_IMAGE", Settings.training_image, dotenv)),
         training_service_account=str(
             _get_env(
@@ -157,6 +157,16 @@ def get_settings() -> Settings:
         training_active_deadline_seconds=_get_int(
             "TRAINING_ACTIVE_DEADLINE_SECONDS",
             Settings.training_active_deadline_seconds,
+            dotenv,
+        ),
+        training_max_active_deadline_seconds=_get_int(
+            "TRAINING_MAX_ACTIVE_DEADLINE_SECONDS",
+            Settings.training_max_active_deadline_seconds,
+            dotenv,
+        ),
+        training_deadline_multiplier=_get_int(
+            "TRAINING_DEADLINE_MULTIPLIER",
+            Settings.training_deadline_multiplier,
             dotenv,
         ),
     )

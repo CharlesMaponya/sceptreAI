@@ -98,7 +98,7 @@ def test_training_manifest_has_low_priority_limits_and_timeout() -> None:
     resources = container["resources"]
 
     assert pod_spec["priorityClassName"] == "automl-low"
-    assert manifest["spec"]["activeDeadlineSeconds"] == 3600
+    assert manifest["spec"]["activeDeadlineSeconds"] == 21_600
     assert resources["requests"]["cpu"] == str(estimate.cpu_request_cores)
     assert resources["limits"]["memory"] == f"{estimate.memory_limit_mb}Mi"
     assert {
@@ -137,6 +137,29 @@ def test_memory_estimate_scales_with_dataset_and_search_budget() -> None:
     assert large.memory_request_mb > small.memory_request_mb
 
 
+def test_job_deadline_scales_beyond_the_six_hour_floor() -> None:
+    settings = Settings(
+        training_active_deadline_seconds=21_600,
+        training_max_active_deadline_seconds=86_400,
+        training_deadline_multiplier=6,
+    )
+    training_client = FakeTrainingClient(capacity_snapshot(), settings)
+    estimate = training_client.estimate(
+        dataset_bytes=10 * 1024**2,
+        column_count=10,
+        expected_minutes=120,
+        prefer_gpu=False,
+    )
+
+    manifest = training_client.build_job_manifest(
+        run_id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        estimate=estimate,
+    )
+
+    assert manifest["spec"]["activeDeadlineSeconds"] == 43_200
+
+
 def test_oom_failure_is_reported_from_pod_termination_state() -> None:
     training_client = FakeTrainingClient(capacity_snapshot(), Settings())
     terminated = SimpleNamespace(reason="OOMKilled", exit_code=137)
@@ -160,6 +183,25 @@ def test_oom_failure_is_reported_from_pod_termination_state() -> None:
 
     assert code == "POD_OOM_KILLED"
     assert "exit code 137" in message
+
+
+def test_deadline_failure_is_reported_from_job_condition() -> None:
+    training_client = FakeTrainingClient(capacity_snapshot(), Settings())
+    condition = SimpleNamespace(
+        type="Failed",
+        reason="DeadlineExceeded",
+        message="Job was active longer than specified deadline.",
+    )
+    training_client.batch = SimpleNamespace(
+        read_namespaced_job_status=lambda **_: SimpleNamespace(
+            status=SimpleNamespace(conditions=[condition])
+        )
+    )
+
+    code, message = training_client.job_failure_details("automl-train-test")
+
+    assert code == "JOB_DEADLINE_EXCEEDED"
+    assert "deadline" in message
 
 
 def test_byte_literal_pod_logs_are_split_into_lines() -> None:
@@ -189,9 +231,7 @@ def test_metrics_api_usage_is_grouped_by_scheduled_node() -> None:
                         "namespace": "automl",
                         "name": "trainer",
                     },
-                    "containers": [
-                        {"usage": {"cpu": "250m", "memory": "512Mi"}}
-                    ],
+                    "containers": [{"usage": {"cpu": "250m", "memory": "512Mi"}}],
                 }
             ]
         }

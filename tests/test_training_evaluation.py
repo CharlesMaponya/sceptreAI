@@ -67,9 +67,7 @@ def test_regression_and_time_series_evaluation_contains_error_diagnostics() -> N
 
 
 def test_clustering_evaluation_supports_internal_and_external_metrics() -> None:
-    features = np.asarray(
-        [[0.0, 0.0], [0.1, 0.2], [5.0, 5.0], [5.2, 5.1]]
-    )
+    features = np.asarray([[0.0, 0.0], [0.1, 0.2], [5.0, 5.0], [5.2, 5.1]])
     labels = np.asarray([0, 0, 1, 1])
     reference = np.asarray(["a", "a", "b", "b"])
 

@@ -169,8 +169,7 @@ def render_profile(profile: dict[str, Any]) -> None:
     for step in profile["preparation_plan"]:
         preparation_by_column.setdefault(step["column"], []).append(step)
     relationships_by_column = {
-        relationship["source_column"]: relationship
-        for relationship in profile["relationships"]
+        relationship["source_column"]: relationship for relationship in profile["relationships"]
     }
 
     st.subheader("Feature profiles")
@@ -229,9 +228,7 @@ def render_profile(profile: dict[str, Any]) -> None:
                         statistics_rows.append(
                             {
                                 "Statistic": statistic.replace("_", " ").title(),
-                                "Value": profile_display_value(
-                                    column["statistics"][statistic]
-                                ),
+                                "Value": profile_display_value(column["statistics"][statistic]),
                             }
                         )
                 if statistics_rows:
@@ -417,9 +414,7 @@ def _render_model_evaluation(
     entry: dict[str, Any],
     metric_directions: dict[str, str],
 ) -> None:
-    metrics_tab, diagnostics_tab, parameters_tab = st.tabs(
-        ["Metrics", "Diagnostics", "Parameters"]
-    )
+    metrics_tab, diagnostics_tab, parameters_tab = st.tabs(["Metrics", "Diagnostics", "Parameters"])
     with metrics_tab:
         st.dataframe(
             [
@@ -480,9 +475,7 @@ def _render_model_evaluation(
         elif cross_validation:
             cv_values = {
                 "Mean": cross_validation.get("mean"),
-                "Standard deviation": cross_validation.get(
-                    "standard_deviation"
-                ),
+                "Standard deviation": cross_validation.get("standard_deviation"),
             }
             st.bar_chart(
                 pd.DataFrame(
@@ -583,9 +576,7 @@ def _render_model_evaluation(
                 )
             )
         if diagnostics.get("cluster_sizes"):
-            st.bar_chart(
-                pd.DataFrame({"Rows": diagnostics["cluster_sizes"]})
-            )
+            st.bar_chart(pd.DataFrame({"Rows": diagnostics["cluster_sizes"]}))
         prediction_samples = diagnostics.get("prediction_samples", [])
         if prediction_samples:
             sample_frame = pd.DataFrame(prediction_samples)
@@ -616,9 +607,7 @@ def _render_model_evaluation(
                 use_container_width=True,
             )
             if diagnostics.get("chronological_holdout"):
-                st.line_chart(
-                    sample_frame.set_index("order")[["actual", "predicted"]]
-                )
+                st.line_chart(sample_frame.set_index("order")[["actual", "predicted"]])
         summaries = [
             (name, values)
             for name, values in diagnostics.items()
@@ -700,10 +689,7 @@ def render_validation_workspace(
         for dataset in datasets:
             status_code, versions = api_request(
                 "GET",
-                (
-                    f"/projects/{project_id}/datasets/"
-                    f"{dataset['id']}/versions"
-                ),
+                (f"/projects/{project_id}/datasets/{dataset['id']}/versions"),
                 token=access_token,
             )
             if status_code != 200 or not isinstance(versions, list):
@@ -730,9 +716,7 @@ def render_validation_workspace(
             if training_run["task_type"] == "clustering":
                 schema = selected_version.get("schema_json", {})
                 columns = [
-                    column["name"]
-                    for column in schema.get("columns", [])
-                    if column.get("name")
+                    column["name"] for column in schema.get("columns", []) if column.get("name")
                 ]
                 evaluation_choice = st.selectbox(
                     "Reference label",
@@ -748,10 +732,7 @@ def render_validation_workspace(
             ):
                 status_code, response = api_request(
                     "POST",
-                    (
-                        f"/projects/{project_id}/training/runs/"
-                        f"{training_run['id']}/validations"
-                    ),
+                    (f"/projects/{project_id}/training/runs/{training_run['id']}/validations"),
                     payload={
                         "model_name": validation_model,
                         "dataset_version_id": validation_version_id,
@@ -787,10 +768,7 @@ def render_validation_workspace(
         ):
             status_code, response = api_request(
                 "POST",
-                (
-                    f"/projects/{project_id}/training/runs/"
-                    f"{training_run['id']}/explanations"
-                ),
+                (f"/projects/{project_id}/training/runs/{training_run['id']}/explanations"),
                 payload={
                     "model_name": explanation_model,
                     "max_rows": max_rows,
@@ -806,10 +784,7 @@ def render_validation_workspace(
 
     analyses_status, analyses = api_request(
         "GET",
-        (
-            f"/projects/{project_id}/training/runs/"
-            f"{training_run['id']}/analyses"
-        ),
+        (f"/projects/{project_id}/training/runs/{training_run['id']}/analyses"),
         token=access_token,
     )
     if analyses_status != 200 or not isinstance(analyses, list):
@@ -839,8 +814,7 @@ def render_validation_workspace(
                 list(analysis_options),
                 key=f"analysis_result:{training_run['id']}",
                 format_func=lambda run_id: (
-                    f"{analysis_options[run_id]['run_name']} - "
-                    f"{analysis_options[run_id]['status']}"
+                    f"{analysis_options[run_id]['run_name']} - {analysis_options[run_id]['status']}"
                 ),
             )
             result_status, result = api_request(
@@ -862,15 +836,12 @@ def render_validation_workspace(
                             "diagnostics": result.get("diagnostics", {}),
                             "best_params": {},
                         },
-                        {
-                            name: "review"
-                            for name in result.get("metrics", {})
-                        },
+                        {name: "review" for name in result.get("metrics", {})},
                     )
                 if result.get("feature_importance"):
-                    importance = pd.DataFrame(
-                        result["feature_importance"][:30]
-                    ).set_index("feature")
+                    importance = pd.DataFrame(result["feature_importance"][:30]).set_index(
+                        "feature"
+                    )
                     st.bar_chart(
                         importance,
                         y="mean_absolute_shap",
@@ -889,10 +860,7 @@ def render_validation_workspace(
                         use_container_width=True,
                         hide_index=True,
                     )
-    if any(
-        run["status"] in {"queued", "precheck_running", "running"}
-        for run in analyses
-    ):
+    if any(run["status"] in {"queued", "precheck_running", "running"} for run in analyses):
         time.sleep(2)
         st.rerun()
 
@@ -961,20 +929,12 @@ def render_training_workspace(project_id: str, access_token: str) -> None:
         "schema_json",
         selected_version.get("dataset_schema", {}),
     )
-    column_names = [
-        column["name"]
-        for column in schema.get("columns", [])
-        if column.get("name")
-    ]
+    column_names = [column["name"] for column in schema.get("columns", []) if column.get("name")]
     task_options = ["classification", "regression", "time_series", "clustering"]
     task_type = st.selectbox(
         "Task type",
         task_options,
-        index=(
-            task_options.index(inferred_task_type)
-            if inferred_task_type in task_options
-            else 0
-        ),
+        index=(task_options.index(inferred_task_type) if inferred_task_type in task_options else 0),
         format_func=lambda value: value.replace("_", " ").title(),
         key=f"training_task:{selected_version['id']}",
     )
@@ -988,16 +948,11 @@ def render_training_workspace(project_id: str, access_token: str) -> None:
         target_column = st.selectbox(
             "Training target",
             column_names,
-            index=(
-                column_names.index(active_target)
-                if active_target in column_names
-                else 0
-            ),
+            index=(column_names.index(active_target) if active_target in column_names else 0),
             key=f"training_target:{selected_version['id']}:{task_type}",
         )
     st.caption(
-        f"Task: {task_type.replace('_', ' ').title()} | "
-        f"Target: {target_column or 'No target'}"
+        f"Task: {task_type.replace('_', ' ').title()} | Target: {target_column or 'No target'}"
     )
 
     estimator_query = urllib.parse.urlencode({"task_type": task_type})
@@ -1013,11 +968,7 @@ def render_training_workspace(project_id: str, access_token: str) -> None:
     selected_models = st.multiselect(
         "Models",
         options=list(estimator_by_name),
-        default=[
-            estimator["name"]
-            for estimator in estimators
-            if estimator["default_selected"]
-        ],
+        default=[estimator["name"] for estimator in estimators if estimator["default_selected"]],
         format_func=lambda name: (
             f"{name} | {estimator_by_name[name]['cost_tier']} cost"
             f"{' | tuned' if estimator_by_name[name]['tunable'] else ''}"
@@ -1037,7 +988,7 @@ def render_training_workspace(project_id: str, access_token: str) -> None:
 
     controls = st.columns(4)
     expected_minutes = controls[0].number_input(
-        "Expected minutes",
+        "Planned duration (minutes)",
         min_value=1,
         max_value=120,
         value=10,
@@ -1094,7 +1045,7 @@ def render_training_workspace(project_id: str, access_token: str) -> None:
         else None
     )
     if estimate:
-        estimate_columns = st.columns(6)
+        estimate_columns = st.columns(7)
         estimate_columns[0].metric("CPU request", estimate["cpu_request_cores"])
         estimate_columns[1].metric("Memory request", f"{estimate['memory_request_mb']} MiB")
         estimate_columns[2].metric(
@@ -1109,6 +1060,10 @@ def render_training_workspace(project_id: str, access_token: str) -> None:
         estimate_columns[5].metric(
             "Cluster CPU used",
             f"{estimate['capacity'].get('used_cpu_cores', 0):.2f}",
+        )
+        estimate_columns[6].metric(
+            "Runtime safety limit",
+            f"{estimate['active_deadline_seconds'] // 3600} h",
         )
         if estimate["warnings"]:
             st.warning("\n".join(estimate["warnings"]))
@@ -1180,8 +1135,7 @@ def render_training_workspace(project_id: str, access_token: str) -> None:
         list(run_options),
         key=run_selector_key,
         format_func=lambda run_id: (
-            f"{run_options[run_id]['run_name'] or run_id} - "
-            f"{run_options[run_id]['status']}"
+            f"{run_options[run_id]['run_name'] or run_id} - {run_options[run_id]['status']}"
         ),
     )
     selected_run = run_options[selected_run_id]
@@ -1217,11 +1171,7 @@ def render_training_workspace(project_id: str, access_token: str) -> None:
                         f"{str(primary_metric).replace('_', ' ').title()}"
                     )
                 metric_names = sorted(
-                    {
-                        metric
-                        for entry in entries
-                        for metric in entry.get("metrics", {})
-                    }
+                    {metric for entry in entries for metric in entry.get("metrics", {})}
                 )
                 st.dataframe(
                     [
@@ -1249,9 +1199,7 @@ def render_training_workspace(project_id: str, access_token: str) -> None:
                         if entry.get("mlflow_run_id"):
                             st.caption(f"MLflow run: {entry['mlflow_run_id']}")
                         if entry.get("extension_run_id"):
-                            st.caption(
-                                f"Added by run: {entry['extension_run_id']}"
-                            )
+                            st.caption(f"Added by run: {entry['extension_run_id']}")
                         if entry.get("error"):
                             st.error(entry["error"])
                         else:
@@ -1259,19 +1207,11 @@ def render_training_workspace(project_id: str, access_token: str) -> None:
                                 entry,
                                 leaderboard.get("metric_directions", {}),
                             )
-        if (
-            run_detail["status"] == "succeeded"
-            and isinstance(leaderboard, dict)
-        ):
-            add_query = urllib.parse.urlencode(
-                {"task_type": run_detail["task_type"]}
-            )
+        if run_detail["status"] == "succeeded" and isinstance(leaderboard, dict):
+            add_query = urllib.parse.urlencode({"task_type": run_detail["task_type"]})
             add_catalog_status, add_catalog = api_request(
                 "GET",
-                (
-                    f"/projects/{project_id}/training/estimators?"
-                    f"{add_query}"
-                ),
+                (f"/projects/{project_id}/training/estimators?{add_query}"),
                 token=access_token,
             )
             completed_models = {
@@ -1330,7 +1270,7 @@ def render_training_workspace(project_id: str, access_token: str) -> None:
                         key=f"add_folds:{selected_run['id']}",
                     )
                     add_minutes = add_controls[2].number_input(
-                        "Expected minutes",
+                        "Planned duration (minutes)",
                         min_value=1,
                         max_value=120,
                         value=int(
@@ -1359,15 +1299,10 @@ def render_training_workspace(project_id: str, access_token: str) -> None:
                     ):
                         add_status, add_response = api_request(
                             "POST",
-                            (
-                                f"/projects/{project_id}/training/runs/"
-                                f"{selected_run['id']}/models"
-                            ),
+                            (f"/projects/{project_id}/training/runs/{selected_run['id']}/models"),
                             payload={
                                 "candidate_models": added_models,
-                                "optimization_iterations": int(
-                                    add_iterations
-                                ),
+                                "optimization_iterations": int(add_iterations),
                                 "cv_folds": int(add_folds),
                                 "expected_minutes": int(add_minutes),
                                 "prefer_gpu": add_gpu,
@@ -1379,12 +1314,10 @@ def render_training_workspace(project_id: str, access_token: str) -> None:
                             dict,
                         ):
                             extension = add_response["run"]
-                            st.session_state[
-                                f"pending_training_run:{project_id}"
-                            ] = str(extension["id"])
-                            st.success(
-                                f"Training job {extension['id']} queued."
+                            st.session_state[f"pending_training_run:{project_id}"] = str(
+                                extension["id"]
                             )
+                            st.success(f"Training job {extension['id']} queued.")
                             st.rerun()
                         else:
                             st.error(add_response)
@@ -1409,10 +1342,7 @@ def render_training_workspace(project_id: str, access_token: str) -> None:
             if st.button("Restart training", use_container_width=True):
                 restart_status, restart_response = api_request(
                     "POST",
-                    (
-                        f"/projects/{project_id}/training/runs/"
-                        f"{selected_run['id']}/restart"
-                    ),
+                    (f"/projects/{project_id}/training/runs/{selected_run['id']}/restart"),
                     token=access_token,
                 )
                 if restart_status == 202:
@@ -1469,11 +1399,9 @@ def render_project_detail(project_id: str, access_token: str) -> None:
             if status_code == 201 and isinstance(upload_response, dict):
                 uploaded_dataset = upload_response["dataset"]
                 uploaded_version = upload_response["version"]
-                st.session_state[f"dataset_selector:{project_id}"] = str(
-                    uploaded_dataset["id"]
-                )
-                st.session_state[f"version_selector:{project_id}:{uploaded_dataset['id']}"] = (
-                    str(uploaded_version["id"])
+                st.session_state[f"dataset_selector:{project_id}"] = str(uploaded_dataset["id"])
+                st.session_state[f"version_selector:{project_id}:{uploaded_dataset['id']}"] = str(
+                    uploaded_version["id"]
                 )
                 st.session_state[f"upload_notice:{project_id}"] = (
                     f"Uploaded version {uploaded_version['version_number']} "
@@ -1568,11 +1496,7 @@ def render_project_detail(project_id: str, access_token: str) -> None:
             latest_job = None
 
         target_options = ["No target"] + columns
-        active_target = (
-            latest_job.get("target_column")
-            if isinstance(latest_job, dict)
-            else None
-        )
+        active_target = latest_job.get("target_column") if isinstance(latest_job, dict) else None
         default_target = active_target or "No target"
         target_state_key = f"target_selector:{selected_version['id']}"
         if target_state_key not in st.session_state:
@@ -1585,9 +1509,8 @@ def render_project_detail(project_id: str, access_token: str) -> None:
             key=target_state_key,
         )
         normalized_target = None if selected_target == "No target" else selected_target
-        target_changed = (
-            isinstance(latest_job, dict)
-            and normalized_target != latest_job.get("target_column")
+        target_changed = isinstance(latest_job, dict) and normalized_target != latest_job.get(
+            "target_column"
         )
         action_label = "Reprofile with target" if target_changed else "Start profile"
         start_profile = controls[1].button(
@@ -1608,17 +1531,13 @@ def render_project_detail(project_id: str, access_token: str) -> None:
                 token=access_token,
             )
             if status_code in {200, 202} and isinstance(started_job, dict):
-                st.session_state[f"profile_job:{selected_version['id']}"] = str(
-                    started_job["id"]
-                )
+                st.session_state[f"profile_job:{selected_version['id']}"] = str(started_job["id"])
                 st.rerun()
             else:
                 st.error(started_job)
 
         if isinstance(latest_job, dict):
-            st.session_state[f"profile_job:{selected_version['id']}"] = str(
-                latest_job["id"]
-            )
+            st.session_state[f"profile_job:{selected_version['id']}"] = str(latest_job["id"])
             if latest_job["status"] in {"queued", "running"}:
                 poll_profile_job(job_path, str(latest_job["id"]), access_token)
             else:

@@ -4,7 +4,10 @@ import streamlit as st
 
 st.set_page_config(page_title="Project Workspace", layout="wide")
 
-from streamlit_app.workspace import render_project_detail, render_session_sidebar
+from streamlit_app.workspace import (  # noqa: E402
+    render_project_detail,
+    render_session_sidebar,
+)
 
 render_session_sidebar()
 

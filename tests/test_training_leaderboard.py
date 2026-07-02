@@ -23,9 +23,7 @@ def test_supervised_tasks_have_bounded_candidate_catalogs() -> None:
     ]
     assert len(select_candidates(TaskType.CLASSIFICATION, None, 3)) == 3
     clustering = candidate_catalog(TaskType.CLUSTERING)
-    assert {candidate.name for candidate in clustering}.issuperset(
-        {"KMeans", "Birch", "DBSCAN"}
-    )
+    assert {candidate.name for candidate in clustering}.issuperset({"KMeans", "Birch", "DBSCAN"})
 
 
 def test_external_boosting_estimators_are_available_for_supervised_tasks() -> None:
@@ -48,18 +46,11 @@ def test_external_boosting_estimators_are_available_for_supervised_tasks() -> No
     }
 
     for task_type, model_names in expected.items():
-        catalog_names = {
-            candidate.name for candidate in candidate_catalog(task_type)
-        }
+        catalog_names = {candidate.name for candidate in candidate_catalog(task_type)}
         assert model_names.issubset(catalog_names)
 
-    clustering_names = {
-        candidate.name for candidate in candidate_catalog(TaskType.CLUSTERING)
-    }
-    assert not any(
-        name.startswith(("XGB", "LGBM", "CatBoost"))
-        for name in clustering_names
-    )
+    clustering_names = {candidate.name for candidate in candidate_catalog(TaskType.CLUSTERING)}
+    assert not any(name.startswith(("XGB", "LGBM", "CatBoost")) for name in clustering_names)
 
 
 def test_leaderboard_ranks_higher_and_lower_metrics_correctly() -> None:
@@ -122,9 +113,7 @@ def test_incremental_models_replace_failed_entries_and_rerank() -> None:
         "RandomForestClassifier",
     ]
     assert merged[0]["rank"] == 1
-    assert merged[0]["extension_run_id"] == (
-        "11111111-1111-1111-1111-111111111111"
-    )
+    assert merged[0]["extension_run_id"] == ("11111111-1111-1111-1111-111111111111")
 
 
 def test_time_series_split_is_chronological() -> None:

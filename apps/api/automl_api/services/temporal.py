@@ -34,8 +34,7 @@ def infer_unix_timestamp_unit(
     required = max(1, math.ceil(len(numeric_values) * minimum_ratio))
     for unit, scale in UNIX_UNIT_SCALES.items():
         plausible = sum(
-            MIN_UNIX_SECONDS <= value / scale <= MAX_UNIX_SECONDS
-            for value in numeric_values
+            MIN_UNIX_SECONDS <= value / scale <= MAX_UNIX_SECONDS for value in numeric_values
         )
         if plausible >= required:
             return unit

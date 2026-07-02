@@ -73,8 +73,7 @@ def create_profiling_job(
         and latest_job is not None
         and latest_job.target_column == target_column
         and latest_job.status in {"queued", "running", "succeeded"}
-        and latest_job.overview_json.get("profile_algorithm_version")
-        == PROFILE_ALGORITHM_VERSION
+        and latest_job.overview_json.get("profile_algorithm_version") == PROFILE_ALGORITHM_VERSION
     ):
         return latest_job, False
 
@@ -104,11 +103,7 @@ def create_profiling_job(
             ProfilingJob.updated_at.desc(),
         )
     )
-    reusable_profiles = (
-        dict(reusable_job.feature_profiles_json)
-        if reusable_job is not None
-        else {}
-    )
+    reusable_profiles = dict(reusable_job.feature_profiles_json) if reusable_job is not None else {}
     features_fully_reused = bool(
         reusable_job is not None
         and len(reusable_profiles) == len(columns)
@@ -138,9 +133,7 @@ def create_profiling_job(
             "preparation": "queued",
         },
         "replaces_job_id": str(latest_job.id) if latest_job else None,
-        "features_reused_from_job_id": (
-            str(reusable_job.id) if reusable_job else None
-        ),
+        "features_reused_from_job_id": (str(reusable_job.id) if reusable_job else None),
         "profile_algorithm_version": PROFILE_ALGORITHM_VERSION,
     }
     if task_inference_json is not None:
@@ -154,9 +147,7 @@ def create_profiling_job(
 
     completed_columns = len(reusable_profiles)
     initial_progress = (
-        0.7
-        if features_fully_reused
-        else 0.1 + 0.6 * (completed_columns / max(1, len(columns)))
+        0.7 if features_fully_reused else 0.1 + 0.6 * (completed_columns / max(1, len(columns)))
     )
     job = ProfilingJob(
         project_id=project_id,
@@ -338,31 +329,21 @@ def _run_partitioned_stages(job_id: uuid.UUID) -> None:
     pending_columns = [column for column in columns if column not in existing_profiles]
     for batch_start in range(0, len(pending_columns), FEATURE_BATCH_SIZE):
         with session_factory() as db:
-            current_status = db.scalar(
-                select(ProfilingJob.status).where(ProfilingJob.id == job_id)
-            )
+            current_status = db.scalar(select(ProfilingJob.status).where(ProfilingJob.id == job_id))
             if current_status == "cancelled":
                 return
         batch = pending_columns[batch_start : batch_start + FEATURE_BATCH_SIZE]
-        batch_profiles = [
-            _profile_column(dataframe[column], column, row_count)
-            for column in batch
-        ]
+        batch_profiles = [_profile_column(dataframe[column], column, row_count) for column in batch]
         with session_factory() as db:
             job = db.get(ProfilingJob, job_id)
             assert job is not None
             merged_profiles = dict(job.feature_profiles_json)
             merged_profiles.update(
-                {
-                    profile.name: profile.model_dump(mode="json")
-                    for profile in batch_profiles
-                }
+                {profile.name: profile.model_dump(mode="json") for profile in batch_profiles}
             )
             job.feature_profiles_json = merged_profiles
             job.completed_columns = len(merged_profiles)
-            job.progress = 0.1 + 0.6 * (
-                job.completed_columns / max(1, job.total_columns)
-            )
+            job.progress = 0.1 + 0.6 * (job.completed_columns / max(1, job.total_columns))
             job.heartbeat_at = datetime.now(UTC)
             job.artifact_uris_json = _store_stage_artifact(
                 job,
@@ -409,8 +390,7 @@ def _run_partitioned_stages(job_id: uuid.UUID) -> None:
         if job.status == "cancelled":
             return
         relationship_payload = [
-            relationship.model_dump(mode="json")
-            for relationship in relationships
+            relationship.model_dump(mode="json") for relationship in relationships
         ]
         job.relationships_json = relationship_payload
         job.warnings_json = list(dict.fromkeys([*job.warnings_json, *relationship_warnings]))
@@ -448,10 +428,7 @@ def _finish_preparation(job_id: uuid.UUID) -> None:
             job.target_column,
             task_inference.task_type,
         )
-        preparation_payload = [
-            step.model_dump(mode="json")
-            for step in preparation
-        ]
+        preparation_payload = [step.model_dump(mode="json") for step in preparation]
         job.preparation_json = preparation_payload
         job.overview_json = {
             **job.overview_json,
@@ -555,17 +532,12 @@ def _run_monolithic_fallback(job_id: uuid.UUID) -> None:
         job.total_columns = profile.column_count
         job.completed_columns = profile.column_count
         job.feature_profiles_json = {
-            column.name: column.model_dump(mode="json")
-            for column in profile.columns
+            column.name: column.model_dump(mode="json") for column in profile.columns
         }
         job.relationships_json = [
-            relationship.model_dump(mode="json")
-            for relationship in profile.relationships
+            relationship.model_dump(mode="json") for relationship in profile.relationships
         ]
-        job.preparation_json = [
-            step.model_dump(mode="json")
-            for step in profile.preparation_plan
-        ]
+        job.preparation_json = [step.model_dump(mode="json") for step in profile.preparation_plan]
         job.warnings_json = profile.warnings
         job.overview_json = {
             **job.overview_json,

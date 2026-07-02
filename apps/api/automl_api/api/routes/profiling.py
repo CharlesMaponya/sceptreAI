@@ -251,11 +251,9 @@ def profile_job_events(
             with session_factory() as event_db:
                 current_job = event_db.get(type(job), job_id)
                 if current_job is None:
-                    yield "event: error\ndata: {\"detail\":\"Job not found\"}\n\n"
+                    yield 'event: error\ndata: {"detail":"Job not found"}\n\n'
                     return
-                payload = ProfilingJobStatusRead.model_validate(current_job).model_dump(
-                    mode="json"
-                )
+                payload = ProfilingJobStatusRead.model_validate(current_job).model_dump(mode="json")
                 yield f"event: progress\ndata: {json.dumps(payload)}\n\n"
                 if current_job.status in TERMINAL_STATUSES:
                     return

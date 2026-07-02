@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import (
     Boolean,
     DateTime,
-    Enum as SQLEnum,
     Float,
     ForeignKey,
     ForeignKeyConstraint,
@@ -19,12 +18,23 @@ from sqlalchemy import (
     and_,
     text,
 )
+from sqlalchemy import (
+    Enum as SQLEnum,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from automl_api.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from automl_api.models.datasets import DatasetVersion
-from automl_api.models.enums import ArtifactKind, MetricKind, MetricSplit, ModelStage, RunKind, RunStatus, TaskType
+from automl_api.models.enums import (
+    ArtifactKind,
+    MetricKind,
+    MetricSplit,
+    ModelStage,
+    RunKind,
+    RunStatus,
+    TaskType,
+)
 
 if TYPE_CHECKING:
     from automl_api.models.iam import User
@@ -46,9 +56,13 @@ class ModelRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_model_runs_mlflow_run_id", "mlflow_run_id"),
     )
 
-    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
     dataset_version_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
-    created_by_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    created_by_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
     run_kind: Mapped[RunKind] = mapped_column(
         SQLEnum(RunKind, name="run_kind", native_enum=False),
         nullable=False,
@@ -74,7 +88,9 @@ class ModelRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     zenml_run_id: Mapped[str | None] = mapped_column(String(255))
     k8s_namespace: Mapped[str | None] = mapped_column(String(255))
     k8s_job_name: Mapped[str | None] = mapped_column(String(255))
-    gpu_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    gpu_requested: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     cpu_request_cores: Mapped[float | None] = mapped_column(Float)
     memory_request_mb: Mapped[int | None] = mapped_column(Integer)
     cpu_limit_cores: Mapped[float | None] = mapped_column(Float)
@@ -99,12 +115,12 @@ class ModelRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    project: Mapped["Project"] = relationship(
+    project: Mapped[Project] = relationship(
         "Project",
         back_populates="model_runs",
         foreign_keys=[project_id],
     )
-    dataset_version: Mapped["DatasetVersion"] = relationship(
+    dataset_version: Mapped[DatasetVersion] = relationship(
         "DatasetVersion",
         back_populates="model_runs",
         primaryjoin=lambda: and_(
@@ -114,24 +130,24 @@ class ModelRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         foreign_keys=lambda: [ModelRun.project_id, ModelRun.dataset_version_id],
         overlaps="model_runs,project",
     )
-    created_by: Mapped["User"] = relationship(
+    created_by: Mapped[User] = relationship(
         "User",
         back_populates="model_runs",
         foreign_keys=[created_by_id],
     )
-    metrics: Mapped[list["Metric"]] = relationship(
+    metrics: Mapped[list[Metric]] = relationship(
         "Metric",
         back_populates="model_run",
         cascade="all, delete-orphan",
         foreign_keys="Metric.model_run_id",
     )
-    artifacts: Mapped[list["RunArtifact"]] = relationship(
+    artifacts: Mapped[list[RunArtifact]] = relationship(
         "RunArtifact",
         back_populates="model_run",
         cascade="all, delete-orphan",
         foreign_keys="RunArtifact.model_run_id",
     )
-    registry_entries: Mapped[list["ModelRegistryEntry"]] = relationship(
+    registry_entries: Mapped[list[ModelRegistryEntry]] = relationship(
         "ModelRegistryEntry",
         back_populates="model_run",
         cascade="all, delete-orphan",
@@ -159,7 +175,9 @@ class Metric(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_metrics_model_run", "model_run_id"),
     )
 
-    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
     model_run_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     kind: Mapped[MetricKind] = mapped_column(
@@ -189,12 +207,12 @@ class Metric(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         server_default=text("now()"),
     )
 
-    project: Mapped["Project"] = relationship(
+    project: Mapped[Project] = relationship(
         "Project",
         back_populates="metrics",
         foreign_keys=[project_id],
     )
-    model_run: Mapped["ModelRun"] = relationship(
+    model_run: Mapped[ModelRun] = relationship(
         "ModelRun",
         back_populates="metrics",
         primaryjoin=lambda: and_(
@@ -219,7 +237,9 @@ class RunArtifact(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_run_artifacts_project_kind", "project_id", "kind"),
     )
 
-    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
     model_run_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
     kind: Mapped[ArtifactKind] = mapped_column(
         SQLEnum(ArtifactKind, name="artifact_kind", native_enum=False),
@@ -236,12 +256,12 @@ class RunArtifact(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         server_default=text("'{}'::jsonb"),
     )
 
-    project: Mapped["Project"] = relationship(
+    project: Mapped[Project] = relationship(
         "Project",
         back_populates="artifacts",
         foreign_keys=[project_id],
     )
-    model_run: Mapped["ModelRun"] = relationship(
+    model_run: Mapped[ModelRun] = relationship(
         "ModelRun",
         back_populates="artifacts",
         primaryjoin=lambda: and_(
@@ -251,7 +271,7 @@ class RunArtifact(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         foreign_keys=lambda: [RunArtifact.project_id, RunArtifact.model_run_id],
         overlaps="artifacts,project",
     )
-    registry_entries: Mapped[list["ModelRegistryEntry"]] = relationship(
+    registry_entries: Mapped[list[ModelRegistryEntry]] = relationship(
         "ModelRegistryEntry",
         back_populates="model_artifact",
         foreign_keys="ModelRegistryEntry.model_artifact_id",
@@ -277,7 +297,9 @@ class ModelRegistryEntry(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_model_registry_project_feature_hash", "project_id", "feature_space_hash"),
     )
 
-    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
     model_run_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
     model_artifact_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
     stage: Mapped[ModelStage] = mapped_column(
@@ -300,12 +322,12 @@ class ModelRegistryEntry(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         server_default=text("'{}'::jsonb"),
     )
 
-    project: Mapped["Project"] = relationship(
+    project: Mapped[Project] = relationship(
         "Project",
         back_populates="registry_entries",
         foreign_keys=[project_id],
     )
-    model_run: Mapped["ModelRun"] = relationship(
+    model_run: Mapped[ModelRun] = relationship(
         "ModelRun",
         back_populates="registry_entries",
         primaryjoin=lambda: and_(
@@ -315,7 +337,7 @@ class ModelRegistryEntry(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         foreign_keys=lambda: [ModelRegistryEntry.project_id, ModelRegistryEntry.model_run_id],
         overlaps="project,registry_entries",
     )
-    model_artifact: Mapped["RunArtifact"] = relationship(
+    model_artifact: Mapped[RunArtifact] = relationship(
         "RunArtifact",
         back_populates="registry_entries",
         primaryjoin=lambda: and_(

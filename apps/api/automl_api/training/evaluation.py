@@ -67,16 +67,12 @@ def classification_evaluation(
         "precision_weighted": float(
             precision_score(test_y, predictions, average="weighted", zero_division=0)
         ),
-        "recall_macro": float(
-            recall_score(test_y, predictions, average="macro", zero_division=0)
-        ),
+        "recall_macro": float(recall_score(test_y, predictions, average="macro", zero_division=0)),
         "recall_weighted": float(
             recall_score(test_y, predictions, average="weighted", zero_division=0)
         ),
         "f1_macro": float(f1_score(test_y, predictions, average="macro", zero_division=0)),
-        "f1_weighted": float(
-            f1_score(test_y, predictions, average="weighted", zero_division=0)
-        ),
+        "f1_weighted": float(f1_score(test_y, predictions, average="weighted", zero_division=0)),
         "mcc": float(matthews_corrcoef(test_y, predictions)),
         "cohen_kappa": float(cohen_kappa_score(test_y, predictions)),
     }
@@ -104,9 +100,7 @@ def classification_evaluation(
                 positive = probabilities[:, 1]
                 metrics["roc_auc"] = float(roc_auc_score(test_y, positive))
                 binary_y = (np.asarray(test_y) == labels[1]).astype(int)
-                metrics["average_precision"] = float(
-                    average_precision_score(binary_y, positive)
-                )
+                metrics["average_precision"] = float(average_precision_score(binary_y, positive))
                 metrics["brier_score"] = float(brier_score_loss(binary_y, positive))
                 metrics["gini"] = float(2 * metrics["roc_auc"] - 1)
                 if matrix.shape == (2, 2):
@@ -179,9 +173,7 @@ def regression_evaluation(
     if task_type == TaskType.TIME_SERIES:
         training_values = np.asarray(train_y, dtype=float)
         naive_error = (
-            float(np.mean(np.abs(np.diff(training_values))))
-            if len(training_values) > 1
-            else 0.0
+            float(np.mean(np.abs(np.diff(training_values)))) if len(training_values) > 1 else 0.0
         )
         if naive_error > np.finfo(float).eps:
             metrics["mase"] = float(metrics["mae"] / naive_error)
@@ -192,9 +184,7 @@ def regression_evaluation(
                 np.mean(actual_direction == predicted_direction)
             )
     sample_size = min(1000, len(actual))
-    sample_indices = np.unique(
-        np.linspace(0, len(actual) - 1, sample_size, dtype=int)
-    )
+    sample_indices = np.unique(np.linspace(0, len(actual) - 1, sample_size, dtype=int))
     diagnostics = {
         "residual_summary": _summary(residuals),
         "actual_summary": _summary(actual),
@@ -232,28 +222,20 @@ def clustering_evaluation(
             )
         ),
         "davies_bouldin": float(davies_bouldin_score(features, cluster_labels)),
-        "calinski_harabasz": float(
-            calinski_harabasz_score(features, cluster_labels)
-        ),
+        "calinski_harabasz": float(calinski_harabasz_score(features, cluster_labels)),
     }
     if reference_labels is not None:
         metrics.update(
             {
-                "adjusted_rand": float(
-                    adjusted_rand_score(reference_labels, cluster_labels)
-                ),
+                "adjusted_rand": float(adjusted_rand_score(reference_labels, cluster_labels)),
                 "normalized_mutual_info": float(
                     normalized_mutual_info_score(reference_labels, cluster_labels)
                 ),
                 "adjusted_mutual_info": float(
                     adjusted_mutual_info_score(reference_labels, cluster_labels)
                 ),
-                "fowlkes_mallows": float(
-                    fowlkes_mallows_score(reference_labels, cluster_labels)
-                ),
-                "homogeneity": float(
-                    homogeneity_score(reference_labels, cluster_labels)
-                ),
+                "fowlkes_mallows": float(fowlkes_mallows_score(reference_labels, cluster_labels)),
+                "homogeneity": float(homogeneity_score(reference_labels, cluster_labels)),
             }
         )
     return finite_metrics(metrics)
@@ -278,11 +260,7 @@ def aggregate_fold_metrics(
 
 
 def finite_metrics(metrics: dict[str, float]) -> dict[str, float]:
-    return {
-        name: float(value)
-        for name, value in metrics.items()
-        if np.isfinite(float(value))
-    }
+    return {name: float(value) for name, value in metrics.items() if np.isfinite(float(value))}
 
 
 def metric_direction(metric_name: str) -> str:

@@ -95,8 +95,7 @@ def _execute_validation(
             "validation_mode": mode,
             "external_rows": len(features),
             "cluster_sizes": {
-                str(label): int(count)
-                for label, count in zip(unique_labels, counts, strict=True)
+                str(label): int(count) for label, count in zip(unique_labels, counts, strict=True)
             },
             "external_evaluation": reference_labels is not None,
         }
@@ -148,9 +147,7 @@ def _execute_explainability(
         )
         if value
     }
-    features = _normalize_temporal_features(
-        dataframe.drop(columns=list(excluded), errors="ignore")
-    )
+    features = _normalize_temporal_features(dataframe.drop(columns=list(excluded), errors="ignore"))
     max_rows = min(int(run.params.get("max_rows", 200)), len(features))
     if max_rows < 2:
         raise ValueError("At least two rows are required for SHAP analysis.")
@@ -240,8 +237,7 @@ def _encode_shap_features(
             options = categories[column]
             codes = np.rint(numeric[column].to_numpy()).astype(int)
             decoded[column] = [
-                options[code] if 0 <= code < len(options) else np.nan
-                for code in codes
+                options[code] if 0 <= code < len(options) else np.nan for code in codes
             ]
         return decoded
 
@@ -259,13 +255,10 @@ def _load_model(run: ModelRun) -> Any:
             mlflow_error = exc
     model_artifact_uri = run.params.get("model_artifact_uri")
     if model_artifact_uri:
-        return joblib.load(
-            io.BytesIO(get_object_store().read_bytes(model_artifact_uri))
-        )
+        return joblib.load(io.BytesIO(get_object_store().read_bytes(model_artifact_uri)))
     if mlflow_error is not None:
         raise ValueError(
-            "MLflow model loading failed and no MinIO model mirror exists: "
-            f"{mlflow_error}"
+            f"MLflow model loading failed and no MinIO model mirror exists: {mlflow_error}"
         ) from mlflow_error
     raise ValueError("The source model has no persisted artifact.")
 
@@ -286,14 +279,9 @@ def _persist_analysis_result(
         if run is None:
             return
         suffix = (
-            "shap.json"
-            if run.run_kind == RunKind.EXPLAINABILITY
-            else "external-validation.json"
+            "shap.json" if run.run_kind == RunKind.EXPLAINABILITY else "external-validation.json"
         )
-        key = (
-            f"projects/{run.project_id}/runs/{run.id}/"
-            f"{suffix}"
-        )
+        key = f"projects/{run.project_id}/runs/{run.id}/{suffix}"
         stored = get_object_store().put_bytes(key, payload)
         artifact_kind = (
             ArtifactKind.SHAP_VALUES
@@ -310,9 +298,7 @@ def _persist_analysis_result(
                 content_hash=hashlib.sha256(payload).hexdigest(),
                 byte_size=len(payload),
                 artifact_metadata={
-                    "source_training_run_id": run.params.get(
-                        "source_training_run_id"
-                    ),
+                    "source_training_run_id": run.params.get("source_training_run_id"),
                     "model_name": run.params.get("model_name"),
                 },
             )

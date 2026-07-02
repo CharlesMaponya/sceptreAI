@@ -84,8 +84,7 @@ def runs(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> list[ModelRunRead]:
     return [
-        ModelRunRead.model_validate(run)
-        for run in list_training_runs(db, current_user, project_id)
+        ModelRunRead.model_validate(run) for run in list_training_runs(db, current_user, project_id)
     ]
 
 

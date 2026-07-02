@@ -22,9 +22,7 @@ from automl_api.storage.object_store import get_object_store
 def list_project_datasets(db: Session, user: User, project_id: uuid.UUID) -> list[Dataset]:
     require_project_role(db, user, project_id, ProjectRole.VIEWER)
     query = (
-        select(Dataset)
-        .where(Dataset.project_id == project_id)
-        .order_by(Dataset.created_at.desc())
+        select(Dataset).where(Dataset.project_id == project_id).order_by(Dataset.created_at.desc())
     )
     return list(db.scalars(query).all())
 
@@ -82,7 +80,9 @@ def upload_dataset_version(
         db.add(dataset)
         db.flush()
     else:
-        dataset.description = payload.description if payload.description is not None else dataset.description
+        dataset.description = (
+            payload.description if payload.description is not None else dataset.description
+        )
         dataset.tags = payload.tags or dataset.tags
 
     next_version = dataset.latest_version_number + 1
@@ -142,4 +142,3 @@ def _get_project_dataset(db: Session, project_id: uuid.UUID, dataset_id: uuid.UU
     if dataset is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found.")
     return dataset
-

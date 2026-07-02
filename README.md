@@ -115,10 +115,20 @@ kubectl -n automl port-forward svc/automl-mlflow 5000:5000
 Open Streamlit at `http://localhost:8501`, MinIO at `http://localhost:9001`,
 and MLflow at `http://localhost:5000`.
 
-Training admission is serialized in PostgreSQL, capped globally at two Jobs, and
-limited to one active run per project so concurrent users cannot oversubscribe the
-cluster or monopolize both training slots. Admission reconciles stale metadata
-against Kubernetes before reserving capacity.
+Training admission is serialized in PostgreSQL, defaults to two concurrent Jobs,
+and is further reduced from live aggregate CPU and memory capacity. It is limited
+to one active run per project so concurrent users cannot monopolize the cluster.
+Admission reconciles stale metadata against Kubernetes before reserving capacity.
+Increasing `MAX_CONCURRENT_JOBS` allows additional nodes to increase parallelism;
+it does not overcommit a single node.
+
+The planned duration is used for cost estimation, not as a direct timeout.
+Kubernetes Jobs receive a workload-aware safety deadline with a six-hour floor,
+six times the planned duration, and a configurable 24-hour ceiling.
+
+The current sklearn tournaments are single-pod, in-memory workloads. Multi-gigabyte
+datasets that exceed the per-node safety ceiling require sampling or a distributed
+training backend and additional Kubernetes worker nodes.
 
 The Training tab discovers compatible models from sklearn's `all_estimators()`
 registry using `ClassifierMixin`, `RegressorMixin`, or `ClusterMixin`. Users can

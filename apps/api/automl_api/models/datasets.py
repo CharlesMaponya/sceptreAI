@@ -41,11 +41,17 @@ class Dataset(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_datasets_project_created_at", "project_id", "created_at"),
     )
 
-    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
-    created_by_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    created_by_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
     name: Mapped[str] = mapped_column(String(220), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
-    latest_version_number: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    latest_version_number: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     tags: Mapped[dict[str, Any]] = mapped_column(
         JSONB,
         nullable=False,
@@ -53,17 +59,17 @@ class Dataset(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         server_default=text("'{}'::jsonb"),
     )
 
-    project: Mapped["Project"] = relationship(
+    project: Mapped[Project] = relationship(
         "Project",
         back_populates="datasets",
         foreign_keys=[project_id],
     )
-    created_by: Mapped["User"] = relationship(
+    created_by: Mapped[User] = relationship(
         "User",
         back_populates="datasets",
         foreign_keys=[created_by_id],
     )
-    versions: Mapped[list["DatasetVersion"]] = relationship(
+    versions: Mapped[list[DatasetVersion]] = relationship(
         "DatasetVersion",
         back_populates="dataset",
         cascade="all, delete-orphan",
@@ -85,14 +91,20 @@ class DatasetVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             name="fk_dataset_versions_dataset_project",
         ),
         UniqueConstraint("project_id", "id", name="uq_dataset_versions_project_id_id"),
-        UniqueConstraint("dataset_id", "version_number", name="uq_dataset_versions_dataset_version"),
+        UniqueConstraint(
+            "dataset_id", "version_number", name="uq_dataset_versions_dataset_version"
+        ),
         Index("ix_dataset_versions_project_dataset", "project_id", "dataset_id"),
         Index("ix_dataset_versions_content_hash", "content_hash"),
     )
 
-    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
     dataset_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
-    created_by_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    created_by_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
     version_number: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[DatasetStatus] = mapped_column(
         SQLEnum(DatasetStatus, name="dataset_status", native_enum=False),
@@ -136,13 +148,13 @@ class DatasetVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     profile_artifact_uri: Mapped[str | None] = mapped_column(String(1024))
 
-    project: Mapped["Project"] = relationship(
+    project: Mapped[Project] = relationship(
         "Project",
         back_populates="dataset_versions",
         foreign_keys=[project_id],
         overlaps="versions",
     )
-    dataset: Mapped["Dataset"] = relationship(
+    dataset: Mapped[Dataset] = relationship(
         "Dataset",
         back_populates="versions",
         primaryjoin=lambda: and_(
@@ -152,12 +164,12 @@ class DatasetVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         foreign_keys=lambda: [DatasetVersion.project_id, DatasetVersion.dataset_id],
         overlaps="project",
     )
-    created_by: Mapped["User"] = relationship(
+    created_by: Mapped[User] = relationship(
         "User",
         back_populates="dataset_versions",
         foreign_keys=[created_by_id],
     )
-    model_runs: Mapped[list["ModelRun"]] = relationship(
+    model_runs: Mapped[list[ModelRun]] = relationship(
         "ModelRun",
         back_populates="dataset_version",
         foreign_keys="ModelRun.dataset_version_id",
@@ -206,7 +218,9 @@ class ProfilingJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         default=0.0,
         server_default="0",
     )
-    total_columns: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    total_columns: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     completed_columns: Mapped[int] = mapped_column(
         Integer,
         nullable=False,

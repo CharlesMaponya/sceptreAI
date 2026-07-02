@@ -1,38 +1,38 @@
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 
-class AuthProvider(str, Enum):
+class AuthProvider(StrEnum):
     SIMPLE = "simple"
     SSO = "sso"
 
 
-class GlobalRole(str, Enum):
+class GlobalRole(StrEnum):
     MEMBER = "member"
     ADMIN = "admin"
 
 
-class ProjectRole(str, Enum):
+class ProjectRole(StrEnum):
     OWNER = "owner"
     ADMIN = "admin"
     EDITOR = "editor"
     VIEWER = "viewer"
 
 
-class ProjectStatus(str, Enum):
+class ProjectStatus(StrEnum):
     ACTIVE = "active"
     ARCHIVED = "archived"
 
 
-class DatasetFormat(str, Enum):
+class DatasetFormat(StrEnum):
     CSV = "csv"
     PARQUET = "parquet"
     EXCEL = "excel"
     JSON = "json"
 
 
-class DatasetStatus(str, Enum):
+class DatasetStatus(StrEnum):
     UPLOADED = "uploaded"
     PROFILING = "profiling"
     READY = "ready"
@@ -40,14 +40,14 @@ class DatasetStatus(str, Enum):
     ARCHIVED = "archived"
 
 
-class ObjectStoreType(str, Enum):
+class ObjectStoreType(StrEnum):
     MINIO = "minio"
     S3 = "s3"
     AZURE = "azure"
     GCS = "gcs"
 
 
-class TaskType(str, Enum):
+class TaskType(StrEnum):
     UNSPECIFIED = "unspecified"
     REGRESSION = "regression"
     CLASSIFICATION = "classification"
@@ -55,7 +55,7 @@ class TaskType(str, Enum):
     CLUSTERING = "clustering"
 
 
-class RunKind(str, Enum):
+class RunKind(StrEnum):
     TRAINING = "training"
     VALIDATION = "validation"
     EXPLAINABILITY = "explainability"
@@ -63,7 +63,7 @@ class RunKind(str, Enum):
     DEPLOYMENT = "deployment"
 
 
-class RunStatus(str, Enum):
+class RunStatus(StrEnum):
     QUEUED = "queued"
     PRECHECK_RUNNING = "precheck_running"
     RUNNING = "running"
@@ -73,7 +73,7 @@ class RunStatus(str, Enum):
     PREEMPTED = "preempted"
 
 
-class MetricSplit(str, Enum):
+class MetricSplit(StrEnum):
     TRAIN = "train"
     VALIDATION = "validation"
     TEST = "test"
@@ -81,7 +81,7 @@ class MetricSplit(str, Enum):
     PRODUCTION = "production"
 
 
-class MetricKind(str, Enum):
+class MetricKind(StrEnum):
     PERFORMANCE = "performance"
     DATA_QUALITY = "data_quality"
     DRIFT = "drift"
@@ -89,7 +89,7 @@ class MetricKind(str, Enum):
     DIAGNOSTIC = "diagnostic"
 
 
-class ArtifactKind(str, Enum):
+class ArtifactKind(StrEnum):
     DATASET_PROFILE = "dataset_profile"
     DIAGNOSTIC_PLOT = "diagnostic_plot"
     MODEL_OBJECT = "model_object"
@@ -98,7 +98,7 @@ class ArtifactKind(str, Enum):
     DEPLOYMENT_IMAGE = "deployment_image"
 
 
-class ModelStage(str, Enum):
+class ModelStage(StrEnum):
     CANDIDATE = "candidate"
     STAGING = "staging"
     PRODUCTION = "production"

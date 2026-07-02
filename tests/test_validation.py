@@ -129,10 +129,7 @@ def test_shap_encoding_round_trips_mixed_features() -> None:
     encoded, decode = analysis._encode_shap_features(features)
     restored = decode(encoded.to_numpy(dtype=float))
 
-    assert all(
-        pd.api.types.is_numeric_dtype(encoded[column])
-        for column in encoded.columns
-    )
+    assert all(pd.api.types.is_numeric_dtype(encoded[column]) for column in encoded.columns)
     assert restored["amount"].tolist() == features["amount"].tolist()
     assert restored["segment"].iloc[:2].tolist() == ["retail", "business"]
     assert pd.isna(restored["segment"].iloc[2])

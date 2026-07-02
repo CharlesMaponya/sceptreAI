@@ -270,11 +270,7 @@ def select_candidates(
     catalog = candidate_catalog(task_type)
     by_name = {candidate.name: candidate for candidate in catalog}
     if requested_names:
-        selected = [
-            by_name[name]
-            for name in requested_names
-            if name in by_name
-        ]
+        selected = [by_name[name] for name in requested_names if name in by_name]
     else:
         selected = [candidate for candidate in catalog if candidate.default_selected]
     return selected[: max(1, min(limit, len(selected)))]

@@ -51,10 +51,7 @@ def launch_validation_run(
     if source.target_column and not _has_column(version, source.target_column):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=(
-                f"External dataset does not contain target column "
-                f"'{source.target_column}'."
-            ),
+            detail=(f"External dataset does not contain target column '{source.target_column}'."),
         )
     if request.evaluation_column and not _has_column(
         version,
@@ -123,18 +120,12 @@ def list_analysis_runs(
             select(ModelRun)
             .where(
                 ModelRun.project_id == project_id,
-                ModelRun.run_kind.in_(
-                    [RunKind.VALIDATION, RunKind.EXPLAINABILITY]
-                ),
+                ModelRun.run_kind.in_([RunKind.VALIDATION, RunKind.EXPLAINABILITY]),
             )
             .order_by(ModelRun.created_at.desc())
         ).all()
     )
-    return [
-        run
-        for run in runs
-        if run.tags.get("source_training_run_id") == str(source.id)
-    ]
+    return [run for run in runs if run.tags.get("source_training_run_id") == str(source.id)]
 
 
 def get_analysis_result(
@@ -153,15 +144,10 @@ def get_analysis_result(
         select(ModelRun).where(
             ModelRun.project_id == project_id,
             ModelRun.id == run_id,
-            ModelRun.run_kind.in_(
-                [RunKind.VALIDATION, RunKind.EXPLAINABILITY]
-            ),
+            ModelRun.run_kind.in_([RunKind.VALIDATION, RunKind.EXPLAINABILITY]),
         )
     )
-    if (
-        run is None
-        or run.tags.get("source_training_run_id") != str(source.id)
-    ):
+    if run is None or run.tags.get("source_training_run_id") != str(source.id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Validation or explainability run not found.",
@@ -181,10 +167,7 @@ def get_analysis_result(
         metrics=run.tags.get("metrics", {}),
         diagnostics=run.tags.get("diagnostics", {}),
         feature_importance=run.tags.get("feature_importance", []),
-        artifacts=[
-            RunArtifactRead.model_validate(artifact)
-            for artifact in artifacts
-        ],
+        artifacts=[RunArtifactRead.model_validate(artifact) for artifact in artifacts],
     )
 
 
@@ -276,9 +259,7 @@ def _launch_analysis_run(
         run.status = RunStatus.FAILED
         run.failure_code = "KUBERNETES_JOB_CREATE_FAILED"
         run.failure_message = str(exc)
-        run.plain_english_failure = (
-            "Kubernetes could not start the isolated analysis job."
-        )
+        run.plain_english_failure = "Kubernetes could not start the isolated analysis job."
         run.finished_at = datetime.now(UTC)
         db.flush()
         raise HTTPException(
@@ -315,8 +296,7 @@ def _source_model(
         (
             item
             for item in source.tags.get("leaderboard", [])
-            if item.get("model") == model_name
-            and item.get("status") == "succeeded"
+            if item.get("model") == model_name and item.get("status") == "succeeded"
         ),
         None,
     )
@@ -325,10 +305,7 @@ def _source_model(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Select a model that completed successfully.",
         )
-    if not (
-        _model_mlflow_run_id(source, entry)
-        or entry.get("model_artifact_uri")
-    ):
+    if not (_model_mlflow_run_id(source, entry) or entry.get("model_artifact_uri")):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="The selected model has no persisted artifact.",
@@ -382,14 +359,9 @@ def _dataset_version(
 
 def _model_mlflow_run_id(source: ModelRun, entry: dict) -> str | None:
     return entry.get("mlflow_run_id") or (
-        source.mlflow_run_id
-        if entry.get("model") == source.tags.get("winner")
-        else None
+        source.mlflow_run_id if entry.get("model") == source.tags.get("winner") else None
     )
 
 
 def _has_column(version: DatasetVersion, column: str) -> bool:
-    return column in {
-        item.get("name")
-        for item in version.schema_json.get("columns", [])
-    }
+    return column in {item.get("name") for item in version.schema_json.get("columns", [])}

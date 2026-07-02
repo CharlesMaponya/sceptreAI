@@ -62,6 +62,7 @@ class TrainingEstimateRead(BaseModel):
     gpu_requested: bool
     gpu_fallback_reason: str | None = None
     expected_minutes: int
+    active_deadline_seconds: int
     estimated_core_hours: float
     max_concurrent_jobs: int
     can_launch: bool

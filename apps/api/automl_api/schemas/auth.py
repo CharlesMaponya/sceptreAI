@@ -89,4 +89,3 @@ class PasswordResetResponse(BaseModel):
 class PasswordResetConfirm(BaseModel):
     token: str = Field(min_length=16)
     new_password: str = Field(min_length=8, max_length=256)
-

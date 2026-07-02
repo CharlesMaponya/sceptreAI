@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from logging.config import fileConfig
 
-from alembic import context
-from sqlalchemy import engine_from_config, pool
-
 from automl_api.core.config import get_settings
 from automl_api.db.base import Base
+from sqlalchemy import engine_from_config, pool
+
+from alembic import context
 
 config = context.config
 

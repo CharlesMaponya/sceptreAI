@@ -4,7 +4,11 @@ import streamlit as st
 
 st.set_page_config(page_title="SMME Tabular AutoML", layout="wide")
 
-from streamlit_app.workspace import api_request, render_session_sidebar, set_auth
+from streamlit_app.workspace import (  # noqa: E402
+    api_request,
+    render_session_sidebar,
+    set_auth,
+)
 
 st.title("SMME Tabular AutoML")
 st.caption("Project workspaces, dataset profiling, and model-ready preparation.")
@@ -51,9 +55,7 @@ if "access_token" not in st.session_state:
     st.stop()
 
 access_token = st.session_state["access_token"]
-overview_tab, create_tab, invite_tab = st.tabs(
-    ["Projects", "Create Project", "Accept Invite"]
-)
+overview_tab, create_tab, invite_tab = st.tabs(["Projects", "Create Project", "Accept Invite"])
 
 with overview_tab:
     status_code, response = api_request("GET", "/projects", token=access_token)

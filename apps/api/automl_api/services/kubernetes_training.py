@@ -204,9 +204,7 @@ class KubernetesTrainingClient:
         usage_by_node: dict[str, tuple[float, int]] = {}
         for item in response.get("items", []):
             metadata = item.get("metadata", {})
-            node_name = pod_nodes.get(
-                (metadata.get("namespace"), metadata.get("name"))
-            )
+            node_name = pod_nodes.get((metadata.get("namespace"), metadata.get("name")))
             if not node_name:
                 continue
             cpu = 0.0
@@ -238,9 +236,7 @@ class KubernetesTrainingClient:
         snapshot = self.capacity_snapshot()
         capacity = snapshot.capacity
         dataset_mb = max(1.0, dataset_bytes / 1024 / 1024)
-        dense_matrix_mb = (
-            max(0, dataset_rows) * max(1, column_count) * 8 / 1024 / 1024
-        )
+        dense_matrix_mb = max(0, dataset_rows) * max(1, column_count) * 8 / 1024 / 1024
         task_multiplier = {
             TaskType.CLASSIFICATION: 1.35,
             TaskType.REGRESSION: 1.25,
@@ -260,10 +256,7 @@ class KubernetesTrainingClient:
             4.0,
             max(
                 0.5,
-                0.5
-                + dataset_mb / 1024
-                + column_count / 200
-                + min(candidate_limit, 8) / 20,
+                0.5 + dataset_mb / 1024 + column_count / 200 + min(candidate_limit, 8) / 20,
             ),
         )
         desired_memory = max(768, estimated_working_set)
@@ -275,11 +268,7 @@ class KubernetesTrainingClient:
         )
         blockers = []
         warnings = list(capacity.warnings)
-        gpu_requested = bool(
-            prefer_gpu
-            and self.settings.gpu_enabled
-            and capacity.gpu_available
-        )
+        gpu_requested = bool(prefer_gpu and self.settings.gpu_enabled and capacity.gpu_available)
         gpu_fallback_reason = None
         if prefer_gpu and not gpu_requested:
             if not self.settings.gpu_enabled:
@@ -332,8 +321,8 @@ class KubernetesTrainingClient:
         memory_limit = min(memory_ceiling, math.ceil(memory_request * 1.5))
         max_parallel = min(
             self.settings.max_concurrent_jobs,
-            2,
             math.floor(capacity.total_cpu_cores / cpu_request) if cpu_request else 0,
+            (math.floor(capacity.total_memory_mb / memory_request) if memory_request else 0),
         )
         if capacity.active_training_jobs >= max_parallel:
             blockers.append(
@@ -351,6 +340,10 @@ class KubernetesTrainingClient:
             gpu_requested=gpu_requested,
             gpu_fallback_reason=gpu_fallback_reason,
             expected_minutes=expected_minutes,
+            active_deadline_seconds=_active_deadline_seconds(
+                expected_minutes,
+                self.settings,
+            ),
             estimated_core_hours=round(cpu_request * expected_minutes / 60, 4),
             max_concurrent_jobs=max_parallel,
             can_launch=not blockers,
@@ -445,9 +438,6 @@ class KubernetesTrainingClient:
             container["resources"]["limits"]["nvidia.com/gpu"] = "1"
             pod_spec["nodeSelector"] = {"nvidia.com/gpu.present": "true"}
 
-        active_deadline = (
-            900 if estimate.gpu_requested else settings.training_active_deadline_seconds
-        )
         return {
             "apiVersion": "batch/v1",
             "kind": "Job",
@@ -462,7 +452,7 @@ class KubernetesTrainingClient:
             },
             "spec": {
                 "backoffLimit": 0,
-                "activeDeadlineSeconds": active_deadline,
+                "activeDeadlineSeconds": estimate.active_deadline_seconds,
                 "ttlSecondsAfterFinished": 30,
                 "template": {
                     "metadata": {
@@ -508,6 +498,19 @@ class KubernetesTrainingClient:
         return "queued"
 
     def job_failure_details(self, job_name: str) -> tuple[str, str]:
+        try:
+            job = self.batch.read_namespaced_job_status(
+                name=job_name,
+                namespace=self.settings.training_namespace,
+            )
+            for condition in job.status.conditions or []:
+                if condition.type == "Failed" and condition.reason == "DeadlineExceeded":
+                    return (
+                        "JOB_DEADLINE_EXCEEDED",
+                        condition.message or "The Kubernetes Job exceeded its active deadline.",
+                    )
+        except (ApiException, AttributeError):
+            pass
         pods = self.core.list_namespaced_pod(
             namespace=self.settings.training_namespace,
             label_selector=f"job-name={job_name}",
@@ -608,6 +611,23 @@ class KubernetesTrainingClient:
             return True
         except ApiException:
             return False
+
+
+def _active_deadline_seconds(
+    expected_minutes: int,
+    settings: Settings,
+) -> int:
+    estimated_deadline = expected_minutes * 60 * max(1, settings.training_deadline_multiplier)
+    return min(
+        max(
+            settings.training_active_deadline_seconds,
+            estimated_deadline,
+        ),
+        max(
+            settings.training_active_deadline_seconds,
+            settings.training_max_active_deadline_seconds,
+        ),
+    )
 
 
 def _node_is_ready(node: Any) -> bool:

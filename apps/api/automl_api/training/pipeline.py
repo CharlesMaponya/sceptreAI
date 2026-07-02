@@ -114,9 +114,7 @@ def execute_training_run(run_id: uuid.UUID) -> dict[str, float]:
             persisted_run.tags = {
                 **persisted_run.tags,
                 "winner": result.leaderboard[0]["model"],
-                "winner_mlflow_run_id": result.leaderboard[0].get(
-                    "mlflow_run_id"
-                ),
+                "winner_mlflow_run_id": result.leaderboard[0].get("mlflow_run_id"),
                 "leaderboard_primary_metric": result.primary_metric,
                 "leaderboard": result.leaderboard,
             }
@@ -187,11 +185,7 @@ def _fit_model(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
     iterations = max(1, min(int(run.params.get("optimization_iterations", 5)), 25))
     cv_folds = max(2, min(int(run.params.get("cv_folds", 3)), 5))
     cv = _cross_validation_strategy(train_y, run.task_type, cv_folds)
-    primary_metric = (
-        "balanced_accuracy"
-        if run.task_type == TaskType.CLASSIFICATION
-        else "rmse"
-    )
+    primary_metric = "balanced_accuracy" if run.task_type == TaskType.CLASSIFICATION else "rmse"
     scoring = (
         "balanced_accuracy"
         if run.task_type == TaskType.CLASSIFICATION
@@ -256,9 +250,7 @@ def _fit_candidate(
     print(f"Training candidate {candidate.name}", flush=True)
     try:
         score_function = (
-            mutual_info_classif
-            if task_type == TaskType.CLASSIFICATION
-            else mutual_info_regression
+            mutual_info_classif if task_type == TaskType.CLASSIFICATION else mutual_info_regression
         )
         model = Pipeline(
             [
@@ -282,9 +274,7 @@ def _fit_candidate(
             fitted = search.best_estimator_
             params = _json_safe(search.best_params_)
             cv_mean = float(search.best_score_)
-            cv_std = float(
-                search.cv_results_["std_test_score"][search.best_index_]
-            )
+            cv_std = float(search.cv_results_["std_test_score"][search.best_index_])
         else:
             cv_scores = cross_val_score(
                 model,
@@ -367,9 +357,7 @@ def _fit_clustering(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
     reference_labels = None
     if evaluation_column:
         if evaluation_column not in dataframe.columns:
-            raise ValueError(
-                f"Clustering evaluation column '{evaluation_column}' is missing."
-            )
+            raise ValueError(f"Clustering evaluation column '{evaluation_column}' is missing.")
         valid_reference = dataframe[evaluation_column].notna()
         reference_labels = dataframe.loc[valid_reference, evaluation_column].to_numpy()
         dataframe = dataframe.loc[valid_reference].drop(columns=[evaluation_column])
@@ -448,8 +436,7 @@ def _fit_clustering_candidate(
         if "n_clusters" in available_parameters:
             maximum_clusters = min(8, max(2, len(transformed) - 1))
             parameter_options = [
-                {"n_clusters": cluster_count}
-                for cluster_count in range(2, maximum_clusters + 1)
+                {"n_clusters": cluster_count} for cluster_count in range(2, maximum_clusters + 1)
             ]
         best_metrics = None
         best_standard_deviations = None
@@ -466,20 +453,13 @@ def _fit_clustering_candidate(
                 else:
                     labels = estimator.fit_predict(test_features)
                 fold_reference = (
-                    reference_labels[test_index]
-                    if reference_labels is not None
-                    else None
+                    reference_labels[test_index] if reference_labels is not None else None
                 )
-                fold_results.append(
-                    clustering_evaluation(test_features, labels, fold_reference)
-                )
+                fold_results.append(clustering_evaluation(test_features, labels, fold_reference))
             means, standard_deviations = aggregate_fold_metrics(fold_results)
             if "silhouette" not in means:
                 continue
-            if (
-                best_metrics is None
-                or means["silhouette"] > best_metrics["silhouette"]
-            ):
+            if best_metrics is None or means["silhouette"] > best_metrics["silhouette"]:
                 best_metrics = means
                 best_standard_deviations = standard_deviations
                 best_fold_metrics = fold_results
@@ -497,8 +477,7 @@ def _fit_clustering_candidate(
                 "fold_metrics": best_fold_metrics,
             },
             "cluster_sizes": {
-                str(label): int(count)
-                for label, count in zip(unique_labels, counts, strict=True)
+                str(label): int(count) for label, count in zip(unique_labels, counts, strict=True)
             },
             "cluster_count": int(len(unique_labels[unique_labels != -1])),
             "noise_rows": int(np.sum(full_labels == -1)),
@@ -510,9 +489,7 @@ def _fit_clustering_candidate(
                 ("model", final_estimator),
             ]
         )
-        params = {
-            f"model__{name}": value for name, value in best_params.items()
-        }
+        params = {f"model__{name}": value for name, value in best_params.items()}
         duration = round(time.monotonic() - started, 3)
         with mlflow.start_run(run_name=candidate.name, nested=True) as candidate_run:
             mlflow.set_tags(
@@ -591,10 +568,7 @@ def _persist_candidate_model(
     buffer = io.BytesIO()
     joblib.dump(model, buffer, compress=3)
     safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "-", model_name).strip("-")
-    key = (
-        f"projects/{run.project_id}/runs/{run.id}/models/"
-        f"{safe_name or 'model'}.joblib"
-    )
+    key = f"projects/{run.project_id}/runs/{run.id}/models/{safe_name or 'model'}.joblib"
     return get_object_store().put_bytes(key, buffer.getvalue()).uri
 
 
@@ -620,10 +594,7 @@ def merge_leaderboard_entries(
     additions: list[dict[str, Any]],
     primary_metric: str,
 ) -> list[dict[str, Any]]:
-    by_model = {
-        entry["model"]: dict(entry)
-        for entry in existing
-    }
+    by_model = {entry["model"]: dict(entry) for entry in existing}
     for entry in additions:
         by_model[entry["model"]] = dict(entry)
     return rank_leaderboard(list(by_model.values()), primary_metric)
@@ -645,9 +616,7 @@ def _persist_partial_leaderboard(
             "leaderboard_primary_metric": primary_metric,
             "leaderboard": _json_safe(ranked),
             "winner": successful[0]["model"] if successful else None,
-            "winner_mlflow_run_id": (
-                successful[0].get("mlflow_run_id") if successful else None
-            ),
+            "winner_mlflow_run_id": (successful[0].get("mlflow_run_id") if successful else None),
             "completed_candidates": len(ranked),
             "leaderboard_updated_at": datetime.now(UTC).isoformat(),
         }
@@ -674,23 +643,13 @@ def _persist_partial_leaderboard(
                     additions,
                     parent_metric,
                 )
-                merged_successful = [
-                    entry
-                    for entry in merged
-                    if entry["status"] == "succeeded"
-                ]
+                merged_successful = [entry for entry in merged if entry["status"] == "succeeded"]
                 parent.tags = {
                     **parent.tags,
                     "leaderboard": _json_safe(merged),
-                    "winner": (
-                        merged_successful[0]["model"]
-                        if merged_successful
-                        else None
-                    ),
+                    "winner": (merged_successful[0]["model"] if merged_successful else None),
                     "winner_mlflow_run_id": (
-                        merged_successful[0].get("mlflow_run_id")
-                        if merged_successful
-                        else None
+                        merged_successful[0].get("mlflow_run_id") if merged_successful else None
                     ),
                     "completed_candidates": len(merged),
                     "leaderboard_updated_at": datetime.now(UTC).isoformat(),
@@ -711,9 +670,7 @@ def _cross_validation_strategy(
     if task_type == TaskType.TIME_SERIES:
         if len(target) < 6:
             raise ValueError("At least six training rows are required for time-series validation.")
-        return TimeSeriesSplit(
-            n_splits=min(requested_folds, max(2, len(target) // 20))
-        )
+        return TimeSeriesSplit(n_splits=min(requested_folds, max(2, len(target) // 20)))
     if len(target) < 4:
         raise ValueError("At least four training rows are required for cross-validation.")
     return min(requested_folds, max(2, len(target) // 50))
@@ -753,9 +710,7 @@ def _normalize_temporal_features(features: pd.DataFrame) -> pd.DataFrame:
         timestamp_unit = _series_unix_timestamp_unit(series)
         if timestamp_unit:
             numeric = pd.to_numeric(series, errors="coerce").astype("float64")
-            normalized[column] = (
-                numeric / UNIX_UNIT_SCALES[timestamp_unit] / 86_400
-            )
+            normalized[column] = numeric / UNIX_UNIT_SCALES[timestamp_unit] / 86_400
             continue
         is_temporal_name = any(
             token in str(column).lower() for token in ("date", "time", "timestamp")
@@ -778,8 +733,7 @@ def _time_order_column(features: pd.DataFrame) -> str | None:
     for column in features.columns:
         series = features[column]
         is_temporal_name = any(
-            token in str(column).lower()
-            for token in ("date", "time", "timestamp")
+            token in str(column).lower() for token in ("date", "time", "timestamp")
         )
         if (
             is_temporal_name
@@ -802,9 +756,7 @@ def _series_unix_timestamp_unit(series: pd.Series) -> str | None:
 
 def _preprocessor(features: pd.DataFrame) -> ColumnTransformer:
     numeric_columns = list(features.select_dtypes(include="number").columns)
-    categorical_columns = [
-        column for column in features.columns if column not in numeric_columns
-    ]
+    categorical_columns = [column for column in features.columns if column not in numeric_columns]
     transformers = []
     if numeric_columns:
         transformers.append(

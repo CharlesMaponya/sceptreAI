@@ -59,10 +59,7 @@ def build_dataset_profile(
         rows, warnings = _load_rows(version)
         columns = _columns_from_rows_or_version(rows, version)
         row_count = len(rows)
-        column_profiles = [
-            _profile_column(column, rows, row_count, version)
-            for column in columns
-        ]
+        column_profiles = [_profile_column(column, rows, row_count, version) for column in columns]
         relationships = []
     profile_by_name = {profile.name: profile for profile in column_profiles}
 
@@ -350,10 +347,7 @@ def _distribution_for_values(
         return "histogram", _histogram([float(len(str(value))) for value in values])
 
     counts = Counter(str(value) for value in values)
-    return "bar", [
-        {"label": label, "count": count}
-        for label, count in counts.most_common(15)
-    ]
+    return "bar", [{"label": label, "count": count} for label, count in counts.most_common(15)]
 
 
 def _histogram(values: list[float], maximum_bins: int = 12) -> list[dict[str, Any]]:
@@ -380,11 +374,7 @@ def _histogram(values: list[float], maximum_bins: int = 12) -> list[dict[str, An
 
 
 def _finite_numeric_values(values: list[Any]) -> list[float]:
-    numeric_values = [
-        float(value)
-        for value in values
-        if _looks_numeric(str(value).strip())
-    ]
+    numeric_values = [float(value) for value in values if _looks_numeric(str(value).strip())]
     return [value for value in numeric_values if math.isfinite(value)]
 
 
@@ -398,9 +388,10 @@ def _percentile(values: list[float], percentile: float) -> float:
     if lower_index == upper_index:
         return sorted_values[lower_index]
     fraction = position - lower_index
-    return sorted_values[lower_index] + (
-        sorted_values[upper_index] - sorted_values[lower_index]
-    ) * fraction
+    return (
+        sorted_values[lower_index]
+        + (sorted_values[upper_index] - sorted_values[lower_index]) * fraction
+    )
 
 
 def _infer_semantic_type(values: list[Any]) -> str:
@@ -490,10 +481,7 @@ def _infer_task(
         task_type=TaskType.CLASSIFICATION,
         target_column=target_column,
         confidence=0.82,
-        rationale=(
-            "The selected target is categorical, text-like, or "
-            "low-cardinality numeric."
-        ),
+        rationale=("The selected target is categorical, text-like, or low-cardinality numeric."),
     )
 
 
@@ -516,9 +504,7 @@ def _relationships_against_target(
                     source_column=column,
                     target_column=target_column,
                     method=(
-                        "pearson"
-                        if profile.semantic_type.startswith("numerical")
-                        else "cramers_v"
+                        "pearson" if profile.semantic_type.startswith("numerical") else "cramers_v"
                     ),
                     value=round(value, 6),
                 )
@@ -533,9 +519,8 @@ def _relationship_value(
     target_column: str,
     target_profile: ColumnProfileRead,
 ) -> float | None:
-    if (
-        profile.semantic_type.startswith("numerical")
-        and target_profile.semantic_type.startswith("numerical")
+    if profile.semantic_type.startswith("numerical") and target_profile.semantic_type.startswith(
+        "numerical"
     ):
         paired = [
             (float(row[column]), float(row[target_column]))
@@ -591,8 +576,7 @@ def _build_preparation_plan(
                     action="encode_text",
                     strategy="tfidf_plus_text_length",
                     reason=(
-                        "Raw text needs lightweight NLP features instead of "
-                        "categorical encoding."
+                        "Raw text needs lightweight NLP features instead of categorical encoding."
                     ),
                 )
             )
@@ -714,10 +698,7 @@ def _looks_temporal(value: str) -> bool:
 def _temporal_histogram_label(label: str, unit: str) -> str:
     bounds = [part.strip() for part in label.split(" - ", maxsplit=1)]
     try:
-        converted = [
-            unix_timestamp_iso(float(bound), unit)[:10]
-            for bound in bounds
-        ]
+        converted = [unix_timestamp_iso(float(bound), unit)[:10] for bound in bounds]
     except ValueError:
         return label
     return " - ".join(converted)
