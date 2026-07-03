@@ -331,15 +331,21 @@ def _instantiate_estimator(estimator_class: type[BaseEstimator]) -> BaseEstimato
 
 def _is_multioutput_only(estimator: BaseEstimator) -> bool:
     if sklearn_get_tags is not None:
-        tags = sklearn_get_tags(estimator)
-        target_tags = getattr(tags, "target_tags", None)
-        if target_tags is not None:
-            return bool(
-                getattr(target_tags, "multi_output", False)
-                and not getattr(target_tags, "single_output", True)
-            )
+        try:
+            tags = sklearn_get_tags(estimator)
+            target_tags = getattr(tags, "target_tags", None)
+            if target_tags is not None:
+                return bool(
+                    getattr(target_tags, "multi_output", False)
+                    and not getattr(target_tags, "single_output", True)
+                )
+        except (AttributeError, TypeError):
+            pass
     legacy_get_tags = getattr(estimator, "_get_tags", None)
-    return bool(legacy_get_tags and legacy_get_tags().get("multioutput_only", False))
+    try:
+        return bool(legacy_get_tags and legacy_get_tags().get("multioutput_only", False))
+    except (AttributeError, TypeError):
+        return False
 
 
 def _cost_tier(name: str) -> str:

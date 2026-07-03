@@ -243,8 +243,9 @@ Pull requests and pushes to `main` or `develop` must pass all CI gates:
 
 Current quality baseline:
 
-- **63 automated tests**
-- **43.59% branch coverage**
+- **59 passing automated tests**
+- **4 explicitly disabled compatibility tests**
+- **41.51% branch coverage**
 - **40% enforced coverage floor**
 - XML and HTML coverage reports retained by CI for 14 days
 
