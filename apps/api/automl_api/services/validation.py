@@ -88,7 +88,19 @@ def launch_explainability_run(
         project_id,
         training_run_id,
         request.model_name,
+        require_artifact=False,
     )
+    _lock_training_admission(db)
+    existing = _reusable_explainability_run(
+        db,
+        source,
+        str(model_entry["model"]),
+    )
+    if existing is not None:
+        return AnalysisLaunchRead(
+            run=ModelRunRead.model_validate(existing),
+            cached=True,
+        )
     version = _dataset_version(db, project_id, source.dataset_version_id)
     return _launch_analysis_run(
         db,
@@ -281,6 +293,8 @@ def _source_model(
     project_id: uuid.UUID,
     run_id: uuid.UUID,
     model_name: str,
+    *,
+    require_artifact: bool = True,
 ) -> tuple[ModelRun, dict]:
     require_project_role(db, user, project_id, ProjectRole.EDITOR)
     source = _leaderboard_parent(
@@ -305,7 +319,9 @@ def _source_model(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Select a model that completed successfully.",
         )
-    if not (_model_mlflow_run_id(source, entry) or entry.get("model_artifact_uri")):
+    if require_artifact and not (
+        _model_mlflow_run_id(source, entry) or entry.get("model_artifact_uri")
+    ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="The selected model has no persisted artifact.",
@@ -360,6 +376,37 @@ def _dataset_version(
 def _model_mlflow_run_id(source: ModelRun, entry: dict) -> str | None:
     return entry.get("mlflow_run_id") or (
         source.mlflow_run_id if entry.get("model") == source.tags.get("winner") else None
+    )
+
+
+def _reusable_explainability_run(
+    db: Session,
+    source: ModelRun,
+    model_name: str,
+) -> ModelRun | None:
+    reusable_statuses = {
+        RunStatus.QUEUED,
+        RunStatus.PRECHECK_RUNNING,
+        RunStatus.RUNNING,
+        RunStatus.SUCCEEDED,
+    }
+    runs = db.scalars(
+        select(ModelRun)
+        .where(
+            ModelRun.project_id == source.project_id,
+            ModelRun.run_kind == RunKind.EXPLAINABILITY,
+        )
+        .order_by(ModelRun.created_at.desc())
+    ).all()
+    return next(
+        (
+            run
+            for run in runs
+            if run.status in reusable_statuses
+            and run.tags.get("source_training_run_id") == str(source.id)
+            and run.params.get("model_name") == model_name
+        ),
+        None,
     )
 
 

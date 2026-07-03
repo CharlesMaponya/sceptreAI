@@ -3,9 +3,13 @@ from __future__ import annotations
 import uuid
 from types import SimpleNamespace
 
+import pytest
 from automl_api.core.config import Settings
 from automl_api.models.enums import TaskType
-from automl_api.schemas.training import ClusterCapacityRead
+from automl_api.schemas.training import (
+    ClusterCapacityRead,
+    TrainingEstimateRequest,
+)
 from automl_api.services.kubernetes_training import (
     CapacitySnapshot,
     KubernetesTrainingClient,
@@ -13,6 +17,7 @@ from automl_api.services.kubernetes_training import (
     _cpu_cores,
     _memory_mb,
 )
+from pydantic import ValidationError
 
 
 class FakeTrainingClient(KubernetesTrainingClient):
@@ -135,6 +140,25 @@ def test_memory_estimate_scales_with_dataset_and_search_budget() -> None:
 
     assert large.estimated_working_set_mb > small.estimated_working_set_mb
     assert large.memory_request_mb > small.memory_request_mb
+
+
+def test_training_request_accepts_up_to_twenty_models() -> None:
+    request = TrainingEstimateRequest(
+        dataset_version_id=uuid.uuid4(),
+        task_type=TaskType.CLASSIFICATION,
+        candidate_limit=20,
+        candidate_models=[f"Model{index}" for index in range(20)],
+    )
+
+    assert request.candidate_limit == 20
+    assert len(request.candidate_models) == 20
+    with pytest.raises(ValidationError):
+        TrainingEstimateRequest(
+            dataset_version_id=uuid.uuid4(),
+            task_type=TaskType.CLASSIFICATION,
+            candidate_limit=21,
+            candidate_models=[f"Model{index}" for index in range(21)],
+        )
 
 
 def test_job_deadline_scales_beyond_the_six_hour_floor() -> None:

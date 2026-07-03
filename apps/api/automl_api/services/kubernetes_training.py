@@ -245,7 +245,7 @@ class KubernetesTrainingClient:
         }.get(task_type, 1.3)
         search_multiplier = (
             1
-            + min(max(candidate_limit, 1), 8) * 0.03
+            + min(max(candidate_limit, 1), 20) * 0.03
             + min(max(optimization_iterations, 1), 25) * 0.01
         ) * max(1.0, min(model_cost_factor, 2.0))
         data_working_set = max(dataset_mb * 6, dense_matrix_mb * 3)
@@ -256,7 +256,7 @@ class KubernetesTrainingClient:
             4.0,
             max(
                 0.5,
-                0.5 + dataset_mb / 1024 + column_count / 200 + min(candidate_limit, 8) / 20,
+                0.5 + dataset_mb / 1024 + column_count / 200 + min(candidate_limit, 20) / 20,
             ),
         )
         desired_memory = max(768, estimated_working_set)

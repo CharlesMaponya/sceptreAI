@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import io
+import uuid
 from types import SimpleNamespace
 
 import joblib
 import pandas as pd
-from automl_api.models.enums import TaskType
+from automl_api.models.enums import RunStatus, TaskType
+from automl_api.services.validation import _reusable_explainability_run
 from automl_api.training import analysis, pipeline
+from sklearn.cluster import AgglomerativeClustering
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import FunctionTransformer
 
 
 def test_external_classification_validation_returns_diagnostics(
@@ -133,3 +138,50 @@ def test_shap_encoding_round_trips_mixed_features() -> None:
     assert restored["amount"].tolist() == features["amount"].tolist()
     assert restored["segment"].iloc[:2].tolist() == ["retail", "business"]
     assert pd.isna(restored["segment"].iloc[2])
+
+
+def test_completed_historical_explanation_is_reused() -> None:
+    project_id = uuid.uuid4()
+    source_id = uuid.uuid4()
+    completed = SimpleNamespace(
+        status=RunStatus.SUCCEEDED,
+        tags={"source_training_run_id": str(source_id)},
+        params={"model_name": "RandomForestClassifier"},
+    )
+    failed = SimpleNamespace(
+        status=RunStatus.FAILED,
+        tags={"source_training_run_id": str(source_id)},
+        params={"model_name": "RandomForestClassifier"},
+    )
+    db = SimpleNamespace(scalars=lambda _: SimpleNamespace(all=lambda: [failed, completed]))
+    source = SimpleNamespace(project_id=project_id, id=source_id)
+
+    result = _reusable_explainability_run(
+        db,
+        source,
+        "RandomForestClassifier",
+    )
+
+    assert result is completed
+
+
+def test_non_predictive_cluster_model_uses_fitted_centroids() -> None:
+    features = pd.DataFrame(
+        {
+            "x": [0.0, 0.1, 10.0, 10.1],
+            "y": [0.0, 0.2, 10.0, 10.2],
+        }
+    )
+    estimator = AgglomerativeClustering(n_clusters=2).fit(features)
+    model = Pipeline(
+        [
+            ("prepare", FunctionTransformer()),
+            ("model", estimator),
+        ]
+    )
+
+    predictor = analysis._clustering_predictor(model, features)
+    predictions = predictor(features)
+
+    assert len(predictions) == len(features)
+    assert len(set(predictions)) == 2

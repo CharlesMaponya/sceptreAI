@@ -8,6 +8,7 @@ from automl_api.training.pipeline import (
     _supervised_split,
     merge_leaderboard_entries,
     rank_leaderboard,
+    rebuild_candidate_model,
 )
 
 
@@ -51,6 +52,27 @@ def test_external_boosting_estimators_are_available_for_supervised_tasks() -> No
 
     clustering_names = {candidate.name for candidate in candidate_catalog(TaskType.CLUSTERING)}
     assert not any(name.startswith(("XGB", "LGBM", "CatBoost")) for name in clustering_names)
+
+
+def test_historical_candidate_can_be_reconstructed_for_explainability() -> None:
+    dataframe = pd.DataFrame(
+        {
+            "amount": [float(index) for index in range(30)],
+            "segment": ["retail", "business"] * 15,
+            "target": ["yes", "no"] * 15,
+        }
+    )
+
+    model = rebuild_candidate_model(
+        dataframe,
+        task_type=TaskType.CLASSIFICATION,
+        target_column="target",
+        model_name="LogisticRegression",
+        best_params={"model__C": 1.0, "model__max_iter": 200},
+    )
+
+    predictions = model.predict(dataframe.drop(columns=["target"]))
+    assert len(predictions) == len(dataframe)
 
 
 def test_leaderboard_ranks_higher_and_lower_metrics_correctly() -> None:

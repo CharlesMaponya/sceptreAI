@@ -4,7 +4,7 @@ from automl_api.main import app
 
 
 def test_phase_two_routes_are_registered() -> None:
-    routes = {route.path for route in app.routes}
+    routes = {route.path for route in app.routes if getattr(route, "path", None) is not None}
 
     expected_routes = {
         "/api/v1/auth/register",

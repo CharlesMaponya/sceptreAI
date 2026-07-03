@@ -35,6 +35,8 @@ from automl_api.training.evaluation import (
 from automl_api.training.pipeline import (
     _load_dataframe,
     _normalize_temporal_features,
+    _persist_candidate_model,
+    rebuild_candidate_model,
 )
 
 
@@ -137,7 +139,7 @@ def _execute_explainability(
 ) -> dict[str, Any]:
     import shap
 
-    model = _load_model(run)
+    model = _load_model(run, version)
     dataframe = _load_dataframe(version)
     excluded = {
         value
@@ -160,9 +162,14 @@ def _execute_explainability(
     encoded_features, decode = _encode_shap_features(features)
     encoded_sample = encoded_features.loc[sample.index]
     encoded_background = encoded_features.loc[background.index]
+    cluster_predict = (
+        _clustering_predictor(model, features) if run.task_type == TaskType.CLUSTERING else None
+    )
 
     def predict(values: np.ndarray) -> np.ndarray:
         frame = decode(values)
+        if cluster_predict is not None:
+            return np.asarray(cluster_predict(frame))
         if run.task_type == TaskType.CLASSIFICATION and hasattr(
             model,
             "predict_proba",
@@ -203,6 +210,7 @@ def _execute_explainability(
             "background_rows": len(background),
             "feature_count": len(columns),
             "algorithm": "permutation",
+            "model_reconstructed": bool(run.params.get("model_reconstructed")),
         },
         "feature_importance": feature_importance,
         "shap_values": values[: min(100, len(values))].tolist(),
@@ -244,7 +252,10 @@ def _encode_shap_features(
     return encoded, decode
 
 
-def _load_model(run: ModelRun) -> Any:
+def _load_model(
+    run: ModelRun,
+    version: DatasetVersion | None = None,
+) -> Any:
     model_run_id = run.params.get("model_mlflow_run_id")
     mlflow_error: Exception | None = None
     if model_run_id:
@@ -256,11 +267,115 @@ def _load_model(run: ModelRun) -> Any:
     model_artifact_uri = run.params.get("model_artifact_uri")
     if model_artifact_uri:
         return joblib.load(io.BytesIO(get_object_store().read_bytes(model_artifact_uri)))
+    if run.run_kind == RunKind.EXPLAINABILITY and version is not None:
+        return _rebuild_historical_model(run, version)
     if mlflow_error is not None:
         raise ValueError(
             f"MLflow model loading failed and no MinIO model mirror exists: {mlflow_error}"
         ) from mlflow_error
     raise ValueError("The source model has no persisted artifact.")
+
+
+def _rebuild_historical_model(
+    run: ModelRun,
+    version: DatasetVersion,
+) -> Any:
+    source_run_id = run.params.get("source_training_run_id")
+    model_name = str(run.params.get("model_name", ""))
+    if not source_run_id or not model_name:
+        raise ValueError("Historical model reconstruction metadata is missing.")
+    with get_session_factory()() as db:
+        source = db.get(ModelRun, uuid.UUID(str(source_run_id)))
+        if source is None:
+            raise ValueError("The historical source training run is missing.")
+        source_version = db.get(DatasetVersion, source.dataset_version_id)
+        if source_version is None:
+            source_version = version
+        entry = next(
+            (
+                item
+                for item in source.tags.get("leaderboard", [])
+                if item.get("model") == model_name and item.get("status") == "succeeded"
+            ),
+            None,
+        )
+        if entry is None:
+            raise ValueError("The historical leaderboard entry is missing.")
+        model = rebuild_candidate_model(
+            _load_dataframe(source_version),
+            task_type=source.task_type,
+            target_column=source.target_column,
+            model_name=model_name,
+            best_params=dict(entry.get("best_params") or {}),
+            evaluation_column=source.params.get("evaluation_column"),
+        )
+        artifact_uri = _persist_candidate_model(
+            source,
+            model_name,
+            model,
+        )
+        source.tags = {
+            **source.tags,
+            "leaderboard": [
+                (
+                    {
+                        **item,
+                        "model_artifact_uri": artifact_uri,
+                        "artifact_reconstructed": True,
+                    }
+                    if item.get("model") == model_name
+                    else item
+                )
+                for item in source.tags.get("leaderboard", [])
+            ],
+        }
+        persisted_run = db.get(ModelRun, run.id)
+        if persisted_run is not None:
+            persisted_run.params = {
+                **persisted_run.params,
+                "model_artifact_uri": artifact_uri,
+                "model_reconstructed": True,
+            }
+        db.commit()
+    run.params = {
+        **run.params,
+        "model_artifact_uri": artifact_uri,
+        "model_reconstructed": True,
+    }
+    return model
+
+
+def _clustering_predictor(
+    model: Any,
+    training_features: pd.DataFrame,
+) -> Any:
+    if hasattr(model, "predict"):
+        return model.predict
+    if not hasattr(model, "named_steps") or "model" not in model.named_steps:
+        raise ValueError("The clustering model cannot assign perturbed samples.")
+    estimator = model.named_steps["model"]
+    labels = np.asarray(getattr(estimator, "labels_", []))
+    transformed = _dense_array(_transformed_features(model, training_features))
+    if len(labels) != len(transformed) or not len(labels):
+        raise ValueError("The clustering model has no reusable fitted labels.")
+    label_values = np.unique(labels)
+    centroids = np.vstack([transformed[labels == label].mean(axis=0) for label in label_values])
+
+    def predict(features: pd.DataFrame) -> np.ndarray:
+        values = _dense_array(_transformed_features(model, features))
+        distances = np.linalg.norm(
+            values[:, np.newaxis, :] - centroids[np.newaxis, :, :],
+            axis=2,
+        )
+        return label_values[np.argmin(distances, axis=1)]
+
+    return predict
+
+
+def _dense_array(values: Any) -> np.ndarray:
+    if hasattr(values, "toarray"):
+        values = values.toarray()
+    return np.asarray(values, dtype=float)
 
 
 def _transformed_features(model: Any, features: pd.DataFrame) -> Any:

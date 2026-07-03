@@ -12,6 +12,11 @@ from skopt.space import Categorical, Integer, Real
 
 from automl_api.models.enums import TaskType
 
+try:
+    from sklearn.utils import get_tags as sklearn_get_tags
+except ImportError:  # scikit-learn < 1.6
+    sklearn_get_tags = None
+
 
 @dataclass(frozen=True)
 class CandidateSpec:
@@ -179,8 +184,7 @@ def candidate_catalog(task_type: TaskType) -> tuple[CandidateSpec, ...]:
             estimator = _instantiate_estimator(estimator_class)
         except Exception:
             continue
-        tags = estimator._get_tags()
-        if tags.get("multioutput_only") or not hasattr(estimator, "fit"):
+        if _is_multioutput_only(estimator) or not hasattr(estimator, "fit"):
             continue
         if task_type == TaskType.CLUSTERING:
             if name == "FeatureAgglomeration":
@@ -323,6 +327,19 @@ def _instantiate_estimator(estimator_class: type[BaseEstimator]) -> BaseEstimato
     if "n_jobs" in parameters:
         kwargs["n_jobs"] = 1
     return estimator_class(**kwargs)
+
+
+def _is_multioutput_only(estimator: BaseEstimator) -> bool:
+    if sklearn_get_tags is not None:
+        tags = sklearn_get_tags(estimator)
+        target_tags = getattr(tags, "target_tags", None)
+        if target_tags is not None:
+            return bool(
+                getattr(target_tags, "multi_output", False)
+                and not getattr(target_tags, "single_output", True)
+            )
+    legacy_get_tags = getattr(estimator, "_get_tags", None)
+    return bool(legacy_get_tags and legacy_get_tags().get("multioutput_only", False))
 
 
 def _cost_tier(name: str) -> str:

@@ -16,8 +16,8 @@ class TrainingEstimateRequest(BaseModel):
     task_type: TaskType
     prefer_gpu: bool = False
     expected_minutes: int = Field(default=10, ge=1, le=120)
-    candidate_limit: int = Field(default=5, ge=1, le=12)
-    candidate_models: list[str] = Field(default_factory=list, max_length=12)
+    candidate_limit: int = Field(default=5, ge=1, le=20)
+    candidate_models: list[str] = Field(default_factory=list, max_length=20)
     optimization_iterations: int = Field(default=5, ge=1, le=25)
     cv_folds: int = Field(default=3, ge=2, le=5)
 
@@ -28,7 +28,7 @@ class TrainingLaunchRequest(TrainingEstimateRequest):
 
 
 class TrainingAddModelsRequest(BaseModel):
-    candidate_models: list[str] = Field(min_length=1, max_length=12)
+    candidate_models: list[str] = Field(min_length=1, max_length=20)
     optimization_iterations: int = Field(default=5, ge=1, le=25)
     cv_folds: int = Field(default=3, ge=2, le=5)
     expected_minutes: int = Field(default=10, ge=1, le=120)

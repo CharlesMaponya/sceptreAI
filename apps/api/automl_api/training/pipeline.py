@@ -43,7 +43,11 @@ from automl_api.training.evaluation import (
     metric_direction,
     regression_evaluation,
 )
-from automl_api.training.model_catalog import CandidateSpec, select_candidates
+from automl_api.training.model_catalog import (
+    CandidateSpec,
+    candidate_catalog,
+    select_candidates,
+)
 
 
 @dataclass
@@ -234,6 +238,80 @@ def _fit_model(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
     )
 
 
+def rebuild_candidate_model(
+    dataframe: pd.DataFrame,
+    *,
+    task_type: TaskType,
+    target_column: str | None,
+    model_name: str,
+    best_params: dict[str, Any],
+    evaluation_column: str | None = None,
+) -> Any:
+    candidate = next(
+        (item for item in candidate_catalog(task_type) if item.name == model_name),
+        None,
+    )
+    if candidate is None:
+        raise ValueError(f"Historical estimator '{model_name}' is no longer available.")
+    if task_type == TaskType.CLUSTERING:
+        features = dataframe.drop(
+            columns=[evaluation_column] if evaluation_column else [],
+            errors="ignore",
+        )
+        features = _normalize_temporal_features(features)
+        preprocessor = _preprocessor(features)
+        transformed = np.asarray(preprocessor.fit_transform(features))
+        estimator = clone(candidate.estimator)
+        estimator.set_params(
+            **{
+                name.removeprefix("model__"): value
+                for name, value in best_params.items()
+                if name.startswith("model__")
+            }
+        )
+        estimator.fit(transformed)
+        return Pipeline(
+            [
+                ("prepare", preprocessor),
+                ("model", estimator),
+            ]
+        )
+
+    if not target_column or target_column not in dataframe.columns:
+        raise ValueError("The historical training target is unavailable.")
+    target = dataframe[target_column]
+    features = dataframe.drop(columns=[target_column])
+    valid_target = target.notna()
+    features = _normalize_temporal_features(features.loc[valid_target])
+    target = target.loc[valid_target]
+    if task_type in {TaskType.REGRESSION, TaskType.TIME_SERIES}:
+        target = pd.to_numeric(target, errors="raise")
+    train_x, _, train_y, _ = _supervised_split(
+        features,
+        target,
+        task_type,
+    )
+    score_function = (
+        mutual_info_classif if task_type == TaskType.CLASSIFICATION else mutual_info_regression
+    )
+    model = Pipeline(
+        [
+            ("prepare", _preprocessor(train_x)),
+            (
+                "select",
+                SelectPercentile(
+                    score_func=score_function,
+                    percentile=80,
+                ),
+            ),
+            ("model", clone(candidate.estimator)),
+        ]
+    )
+    model.set_params(**best_params)
+    model.fit(train_x, train_y)
+    return model
+
+
 def _fit_candidate(
     candidate: CandidateSpec,
     train_x: pd.DataFrame,
@@ -365,7 +443,7 @@ def _fit_clustering(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
     preprocessor = _preprocessor(dataframe)
     transformed = np.asarray(preprocessor.fit_transform(dataframe))
 
-    candidate_limit = max(1, min(int(run.params.get("candidate_limit", 5)), 12))
+    candidate_limit = max(1, min(int(run.params.get("candidate_limit", 5)), 20))
     requested_names = run.params.get("candidate_models")
     candidates = select_candidates(
         TaskType.CLUSTERING,

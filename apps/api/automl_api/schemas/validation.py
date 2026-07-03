@@ -25,8 +25,9 @@ class ExplainabilityLaunchRequest(BaseModel):
 
 class AnalysisLaunchRead(BaseModel):
     run: ModelRunRead
-    estimate: TrainingEstimateRead
-    manifest: dict[str, Any]
+    estimate: TrainingEstimateRead | None = None
+    manifest: dict[str, Any] = Field(default_factory=dict)
+    cached: bool = False
 
 
 class RunArtifactRead(BaseModel):

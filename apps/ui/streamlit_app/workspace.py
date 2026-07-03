@@ -681,6 +681,16 @@ def render_validation_workspace(
     if not successful_models:
         return
 
+    analyses_status, analyses = api_request(
+        "GET",
+        (f"/projects/{project_id}/training/runs/{training_run['id']}/analyses"),
+        token=access_token,
+    )
+    analyses_error = None
+    if analyses_status != 200 or not isinstance(analyses, list):
+        analyses_error = analyses
+        analyses = []
+
     validation_tab, explain_tab, results_tab = st.tabs(
         ["External validation", "Explainability", "Analysis results"]
     )
@@ -753,6 +763,16 @@ def render_validation_workspace(
             successful_models,
             key=f"explanation_model:{training_run['id']}",
         )
+        existing_explanation = next(
+            (
+                run
+                for run in analyses
+                if run.get("run_kind") == "explainability"
+                and run.get("params", {}).get("model_name") == explanation_model
+                and run.get("status") in {"queued", "precheck_running", "running", "succeeded"}
+            ),
+            None,
+        )
         max_rows = st.slider(
             "SHAP sample rows",
             min_value=20,
@@ -761,10 +781,25 @@ def render_validation_workspace(
             step=20,
             key=f"shap_rows:{training_run['id']}",
         )
+        explanation_status = existing_explanation.get("status") if existing_explanation else None
+        if explanation_status == "succeeded":
+            st.success("Explanation available in Analysis results.")
+        elif explanation_status in {"queued", "precheck_running", "running"}:
+            st.info("Explanation is in progress.")
         if st.button(
-            "Calculate SHAP",
+            (
+                "Retry SHAP"
+                if any(
+                    run.get("run_kind") == "explainability"
+                    and run.get("params", {}).get("model_name") == explanation_model
+                    and run.get("status") == "failed"
+                    for run in analyses
+                )
+                else "Calculate SHAP"
+            ),
             use_container_width=True,
             key=f"explain_model:{training_run['id']}",
+            disabled=explanation_status in {"queued", "precheck_running", "running", "succeeded"},
         ):
             status_code, response = api_request(
                 "POST",
@@ -777,19 +812,17 @@ def render_validation_workspace(
                 token=access_token,
             )
             if status_code == 202:
-                st.success(f"Explainability job {response['run']['id']} queued.")
+                if response.get("cached"):
+                    st.success("Existing explanation selected.")
+                else:
+                    st.success(f"Explainability job {response['run']['id']} queued.")
                 st.rerun()
             else:
                 st.error(response)
 
-    analyses_status, analyses = api_request(
-        "GET",
-        (f"/projects/{project_id}/training/runs/{training_run['id']}/analyses"),
-        token=access_token,
-    )
-    if analyses_status != 200 or not isinstance(analyses, list):
+    if analyses_error is not None:
         with results_tab:
-            st.error(analyses)
+            st.error(analyses_error)
         return
     with results_tab:
         if not analyses:
@@ -973,7 +1006,7 @@ def render_training_workspace(project_id: str, access_token: str) -> None:
             f"{name} | {estimator_by_name[name]['cost_tier']} cost"
             f"{' | tuned' if estimator_by_name[name]['tunable'] else ''}"
         ),
-        max_selections=12,
+        max_selections=20,
         key=f"training_models:{selected_version['id']}:{task_type}",
     )
     evaluation_column = None
@@ -1235,7 +1268,7 @@ def render_training_workspace(project_id: str, access_token: str) -> None:
                             f"{available_estimators[name]['cost_tier']} cost"
                             f"{' | tuned' if available_estimators[name]['tunable'] else ''}"
                         ),
-                        max_selections=12,
+                        max_selections=20,
                         key=f"add_models:{selected_run['id']}",
                     )
                     add_controls = st.columns(4)
