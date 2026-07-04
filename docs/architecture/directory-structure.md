@@ -10,7 +10,8 @@
 │   │       ├── models/            # relational metadata schema
 │   │       └── main.py            # FastAPI app factory and health endpoints
 │   └── ui/
-│       └── streamlit_app/         # Streamlit analytical UI
+│       ├── react_app/             # Production React + TypeScript product UI
+│       └── streamlit_app/         # Transitional internal diagnostic UI
 ├── packages/
 │   └── automl_shared/             # shared constants and typed contracts
 ├── alembic/
@@ -30,7 +31,10 @@
 
 `apps/api` owns metadata, RBAC checks, object-store routing, Kubernetes orchestration, job logs, and lifecycle APIs.
 
-`apps/ui` owns only Streamlit presentation and user workflow state. It should call the FastAPI backend rather than reading PostgreSQL or Kubernetes directly.
+`apps/ui/react_app` owns product presentation and client workflow state. It calls
+the FastAPI backend rather than reading PostgreSQL or Kubernetes directly.
+`apps/ui/streamlit_app` is retained temporarily as an internal migration and
+diagnostic surface.
 
 `packages/automl_shared` is reserved for stable contracts shared by API, UI, and training containers. Keep it small to avoid tight coupling.
 

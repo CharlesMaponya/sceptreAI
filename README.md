@@ -149,7 +149,7 @@ CatBoost candidates are included when their optional dependencies are installed.
 
 ```mermaid
 flowchart LR
-    User[Analyst or Data Scientist] --> UI[Streamlit]
+    User[Analyst or Data Scientist] --> UI[React + TypeScript]
     UI --> API[FastAPI]
     API --> PG[(PostgreSQL)]
     API --> MINIO[(MinIO)]
@@ -163,7 +163,7 @@ flowchart LR
 
 | Component | Responsibility |
 | --- | --- |
-| Streamlit | Authenticated analytical workflows and progressive result rendering |
+| React + TypeScript | Authenticated, responsive workflows and progressive result rendering |
 | FastAPI | Business rules, authorization, metadata APIs, and Kubernetes admission |
 | PostgreSQL | Users, RBAC, projects, datasets, runs, metrics, and MLflow metadata |
 | MinIO | Dataset versions, profiles, diagnostics, SHAP output, and durable model mirrors |
@@ -249,17 +249,24 @@ MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
 uvicorn automl_api.main:app --app-dir apps/api --host 0.0.0.0 --port 8000
 ```
 
+In another terminal, start the React development server. It proxies `/api` to
+the FastAPI process on port 8000:
+
 ```bash
-streamlit run apps/ui/streamlit_app/app.py \
-  --server.address 0.0.0.0 \
-  --server.port 8501
+cd apps/ui/react_app
+npm install
+npm run dev
 ```
+
+The previous Streamlit application remains available as an internal diagnostic
+console during the phased migration. The product UX and new feature work live
+in the React application.
 
 ### Service URLs
 
 | Service | URL |
 | --- | --- |
-| Sceptre UI | [http://localhost:8501](http://localhost:8501) |
+| Sceptre UI | [http://localhost:5173](http://localhost:5173) |
 | API documentation | [http://localhost:8000/docs](http://localhost:8000/docs) |
 | MinIO console | [http://localhost:9001](http://localhost:9001) |
 | MLflow | [http://localhost:5000](http://localhost:5000) |
