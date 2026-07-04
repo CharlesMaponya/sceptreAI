@@ -94,6 +94,7 @@ class ArtifactKind(StrEnum):
     DIAGNOSTIC_PLOT = "diagnostic_plot"
     MODEL_OBJECT = "model_object"
     SHAP_VALUES = "shap_values"
+    DRIFT_REPORT = "drift_report"
     LOG_BUNDLE = "log_bundle"
     DEPLOYMENT_IMAGE = "deployment_image"
 

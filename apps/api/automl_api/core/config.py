@@ -76,6 +76,9 @@ class Settings:
     training_namespace: str = "automl"
     training_image: str = "automl-training:local"
     training_service_account: str = "default"
+    inference_image: str = "automl-inference:local"
+    inference_service_account: str = "default"
+    inference_service_type: str = "NodePort"
     training_active_deadline_seconds: int = 6 * 60 * 60
     training_max_active_deadline_seconds: int = 24 * 60 * 60
     training_deadline_multiplier: int = 6
@@ -151,6 +154,23 @@ def get_settings() -> Settings:
             _get_env(
                 "TRAINING_SERVICE_ACCOUNT",
                 Settings.training_service_account,
+                dotenv,
+            )
+        ),
+        inference_image=str(
+            _get_env("INFERENCE_IMAGE", Settings.inference_image, dotenv)
+        ),
+        inference_service_account=str(
+            _get_env(
+                "INFERENCE_SERVICE_ACCOUNT",
+                Settings.inference_service_account,
+                dotenv,
+            )
+        ),
+        inference_service_type=str(
+            _get_env(
+                "INFERENCE_SERVICE_TYPE",
+                Settings.inference_service_type,
                 dotenv,
             )
         ),

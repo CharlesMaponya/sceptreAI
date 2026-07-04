@@ -32,6 +32,13 @@ from automl_api.training.model_catalog import (
     estimator_catalog_payload,
 )
 
+BATCH_RUN_KINDS = (
+    RunKind.TRAINING,
+    RunKind.VALIDATION,
+    RunKind.EXPLAINABILITY,
+    RunKind.DRIFT,
+)
+
 
 def estimate_training_run(
     db: Session,
@@ -86,7 +93,13 @@ def estimate_training_run(
     ]
     _reconcile_active_runs(db, k8s, active_statuses)
     active_db_runs = int(
-        db.scalar(select(func.count(ModelRun.id)).where(ModelRun.status.in_(active_statuses))) or 0
+        db.scalar(
+            select(func.count(ModelRun.id)).where(
+                ModelRun.status.in_(active_statuses),
+                ModelRun.run_kind.in_(BATCH_RUN_KINDS),
+            )
+        )
+        or 0
     )
     if active_db_runs >= estimate.max_concurrent_jobs:
         blocker = (
@@ -99,6 +112,7 @@ def estimate_training_run(
             select(func.count(ModelRun.id)).where(
                 ModelRun.project_id == project_id,
                 ModelRun.status.in_(active_statuses),
+                ModelRun.run_kind.in_(BATCH_RUN_KINDS),
             )
         )
         or 0
@@ -535,7 +549,12 @@ def _reconcile_active_runs(
     client: KubernetesTrainingClient,
     active_statuses: list[RunStatus],
 ) -> None:
-    active_runs = db.scalars(select(ModelRun).where(ModelRun.status.in_(active_statuses))).all()
+    active_runs = db.scalars(
+        select(ModelRun).where(
+            ModelRun.status.in_(active_statuses),
+            ModelRun.run_kind.in_(BATCH_RUN_KINDS),
+        )
+    ).all()
     for run in active_runs:
         if not run.k8s_job_name:
             continue

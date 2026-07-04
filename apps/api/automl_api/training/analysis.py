@@ -58,6 +58,8 @@ def execute_analysis_run(run_id: uuid.UUID) -> dict[str, Any]:
             result = _execute_validation(run, version)
         elif run.run_kind == RunKind.EXPLAINABILITY:
             result = _execute_explainability(run, version)
+        elif run.run_kind == RunKind.DRIFT:
+            result = _execute_drift(run, version)
         else:
             raise ValueError(f"Unsupported analysis kind: {run.run_kind.value}")
         _persist_analysis_result(run_id, result)
@@ -188,21 +190,31 @@ def _execute_explainability(
         max_evals=max(2 * len(columns) + 1, 10),
     )
     values = np.asarray(explanation.values, dtype=float)
+    if values.ndim == 1:
+        values = values.reshape(-1, 1)
     if values.ndim == 3:
         mean_absolute = np.mean(np.abs(values), axis=(0, 2))
     else:
         mean_absolute = np.mean(np.abs(values), axis=0)
+    contribution_percent = _percentage_contributions(mean_absolute, feature_axis=0)
     feature_importance = sorted(
         [
             {
                 "feature": column,
                 "mean_absolute_shap": float(value),
+                "contribution_percent": float(percent),
             }
-            for column, value in zip(columns, mean_absolute, strict=True)
+            for column, value, percent in zip(
+                columns,
+                mean_absolute,
+                contribution_percent,
+                strict=True,
+            )
         ],
-        key=lambda item: item["mean_absolute_shap"],
+        key=lambda item: item["contribution_percent"],
         reverse=True,
     )
+    sample_values = values[: min(100, len(values))]
     return {
         "metrics": {},
         "diagnostics": {
@@ -211,10 +223,224 @@ def _execute_explainability(
             "feature_count": len(columns),
             "algorithm": "permutation",
             "model_reconstructed": bool(run.params.get("model_reconstructed")),
+            "contribution_normalization": {
+                "scale": "percent",
+                "minimum": 0.0,
+                "maximum": 100.0,
+                "feature_importance_sum": float(np.sum(contribution_percent)),
+                "direction_preserved_in": "shap_values",
+            },
         },
         "feature_importance": feature_importance,
-        "shap_values": values[: min(100, len(values))].tolist(),
+        "shap_values": sample_values.tolist(),
+        "shap_contribution_percent": _percentage_contributions(
+            sample_values,
+            feature_axis=1,
+        ).tolist(),
     }
+
+
+def _execute_drift(
+    run: ModelRun,
+    current_version: DatasetVersion,
+) -> dict[str, Any]:
+    reference_version_id = run.params.get("reference_dataset_version_id")
+    if not reference_version_id:
+        raise ValueError("A reference dataset version is required for drift analysis.")
+    with get_session_factory()() as db:
+        reference_version = db.get(
+            DatasetVersion,
+            uuid.UUID(str(reference_version_id)),
+        )
+        if reference_version is None or reference_version.project_id != run.project_id:
+            raise ValueError("The reference dataset version was not found.")
+    reference = _load_dataframe(reference_version)
+    current = _load_dataframe(current_version)
+    excluded = {
+        value
+        for value in (
+            run.target_column,
+            run.params.get("evaluation_column"),
+        )
+        if value
+    }
+    common_columns = [
+        column
+        for column in reference.columns
+        if column in current.columns and column not in excluded
+    ]
+    if not common_columns:
+        raise ValueError("Reference and current datasets have no common feature columns.")
+    max_rows = max(100, int(run.params.get("max_rows", 10_000)))
+    reference_sample = reference[common_columns].sample(
+        n=min(max_rows, len(reference)),
+        random_state=42,
+    )
+    current_sample = current[common_columns].sample(
+        n=min(max_rows, len(current)),
+        random_state=43,
+    )
+    report = _run_evidently_report(reference_sample, current_sample)
+    metrics, summary = _drift_summary(report, len(common_columns))
+    return {
+        "metrics": metrics,
+        "diagnostics": {
+            **summary,
+            "reference_rows": len(reference_sample),
+            "current_rows": len(current_sample),
+            "feature_count": len(common_columns),
+            "reference_dataset_version_id": str(reference_version.id),
+            "current_dataset_version_id": str(current_version.id),
+            "evidently_report": report,
+        },
+        "feature_importance": [],
+    }
+
+
+def _run_evidently_report(
+    reference: pd.DataFrame,
+    current: pd.DataFrame,
+) -> dict[str, Any]:
+    try:
+        from evidently.metric_preset import DataDriftPreset
+        from evidently.report import Report
+    except ImportError:
+        try:
+            from evidently import Report
+            from evidently.presets import DataDriftPreset
+        except ImportError as exc:
+            raise RuntimeError(
+                "Evidently is not installed in the analysis worker image."
+            ) from exc
+    try:
+        report = Report(metrics=[DataDriftPreset()])
+    except TypeError:
+        report = Report([DataDriftPreset()])
+    snapshot = report.run(
+        reference_data=reference,
+        current_data=current,
+    )
+    if hasattr(snapshot, "as_dict"):
+        return snapshot.as_dict()
+    if hasattr(snapshot, "dict"):
+        return snapshot.dict()
+    if hasattr(report, "as_dict"):
+        return report.as_dict()
+    raise RuntimeError("Evidently did not return a serializable drift report.")
+
+
+def _drift_summary(
+    report: dict[str, Any],
+    feature_count: int,
+) -> tuple[dict[str, float], dict[str, Any]]:
+    dataset_drift_value = _first_nested_value(report, "dataset_drift")
+    drift_share = _first_nested_value(report, "share_of_drifted_columns")
+    drifted_count = _first_nested_value(report, "number_of_drifted_columns")
+    drift_by_columns = _first_nested_value(report, "drift_by_columns", {})
+    drifted_features: list[str] = []
+    if isinstance(drift_by_columns, dict):
+        drifted_features = sorted(
+            str(name)
+            for name, details in drift_by_columns.items()
+            if isinstance(details, dict)
+            and bool(
+                details.get("drift_detected")
+                or details.get("drifted")
+                or details.get("detected")
+            )
+        )
+    if drifted_count is None:
+        drifted_count = len(drifted_features)
+    drifted_count = int(drifted_count)
+    if drift_share is None:
+        drift_share = drifted_count / max(1, feature_count)
+    drift_share = float(drift_share)
+    if drift_share > 1:
+        drift_share /= 100.0
+    drift_share = min(1.0, max(0.0, drift_share))
+    dataset_drift = (
+        bool(dataset_drift_value)
+        if dataset_drift_value is not None
+        else drift_share >= 0.5
+    )
+    return (
+        {
+            "dataset_drift": float(dataset_drift),
+            "drift_share": drift_share,
+            "drifted_feature_count": float(drifted_count),
+        },
+        {
+            "dataset_drift": dataset_drift,
+            "drift_share_percent": drift_share * 100.0,
+            "drifted_feature_count": drifted_count,
+            "drifted_features": drifted_features,
+        },
+    )
+
+
+def _first_nested_value(
+    value: Any,
+    key: str,
+    default: Any = None,
+) -> Any:
+    if isinstance(value, dict):
+        if key in value:
+            return value[key]
+        for nested in value.values():
+            found = _first_nested_value(nested, key, None)
+            if found is not None:
+                return found
+    elif isinstance(value, list):
+        for nested in value:
+            found = _first_nested_value(nested, key, None)
+            if found is not None:
+                return found
+    return default
+
+
+def normalize_feature_importance(
+    feature_importance: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if not feature_importance:
+        return []
+    values = np.asarray(
+        [item.get("mean_absolute_shap", 0.0) for item in feature_importance],
+        dtype=float,
+    )
+    percentages = _percentage_contributions(values, feature_axis=0)
+    normalized = [
+        {
+            **item,
+            "contribution_percent": float(percent),
+        }
+        for item, percent in zip(feature_importance, percentages, strict=True)
+    ]
+    return sorted(
+        normalized,
+        key=lambda item: item["contribution_percent"],
+        reverse=True,
+    )
+
+
+def _percentage_contributions(
+    values: np.ndarray,
+    *,
+    feature_axis: int,
+) -> np.ndarray:
+    absolute = np.nan_to_num(
+        np.abs(np.asarray(values, dtype=float)),
+        nan=0.0,
+        posinf=0.0,
+        neginf=0.0,
+    )
+    totals = np.sum(absolute, axis=feature_axis, keepdims=True)
+    normalized = np.divide(
+        absolute,
+        totals,
+        out=np.zeros_like(absolute, dtype=float),
+        where=totals > 0,
+    )
+    return np.clip(normalized * 100.0, 0.0, 100.0)
 
 
 def _encode_shap_features(
@@ -393,16 +619,16 @@ def _persist_analysis_result(
         run = db.get(ModelRun, run_id)
         if run is None:
             return
-        suffix = (
-            "shap.json" if run.run_kind == RunKind.EXPLAINABILITY else "external-validation.json"
-        )
+        suffix = {
+            RunKind.EXPLAINABILITY: "shap.json",
+            RunKind.DRIFT: "drift.json",
+        }.get(run.run_kind, "external-validation.json")
         key = f"projects/{run.project_id}/runs/{run.id}/{suffix}"
         stored = get_object_store().put_bytes(key, payload)
-        artifact_kind = (
-            ArtifactKind.SHAP_VALUES
-            if run.run_kind == RunKind.EXPLAINABILITY
-            else ArtifactKind.DIAGNOSTIC_PLOT
-        )
+        artifact_kind = {
+            RunKind.EXPLAINABILITY: ArtifactKind.SHAP_VALUES,
+            RunKind.DRIFT: ArtifactKind.DRIFT_REPORT,
+        }.get(run.run_kind, ArtifactKind.DIAGNOSTIC_PLOT)
         db.add(
             RunArtifact(
                 project_id=run.project_id,
@@ -424,8 +650,16 @@ def _persist_analysis_result(
                     project_id=run.project_id,
                     model_run_id=run.id,
                     name=name,
-                    kind=MetricKind.PERFORMANCE,
-                    split=MetricSplit.EXTERNAL,
+                    kind=(
+                        MetricKind.DRIFT
+                        if run.run_kind == RunKind.DRIFT
+                        else MetricKind.PERFORMANCE
+                    ),
+                    split=(
+                        MetricSplit.PRODUCTION
+                        if run.run_kind == RunKind.DRIFT
+                        else MetricSplit.EXTERNAL
+                    ),
                     value=float(value),
                     higher_is_better=metric_direction(name) == "maximize",
                 )

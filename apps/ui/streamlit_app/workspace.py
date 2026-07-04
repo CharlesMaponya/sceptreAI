@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import os
 import time
 import urllib.error
@@ -9,6 +10,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 
@@ -25,6 +27,72 @@ def profile_display_value(value: Any) -> str:
     if isinstance(value, (dict, list, tuple)):
         return json.dumps(value, default=str)
     return str(value)
+
+
+def normalize_shap_importance_rows(
+    feature_importance: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    weighted_rows: list[tuple[dict[str, Any], float]] = []
+    for item in feature_importance:
+        raw_value = item.get(
+            "mean_absolute_shap",
+            item.get("contribution_percent", 0.0),
+        )
+        try:
+            weight = abs(float(raw_value))
+        except (TypeError, ValueError, OverflowError):
+            weight = 0.0
+        if not math.isfinite(weight):
+            weight = 0.0
+        weighted_rows.append((item, weight))
+
+    total = sum(weight for _, weight in weighted_rows)
+    normalized = [
+        {
+            **item,
+            "contribution_percent": (weight / total * 100.0 if total else 0.0),
+        }
+        for item, weight in weighted_rows
+    ]
+    return sorted(
+        normalized,
+        key=lambda item: item["contribution_percent"],
+        reverse=True,
+    )
+
+
+def shap_importance_chart(
+    feature_importance: list[dict[str, Any]],
+) -> alt.Chart:
+    chart_data = pd.DataFrame(feature_importance[:30])
+    return (
+        alt.Chart(chart_data)
+        .mark_bar()
+        .encode(
+            x=alt.X(
+                "contribution_percent:Q",
+                title="Contribution (%)",
+                scale=alt.Scale(domain=[0, 100]),
+            ),
+            y=alt.Y(
+                "feature:N",
+                title="Feature",
+                sort=alt.SortField(
+                    field="contribution_percent",
+                    order="descending",
+                ),
+            ),
+            tooltip=[
+                alt.Tooltip("feature:N", title="Feature"),
+                alt.Tooltip(
+                    "contribution_percent:Q",
+                    title="Contribution",
+                    format=".2f",
+                ),
+            ],
+        )
+        .properties(height=max(300, len(chart_data) * 24))
+    )
 
 
 def stable_selectbox(
@@ -872,13 +940,17 @@ def render_validation_workspace(
                         {name: "review" for name in result.get("metrics", {})},
                     )
                 if result.get("feature_importance"):
-                    importance = pd.DataFrame(result["feature_importance"][:30]).set_index(
-                        "feature"
+                    normalized_importance = normalize_shap_importance_rows(
+                        result["feature_importance"]
                     )
-                    st.bar_chart(
-                        importance,
-                        y="mean_absolute_shap",
-                        horizontal=True,
+                    st.caption(
+                        "Absolute SHAP contribution normalized across features. "
+                        "Percentages sum to 100% across all dataset features; "
+                        "the chart shows the 30 largest contributors."
+                    )
+                    st.altair_chart(
+                        shap_importance_chart(normalized_importance),
+                        use_container_width=True,
                     )
                 if result.get("artifacts"):
                     st.dataframe(
@@ -1389,6 +1461,453 @@ def render_training_workspace(project_id: str, access_token: str) -> None:
                     st.error(restart_response)
 
 
+def _project_dataset_versions(
+    project_id: str,
+    access_token: str,
+) -> dict[str, str]:
+    status_code, datasets = api_request(
+        "GET",
+        f"/projects/{project_id}/datasets",
+        token=access_token,
+    )
+    if status_code != 200 or not isinstance(datasets, list):
+        return {}
+    options: dict[str, str] = {}
+    for dataset in datasets:
+        version_status, versions = api_request(
+            "GET",
+            f"/projects/{project_id}/datasets/{dataset['id']}/versions",
+            token=access_token,
+        )
+        if version_status != 200 or not isinstance(versions, list):
+            continue
+        for version in versions:
+            options[str(version["id"])] = (
+                f"{dataset['name']} v{version['version_number']} - "
+                f"{version['status']}"
+            )
+    return options
+
+
+def render_operations_workspace(project_id: str, access_token: str) -> None:
+    st.subheader("Platform health")
+    health_status, health = api_request(
+        "GET",
+        f"/projects/{project_id}/operations/health",
+        token=access_token,
+    )
+    if health_status == 200 and isinstance(health, dict):
+        capacity = health["capacity"]
+        summary = st.columns(4)
+        summary[0].metric("Ready nodes", capacity["ready_nodes"])
+        summary[1].metric("Available CPU", f"{capacity['available_cpu_cores']:.1f}")
+        summary[2].metric(
+            "Available memory",
+            f"{capacity['available_memory_mb'] / 1024:.1f} GiB",
+        )
+        summary[3].metric("Deployments", health["active_deployments"])
+        st.dataframe(
+            [
+                {"Component": name.replace("_", " ").title(), "Status": value}
+                for name, value in health["components"].items()
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.error(health)
+
+    registry_status, registry = api_request(
+        "GET",
+        f"/projects/{project_id}/operations/registry",
+        token=access_token,
+    )
+    if registry_status != 200 or not isinstance(registry, list):
+        st.error(registry)
+        return
+
+    st.subheader("Model registry")
+    with st.expander("Register a trained model"):
+        run_status, runs = api_request(
+            "GET",
+            f"/projects/{project_id}/training/runs",
+            token=access_token,
+        )
+        succeeded = (
+            [run for run in runs if run["status"] == "succeeded"]
+            if run_status == 200 and isinstance(runs, list)
+            else []
+        )
+        if not succeeded:
+            st.info("A successful training run is required.")
+        else:
+            run_by_id = {str(run["id"]): run for run in succeeded}
+            run_id = stable_selectbox(
+                "Training run",
+                list(run_by_id),
+                key=f"registry_run:{project_id}",
+                format_func=lambda value: run_by_id[value].get("run_name") or value[:8],
+            )
+            board_status, board = api_request(
+                "GET",
+                f"/projects/{project_id}/training/runs/{run_id}/leaderboard",
+                token=access_token,
+            )
+            models = (
+                [
+                    entry["model"]
+                    for entry in board.get("entries", [])
+                    if entry.get("status") == "succeeded"
+                ]
+                if board_status == 200 and isinstance(board, dict)
+                else []
+            )
+            if models:
+                model_name = st.selectbox(
+                    "Model",
+                    models,
+                    key=f"registry_model:{project_id}",
+                )
+                if st.button(
+                    "Register model",
+                    key=f"register_model:{project_id}",
+                    use_container_width=True,
+                ):
+                    create_status, response = api_request(
+                        "POST",
+                        f"/projects/{project_id}/operations/registry",
+                        payload={
+                            "training_run_id": run_id,
+                            "model_name": model_name,
+                        },
+                        token=access_token,
+                    )
+                    if create_status in {200, 201}:
+                        st.success("Model registered.")
+                        st.rerun()
+                    else:
+                        st.error(response)
+
+    if registry:
+        st.dataframe(
+            [
+                {
+                    "Model": entry["model_name"],
+                    "Version": entry["version"],
+                    "Stage": entry["stage"],
+                    "Fallback": entry["is_fallback"],
+                    "Metric": entry.get("champion_metric_name"),
+                    "Score": entry.get("champion_metric_value"),
+                }
+                for entry in registry
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
+        entry_by_id = {str(entry["id"]): entry for entry in registry}
+        entry_id = stable_selectbox(
+            "Registered model",
+            list(entry_by_id),
+            key=f"registry_entry:{project_id}",
+            format_func=lambda value: (
+                f"{entry_by_id[value]['model_name']} "
+                f"v{entry_by_id[value]['version']} - {entry_by_id[value]['stage']}"
+            ),
+        )
+        entry = entry_by_id[entry_id]
+        stages = ["candidate", "staging", "production", "archived", "rejected"]
+        controls = st.columns(3)
+        target_stage = controls[0].selectbox(
+            "Move to stage",
+            stages,
+            index=stages.index(entry["stage"]),
+            key=f"registry_stage:{entry_id}",
+        )
+        if controls[1].button(
+            "Update stage",
+            key=f"stage_button:{entry_id}",
+            use_container_width=True,
+        ):
+            response_status, response = api_request(
+                "POST",
+                f"/projects/{project_id}/operations/registry/{entry_id}/stage",
+                payload={"stage": target_stage},
+                token=access_token,
+            )
+            if response_status == 200:
+                st.rerun()
+            st.error(response)
+        if controls[2].button(
+            "Set fallback",
+            key=f"fallback_button:{entry_id}",
+            use_container_width=True,
+            disabled=entry["stage"] != "staging",
+        ):
+            response_status, response = api_request(
+                "POST",
+                f"/projects/{project_id}/operations/registry/{entry_id}/fallback",
+                token=access_token,
+            )
+            if response_status == 200:
+                st.rerun()
+            st.error(response)
+
+        drift_tab, deploy_tab = st.tabs(["Drift", "Deployment"])
+        with drift_tab:
+            versions = _project_dataset_versions(project_id, access_token)
+            if versions:
+                version_id = stable_selectbox(
+                    "Current dataset version",
+                    list(versions),
+                    key=f"drift_version:{entry_id}",
+                    format_func=lambda value: versions[value],
+                )
+                if st.button(
+                    "Run drift check",
+                    key=f"drift_button:{entry_id}",
+                    use_container_width=True,
+                ):
+                    response_status, response = api_request(
+                        "POST",
+                        f"/projects/{project_id}/operations/registry/{entry_id}/drift",
+                        payload={
+                            "dataset_version_id": version_id,
+                            "max_rows": 10_000,
+                            "expected_minutes": 10,
+                        },
+                        token=access_token,
+                    )
+                    if response_status == 202:
+                        st.success(f"Drift job {response['run']['id']} queued.")
+                        st.rerun()
+                    st.error(response)
+        with deploy_tab:
+            replicas = st.number_input(
+                "Replicas",
+                min_value=1,
+                max_value=10,
+                value=1,
+                key=f"deployment_replicas:{entry_id}",
+            )
+            if st.button(
+                "Deploy model",
+                key=f"deploy_button:{entry_id}",
+                use_container_width=True,
+                disabled=entry["stage"] not in {"staging", "production"},
+            ):
+                response_status, response = api_request(
+                    "POST",
+                    f"/projects/{project_id}/operations/registry/{entry_id}/deployments",
+                    payload={
+                        "replicas": int(replicas),
+                        "cpu_request": "500m",
+                        "memory_request": "1Gi",
+                    },
+                    token=access_token,
+                )
+                if response_status == 202:
+                    st.success(
+                        f"Deployment {response['run']['id']} created. "
+                        "Waiting for Kubernetes readiness."
+                    )
+                    st.rerun()
+                st.error(response)
+    else:
+        st.info("No registered models yet.")
+
+    drift_status, drift_runs = api_request(
+        "GET",
+        f"/projects/{project_id}/operations/drift-runs",
+        token=access_token,
+    )
+    if drift_status == 200 and isinstance(drift_runs, list) and drift_runs:
+        st.subheader("Drift checks")
+        latest_completed = next(
+            (
+                run
+                for run in drift_runs
+                if run["status"] == "succeeded"
+                and run.get("tags", {}).get("diagnostics")
+            ),
+            None,
+        )
+        if latest_completed is not None:
+            latest_diagnostics = latest_completed["tags"]["diagnostics"]
+            drift_summary = st.columns(2)
+            drift_summary[0].metric(
+                "Drift share",
+                f"{latest_diagnostics.get('drift_share_percent', 0):.1f}%",
+            )
+            drift_summary[1].metric(
+                "Drifted features",
+                latest_diagnostics.get("drifted_feature_count", 0),
+            )
+            st.progress(
+                min(
+                    1.0,
+                    max(
+                        0.0,
+                        latest_diagnostics.get("drift_share_percent", 0) / 100,
+                    ),
+                )
+            )
+        st.dataframe(
+            [
+                {
+                    "Run": run["run_name"],
+                    "Status": run["status"],
+                    "Drift share (%)": run.get("tags", {})
+                    .get("diagnostics", {})
+                    .get("drift_share_percent"),
+                    "Drifted features": run.get("tags", {})
+                    .get("diagnostics", {})
+                    .get("drifted_feature_count"),
+                }
+                for run in drift_runs
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    deployment_status, deployments = api_request(
+        "GET",
+        f"/projects/{project_id}/operations/deployments",
+        token=access_token,
+    )
+    if deployment_status == 200 and isinstance(deployments, list) and deployments:
+        st.subheader("Deployments")
+        st.dataframe(
+            [
+                {
+                    "Deployment": item["run"]["run_name"],
+                    "Status": item["status"],
+                    "Runtime": item["runtime_state"],
+                    "Prediction API": (
+                        item.get("endpoint")
+                        if item["runtime_state"] == "ready"
+                        else None
+                    ),
+                    "API docs": (
+                        item.get("docs_url")
+                        if item["runtime_state"] == "ready"
+                        else None
+                    ),
+                    "Failure": item["run"].get("failure_message"),
+                }
+                for item in deployments
+            ],
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Prediction API": st.column_config.LinkColumn(
+                    "Prediction API",
+                    display_text="Open endpoint",
+                ),
+                "API docs": st.column_config.LinkColumn(
+                    "API docs",
+                    display_text="Open Swagger UI",
+                ),
+            },
+        )
+        ready_deployments = [
+            item
+            for item in deployments
+            if item["runtime_state"] == "ready" and item.get("docs_url")
+        ]
+        if ready_deployments:
+            ready_by_id = {
+                str(item["run"]["id"]): item for item in ready_deployments
+            }
+            access_id = stable_selectbox(
+                "Ready model endpoint",
+                list(ready_by_id),
+                key=f"ready_deployment:{project_id}",
+                format_func=lambda value: ready_by_id[value]["run"]["run_name"],
+            )
+            selected_endpoint = ready_by_id[access_id]
+            endpoint_columns = st.columns(2)
+            endpoint_columns[0].link_button(
+                "Open API docs",
+                selected_endpoint["docs_url"],
+                use_container_width=True,
+            )
+            endpoint_columns[1].link_button(
+                "Open OpenAPI schema",
+                selected_endpoint["openapi_url"],
+                use_container_width=True,
+            )
+            st.caption("Prediction URL")
+            st.code(selected_endpoint["endpoint"], language=None)
+        active = [
+            item
+            for item in deployments
+            if item["status"] != "cancelled"
+        ]
+        if active:
+            active_by_id = {str(item["run"]["id"]): item for item in active}
+            stop_id = stable_selectbox(
+                "Active deployment",
+                list(active_by_id),
+                key=f"active_deployment:{project_id}",
+                format_func=lambda value: active_by_id[value]["run"]["run_name"],
+            )
+            if st.button(
+                "Stop deployment",
+                key=f"stop_deployment:{project_id}",
+                use_container_width=True,
+            ):
+                stop_status, response = api_request(
+                    "POST",
+                    (
+                        f"/projects/{project_id}/operations/deployments/"
+                        f"{stop_id}/stop"
+                    ),
+                    token=access_token,
+                )
+                if stop_status == 200:
+                    st.success("Deployment stopped.")
+                    st.rerun()
+                st.error(response)
+
+    st.subheader("Resource cleanup")
+    cleanup_days = st.number_input(
+        "Artifact age (days)",
+        min_value=1,
+        max_value=3650,
+        value=30,
+        key=f"cleanup_days:{project_id}",
+    )
+    execute_cleanup = st.checkbox(
+        "Delete eligible artifacts and completed Jobs",
+        key=f"execute_cleanup:{project_id}",
+    )
+    if st.button(
+        "Run cleanup" if execute_cleanup else "Preview cleanup",
+        key=f"cleanup_button:{project_id}",
+        use_container_width=True,
+    ):
+        cleanup_status, response = api_request(
+            "POST",
+            f"/projects/{project_id}/operations/cleanup",
+            payload={
+                "older_than_days": int(cleanup_days),
+                "dry_run": not execute_cleanup,
+                "cleanup_finished_jobs": True,
+            },
+            token=access_token,
+        )
+        if cleanup_status == 200 and isinstance(response, dict):
+            st.metric("Eligible artifacts", response["artifact_count"])
+            st.caption(
+                f"{response['artifact_bytes'] / 1024 / 1024:.2f} MiB; "
+                f"{len(response['deleted_kubernetes_jobs'])} Jobs removed."
+            )
+            if response["errors"]:
+                st.warning("\n".join(response["errors"]))
+        else:
+            st.error(response)
+
+
 def render_project_detail(project_id: str, access_token: str) -> None:
     status_code, project = api_request("GET", f"/projects/{project_id}", token=access_token)
     if status_code != 200 or not isinstance(project, dict):
@@ -1400,8 +1919,8 @@ def render_project_detail(project_id: str, access_token: str) -> None:
         st.write(project["description"])
     st.caption(f"Project status: {project['status']}")
 
-    datasets_tab, upload_tab, training_tab = st.tabs(
-        ["Datasets and profiling", "Upload dataset", "Training"]
+    datasets_tab, upload_tab, training_tab, operations_tab = st.tabs(
+        ["Datasets and profiling", "Upload dataset", "Training", "Operations"]
     )
 
     with upload_tab:
@@ -1580,3 +2099,6 @@ def render_project_detail(project_id: str, access_token: str) -> None:
 
     with training_tab:
         render_training_workspace(project_id, access_token)
+
+    with operations_tab:
+        render_operations_workspace(project_id, access_token)

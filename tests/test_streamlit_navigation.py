@@ -32,6 +32,45 @@ def test_profile_display_value_handles_integers_larger_than_int64() -> None:
     assert workspace.profile_display_value(oversized) == str(oversized)
 
 
+def test_historical_shap_importance_is_normalized_for_display() -> None:
+    normalized = workspace.normalize_shap_importance_rows(
+        [
+            {"feature": "income", "mean_absolute_shap": 3},
+            {"feature": "age", "mean_absolute_shap": 1},
+        ]
+    )
+
+    assert [item["feature"] for item in normalized] == ["income", "age"]
+    assert normalized[0]["contribution_percent"] == 75.0
+    assert normalized[1]["contribution_percent"] == 25.0
+    assert sum(item["contribution_percent"] for item in normalized) == 100.0
+
+
+def test_shap_display_normalization_handles_invalid_values() -> None:
+    normalized = workspace.normalize_shap_importance_rows(
+        [
+            {"feature": "missing", "mean_absolute_shap": None},
+            {"feature": "infinite", "mean_absolute_shap": float("inf")},
+        ]
+    )
+
+    assert all(item["contribution_percent"] == 0.0 for item in normalized)
+
+
+def test_shap_chart_orders_largest_contribution_first() -> None:
+    chart = workspace.shap_importance_chart(
+        [
+            {"feature": "income", "contribution_percent": 75.0},
+            {"feature": "age", "contribution_percent": 25.0},
+        ]
+    ).to_dict()
+
+    assert chart["encoding"]["y"]["sort"] == {
+        "field": "contribution_percent",
+        "order": "descending",
+    }
+
+
 def test_profile_renders_statistics_larger_than_int64(tmp_path: Path) -> None:
     app_path = tmp_path / "profile_app.py"
     app_path.write_text(

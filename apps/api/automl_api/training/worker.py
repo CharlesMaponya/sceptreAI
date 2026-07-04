@@ -26,7 +26,7 @@ def main() -> None:
         f"Starting {run_kind.value} run {args.run_id} in {execution_mode} mode",
         flush=True,
     )
-    if run_kind in {RunKind.VALIDATION, RunKind.EXPLAINABILITY}:
+    if run_kind in {RunKind.VALIDATION, RunKind.EXPLAINABILITY, RunKind.DRIFT}:
         execute_analysis_run(run_id)
     elif execution_mode == "zenml":
         tabular_automl_pipeline(run_id=args.run_id)

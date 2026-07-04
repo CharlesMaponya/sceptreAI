@@ -32,8 +32,10 @@ from automl_api.models.datasets import DatasetVersion
 from automl_api.models.enums import MetricKind, MetricSplit, RunStatus, TaskType
 from automl_api.models.runs import Metric, ModelRun
 from automl_api.services.temporal import (
-    UNIX_UNIT_SCALES,
-    infer_unix_timestamp_unit,
+    normalize_temporal_features as _normalize_temporal_features,
+)
+from automl_api.services.temporal import (
+    series_unix_timestamp_unit as _series_unix_timestamp_unit,
 )
 from automl_api.storage.object_store import get_object_store
 from automl_api.training.evaluation import (
@@ -781,31 +783,6 @@ def _supervised_split(
     )
 
 
-def _normalize_temporal_features(features: pd.DataFrame) -> pd.DataFrame:
-    normalized = features.copy()
-    for column in normalized.columns:
-        series = normalized[column]
-        timestamp_unit = _series_unix_timestamp_unit(series)
-        if timestamp_unit:
-            numeric = pd.to_numeric(series, errors="coerce").astype("float64")
-            normalized[column] = numeric / UNIX_UNIT_SCALES[timestamp_unit] / 86_400
-            continue
-        is_temporal_name = any(
-            token in str(column).lower() for token in ("date", "time", "timestamp")
-        )
-        if not isinstance(series.dtype, pd.DatetimeTZDtype) and not (
-            pd.api.types.is_datetime64_any_dtype(series) or is_temporal_name
-        ):
-            continue
-        parsed = pd.to_datetime(series, errors="coerce", utc=True)
-        if parsed.notna().mean() < 0.8:
-            continue
-        numeric = parsed.astype("int64", copy=False).astype("float64")
-        numeric[parsed.isna()] = np.nan
-        normalized[column] = numeric / 86_400_000_000_000
-    return normalized
-
-
 def _time_order_column(features: pd.DataFrame) -> str | None:
     temporal_names = []
     for column in features.columns:
@@ -820,16 +797,6 @@ def _time_order_column(features: pd.DataFrame) -> str | None:
         ):
             temporal_names.append(column)
     return temporal_names[0] if temporal_names else None
-
-
-def _series_unix_timestamp_unit(series: pd.Series) -> str | None:
-    present = series.dropna()
-    if present.empty:
-        return None
-    numeric = pd.to_numeric(present, errors="coerce")
-    if numeric.notna().mean() < 0.8:
-        return None
-    return infer_unix_timestamp_unit(numeric.dropna().head(1000).tolist())
 
 
 def _preprocessor(features: pd.DataFrame) -> ColumnTransformer:

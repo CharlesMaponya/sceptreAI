@@ -45,6 +45,7 @@ class KubernetesTrainingClient:
                 config.load_kube_config()
             self.core = client.CoreV1Api()
             self.batch = client.BatchV1Api()
+            self.apps = client.AppsV1Api()
             self.scheduling = client.SchedulingV1Api()
             self.custom = client.CustomObjectsApi()
             self._configured = True
@@ -471,6 +472,303 @@ class KubernetesTrainingClient:
             namespace=self.settings.training_namespace,
             body=manifest,
         )
+
+    def build_model_deployment_manifest(
+        self,
+        *,
+        deployment_id: uuid.UUID,
+        project_id: uuid.UUID,
+        project_name: str,
+        environment: str,
+        model_name: str,
+        model_uri: str,
+        image: str,
+        replicas: int,
+        cpu_request: str,
+        memory_request: str,
+    ) -> dict[str, Any]:
+        suffix = str(deployment_id)[:8]
+        name = f"automl-model-{suffix}"
+        labels = {
+            "app.kubernetes.io/name": "automl-model-serving",
+            "automl.platform/workload": "inference",
+            "automl.platform/deployment-id": str(deployment_id),
+            "automl.platform/project-id": str(project_id),
+        }
+        return {
+            "deployment": {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "metadata": {
+                    "name": name,
+                    "namespace": self.settings.training_namespace,
+                    "labels": labels,
+                },
+                "spec": {
+                    "replicas": replicas,
+                    "selector": {
+                        "matchLabels": {
+                            "automl.platform/deployment-id": str(deployment_id),
+                        }
+                    },
+                    "template": {
+                        "metadata": {"labels": labels},
+                        "spec": {
+                            "serviceAccountName": self.settings.inference_service_account,
+                            "automountServiceAccountToken": False,
+                            "containers": [
+                                {
+                                    "name": "model",
+                                    "image": image,
+                                    "imagePullPolicy": "IfNotPresent",
+                                    "ports": [{"name": "http", "containerPort": 8080}],
+                                    "env": [
+                                        {"name": "MODEL_URI", "value": model_uri},
+                                        {"name": "MODEL_NAME", "value": model_name},
+                                        {
+                                            "name": "PROJECT_NAME",
+                                            "value": project_name,
+                                        },
+                                        {
+                                            "name": "DEPLOYMENT_ENVIRONMENT",
+                                            "value": environment,
+                                        },
+                                        {"name": "OBJECT_STORE_TYPE", "value": "minio"},
+                                        {
+                                            "name": "OBJECT_STORE_ENDPOINT",
+                                            "value": "http://automl-minio:9000",
+                                        },
+                                        {"name": "OBJECT_STORE_BUCKET", "value": "automl"},
+                                        {
+                                            "name": "OBJECT_STORE_ACCESS_KEY",
+                                            "valueFrom": {
+                                                "secretKeyRef": {
+                                                    "name": "automl-minio-credentials",
+                                                    "key": "MINIO_ROOT_USER",
+                                                }
+                                            },
+                                        },
+                                        {
+                                            "name": "OBJECT_STORE_SECRET_KEY",
+                                            "valueFrom": {
+                                                "secretKeyRef": {
+                                                    "name": "automl-minio-credentials",
+                                                    "key": "MINIO_ROOT_PASSWORD",
+                                                }
+                                            },
+                                        },
+                                    ],
+                                    "resources": {
+                                        "requests": {
+                                            "cpu": cpu_request,
+                                            "memory": memory_request,
+                                        },
+                                        "limits": {
+                                            "cpu": cpu_request,
+                                            "memory": memory_request,
+                                        },
+                                    },
+                                    "startupProbe": {
+                                        "httpGet": {"path": "/health/ready", "port": "http"},
+                                        "periodSeconds": 5,
+                                        "failureThreshold": 60,
+                                    },
+                                    "readinessProbe": {
+                                        "httpGet": {"path": "/health/ready", "port": "http"},
+                                        "periodSeconds": 5,
+                                        "failureThreshold": 3,
+                                    },
+                                    "livenessProbe": {
+                                        "httpGet": {"path": "/health/live", "port": "http"},
+                                        "periodSeconds": 15,
+                                        "failureThreshold": 3,
+                                    },
+                                    "securityContext": {
+                                        "allowPrivilegeEscalation": False,
+                                        "capabilities": {"drop": ["ALL"]},
+                                        "runAsNonRoot": True,
+                                    },
+                                }
+                            ],
+                        },
+                    },
+                },
+            },
+            "service": {
+                "apiVersion": "v1",
+                "kind": "Service",
+                "metadata": {
+                    "name": name,
+                    "namespace": self.settings.training_namespace,
+                    "labels": labels,
+                },
+                "spec": {
+                    "type": self.settings.inference_service_type,
+                    "selector": {
+                        "automl.platform/deployment-id": str(deployment_id),
+                    },
+                    "ports": [{"name": "http", "port": 8080, "targetPort": "http"}],
+                },
+            },
+        }
+
+    def create_model_deployment(self, manifests: dict[str, Any]) -> None:
+        deployment = manifests["deployment"]
+        service = manifests["service"]
+        namespace = self.settings.training_namespace
+        self.apps.create_namespaced_deployment(namespace=namespace, body=deployment)
+        try:
+            self.core.create_namespaced_service(namespace=namespace, body=service)
+        except Exception:
+            self.apps.delete_namespaced_deployment(
+                name=deployment["metadata"]["name"],
+                namespace=namespace,
+                propagation_policy="Foreground",
+            )
+            raise
+
+    def model_deployment_state(self, name: str) -> str:
+        try:
+            deployment = self.apps.read_namespaced_deployment_status(
+                name=name,
+                namespace=self.settings.training_namespace,
+            )
+        except ApiException as exc:
+            if exc.status == 404:
+                return "missing"
+            raise
+        desired = deployment.spec.replicas or 0
+        available = deployment.status.available_replicas or 0
+        if desired > 0 and available >= desired:
+            return "ready"
+        selector = deployment.spec.selector.match_labels or {}
+        label_selector = ",".join(
+            f"{key}={value}" for key, value in selector.items()
+        )
+        pods = self.core.list_namespaced_pod(
+            namespace=self.settings.training_namespace,
+            label_selector=label_selector,
+        ).items
+        waiting_reasons = {
+            status.state.waiting.reason
+            for pod in pods
+            for status in (pod.status.container_statuses or [])
+            if status.state and status.state.waiting
+        }
+        terminated_reasons = {
+            status.state.terminated.reason
+            for pod in pods
+            for status in (pod.status.container_statuses or [])
+            if status.state and getattr(status.state, "terminated", None)
+        }
+        previous_terminated_reasons = {
+            status.last_state.terminated.reason
+            for pod in pods
+            for status in (pod.status.container_statuses or [])
+            if getattr(status, "last_state", None)
+            and status.last_state.terminated
+        }
+        if "OOMKilled" in terminated_reasons | previous_terminated_reasons:
+            return "out_of_memory"
+        if waiting_reasons & {"ImagePullBackOff", "ErrImagePull"}:
+            return "image_pull_error"
+        if "CrashLoopBackOff" in waiting_reasons:
+            return "crash_loop"
+        if waiting_reasons & {
+            "CreateContainerConfigError",
+            "CreateContainerError",
+            "InvalidImageName",
+        }:
+            return "configuration_error"
+        if deployment.status.unavailable_replicas:
+            return "progressing"
+        return "pending"
+
+    def model_deployment_urls(self, name: str) -> dict[str, str] | None:
+        service = self.core.read_namespaced_service(
+            name=name,
+            namespace=self.settings.training_namespace,
+        )
+        port = next(
+            (
+                item
+                for item in (service.spec.ports or [])
+                if item.name == "http"
+            ),
+            None,
+        )
+        if port is None:
+            return None
+        if service.spec.type == "NodePort" and port.node_port:
+            nodes = self.core.list_node().items
+            addresses = [
+                address
+                for node in nodes
+                for address in (node.status.addresses or [])
+            ]
+            host = next(
+                (
+                    address.address
+                    for address in addresses
+                    if address.type == "ExternalIP"
+                ),
+                None,
+            ) or next(
+                (
+                    address.address
+                    for address in addresses
+                    if address.type == "InternalIP"
+                ),
+                None,
+            )
+            if not host:
+                return None
+            base_url = f"http://{host}:{port.node_port}"
+        else:
+            base_url = (
+                f"http://{name}.{self.settings.training_namespace}.svc:"
+                f"{port.port}"
+            )
+        return {
+            "base_url": base_url,
+            "endpoint": f"{base_url}/v1/predict",
+            "docs_url": f"{base_url}/docs",
+            "openapi_url": f"{base_url}/openapi.json",
+        }
+
+    def delete_model_deployment(self, name: str) -> None:
+        namespace = self.settings.training_namespace
+        try:
+            self.core.delete_namespaced_service(name=name, namespace=namespace)
+        except ApiException as exc:
+            if exc.status != 404:
+                raise
+        self.apps.delete_namespaced_deployment(
+            name=name,
+            namespace=namespace,
+            propagation_policy="Foreground",
+        )
+
+    def cleanup_finished_jobs(self, project_id: uuid.UUID) -> list[str]:
+        deleted: list[str] = []
+        jobs = self.batch.list_namespaced_job(
+            namespace=self.settings.training_namespace,
+            label_selector=(
+                "automl.platform/workload=training,"
+                f"automl.platform/project-id={project_id}"
+            ),
+        ).items
+        for job in jobs:
+            if not (job.status.succeeded or job.status.failed):
+                continue
+            name = str(job.metadata.name)
+            try:
+                self.delete_job(name)
+            except ApiException as exc:
+                if exc.status != 404:
+                    raise
+            deleted.append(name)
+        return deleted
 
     def delete_job(self, job_name: str) -> None:
         self.batch.delete_namespaced_job(

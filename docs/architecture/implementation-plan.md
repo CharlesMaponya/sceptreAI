@@ -78,8 +78,17 @@
 
 ## Phase 7: Monitoring, Registry, and Deployment
 
-- Evidently drift checks
-- Model registry promotion and fallback selection
-- One-click Kubernetes deployment
-- Cluster usage and dependency health dashboards
-- Artifact cleanup and resource reclaim workflows
+Status: baseline implemented.
+
+- Evidently drift checks: implemented as bounded Kubernetes analysis Jobs with
+  stable summary metrics and durable report artifacts.
+- Model registry promotion and fallback selection: implemented with
+  project-scoped candidate, staging, production, rejected, and archived stages.
+- One-click Kubernetes deployment: implemented for staging and production
+  registry entries using a generic inference runtime, generated Dockerfile
+  artifact, Deployment, and ClusterIP Service.
+- Cluster usage and dependency health dashboards: implemented in the Operations
+  workspace using Kubernetes capacity and runtime dependency checks.
+- Artifact cleanup and resource reclaim workflows: implemented with
+  administrator-only preview and execution modes, active-deployment protection,
+  object deletion, and completed Job cleanup.

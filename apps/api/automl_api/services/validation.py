@@ -30,6 +30,7 @@ from automl_api.services.training import (
     estimate_training_run,
 )
 from automl_api.storage.object_store import get_object_store
+from automl_api.training.analysis import normalize_feature_importance
 
 
 def launch_validation_run(
@@ -178,7 +179,9 @@ def get_analysis_result(
         model_name=str(run.params.get("model_name", "unknown")),
         metrics=run.tags.get("metrics", {}),
         diagnostics=run.tags.get("diagnostics", {}),
-        feature_importance=run.tags.get("feature_importance", []),
+        feature_importance=normalize_feature_importance(
+            run.tags.get("feature_importance", [])
+        ),
         artifacts=[RunArtifactRead.model_validate(artifact) for artifact in artifacts],
     )
 

@@ -30,6 +30,15 @@ class ObjectStore:
     def dataframe_source(self, uri: str) -> tuple[str, dict[str, object]]:
         raise NotImplementedError
 
+    def delete(self, uri: str) -> None:
+        raise NotImplementedError
+
+    def healthcheck(self) -> None:
+        raise NotImplementedError
+
+    def size(self, uri: str) -> int:
+        raise NotImplementedError
+
 
 class EmbeddedObjectStore(ObjectStore):
     def __init__(self, settings: Settings) -> None:
@@ -74,6 +83,24 @@ class EmbeddedObjectStore(ObjectStore):
             raise ValueError("Object URI does not belong to the configured embedded store.")
         key = uri.removeprefix(prefix).strip("/")
         return str((self.root / self.bucket / key).resolve()), {}
+
+    def delete(self, uri: str) -> None:
+        prefix = f"minio://{self.bucket}/"
+        if not uri.startswith(prefix):
+            raise ValueError("Object URI does not belong to the configured embedded store.")
+        key = uri.removeprefix(prefix).strip("/")
+        path = self.root / self.bucket / key
+        path.unlink(missing_ok=True)
+
+    def healthcheck(self) -> None:
+        (self.root / self.bucket).mkdir(parents=True, exist_ok=True)
+
+    def size(self, uri: str) -> int:
+        prefix = f"minio://{self.bucket}/"
+        if not uri.startswith(prefix):
+            raise ValueError("Object URI does not belong to the configured embedded store.")
+        key = uri.removeprefix(prefix).strip("/")
+        return (self.root / self.bucket / key).stat().st_size
 
 
 class MinioObjectStore(ObjectStore):
@@ -182,6 +209,37 @@ class MinioObjectStore(ObjectStore):
                 "client_kwargs": {"endpoint_url": self.endpoint_url},
             },
         )
+
+    def delete(self, uri: str) -> None:
+        prefix = f"minio://{self.bucket}/"
+        if not uri.startswith(prefix):
+            raise ValueError("Object URI does not belong to the configured MinIO store.")
+        key = uri.removeprefix(prefix).strip("/")
+        try:
+            self.client.remove_object(self.bucket, key)
+        except Exception as exc:
+            fallback_path = self.fallback.root / self.bucket / key
+            if fallback_path.exists():
+                fallback_path.unlink()
+                return
+            raise OSError(f"Could not delete MinIO object '{key}': {exc}") from exc
+
+    def healthcheck(self) -> None:
+        if not self.client.bucket_exists(self.bucket):
+            raise OSError(f"MinIO bucket '{self.bucket}' does not exist.")
+
+    def size(self, uri: str) -> int:
+        prefix = f"minio://{self.bucket}/"
+        if not uri.startswith(prefix):
+            raise ValueError("Object URI does not belong to the configured MinIO store.")
+        key = uri.removeprefix(prefix).strip("/")
+        try:
+            return int(self.client.stat_object(self.bucket, key).size)
+        except Exception as exc:
+            fallback_path = self.fallback.root / self.bucket / key
+            if fallback_path.exists():
+                return fallback_path.stat().st_size
+            raise OSError(f"Could not stat MinIO object '{key}': {exc}") from exc
 
 
 def get_object_store(settings: Settings | None = None) -> ObjectStore:

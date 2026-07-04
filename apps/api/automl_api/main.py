@@ -8,6 +8,7 @@ from sqlalchemy import text
 from automl_api.api.routes import (
     auth,
     datasets,
+    operations,
     profiling,
     projects,
     training,
@@ -54,6 +55,7 @@ def create_app() -> FastAPI:
     app.include_router(profiling.router, prefix="/api/v1")
     app.include_router(training.router, prefix="/api/v1")
     app.include_router(validation.router, prefix="/api/v1")
+    app.include_router(operations.router, prefix="/api/v1")
 
     return app
 
