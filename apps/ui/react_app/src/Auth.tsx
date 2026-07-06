@@ -2,9 +2,13 @@ import { FormEvent, useState } from "react";
 import { ArrowRight, BarChart3, Check, Database, ShieldCheck } from "lucide-react";
 import { authenticate } from "./api";
 import { Button, Notice } from "./components/ui";
+import { useSearchParams } from "react-router-dom";
 
 export function Auth() {
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [searchParams] = useSearchParams();
+  const [mode, setMode] = useState<"login" | "register">(
+    searchParams.get("mode") === "register" ? "register" : "login",
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -20,7 +24,7 @@ export function Auth() {
 
   return <main className="auth">
     <section className="auth__story">
-      <div className="brand brand--light"><img src="/sceptre-logo.png" alt="" /><span>Sceptre <b>AI</b></span></div>
+      <div className="brand brand--light"><i className="brand-mark"><img src="/sceptre-icon-white.png" alt="" /></i><span>Sceptre <b>AI</b></span></div>
       <div className="auth__copy">
         <span className="eyebrow eyebrow--light">Governed AutoML, end to end</span>
         <h1>Turn your data into decisions you can defend.</h1>
@@ -35,7 +39,7 @@ export function Auth() {
     </section>
     <section className="auth__panel">
       <form className="auth-form" onSubmit={submit}>
-        <div className="auth-form__mobile-brand brand"><img src="/sceptre-logo.png" alt="" /><span>Sceptre <b>AI</b></span></div>
+        <div className="auth-form__mobile-brand brand"><i className="brand-mark"><img src="/sceptre-icon.png" alt="" /></i><span>Sceptre <b>AI</b></span></div>
         <span className="eyebrow">{mode === "login" ? "Welcome back" : "Get started"}</span>
         <h2>{mode === "login" ? "Sign in to Sceptre" : "Create your account"}</h2>
         <p>{mode === "login" ? "Continue building reliable models." : "Set up your governed ML workspace in minutes."}</p>

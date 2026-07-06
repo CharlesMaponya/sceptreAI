@@ -7,7 +7,7 @@ class ApiError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
 }
 
-type Session = { user: AuthResponse["user"]; tokens: Tokens };
+export type Session = { user: AuthResponse["user"]; tokens: Tokens };
 let session: Session | null = (() => {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "null") as Session | null; }
   catch { return null; }

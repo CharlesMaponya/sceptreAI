@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
+import { useEffect, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from "react";
 import { AlertCircle, CheckCircle2, LoaderCircle, Plus } from "lucide-react";
 import { cx, titleCase } from "../lib";
 
@@ -64,9 +64,16 @@ export function Metric({ label, value, hint }: { label: string; value: ReactNode
 export function Modal({ title, description, children, onClose }: {
   title: string; description?: string; children: ReactNode; onClose: () => void;
 }) {
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
   return <div className="modal-backdrop" onMouseDown={onClose}>
     <section className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" onMouseDown={(e) => e.stopPropagation()}>
-      <button className="modal__close" onClick={onClose} aria-label="Close">×</button>
+      <button type="button" className="modal__close" onClick={onClose} aria-label="Close">×</button>
       <h2 id="modal-title">{title}</h2>{description && <p className="muted">{description}</p>}{children}
     </section>
   </div>;

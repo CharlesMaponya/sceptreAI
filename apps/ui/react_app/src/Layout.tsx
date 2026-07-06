@@ -32,7 +32,7 @@ export function Layout() {
   return <div className="shell">
     <aside className={cx("sidebar", open && "sidebar--open")}>
       <div className="sidebar__head">
-        <NavLink to="/projects" className="brand"><img src="/sceptre-logo.png" alt="" /><span>Sceptre <b>AI</b></span></NavLink>
+        <NavLink to="/projects" className="brand"><i className="brand-mark"><img src="/sceptre-icon.png" alt="" /></i><span>Sceptre <b>AI</b></span></NavLink>
         <button className="icon-button sidebar__close" onClick={() => setOpen(false)} aria-label="Close menu"><X /></button>
       </div>
       {projectId && <>

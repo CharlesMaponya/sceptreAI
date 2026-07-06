@@ -38,7 +38,7 @@
 - MinIO-cached feature, relationship, preparation, and complete profile artifacts: implemented
 - Automatic background profiling after dataset upload: implemented
 - Target replacement with feature reuse and task-dependent reprofiling: implemented
-- Pearson and Cramer relationship summaries against the selected target: implemented
+- Pearson and Cramer relationship summaries against the selected target: implemented     
 - Type-aware preprocessing and feature engineering plans: implemented
 - Information Value and pairplot artifact generation: pending
 

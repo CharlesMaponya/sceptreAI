@@ -2,9 +2,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { Navigate, RouterProvider, createBrowserRouter } from "react-router-dom";
-import { getSession } from "./api";
 import { Auth } from "./Auth";
 import { Layout } from "./Layout";
+import { Landing } from "./Landing";
 import { DataPage } from "./pages/DataPage";
 import { MembersPage } from "./pages/MembersPage";
 import { OperationsPage } from "./pages/OperationsPage";
@@ -14,16 +14,27 @@ import { RunsPage } from "./pages/RunsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TrainingPage } from "./pages/TrainingPage";
 import "./styles.css";
+import { useAuthState } from "./useAuthState";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 15_000, retry: 1, refetchOnWindowFocus: false } },
 });
 
-function Protected() { return getSession() ? <Layout /> : <Navigate to="/" replace />; }
-function Landing() { return getSession() ? <Navigate to="/projects" replace /> : <Auth />; }
+function Protected() {
+  const { session, isChecking, isAuthenticated } = useAuthState();
+  if (!session) return <Navigate to="/auth" replace />;
+  if (isChecking) return <div className="session-screen" role="status">Verifying your session…</div>;
+  return isAuthenticated ? <Layout /> : <Navigate to="/auth" replace />;
+}
 
+function AuthRoute() {
+  const { session, isChecking, isAuthenticated } = useAuthState();
+  if (session && isChecking) return <div className="session-screen" role="status">Verifying your session…</div>;
+  return isAuthenticated ? <Navigate to="/projects" replace /> : <Auth />;
+}
 const router = createBrowserRouter([
   { path: "/", element: <Landing /> },
+  { path: "/auth", element: <AuthRoute /> },
   { element: <Protected />, children: [
     { path: "/projects", element: <ProjectsPage /> },
     { path: "/projects/:projectId", children: [
