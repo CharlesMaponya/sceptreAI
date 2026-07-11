@@ -1,16 +1,28 @@
 from __future__ import annotations
 
+import uuid
+from types import SimpleNamespace
+
+import automl_api.training.pipeline as training_pipeline
 import pandas as pd
 import pytest
 from automl_api.models.enums import TaskType
-from automl_api.training.model_catalog import candidate_catalog, select_candidates
+from automl_api.training.model_catalog import (
+    CandidateSpec,
+    candidate_catalog,
+    configure_estimator_for_training,
+    select_candidates,
+    supported_gpu_vendors,
+)
 from automl_api.training.pipeline import (
     _normalize_temporal_features,
+    _registered_model_name,
     _supervised_split,
     merge_leaderboard_entries,
     rank_leaderboard,
     rebuild_candidate_model,
 )
+from sklearn.ensemble import RandomForestClassifier
 
 
 @pytest.mark.skip(reason="Disabled pending stable cross-version scikit-learn tag discovery.")
@@ -109,6 +121,53 @@ def test_leaderboard_ranks_higher_and_lower_metrics_correctly() -> None:
     assert [entry["model"] for entry in classification] == ["B", "A", "C"]
     assert classification[0]["rank"] == 1
     assert [entry["model"] for entry in regression] == ["B", "A"]
+
+
+def test_rapids_accelerator_is_selected_for_supported_sklearn_models() -> None:
+    candidate = CandidateSpec(
+        name="RandomForestClassifier",
+        estimator=RandomForestClassifier(n_jobs=1),
+        search_space={},
+        cost_tier="medium",
+        default_selected=True,
+    )
+
+    estimator, accelerator = configure_estimator_for_training(
+        candidate,
+        cpu_threads=6,
+        gpu_vendor="nvidia",
+        rapids_active=True,
+    )
+
+    assert accelerator == "rapids_cuml"
+    assert estimator.n_jobs == 6
+    assert supported_gpu_vendors(candidate.name) == {"nvidia"}
+
+
+def test_successful_candidate_metrics_are_mirrored_to_mlflow_parent(monkeypatch) -> None:
+    metrics: list[tuple[str, str, float]] = []
+    tags: list[tuple[str, str, str]] = []
+    client = SimpleNamespace(
+        log_metric=lambda run_id, key, value: metrics.append((run_id, key, value)),
+        set_tag=lambda run_id, key, value: tags.append((run_id, key, value)),
+    )
+    monkeypatch.setattr(training_pipeline, "MlflowClient", lambda: client)
+    run = SimpleNamespace(project_id=uuid.uuid4(), task_type=TaskType.CLASSIFICATION)
+    registry_name = _registered_model_name(run, "Random Forest/Classifier")
+
+    training_pipeline._mirror_candidate_evidence_to_parent(
+        "parent-run",
+        "Random Forest/Classifier",
+        {"accuracy": 0.91, "roc_auc": 0.94},
+        "candidate-run",
+        registry_name,
+    )
+
+    assert ("parent-run", "candidate.Random-Forest-Classifier.accuracy", 0.91) in metrics
+    assert any(
+        key.endswith("registered_model") and value == registry_name
+        for _, key, value in tags
+    )
 
 
 def test_incremental_models_replace_failed_entries_and_rerank() -> None:

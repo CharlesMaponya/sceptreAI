@@ -22,6 +22,7 @@ from automl_api.schemas.training import (
     TrainingLaunchRequest,
     TrainingLeaderboardRead,
     TrainingLogsRead,
+    TrainingResourceUsageRead,
 )
 from automl_api.security.tokens import TokenError, decode_token
 from automl_api.services.training import (
@@ -35,6 +36,7 @@ from automl_api.services.training import (
     restart_training_run,
     training_leaderboard,
     training_logs,
+    training_resources,
 )
 
 router = APIRouter(prefix="/projects/{project_id}/training", tags=["training"])
@@ -173,6 +175,18 @@ def leaderboard(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> TrainingLeaderboardRead:
     result = training_leaderboard(db, current_user, project_id, run_id)
+    db.commit()
+    return result
+
+
+@router.get("/runs/{run_id}/resources", response_model=TrainingResourceUsageRead)
+def resources(
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> TrainingResourceUsageRead:
+    result = training_resources(db, current_user, project_id, run_id)
     db.commit()
     return result
 

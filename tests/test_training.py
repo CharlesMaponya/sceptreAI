@@ -16,6 +16,7 @@ from automl_api.services.kubernetes_training import (
     NodeHeadroom,
     _cpu_cores,
     _memory_mb,
+    _node_gpu,
 )
 from pydantic import ValidationError
 
@@ -61,6 +62,25 @@ def capacity_snapshot() -> CapacitySnapshot:
 def test_kubernetes_quantities_are_normalized() -> None:
     assert _cpu_cores("500m") == 0.5
     assert _memory_mb("2Gi") == 2048
+    assert _node_gpu({"nvidia.com/gpu": "1"}) == ("nvidia", "nvidia.com/gpu", 1)
+    assert _node_gpu({"gpu.intel.com/i915": "2"}) == ("intel", "gpu.intel.com/i915", 2)
+
+
+def test_default_estimate_reserves_all_available_resources_on_selected_node() -> None:
+    training_client = FakeTrainingClient(capacity_snapshot(), Settings())
+
+    estimate = training_client.estimate(
+        dataset_bytes=10 * 1024**2,
+        column_count=10,
+        expected_minutes=10,
+        prefer_gpu=False,
+    )
+
+    assert estimate.cpu_request_cores == 6
+    assert estimate.cpu_limit_cores == 6
+    assert estimate.memory_request_mb == 12_000
+    assert estimate.memory_limit_mb == 12_000
+    assert estimate.selected_node == "worker"
 
 
 def test_estimate_enforces_node_headroom_fraction_and_gpu_fallback() -> None:
@@ -80,7 +100,7 @@ def test_estimate_enforces_node_headroom_fraction_and_gpu_fallback() -> None:
     assert estimate.cpu_request_cores == 3.6
     assert estimate.memory_request_mb <= int(12_000 * 0.6)
     assert not estimate.gpu_requested
-    assert "No node has" in (estimate.gpu_fallback_reason or "")
+    assert "No schedulable node" in (estimate.gpu_fallback_reason or "")
 
 
 def test_training_manifest_has_low_priority_limits_and_timeout() -> None:
@@ -106,12 +126,103 @@ def test_training_manifest_has_low_priority_limits_and_timeout() -> None:
     assert manifest["spec"]["activeDeadlineSeconds"] == 21_600
     assert resources["requests"]["cpu"] == str(estimate.cpu_request_cores)
     assert resources["limits"]["memory"] == f"{estimate.memory_limit_mb}Mi"
+    assert resources["requests"] == resources["limits"]
+    assert pod_spec["nodeSelector"] == {"kubernetes.io/hostname": "worker"}
     assert {
         "name": "TRAINING_EXECUTION_MODE",
         "value": "direct",
     } in container["env"]
     assert manifest["spec"]["backoffLimit"] == 0
     assert manifest["spec"]["ttlSecondsAfterFinished"] == 30
+
+
+@pytest.mark.parametrize(
+    ("vendor", "resource"),
+    [
+        ("nvidia", "nvidia.com/gpu"),
+        ("intel", "gpu.intel.com/xe"),
+        ("intel", "gpu.intel.com/i915"),
+    ],
+)
+def test_gpu_vendor_and_resource_are_propagated_to_training_job(
+    vendor: str,
+    resource: str,
+) -> None:
+    snapshot = capacity_snapshot()
+    snapshot = CapacitySnapshot(
+        capacity=snapshot.capacity.model_copy(update={"gpu_available": True}),
+        nodes=[
+            NodeHeadroom(
+                name="gpu-worker",
+                available_cpu=6,
+                available_memory_mb=12_000,
+                gpu_present=True,
+                gpu_vendor=vendor,
+                gpu_resource=resource,
+                gpu_count=1,
+            )
+        ],
+        pvc_ready=True,
+        priority_class_ready=True,
+        runtime_dependencies_ready=True,
+    )
+    training_client = FakeTrainingClient(snapshot, Settings(gpu_enabled=True))
+
+    estimate = training_client.estimate(
+        dataset_bytes=10 * 1024**2,
+        column_count=10,
+        expected_minutes=10,
+        prefer_gpu=True,
+    )
+    manifest = training_client.build_job_manifest(
+        run_id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        estimate=estimate,
+    )
+    container = manifest["spec"]["template"]["spec"]["containers"][0]
+
+    assert estimate.gpu_requested
+    assert estimate.gpu_vendor == vendor
+    assert estimate.gpu_resource == resource
+    assert container["resources"]["requests"][resource] == "1"
+    assert container["resources"]["limits"][resource] == "1"
+    assert {"name": "AUTOML_GPU_VENDOR", "value": vendor} in container["env"]
+    if vendor == "nvidia":
+        assert {"name": "CUML_ACCEL_ENABLED", "value": "1"} in container["env"]
+    assert {"name": "shared-memory", "mountPath": "/dev/shm"} in container["volumeMounts"]
+
+
+def test_cpu_only_estimators_do_not_reserve_an_available_gpu() -> None:
+    snapshot = capacity_snapshot()
+    snapshot = CapacitySnapshot(
+        capacity=snapshot.capacity.model_copy(update={"gpu_available": True}),
+        nodes=[
+            NodeHeadroom(
+                name="gpu-worker",
+                available_cpu=6,
+                available_memory_mb=12_000,
+                gpu_present=True,
+                gpu_vendor="nvidia",
+                gpu_resource="nvidia.com/gpu",
+                gpu_count=1,
+            )
+        ],
+        pvc_ready=True,
+        priority_class_ready=True,
+        runtime_dependencies_ready=True,
+    )
+    training_client = FakeTrainingClient(snapshot, Settings(gpu_enabled=True))
+
+    estimate = training_client.estimate(
+        dataset_bytes=10 * 1024**2,
+        column_count=10,
+        expected_minutes=10,
+        prefer_gpu=True,
+        gpu_compatible_vendors=set(),
+    )
+
+    assert not estimate.gpu_requested
+    assert "selected estimators" in (estimate.gpu_fallback_reason or "")
 
 
 def test_memory_estimate_scales_with_dataset_and_search_budget() -> None:
@@ -139,7 +250,7 @@ def test_memory_estimate_scales_with_dataset_and_search_budget() -> None:
     )
 
     assert large.estimated_working_set_mb > small.estimated_working_set_mb
-    assert large.memory_request_mb > small.memory_request_mb
+    assert large.memory_request_mb == small.memory_request_mb == 12_000
 
 
 def test_training_request_accepts_up_to_twenty_models() -> None:

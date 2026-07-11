@@ -1,5 +1,6 @@
 import io
 import json
+import os
 import re
 import time
 import uuid
@@ -12,6 +13,7 @@ import mlflow
 import mlflow.sklearn as mlflow_sklearn
 import numpy as np
 import pandas as pd
+from mlflow import MlflowClient
 from sklearn.base import clone
 from sklearn.compose import ColumnTransformer
 from sklearn.feature_selection import (
@@ -20,7 +22,13 @@ from sklearn.feature_selection import (
     mutual_info_regression,
 )
 from sklearn.impute import SimpleImputer
-from sklearn.model_selection import KFold, TimeSeriesSplit, cross_val_score, train_test_split
+from sklearn.model_selection import (
+    KFold,
+    TimeSeriesSplit,
+    cross_val_score,
+    learning_curve,
+    train_test_split,
+)
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OrdinalEncoder, StandardScaler
 from skopt import BayesSearchCV
@@ -48,6 +56,7 @@ from automl_api.training.evaluation import (
 from automl_api.training.model_catalog import (
     CandidateSpec,
     candidate_catalog,
+    configure_estimator_for_training,
     select_candidates,
 )
 
@@ -200,6 +209,7 @@ def _fit_model(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
     leaderboard: list[dict[str, Any]] = []
     fitted: dict[str, tuple[Any, dict[str, Any], dict[str, float]]] = {}
     for candidate in candidates:
+        _persist_candidate_phase(run.id, candidate.name, "preparing_data")
         entry = _fit_candidate(
             candidate,
             train_x,
@@ -325,10 +335,24 @@ def _fit_candidate(
     cv: Any,
     scoring: str,
     run: ModelRun,
+    _force_cpu: bool = False,
 ) -> dict[str, Any]:
     started = time.monotonic()
     print(f"Training candidate {candidate.name}", flush=True)
     try:
+        cpu_threads, detected_gpu_vendor, rapids_active = _runtime_training_resources()
+        gpu_vendor = None if _force_cpu else detected_gpu_vendor
+        estimator, accelerator = configure_estimator_for_training(
+            candidate,
+            cpu_threads=cpu_threads,
+            gpu_vendor=gpu_vendor,
+            rapids_active=rapids_active and not _force_cpu,
+        )
+        print(
+            f"Candidate {candidate.name} accelerator={accelerator} "
+            f"cpu_threads={cpu_threads}",
+            flush=True,
+        )
         score_function = (
             mutual_info_classif if task_type == TaskType.CLASSIFICATION else mutual_info_regression
         )
@@ -336,10 +360,11 @@ def _fit_candidate(
             [
                 ("prepare", _preprocessor(train_x)),
                 ("select", SelectPercentile(score_func=score_function, percentile=80)),
-                ("model", clone(candidate.estimator)),
+                ("model", estimator),
             ]
         )
         if candidate.search_space:
+            _persist_candidate_phase(run.id, candidate.name, "hyperparameter_search")
             search = BayesSearchCV(
                 model,
                 candidate.search_space,
@@ -356,6 +381,7 @@ def _fit_candidate(
             cv_mean = float(search.best_score_)
             cv_std = float(search.cv_results_["std_test_score"][search.best_index_])
         else:
+            _persist_candidate_phase(run.id, candidate.name, "cross_validating")
             cv_scores = cross_val_score(
                 model,
                 train_x,
@@ -365,12 +391,14 @@ def _fit_candidate(
                 n_jobs=1,
                 error_score="raise",
             )
+            _persist_candidate_phase(run.id, candidate.name, "fitting_final_model")
             model.fit(train_x, train_y)
             fitted = model
             params = {}
             cv_mean = float(np.mean(cv_scores))
             cv_std = float(np.std(cv_scores))
 
+        _persist_candidate_phase(run.id, candidate.name, "evaluating")
         predictions = fitted.predict(test_x)
         if task_type == TaskType.CLASSIFICATION:
             metrics, diagnostics = classification_evaluation(
@@ -392,12 +420,35 @@ def _fit_candidate(
             "mean": cv_mean,
             "standard_deviation": cv_std,
         }
+        learning = _learning_curve_diagnostics(
+            fitted,
+            train_x,
+            train_y,
+            cv=cv,
+            scoring=scoring,
+        )
+        if learning:
+            diagnostics["learning_curve"] = learning
+        diagnostics["runtime"] = {
+            "accelerator": accelerator,
+            "detected_gpu_vendor": detected_gpu_vendor,
+            "cpu_threads": cpu_threads,
+            "rapids_active": rapids_active,
+        }
         duration = round(time.monotonic() - started, 3)
+        parent_run = mlflow.active_run()
+        parent_run_id = parent_run.info.run_id if parent_run else None
+        registered_model_name = _registered_model_name(run, candidate.name)
+        _persist_candidate_phase(run.id, candidate.name, "logging_to_mlflow")
         with mlflow.start_run(run_name=candidate.name, nested=True) as candidate_run:
             mlflow.set_tags(
                 {
                     "candidate_model": candidate.name,
                     "cost_tier": candidate.cost_tier,
+                    "accelerator": accelerator,
+                    "detected_gpu_vendor": detected_gpu_vendor or "none",
+                    "cpu_threads": cpu_threads,
+                    "rapids_active": rapids_active,
                 }
             )
             mlflow.log_params(params)
@@ -406,7 +457,20 @@ def _fit_candidate(
             mlflow.log_metric("cv_primary_standard_deviation", cv_std)
             mlflow.log_metric("fit_duration_seconds", duration)
             mlflow.log_dict(_json_safe(diagnostics), "evaluation.json")
-            mlflow_sklearn.log_model(fitted, artifact_path="model")
+            mlflow_sklearn.log_model(
+                fitted,
+                artifact_path="model",
+                registered_model_name=registered_model_name,
+                await_registration_for=60,
+            )
+        _mirror_candidate_evidence_to_parent(
+            parent_run_id,
+            candidate.name,
+            metrics,
+            candidate_run.info.run_id,
+            registered_model_name,
+        )
+        _persist_candidate_phase(run.id, candidate.name, "saving_model")
         model_artifact_uri = _persist_candidate_model(
             run,
             candidate.name,
@@ -429,6 +493,24 @@ def _fit_candidate(
             "_model": fitted,
         }
     except Exception as exc:
+        if not _force_cpu and locals().get("accelerator") not in {None, "cpu"}:
+            print(
+                f"Candidate {candidate.name} GPU training failed; retrying on CPU: {exc}",
+                flush=True,
+            )
+            return _fit_candidate(
+                candidate,
+                train_x,
+                train_y,
+                test_x,
+                test_y,
+                task_type,
+                iterations,
+                cv,
+                scoring,
+                run,
+                _force_cpu=True,
+            )
         return _failed_candidate(candidate, started, exc)
 
 
@@ -461,6 +543,7 @@ def _fit_clustering(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
     leaderboard: list[dict[str, Any]] = []
     fitted: dict[str, tuple[Any, dict[str, Any], dict[str, float]]] = {}
     for candidate in candidates:
+        _persist_candidate_phase(run.id, candidate.name, "preparing_data")
         entry = _fit_clustering_candidate(
             candidate,
             transformed,
@@ -511,8 +594,15 @@ def _fit_clustering_candidate(
     started = time.monotonic()
     print(f"Training clustering candidate {candidate.name}", flush=True)
     try:
+        cpu_threads, gpu_vendor, rapids_active = _runtime_training_resources()
+        base_estimator, accelerator = configure_estimator_for_training(
+            candidate,
+            cpu_threads=cpu_threads,
+            gpu_vendor=gpu_vendor,
+            rapids_active=rapids_active,
+        )
         parameter_options: list[dict[str, Any]] = [{}]
-        available_parameters = candidate.estimator.get_params(deep=False)
+        available_parameters = base_estimator.get_params(deep=False)
         if "n_clusters" in available_parameters:
             maximum_clusters = min(8, max(2, len(transformed) - 1))
             parameter_options = [
@@ -522,10 +612,11 @@ def _fit_clustering_candidate(
         best_standard_deviations = None
         best_fold_metrics = None
         best_params: dict[str, Any] = {}
+        _persist_candidate_phase(run.id, candidate.name, "cross_validating")
         for parameters in parameter_options:
             fold_results = []
             for train_index, test_index in splitter.split(transformed):
-                estimator = clone(candidate.estimator).set_params(**parameters)
+                estimator = clone(base_estimator).set_params(**parameters)
                 test_features = transformed[test_index]
                 if hasattr(estimator, "predict"):
                     estimator.fit(transformed[train_index])
@@ -547,7 +638,8 @@ def _fit_clustering_candidate(
         if best_metrics is None:
             raise ValueError("No cross-validation fold produced valid clusters.")
 
-        final_estimator = clone(candidate.estimator).set_params(**best_params)
+        _persist_candidate_phase(run.id, candidate.name, "fitting_final_model")
+        final_estimator = clone(base_estimator).set_params(**best_params)
         full_labels = final_estimator.fit_predict(transformed)
         unique_labels, counts = np.unique(full_labels, return_counts=True)
         diagnostics = {
@@ -562,6 +654,12 @@ def _fit_clustering_candidate(
             "cluster_count": int(len(unique_labels[unique_labels != -1])),
             "noise_rows": int(np.sum(full_labels == -1)),
             "external_evaluation": reference_labels is not None,
+            "runtime": {
+                "accelerator": accelerator,
+                "detected_gpu_vendor": gpu_vendor,
+                "cpu_threads": cpu_threads,
+                "rapids_active": rapids_active,
+            },
         }
         pipeline_model = Pipeline(
             [
@@ -571,19 +669,40 @@ def _fit_clustering_candidate(
         )
         params = {f"model__{name}": value for name, value in best_params.items()}
         duration = round(time.monotonic() - started, 3)
+        parent_run = mlflow.active_run()
+        parent_run_id = parent_run.info.run_id if parent_run else None
+        registered_model_name = _registered_model_name(run, candidate.name)
+        _persist_candidate_phase(run.id, candidate.name, "logging_to_mlflow")
         with mlflow.start_run(run_name=candidate.name, nested=True) as candidate_run:
             mlflow.set_tags(
                 {
                     "candidate_model": candidate.name,
                     "cost_tier": candidate.cost_tier,
                     "external_clustering_evaluation": reference_labels is not None,
+                    "accelerator": accelerator,
+                    "detected_gpu_vendor": gpu_vendor or "none",
+                    "cpu_threads": cpu_threads,
+                    "rapids_active": rapids_active,
                 }
             )
             mlflow.log_params(_json_safe(params))
             mlflow.log_metrics(best_metrics)
             mlflow.log_metric("fit_duration_seconds", duration)
             mlflow.log_dict(_json_safe(diagnostics), "evaluation.json")
-            mlflow_sklearn.log_model(pipeline_model, artifact_path="model")
+            mlflow_sklearn.log_model(
+                pipeline_model,
+                artifact_path="model",
+                registered_model_name=registered_model_name,
+                await_registration_for=60,
+            )
+        _mirror_candidate_evidence_to_parent(
+            parent_run_id,
+            candidate.name,
+            best_metrics,
+            candidate_run.info.run_id,
+            registered_model_name,
+        )
+        _persist_candidate_phase(run.id, candidate.name, "saving_model")
         model_artifact_uri = _persist_candidate_model(
             run,
             candidate.name,
@@ -652,6 +771,36 @@ def _persist_candidate_model(
     return get_object_store().put_bytes(key, buffer.getvalue()).uri
 
 
+def _registered_model_name(run: ModelRun, candidate_name: str) -> str:
+    safe_candidate = re.sub(r"[^A-Za-z0-9_.-]+", "-", candidate_name).strip("-")
+    return f"sceptre-{run.project_id}-{run.task_type.value}-{safe_candidate}"[:250]
+
+
+def _mirror_candidate_evidence_to_parent(
+    parent_run_id: str | None,
+    candidate_name: str,
+    metrics: dict[str, float],
+    candidate_run_id: str,
+    registered_model_name: str,
+) -> None:
+    if not parent_run_id:
+        return
+    client = MlflowClient()
+    safe_candidate = re.sub(r"[^A-Za-z0-9_.-]+", "-", candidate_name).strip("-")
+    for metric_name, value in metrics.items():
+        client.log_metric(
+            parent_run_id,
+            f"candidate.{safe_candidate}.{metric_name}"[:250],
+            float(value),
+        )
+    client.set_tag(parent_run_id, f"candidate.{safe_candidate}.run_id", candidate_run_id)
+    client.set_tag(
+        parent_run_id,
+        f"candidate.{safe_candidate}.registered_model",
+        registered_model_name,
+    )
+
+
 def rank_leaderboard(
     entries: list[dict[str, Any]],
     primary_metric: str,
@@ -698,6 +847,8 @@ def _persist_partial_leaderboard(
             "winner": successful[0]["model"] if successful else None,
             "winner_mlflow_run_id": (successful[0].get("mlflow_run_id") if successful else None),
             "completed_candidates": len(ranked),
+            "current_candidate": None,
+            "candidate_phase": "between_candidates",
             "leaderboard_updated_at": datetime.now(UTC).isoformat(),
         }
         parent_id = run.tags.get("leaderboard_parent_run_id")
@@ -734,6 +885,20 @@ def _persist_partial_leaderboard(
                     "completed_candidates": len(merged),
                     "leaderboard_updated_at": datetime.now(UTC).isoformat(),
                 }
+        db.commit()
+
+
+def _persist_candidate_phase(run_id: uuid.UUID, candidate: str, phase: str) -> None:
+    with get_session_factory()() as db:
+        run = db.get(ModelRun, run_id)
+        if run is None:
+            return
+        run.tags = {
+            **(run.tags or {}),
+            "current_candidate": candidate,
+            "candidate_phase": phase,
+            "candidate_phase_updated_at": datetime.now(UTC).isoformat(),
+        }
         db.commit()
 
 
@@ -836,6 +1001,70 @@ def _preprocessor(features: pd.DataFrame) -> ColumnTransformer:
             )
         )
     return ColumnTransformer(transformers=transformers, remainder="drop")
+
+
+def _runtime_training_resources() -> tuple[int, str | None, bool]:
+    raw_threads = os.getenv("AUTOML_CPU_THREADS", "1")
+    try:
+        cpu_threads = max(1, int(float(raw_threads)))
+    except ValueError:
+        cpu_threads = 1
+    gpu_vendor = os.getenv("AUTOML_GPU_VENDOR", "").strip().lower() or None
+    if gpu_vendor not in {None, "nvidia", "intel"}:
+        gpu_vendor = None
+    rapids_active = os.getenv("AUTOML_RAPIDS_ACTIVE", "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    return cpu_threads, gpu_vendor, rapids_active
+
+
+def _learning_curve_diagnostics(
+    estimator: Any,
+    features: pd.DataFrame,
+    target: pd.Series,
+    *,
+    cv: Any,
+    scoring: str,
+) -> dict[str, Any] | None:
+    try:
+        sizes, training_scores, validation_scores = learning_curve(
+            estimator,
+            features,
+            target,
+            train_sizes=np.linspace(0.25, 1.0, 4),
+            cv=cv,
+            scoring=scoring,
+            n_jobs=1,
+            error_score=np.nan,
+        )
+    except (TypeError, ValueError):
+        return None
+    if scoring.startswith("neg_"):
+        training_scores = -training_scores
+        validation_scores = -validation_scores
+    points = []
+    for index, size in enumerate(sizes):
+        train_values = training_scores[index]
+        validation_values = validation_scores[index]
+        if np.all(np.isnan(train_values)) or np.all(np.isnan(validation_values)):
+            continue
+        points.append(
+            {
+                "training_rows": int(size),
+                "training_mean": float(np.nanmean(train_values)),
+                "training_std": float(np.nanstd(train_values)),
+                "validation_mean": float(np.nanmean(validation_values)),
+                "validation_std": float(np.nanstd(validation_values)),
+            }
+        )
+    if not points:
+        return None
+    return {
+        "scoring": scoring.removeprefix("neg_"),
+        "points": points,
+    }
 
 
 def _json_safe(value: Any) -> Any:

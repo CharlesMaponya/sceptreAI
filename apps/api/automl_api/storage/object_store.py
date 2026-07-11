@@ -226,7 +226,7 @@ class MinioObjectStore(ObjectStore):
 
     def healthcheck(self) -> None:
         if not self.client.bucket_exists(self.bucket):
-            raise OSError(f"MinIO bucket '{self.bucket}' does not exist.")
+            self.client.make_bucket(self.bucket)
 
     def size(self, uri: str) -> int:
         prefix = f"minio://{self.bucket}/"
@@ -244,11 +244,22 @@ class MinioObjectStore(ObjectStore):
 
 def get_object_store(settings: Settings | None = None) -> ObjectStore:
     settings = settings or get_settings()
-    if (
-        settings.object_store_type.lower() == "minio"
-        and settings.object_store_endpoint
-        and settings.object_store_access_key
-        and settings.object_store_secret_key
-    ):
+    if settings.object_store_type.lower() == "minio":
+        missing = [
+            name
+            for name, value in (
+                ("OBJECT_STORE_ENDPOINT", settings.object_store_endpoint),
+                ("OBJECT_STORE_ACCESS_KEY", settings.object_store_access_key),
+                ("OBJECT_STORE_SECRET_KEY", settings.object_store_secret_key),
+            )
+            if not value
+        ]
+        if missing:
+            raise ValueError(
+                "MinIO object storage is configured but required settings are missing: "
+                + ", ".join(missing)
+                + ". Set them before uploading datasets; refusing to fall back to the "
+                "local embedded store prevents training pods from losing access to uploads."
+            )
         return MinioObjectStore(settings)
     return EmbeddedObjectStore(settings)

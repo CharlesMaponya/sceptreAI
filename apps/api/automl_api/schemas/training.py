@@ -14,7 +14,7 @@ class TrainingEstimateRequest(BaseModel):
     target_column: str | None = Field(default=None, max_length=255)
     evaluation_column: str | None = Field(default=None, max_length=255)
     task_type: TaskType
-    prefer_gpu: bool = False
+    prefer_gpu: bool = True
     expected_minutes: int = Field(default=10, ge=1, le=120)
     candidate_limit: int = Field(default=5, ge=1, le=20)
     candidate_models: list[str] = Field(default_factory=list, max_length=20)
@@ -32,7 +32,7 @@ class TrainingAddModelsRequest(BaseModel):
     optimization_iterations: int = Field(default=5, ge=1, le=25)
     cv_folds: int = Field(default=3, ge=2, le=5)
     expected_minutes: int = Field(default=10, ge=1, le=120)
-    prefer_gpu: bool = False
+    prefer_gpu: bool = True
 
 
 class ClusterCapacityRead(BaseModel):
@@ -61,6 +61,9 @@ class TrainingEstimateRead(BaseModel):
     memory_limit_mb: int
     gpu_requested: bool
     gpu_fallback_reason: str | None = None
+    gpu_vendor: str | None = None
+    gpu_resource: str | None = None
+    selected_node: str | None = None
     expected_minutes: int
     active_deadline_seconds: int
     estimated_core_hours: float
@@ -115,6 +118,41 @@ class TrainingLogsRead(BaseModel):
     run_id: uuid.UUID
     status: RunStatus
     lines: list[str]
+
+
+class TrainingResourceUsageRead(BaseModel):
+    run_id: uuid.UUID
+    status: RunStatus
+    pod_name: str | None = None
+    pod_phase: str | None = None
+    node_name: str | None = None
+    current_candidate: str | None = None
+    current_phase: str | None = None
+    completed_candidates: int = 0
+    total_candidates: int = 0
+    progress: float = 0
+    elapsed_seconds: float = 0
+    estimated_remaining_seconds: float | None = None
+    cpu_request_cores: float | None = None
+    cpu_limit_cores: float | None = None
+    cpu_usage_cores: float | None = None
+    peak_cpu_usage_cores: float | None = None
+    memory_request_mb: int | None = None
+    memory_limit_mb: int | None = None
+    memory_usage_mb: int | None = None
+    peak_memory_usage_mb: int | None = None
+    gpu_requested: bool = False
+    gpu_vendor: str | None = None
+    gpu_resource: str | None = None
+    gpu_count: int = 0
+    gpu_utilization_percent: float | None = None
+    gpu_memory_used_mb: int | None = None
+    gpu_memory_total_mb: int | None = None
+    gpu_telemetry_available: bool = False
+    telemetry_available: bool = False
+    restart_count: int = 0
+    status_reason: str | None = None
+    sampled_at: datetime
 
 
 class LeaderboardEntryRead(BaseModel):

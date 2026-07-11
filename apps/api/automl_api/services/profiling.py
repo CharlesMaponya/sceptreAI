@@ -4,6 +4,7 @@ import csv
 import io
 import json
 import math
+import re
 import statistics
 import uuid
 from collections import Counter
@@ -317,9 +318,18 @@ def _statistics_for_values(semantic_type: str, values: list[Any]) -> dict[str, A
         }
     if semantic_type == "text":
         lengths = [len(str(value)) for value in values]
+        word_counts = Counter(
+            word.lower()
+            for value in values
+            for word in re.findall(r"[A-Za-z0-9']{2,}", str(value))
+        )
         return {
             "avg_length": round(statistics.fmean(lengths), 2),
             "max_length": max(lengths),
+            "word_frequencies": [
+                {"word": word, "count": count}
+                for word, count in word_counts.most_common(30)
+            ],
         }
     counter = Counter(str(value) for value in values)
     return {"top_values": counter.most_common(10)}

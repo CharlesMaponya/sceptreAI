@@ -28,10 +28,12 @@ from sklearn.metrics import (
     mean_squared_error,
     median_absolute_error,
     normalized_mutual_info_score,
+    precision_recall_curve,
     precision_score,
     r2_score,
     recall_score,
     roc_auc_score,
+    roc_curve,
     silhouette_score,
 )
 from sklearn.preprocessing import label_binarize
@@ -103,6 +105,12 @@ def classification_evaluation(
                 metrics["average_precision"] = float(average_precision_score(binary_y, positive))
                 metrics["brier_score"] = float(brier_score_loss(binary_y, positive))
                 metrics["gini"] = float(2 * metrics["roc_auc"] - 1)
+                diagnostics["roc_curves"] = [
+                    _roc_curve_payload(binary_y, positive, str(labels[1]))
+                ]
+                diagnostics["precision_recall_curves"] = [
+                    _precision_recall_payload(binary_y, positive, str(labels[1]))
+                ]
                 if matrix.shape == (2, 2):
                     true_negative, false_positive, _, _ = matrix.ravel()
                     denominator = true_negative + false_positive
@@ -126,10 +134,29 @@ def classification_evaluation(
                         average="weighted",
                     )
                 )
+                diagnostics["roc_curves"] = [
+                    _roc_curve_payload(encoded[:, index], probabilities[:, index], str(label))
+                    for index, label in enumerate(labels)
+                ]
+                diagnostics["precision_recall_curves"] = [
+                    _precision_recall_payload(
+                        encoded[:, index],
+                        probabilities[:, index],
+                        str(label),
+                    )
+                    for index, label in enumerate(labels)
+                ]
         elif scores is not None:
             metrics["roc_auc"] = float(roc_auc_score(test_y, scores))
             if len(labels) == 2:
+                binary_y = (np.asarray(test_y) == labels[1]).astype(int)
                 metrics["gini"] = float(2 * metrics["roc_auc"] - 1)
+                diagnostics["roc_curves"] = [
+                    _roc_curve_payload(binary_y, np.asarray(scores), str(labels[1]))
+                ]
+                diagnostics["precision_recall_curves"] = [
+                    _precision_recall_payload(binary_y, np.asarray(scores), str(labels[1]))
+                ]
     except ValueError:
         pass
     return finite_metrics(metrics), diagnostics
@@ -265,6 +292,54 @@ def finite_metrics(metrics: dict[str, float]) -> dict[str, float]:
 
 def metric_direction(metric_name: str) -> str:
     return "minimize" if metric_name in LOWER_IS_BETTER_METRICS else "maximize"
+
+
+def _roc_curve_payload(target: np.ndarray, scores: np.ndarray, label: str) -> dict[str, Any]:
+    false_positive, true_positive, thresholds = roc_curve(target, scores)
+    indices = _sample_curve_indices(len(false_positive))
+    return {
+        "label": label,
+        "points": [
+            {
+                "false_positive_rate": float(false_positive[index]),
+                "true_positive_rate": float(true_positive[index]),
+                "threshold": (
+                    float(thresholds[index]) if np.isfinite(thresholds[index]) else None
+                ),
+            }
+            for index in indices
+        ],
+    }
+
+
+def _precision_recall_payload(
+    target: np.ndarray,
+    scores: np.ndarray,
+    label: str,
+) -> dict[str, Any]:
+    precision, recall, thresholds = precision_recall_curve(target, scores)
+    indices = _sample_curve_indices(len(precision))
+    return {
+        "label": label,
+        "points": [
+            {
+                "recall": float(recall[index]),
+                "precision": float(precision[index]),
+                "threshold": (
+                    float(thresholds[index])
+                    if index < len(thresholds) and np.isfinite(thresholds[index])
+                    else None
+                ),
+            }
+            for index in indices
+        ],
+    }
+
+
+def _sample_curve_indices(length: int, maximum: int = 300) -> np.ndarray:
+    if length <= maximum:
+        return np.arange(length)
+    return np.unique(np.linspace(0, length - 1, maximum, dtype=int))
 
 
 def _probabilities(fitted: Any, features: pd.DataFrame) -> np.ndarray | None:

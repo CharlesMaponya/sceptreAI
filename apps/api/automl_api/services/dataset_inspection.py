@@ -20,6 +20,7 @@ SUPPORTED_EXTENSIONS = {
     ".json": DatasetFormat.JSON,
     ".jsonl": DatasetFormat.JSON,
 }
+PREVIEW_SAMPLE_SIZE = 512
 
 
 @dataclass(frozen=True)
@@ -45,10 +46,12 @@ class ColumnAccumulator:
     decimal_seen: bool = False
     distinct_values: set[str] | None = None
     sample_values: list[str] | None = None
+    preview_values: list[str] | None = None
 
     def __post_init__(self) -> None:
         self.distinct_values = set()
         self.sample_values = []
+        self.preview_values = []
 
     def add(self, value: Any) -> None:
         if _is_missing(value):
@@ -57,11 +60,14 @@ class ColumnAccumulator:
 
         assert self.distinct_values is not None
         assert self.sample_values is not None
+        assert self.preview_values is not None
         value_text = str(value).strip()
         self.present_count += 1
         self.distinct_values.add(value_text)
         if len(self.sample_values) < 5:
             self.sample_values.append(value_text)
+        if len(self.preview_values) < PREVIEW_SAMPLE_SIZE:
+            self.preview_values.append(value_text)
         if _looks_numeric(value_text):
             self.numeric_count += 1
         if _looks_decimal(value_text):
@@ -76,12 +82,15 @@ class ColumnAccumulator:
     def profile(self) -> dict[str, Any]:
         assert self.distinct_values is not None
         assert self.sample_values is not None
+        assert self.preview_values is not None
+        semantic_type = _infer_type_from_counts(self)
         return {
             "name": self.name,
-            "semantic_type": _infer_type_from_counts(self),
+            "semantic_type": semantic_type,
             "missing_count": self.missing_count,
             "distinct_count": len(self.distinct_values),
             "sample_values": self.sample_values,
+            **_preview_metadata(semantic_type, self.preview_values),
         }
 
 
@@ -254,6 +263,52 @@ def _profile_column(column: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
         "missing_count": len(values) - len(present_values),
         "distinct_count": distinct_count,
         "sample_values": [str(value) for value in present_values[:5]],
+        **_preview_metadata(inferred_type, present_values[:PREVIEW_SAMPLE_SIZE]),
+    }
+
+
+def _preview_metadata(semantic_type: str, values: list[Any]) -> dict[str, Any]:
+    if semantic_type == "numerical_continuous":
+        numeric_values = [float(value) for value in values if _looks_numeric(str(value).strip())]
+        ordered = sorted(numeric_values)
+        midpoint = len(ordered) // 2
+        median = (
+            (ordered[midpoint - 1] + ordered[midpoint]) / 2
+            if len(ordered) > 0 and len(ordered) % 2 == 0
+            else ordered[midpoint] if ordered else None
+        )
+        return {
+            "preview_kind": "histogram",
+            "preview_values": numeric_values,
+            "preview_distribution": [],
+            "statistics": {
+                "min": min(numeric_values) if numeric_values else None,
+                "median": median,
+                "mean": sum(numeric_values) / len(numeric_values) if numeric_values else None,
+                "max": max(numeric_values) if numeric_values else None,
+            },
+        }
+    if semantic_type == "temporal":
+        temporal_values = [str(value) for value in values]
+        return {
+            "preview_kind": "histogram",
+            "preview_values": temporal_values,
+            "preview_distribution": [],
+            "statistics": {
+                "min": min(temporal_values) if temporal_values else None,
+                "max": max(temporal_values) if temporal_values else None,
+            },
+        }
+
+    counts = Counter(str(value) for value in values)
+    return {
+        "preview_kind": "bar",
+        "preview_values": [],
+        "preview_distribution": [
+            {"label": label, "count": count}
+            for label, count in counts.most_common(15)
+        ],
+        "statistics": {},
     }
 
 

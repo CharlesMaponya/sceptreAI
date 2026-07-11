@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import base64
-import binascii
 import hashlib
 import uuid
 
@@ -58,9 +56,9 @@ def upload_dataset_version(
     user: User,
     project_id: uuid.UUID,
     payload: DatasetUploadRequest,
+    content: bytes,
 ) -> tuple[Dataset, DatasetVersion]:
     require_project_role(db, user, project_id, ProjectRole.EDITOR)
-    content = _decode_upload_content(payload.content_base64)
     inspection = inspect_tabular_bytes(payload.filename, content)
     content_hash = hashlib.sha256(content).hexdigest()
 
@@ -115,16 +113,6 @@ def upload_dataset_version(
     dataset.latest_version_number = next_version
     db.flush()
     return dataset, dataset_version
-
-
-def _decode_upload_content(content_base64: str) -> bytes:
-    try:
-        return base64.b64decode(content_base64, validate=True)
-    except (binascii.Error, ValueError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Uploaded content must be valid base64.",
-        ) from exc
 
 
 def _object_store_type_from_settings() -> ObjectStoreType:

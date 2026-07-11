@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import streamlit as st
 
+from streamlit_app.compat import patch_typed_dict_compatibility
+
+patch_typed_dict_compatibility()
 st.set_page_config(page_title="SMME Tabular AutoML", layout="wide")
 
 from streamlit_app.workspace import (  # noqa: E402

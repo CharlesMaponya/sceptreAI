@@ -22,6 +22,7 @@ from automl_api.schemas.training import (
     TrainingLaunchRequest,
     TrainingLeaderboardRead,
     TrainingLogsRead,
+    TrainingResourceUsageRead,
 )
 from automl_api.services.kubernetes_training import KubernetesTrainingClient
 from automl_api.services.projects import require_project_role
@@ -30,6 +31,7 @@ from automl_api.training.evaluation import metric_direction
 from automl_api.training.model_catalog import (
     candidate_catalog,
     estimator_catalog_payload,
+    supported_gpu_vendors,
 )
 
 BATCH_RUN_KINDS = (
@@ -61,6 +63,11 @@ def estimate_training_run(
         for candidate in candidate_catalog(payload.task_type)
         if (candidate.name in selected_names if selected_names else candidate.default_selected)
     ][:selected_candidate_count]
+    compatible_gpu_vendors = {
+        vendor
+        for candidate in selected_specs
+        for vendor in supported_gpu_vendors(candidate.name)
+    }
     cost_weights = {"low": 1.0, "medium": 1.25, "high": 1.75}
     model_cost_factor = (
         sum(cost_weights[candidate.cost_tier] for candidate in selected_specs) / len(selected_specs)
@@ -78,8 +85,16 @@ def estimate_training_run(
         candidate_limit=selected_candidate_count,
         optimization_iterations=payload.optimization_iterations,
         model_cost_factor=model_cost_factor,
+        gpu_compatible_vendors=compatible_gpu_vendors,
     )
-    if not get_object_store().exists(version.object_uri):
+    try:
+        object_exists = get_object_store().exists(version.object_uri)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    if not object_exists:
         estimate.blockers = [
             *estimate.blockers,
             "The dataset object is missing from MinIO. Re-upload or restore this "
@@ -178,8 +193,17 @@ def launch_training_run(
             "optimization_iterations": payload.optimization_iterations,
             "cv_folds": payload.cv_folds,
             "evaluation_column": payload.evaluation_column,
+            "gpu_vendor": estimate.gpu_vendor,
+            "gpu_resource": estimate.gpu_resource,
+            "selected_node": estimate.selected_node,
         },
-        tags={"project_id": str(project_id), "orchestrator": "kubernetes"},
+        tags={
+            "project_id": str(project_id),
+            "orchestrator": "kubernetes",
+            "accelerator": estimate.gpu_vendor or "cpu",
+            "accelerator_resource": estimate.gpu_resource,
+            "selected_node": estimate.selected_node,
+        },
         queued_at=now,
     )
     db.add(run)
@@ -445,6 +469,96 @@ def training_logs(
             if exc.status not in {400, 404}:
                 raise
     return TrainingLogsRead(run_id=run.id, status=run.status, lines=lines)
+
+
+def training_resources(
+    db: Session,
+    user: User,
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    client: KubernetesTrainingClient | None = None,
+) -> TrainingResourceUsageRead:
+    run = get_training_run(db, user, project_id, run_id, client=client)
+    tags = dict(run.tags or {})
+    params = dict(run.params or {})
+    previous = dict(tags.get("resource_usage") or {})
+    try:
+        snapshot = (client or KubernetesTrainingClient()).training_resource_usage(run.id)
+    except ApiException as exc:
+        if exc.status not in {400, 404, 503}:
+            raise
+        snapshot = {"telemetry_available": False, "status_reason": str(exc)}
+
+    cpu_usage = snapshot.get("cpu_usage_cores")
+    memory_usage = snapshot.get("memory_usage_mb")
+    peak_cpu = max(float(previous.get("peak_cpu_usage_cores") or 0), float(cpu_usage or 0))
+    peak_memory = max(int(previous.get("peak_memory_usage_mb") or 0), int(memory_usage or 0))
+    stored = {
+        **previous,
+        **{key: value for key, value in snapshot.items() if value is not None},
+        "peak_cpu_usage_cores": peak_cpu or None,
+        "peak_memory_usage_mb": peak_memory or None,
+        "sampled_at": datetime.now(UTC).isoformat(),
+    }
+    tags["resource_usage"] = stored
+    run.tags = tags
+    db.flush()
+
+    total = max(
+        1,
+        int(params.get("candidate_limit") or len(params.get("candidate_models") or []) or 1),
+    )
+    completed = min(total, int(tags.get("completed_candidates") or 0))
+    terminal = run.status in {RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.CANCELLED}
+    progress = 1.0 if run.status == RunStatus.SUCCEEDED else completed / total
+    started = run.started_at or run.queued_at or run.created_at
+    ended = run.finished_at if terminal and run.finished_at else datetime.now(UTC)
+    elapsed = max(0.0, (ended - started).total_seconds())
+    remaining = None
+    if completed and not terminal:
+        remaining = max(0.0, elapsed / completed * (total - completed))
+    gpu_vendor = params.get("gpu_vendor") or tags.get("gpu_vendor")
+    gpu_resource = params.get("gpu_resource") or tags.get("gpu_resource")
+    return TrainingResourceUsageRead(
+        run_id=run.id,
+        status=run.status,
+        pod_name=snapshot.get("pod_name") or stored.get("pod_name"),
+        pod_phase=snapshot.get("pod_phase") or stored.get("pod_phase"),
+        node_name=(
+            snapshot.get("node_name")
+            or stored.get("node_name")
+            or params.get("selected_node")
+        ),
+        current_candidate=tags.get("current_candidate"),
+        current_phase=(
+            "complete"
+            if run.status == RunStatus.SUCCEEDED
+            else run.status.value
+            if terminal
+            else tags.get("candidate_phase")
+        ),
+        completed_candidates=completed,
+        total_candidates=total,
+        progress=progress,
+        elapsed_seconds=elapsed,
+        estimated_remaining_seconds=remaining,
+        cpu_request_cores=run.cpu_request_cores,
+        cpu_limit_cores=run.cpu_limit_cores,
+        cpu_usage_cores=cpu_usage if cpu_usage is not None else stored.get("cpu_usage_cores"),
+        peak_cpu_usage_cores=peak_cpu or None,
+        memory_request_mb=run.memory_request_mb,
+        memory_limit_mb=run.memory_limit_mb,
+        memory_usage_mb=memory_usage if memory_usage is not None else stored.get("memory_usage_mb"),
+        peak_memory_usage_mb=peak_memory or None,
+        gpu_requested=run.gpu_requested,
+        gpu_vendor=str(gpu_vendor) if gpu_vendor else None,
+        gpu_resource=str(gpu_resource) if gpu_resource else None,
+        gpu_count=1 if run.gpu_requested and gpu_resource else 0,
+        telemetry_available=bool(snapshot.get("telemetry_available")),
+        restart_count=int(snapshot.get("restart_count") or stored.get("restart_count") or 0),
+        status_reason=snapshot.get("status_reason") or stored.get("status_reason"),
+        sampled_at=datetime.now(UTC),
+    )
 
 
 def training_leaderboard(

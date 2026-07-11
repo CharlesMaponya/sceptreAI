@@ -17,6 +17,7 @@ from automl_api.api.routes import (
 from automl_api.core.config import get_settings
 from automl_api.db.session import get_engine
 from automl_api.services.profiling_jobs import resume_incomplete_profiling_jobs
+from automl_api.storage.object_store import get_object_store
 
 
 @asynccontextmanager
@@ -47,7 +48,17 @@ def create_app() -> FastAPI:
         except Exception as exc:
             return {"status": "degraded", "database": "unavailable", "detail": str(exc)}
 
-        return {"status": "ok", "database": "ok"}
+        try:
+            get_object_store().healthcheck()
+        except Exception as exc:
+            return {
+                "status": "degraded",
+                "database": "ok",
+                "object_store": "unavailable",
+                "detail": str(exc),
+            }
+
+        return {"status": "ok", "database": "ok", "object_store": "ok"}
 
     app.include_router(auth.router, prefix="/api/v1")
     app.include_router(projects.router, prefix="/api/v1")

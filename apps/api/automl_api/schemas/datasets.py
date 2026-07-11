@@ -13,7 +13,6 @@ class DatasetUploadRequest(BaseModel):
     dataset_name: str = Field(min_length=1, max_length=220)
     description: str | None = None
     filename: str = Field(min_length=1, max_length=512)
-    content_base64: str = Field(min_length=1)
     tags: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("dataset_name", "filename")

@@ -22,6 +22,9 @@ class NodeHeadroom:
     available_cpu: float
     available_memory_mb: int
     gpu_present: bool
+    gpu_vendor: str | None = None
+    gpu_resource: str | None = None
+    gpu_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -80,6 +83,7 @@ class KubernetesTrainingClient:
         pods = self.core.list_pod_for_all_namespaces().items
         pod_usage_by_node, metrics_warning = self._pod_usage_by_node(pods)
         pod_requests_by_node: dict[str, tuple[float, int]] = {}
+        gpu_requests_by_node: dict[str, dict[str, int]] = {}
         active_training_jobs = 0
         for pod in pods:
             if pod.status.phase in {"Succeeded", "Failed"}:
@@ -96,6 +100,9 @@ class KubernetesTrainingClient:
                 current_cpu + cpu,
                 current_memory + memory,
             )
+            node_gpu_requests = gpu_requests_by_node.setdefault(node_name, {})
+            for resource, count in _pod_gpu_requests(pod).items():
+                node_gpu_requests[resource] = node_gpu_requests.get(resource, 0) + count
 
         ready_nodes = []
         total_cpu = 0.0
@@ -125,14 +132,20 @@ class KubernetesTrainingClient:
             reserved_memory = max(node_requested_memory, node_used_memory)
             node_available_cpu = max(0.0, node_cpu - reserved_cpu)
             node_available_memory = max(0, node_memory - reserved_memory)
-            labels = node.metadata.labels or {}
-            gpu_present = labels.get("nvidia.com/gpu.present", "").lower() == "true"
+            gpu_vendor, gpu_resource, gpu_count = _node_gpu(
+                allocatable,
+                gpu_requests_by_node.get(node.metadata.name, {}),
+            )
+            gpu_present = gpu_resource is not None
             ready_nodes.append(
                 NodeHeadroom(
                     name=node.metadata.name,
                     available_cpu=node_available_cpu,
                     available_memory_mb=node_available_memory,
                     gpu_present=gpu_present,
+                    gpu_vendor=gpu_vendor,
+                    gpu_resource=gpu_resource,
+                    gpu_count=gpu_count,
                 )
             )
             total_cpu += node_cpu
@@ -233,6 +246,7 @@ class KubernetesTrainingClient:
         candidate_limit: int = 5,
         optimization_iterations: int = 5,
         model_cost_factor: float = 1.0,
+        gpu_compatible_vendors: set[str] | None = None,
     ) -> TrainingEstimateRead:
         snapshot = self.capacity_snapshot()
         capacity = snapshot.capacity
@@ -253,29 +267,46 @@ class KubernetesTrainingClient:
         estimated_working_set = math.ceil(
             700 + data_working_set * task_multiplier * search_multiplier
         )
-        desired_cpu = min(
-            4.0,
-            max(
-                0.5,
-                0.5 + dataset_mb / 1024 + column_count / 200 + min(candidate_limit, 20) / 20,
-            ),
-        )
         desired_memory = max(768, estimated_working_set)
 
+        compatible_vendors = (
+            gpu_compatible_vendors
+            if gpu_compatible_vendors is not None
+            else {"nvidia", "intel"}
+        )
+        gpu_nodes = [
+            node
+            for node in snapshot.nodes
+            if node.gpu_resource and node.gpu_vendor in compatible_vendors
+        ]
+        gpu_requested = bool(prefer_gpu and self.settings.gpu_enabled and gpu_nodes)
+        eligible_nodes = gpu_nodes if gpu_requested else snapshot.nodes
         best_node = max(
-            snapshot.nodes,
+            eligible_nodes,
             key=lambda node: (node.available_cpu, node.available_memory_mb),
             default=None,
         )
         blockers = []
         warnings = list(capacity.warnings)
-        gpu_requested = bool(prefer_gpu and self.settings.gpu_enabled and capacity.gpu_available)
         gpu_fallback_reason = None
         if prefer_gpu and not gpu_requested:
             if not self.settings.gpu_enabled:
                 gpu_fallback_reason = "GPU_ENABLED is false; using CPU training."
+            elif gpu_compatible_vendors is not None and not gpu_compatible_vendors:
+                gpu_fallback_reason = (
+                    "The selected estimators do not expose a supported GPU backend; "
+                    "using all allocated CPU threads."
+                )
             elif not capacity.gpu_available:
-                gpu_fallback_reason = "No node has nvidia.com/gpu.present=true; using CPU training."
+                gpu_fallback_reason = (
+                    "No schedulable node exposes nvidia.com/gpu, gpu.intel.com/xe, "
+                    "or gpu.intel.com/i915; using CPU training."
+                )
+            else:
+                gpu_fallback_reason = (
+                    "Available GPU vendors are incompatible with the selected estimators; "
+                    "using CPU training."
+                )
             warnings.append(gpu_fallback_reason)
 
         if not capacity.connected:
@@ -293,12 +324,12 @@ class KubernetesTrainingClient:
         if best_node is None:
             blockers.append("No schedulable Ready Kubernetes node is available.")
 
-        fraction = self.settings.max_node_available_fraction_per_job
+        fraction = min(1.0, max(0.01, self.settings.max_node_available_fraction_per_job))
         if best_node:
             cpu_ceiling = best_node.available_cpu * fraction
             memory_ceiling = int(best_node.available_memory_mb * fraction)
-            cpu_request = min(desired_cpu, cpu_ceiling)
-            memory_request = min(desired_memory, memory_ceiling)
+            cpu_request = cpu_ceiling
+            memory_request = memory_ceiling
         else:
             cpu_ceiling = 0.0
             memory_ceiling = 0
@@ -318,8 +349,8 @@ class KubernetesTrainingClient:
 
         cpu_request = round(max(0.0, cpu_request), 3)
         memory_request = max(0, memory_request)
-        cpu_limit = round(min(cpu_ceiling, cpu_request * 1.5), 3)
-        memory_limit = min(memory_ceiling, math.ceil(memory_request * 1.5))
+        cpu_limit = cpu_request
+        memory_limit = memory_request
         max_parallel = min(
             self.settings.max_concurrent_jobs,
             math.floor(capacity.total_cpu_cores / cpu_request) if cpu_request else 0,
@@ -340,6 +371,9 @@ class KubernetesTrainingClient:
             memory_limit_mb=memory_limit,
             gpu_requested=gpu_requested,
             gpu_fallback_reason=gpu_fallback_reason,
+            gpu_vendor=best_node.gpu_vendor if gpu_requested and best_node else None,
+            gpu_resource=best_node.gpu_resource if gpu_requested and best_node else None,
+            selected_node=best_node.name if best_node else None,
             expected_minutes=expected_minutes,
             active_deadline_seconds=_active_deadline_seconds(
                 expected_minutes,
@@ -361,6 +395,8 @@ class KubernetesTrainingClient:
     ) -> dict[str, Any]:
         name = f"automl-train-{str(run_id)[:8]}"
         settings = self.settings
+        cpu_threads = max(1, math.floor(estimate.cpu_request_cores))
+        shared_memory_mb = max(512, min(8192, estimate.memory_request_mb // 4))
         container: dict[str, Any] = {
             "name": "trainer",
             "image": settings.training_image,
@@ -376,6 +412,11 @@ class KubernetesTrainingClient:
                 {"name": "AUTOML_RUN_ID", "value": str(run_id)},
                 {"name": "AUTOML_PROJECT_ID", "value": str(project_id)},
                 {"name": "TRAINING_EXECUTION_MODE", "value": "direct"},
+                {"name": "AUTOML_CPU_THREADS", "value": str(cpu_threads)},
+                {"name": "OMP_NUM_THREADS", "value": str(cpu_threads)},
+                {"name": "MKL_NUM_THREADS", "value": str(cpu_threads)},
+                {"name": "OPENBLAS_NUM_THREADS", "value": str(cpu_threads)},
+                {"name": "NUMEXPR_NUM_THREADS", "value": str(cpu_threads)},
                 {
                     "name": "DATABASE_URL",
                     "valueFrom": {
@@ -421,7 +462,10 @@ class KubernetesTrainingClient:
                     "memory": f"{estimate.memory_limit_mb}Mi",
                 },
             },
-            "volumeMounts": [{"name": "dataset-cache", "mountPath": "/cache"}],
+            "volumeMounts": [
+                {"name": "dataset-cache", "mountPath": "/cache"},
+                {"name": "shared-memory", "mountPath": "/dev/shm"},
+            ],
         }
         pod_spec: dict[str, Any] = {
             "restartPolicy": "Never",
@@ -432,12 +476,29 @@ class KubernetesTrainingClient:
                 {
                     "name": "dataset-cache",
                     "persistentVolumeClaim": {"claimName": "automl-dataset-cache"},
-                }
+                },
+                {
+                    "name": "shared-memory",
+                    "emptyDir": {
+                        "medium": "Memory",
+                        "sizeLimit": f"{shared_memory_mb}Mi",
+                    },
+                },
             ],
         }
-        if estimate.gpu_requested:
-            container["resources"]["limits"]["nvidia.com/gpu"] = "1"
-            pod_spec["nodeSelector"] = {"nvidia.com/gpu.present": "true"}
+        if estimate.selected_node:
+            pod_spec["nodeSelector"] = {"kubernetes.io/hostname": estimate.selected_node}
+        if estimate.gpu_requested and estimate.gpu_resource and estimate.gpu_vendor:
+            container["resources"]["requests"][estimate.gpu_resource] = "1"
+            container["resources"]["limits"][estimate.gpu_resource] = "1"
+            container["env"].extend(
+                [
+                    {"name": "AUTOML_GPU_VENDOR", "value": estimate.gpu_vendor},
+                    {"name": "AUTOML_GPU_RESOURCE", "value": estimate.gpu_resource},
+                ]
+            )
+            if estimate.gpu_vendor == "nvidia":
+                container["env"].append({"name": "CUML_ACCEL_ENABLED", "value": "1"})
 
         return {
             "apiVersion": "batch/v1",
@@ -873,6 +934,61 @@ class KubernetesTrainingClient:
                 pass
         return logs.splitlines()
 
+    def training_resource_usage(self, run_id: uuid.UUID) -> dict[str, Any]:
+        """Return the current pod snapshot without requiring metrics-server to exist."""
+        if not self._configured:
+            return {"telemetry_available": False, "status_reason": self._configuration_error}
+        pods = self.core.list_namespaced_pod(
+            namespace=self.settings.training_namespace,
+            label_selector=f"automl.platform/run-id={run_id}",
+        ).items
+        if not pods:
+            return {
+                "telemetry_available": False,
+                "status_reason": "Training pod is no longer available.",
+            }
+        pod = max(pods, key=lambda item: item.metadata.creation_timestamp)
+        statuses = pod.status.container_statuses or []
+        reason = pod.status.reason
+        restart_count = sum(int(item.restart_count or 0) for item in statuses)
+        for item in statuses:
+            waiting = getattr(item.state, "waiting", None)
+            terminated = getattr(item.state, "terminated", None)
+            if waiting and waiting.reason:
+                reason = waiting.reason
+            elif terminated and terminated.reason:
+                reason = terminated.reason
+        result: dict[str, Any] = {
+            "pod_name": pod.metadata.name,
+            "pod_phase": pod.status.phase,
+            "node_name": pod.spec.node_name,
+            "restart_count": restart_count,
+            "status_reason": reason,
+            "telemetry_available": False,
+        }
+        try:
+            metrics = self.custom.get_namespaced_custom_object(
+                group="metrics.k8s.io",
+                version="v1beta1",
+                namespace=self.settings.training_namespace,
+                plural="pods",
+                name=pod.metadata.name,
+            )
+            cpu = 0.0
+            memory = 0
+            for container_metrics in metrics.get("containers", []):
+                usage = container_metrics.get("usage", {})
+                cpu += _cpu_cores(usage.get("cpu", "0"))
+                memory += _memory_mb(usage.get("memory", "0"))
+            result.update(
+                telemetry_available=True,
+                cpu_usage_cores=round(cpu, 4),
+                memory_usage_mb=memory,
+            )
+        except (ApiException, AttributeError, TypeError, ValueError) as exc:
+            result["status_reason"] = reason or f"Resource metrics unavailable: {exc}"
+        return result
+
     def _pvc_is_bound(self, name: str) -> bool:
         try:
             pvc = self.core.read_namespaced_persistent_volume_claim(
@@ -933,6 +1049,42 @@ def _node_is_ready(node: Any) -> bool:
         condition.type == "Ready" and condition.status == "True"
         for condition in (node.status.conditions or [])
     )
+
+
+def _node_gpu(
+    allocatable: dict[str, Any],
+    requested: dict[str, int] | None = None,
+) -> tuple[str | None, str | None, int]:
+    resources = (
+        ("nvidia", "nvidia.com/gpu"),
+        ("intel", "gpu.intel.com/xe"),
+        ("intel", "gpu.intel.com/i915"),
+    )
+    for vendor, resource in resources:
+        raw_count = allocatable.get(resource)
+        if raw_count is None:
+            continue
+        count = int(Decimal(parse_quantity(str(raw_count)))) - (requested or {}).get(resource, 0)
+        if count > 0:
+            return vendor, resource, count
+    return None, None, 0
+
+
+def _pod_gpu_requests(pod: Any) -> dict[str, int]:
+    requested: dict[str, int] = {}
+    for container in pod.spec.containers or []:
+        limits = container.resources.limits or {}
+        resources = {**limits, **(container.resources.requests or {})}
+        for _, resource in (
+            ("nvidia", "nvidia.com/gpu"),
+            ("intel", "gpu.intel.com/xe"),
+            ("intel", "gpu.intel.com/i915"),
+        ):
+            if resource in resources:
+                requested[resource] = requested.get(resource, 0) + int(
+                    Decimal(parse_quantity(str(resources[resource])))
+                )
+    return requested
 
 
 def _pod_requests(pod: Any) -> tuple[float, int]:

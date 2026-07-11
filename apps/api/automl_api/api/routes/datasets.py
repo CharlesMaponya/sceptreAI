@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from automl_api.api.deps import get_current_user
@@ -15,14 +16,12 @@ from automl_api.schemas.datasets import (
     DatasetUploadResponse,
     DatasetVersionRead,
 )
-from automl_api.schemas.profiling_jobs import ProfilingJobCreate
 from automl_api.services.datasets import (
     get_dataset_for_user,
     list_dataset_versions,
     list_project_datasets,
     upload_dataset_version,
 )
-from automl_api.services.profiling_jobs import create_profiling_job, schedule_profiling_job
 
 router = APIRouter(prefix="/projects/{project_id}/datasets", tags=["datasets"])
 
@@ -42,36 +41,46 @@ def list_datasets(
 @router.post("/upload", response_model=DatasetUploadResponse, status_code=status.HTTP_201_CREATED)
 def upload_dataset(
     project_id: uuid.UUID,
-    payload: DatasetUploadRequest,
+    file: Annotated[UploadFile, File(description="Tabular dataset file")],
+    dataset_name: Annotated[str, Form(min_length=1, max_length=220)],
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    description: Annotated[str | None, Form()] = None,
+    tags: Annotated[str, Form()] = "{}",
 ) -> DatasetUploadResponse:
     try:
-        dataset, version = upload_dataset_version(db, current_user, project_id, payload)
-        profiling_job, _ = create_profiling_job(
+        content = file.file.read()
+        if not content:
+            raise ValueError("Uploaded file must not be empty.")
+        parsed_tags = json.loads(tags)
+        if not isinstance(parsed_tags, dict):
+            raise ValueError("Dataset tags must be a JSON object.")
+        payload = DatasetUploadRequest(
+            dataset_name=dataset_name,
+            description=description,
+            filename=file.filename or "",
+            tags=parsed_tags,
+        )
+        dataset, version = upload_dataset_version(
             db,
             current_user,
             project_id,
-            dataset.id,
-            version.id,
-            ProfilingJobCreate(),
-            auto_started=True,
+            payload,
+            content,
         )
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
+    finally:
+        file.file.close()
 
     db.commit()
     db.refresh(dataset)
     db.refresh(version)
-    db.refresh(profiling_job)
-    schedule_profiling_job(profiling_job.id)
     return DatasetUploadResponse(
         dataset=DatasetRead.model_validate(dataset),
         version=DatasetVersionRead.model_validate(version),
-        profiling_job_id=profiling_job.id,
-        profiling_job_status=profiling_job.status,
     )
 
 

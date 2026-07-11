@@ -25,6 +25,12 @@ def test_inspect_csv_extracts_schema_and_quality() -> None:
     assert result.quality_report_json["duplicate_rows"] == 1
     assert result.inferred_types_json["spend"]["semantic_type"] == "numerical_continuous"
     assert result.inferred_types_json["created_at"]["semantic_type"] == "temporal"
+    profiles = {column["name"]: column for column in result.schema_json["columns"]}
+    assert profiles["spend"]["preview_kind"] == "histogram"
+    assert profiles["spend"]["preview_values"] == [12.5, 15.0, 15.0]
+    assert profiles["spend"]["statistics"]["median"] == 15.0
+    assert profiles["name"]["preview_kind"] == "bar"
+    assert profiles["name"]["preview_distribution"] == [{"label": "Ada", "count": 1}]
 
 
 def test_parquet_upload_is_deferred_without_optional_parser() -> None:

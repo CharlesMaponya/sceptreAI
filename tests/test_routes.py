@@ -4,6 +4,14 @@ import pytest
 from automl_api.main import app
 
 
+def test_dataset_upload_uses_multipart_form_data() -> None:
+    operation = app.openapi()["paths"]["/api/v1/projects/{project_id}/datasets/upload"]["post"]
+    content = operation["requestBody"]["content"]
+
+    assert "multipart/form-data" in content
+    assert "application/json" not in content
+
+
 @pytest.mark.skip(reason="Disabled pending stable FastAPI included-router introspection.")
 def test_phase_two_routes_are_registered() -> None:
     routes = set(app.openapi()["paths"])

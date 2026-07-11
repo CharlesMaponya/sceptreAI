@@ -183,7 +183,13 @@ Sceptre is built for shared clusters:
 - The default global limit is two active compute Jobs.
 - Each project may hold one active training slot.
 - Live CPU and memory headroom determines whether a Job can launch.
-- Per-Job requests are capped at 60% of available capacity on the best node.
+- A training Job reserves the selected node's available CPU and memory with equal
+  requests and limits, and is pinned to that node for predictable throughput.
+- NVIDIA and Intel device-plugin resources are detected explicitly; supported
+  estimators use the matching accelerator and retry on CPU when GPU execution fails.
+- NVIDIA Jobs run on the RAPIDS 26.06 CUDA 12 image and enable `cuml.accel`
+  before sklearn is imported. RAPIDS-supported sklearn estimators use cuML;
+  unsupported operations retain the CPU fallback.
 - Low-priority Jobs can be preempted when the cluster needs resources.
 - Stale database state is reconciled against Kubernetes before admission.
 - Planned duration drives cost estimates; the safety deadline ranges from six to
@@ -222,6 +228,11 @@ minikube image build -t automl-training:local -f Dockerfile.training .
 minikube image build -t automl-inference:local -f Dockerfile.inference .
 ```
 
+The training image is based on the NVIDIA RAPIDS CUDA 12 image. NVIDIA nodes
+must expose `nvidia.com/gpu` through the NVIDIA device plugin and use a driver
+compatible with CUDA 12. Intel GPUs continue to use the Intel device-plugin
+resources and the LightGBM OpenCL path rather than RAPIDS, which is NVIDIA-only.
+
 ### 3. Deploy platform infrastructure
 
 ```bash
@@ -245,6 +256,11 @@ kubectl -n automl port-forward svc/automl-mlflow 5000:5000
 
 ```bash
 DATABASE_URL=postgresql+psycopg://automl:automl@127.0.0.1:55432/automl \
+OBJECT_STORE_TYPE=minio \
+OBJECT_STORE_ENDPOINT=http://127.0.0.1:9000 \
+OBJECT_STORE_BUCKET=automl \
+OBJECT_STORE_ACCESS_KEY=automl \
+OBJECT_STORE_SECRET_KEY=change-me-in-production \
 MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
 uvicorn automl_api.main:app --app-dir apps/api --host 0.0.0.0 --port 8000
 ```
@@ -294,12 +310,15 @@ The most important operational settings are:
 | `DATABASE_URL` | Local PostgreSQL forward | Application metadata connection |
 | `MLFLOW_TRACKING_URI` | `http://mlflow:5000` | MLflow tracking endpoint |
 | `MAX_CONCURRENT_JOBS` | `2` | Global compute Job limit |
-| `MAX_NODE_AVAILABLE_FRACTION_PER_JOB` | `0.60` | Maximum node headroom allocated to one Job |
+| `MAX_NODE_AVAILABLE_FRACTION_PER_JOB` | `1.0` | Available node CPU and memory allocated to one training Job |
 | `TRAINING_ACTIVE_DEADLINE_SECONDS` | `21600` | Minimum Job safety deadline |
 | `TRAINING_MAX_ACTIVE_DEADLINE_SECONDS` | `86400` | Maximum Job safety deadline |
 | `TRAINING_DEADLINE_MULTIPLIER` | `6` | Planned-duration safety multiplier |
 | `JWT_ACCESS_TOKEN_MINUTES` | `1440` | Access-token lifetime |
 | `OBJECT_STORE_ENDPOINT` | Environment-specific | MinIO or compatible object-store endpoint |
+| `OBJECT_STORE_BUCKET` | `automl` | Shared bucket used by the API and Kubernetes Jobs |
+| `OBJECT_STORE_ACCESS_KEY` | Environment-specific | MinIO access key |
+| `OBJECT_STORE_SECRET_KEY` | Environment-specific | MinIO secret key |
 | `INFERENCE_IMAGE` | `automl-inference:local` | Kubernetes model-serving runtime |
 | `INFERENCE_SERVICE_ACCOUNT` | `default` | Service account assigned to model deployments |
 | `INFERENCE_SERVICE_TYPE` | `NodePort` | Kubernetes Service type used to expose model APIs |

@@ -38,6 +38,8 @@ def test_classification_evaluation_contains_review_metrics_and_diagnostics() -> 
     }.issubset(metrics)
     assert len(diagnostics["confusion_matrix"]) == 2
     assert "classification_report" in diagnostics
+    assert diagnostics["roc_curves"][0]["points"]
+    assert diagnostics["precision_recall_curves"][0]["points"]
 
 
 def test_regression_and_time_series_evaluation_contains_error_diagnostics() -> None:

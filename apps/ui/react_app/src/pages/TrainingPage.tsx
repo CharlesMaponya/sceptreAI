@@ -5,7 +5,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api, json } from "../api";
 import { Button, Card, ErrorState, Loading, Metric, Notice, PageHeader } from "../components/ui";
 import { titleCase } from "../lib";
-import type { Dataset, DatasetVersion, Estimator, TaskType, TrainingEstimate, TrainingPayload } from "../types";
+import type { Dataset, DatasetVersion, Estimator, ProfileJob, TaskType, TrainingEstimate, TrainingPayload } from "../types";
 
 export function TrainingPage() {
   const { projectId = "" } = useParams();
@@ -19,7 +19,7 @@ export function TrainingPage() {
   const [minutes, setMinutes] = useState(10);
   const [folds, setFolds] = useState(3);
   const [iterations, setIterations] = useState(5);
-  const [gpu, setGpu] = useState(false);
+  const [gpu, setGpu] = useState(true);
   const [runName, setRunName] = useState("");
 
   const datasets = useQuery({ queryKey: ["datasets", projectId], queryFn: () => api<Dataset[]>(`/projects/${projectId}/datasets`) });
@@ -34,6 +34,18 @@ export function TrainingPage() {
   );
   useEffect(() => { if (columns.length && !columns.includes(target)) setTarget(columns[columns.length - 1]); }, [columns, target]);
   useEffect(() => { if (selectedDataset && version) setRunName(`${selectedDataset.name}-v${version.version_number}`); }, [selectedDataset, version]);
+  const latestProfile = useQuery({
+    queryKey: ["profile", versionId],
+    enabled: Boolean(versionId),
+    queryFn: () => api<ProfileJob | null>(`/projects/${projectId}/datasets/${datasetId}/versions/${versionId}/profile-jobs/latest`),
+  });
+  useEffect(() => {
+    const inferred = latestProfile.data?.overview_json?.task_inference?.task_type;
+    if (latestProfile.data?.target_column && columns.includes(latestProfile.data.target_column)) {
+      setTarget(latestProfile.data.target_column);
+    }
+    if (inferred) setTask(inferred);
+  }, [latestProfile.data?.id, latestProfile.data?.target_column, latestProfile.data?.overview_json?.task_inference?.task_type, columns]);
 
   const estimators = useQuery({ queryKey: ["estimators", projectId, task], enabled: Boolean(projectId), queryFn: () => api<Estimator[]>(`/projects/${projectId}/training/estimators?task_type=${task}`) });
   useEffect(() => { if (estimators.data) setModels(estimators.data.filter((item) => item.default_selected).map((item) => item.name)); }, [estimators.data]);
@@ -80,7 +92,7 @@ export function TrainingPage() {
     <aside className="launch-card"><Card><span className="eyebrow">Launch summary</span><h2>{runName || "New training run"}</h2>
       <dl><div><dt>Dataset</dt><dd>{selectedDataset?.name} · v{version?.version_number}</dd></div><div><dt>Task</dt><dd>{titleCase(task)}</dd></div><div><dt>Target</dt><dd>{task === "clustering" ? "Unsupervised" : target || "—"}</dd></div><div><dt>Models</dt><dd>{models.length} candidates</dd></div></dl>
       {!estimate.data ? <><Notice><Info size={16} /> Review compute requirements before launch.</Notice><Button className="full" disabled={!versionId || !models.length || (task !== "clustering" && !target)} loading={estimate.isPending} onClick={() => estimate.mutate()}><Cpu size={16} />Estimate resources</Button></>
-        : <div className="estimate"><div className="estimate__metrics"><Metric label="CPU" value={`${estimate.data.cpu_request_cores} cores`} /><Metric label="Memory" value={`${estimate.data.memory_request_mb} MiB`} /></div><div className="estimate__metrics"><Metric label="Core-hours" value={estimate.data.estimated_core_hours} /><Metric label="Free CPU" value={estimate.data.capacity.available_cpu_cores.toFixed(1)} /></div>
+        : <div className="estimate"><div className="estimate__metrics"><Metric label="CPU" value={`${estimate.data.cpu_request_cores} cores`} /><Metric label="Memory" value={`${estimate.data.memory_request_mb} MiB`} /></div><div className="estimate__metrics"><Metric label="Accelerator" value={estimate.data.gpu_requested ? titleCase(estimate.data.gpu_vendor || "GPU") : "CPU"} /><Metric label="Node" value={estimate.data.selected_node || "Pending"} /></div><div className="estimate__metrics"><Metric label="Core-hours" value={estimate.data.estimated_core_hours} /><Metric label="Free CPU" value={estimate.data.capacity.available_cpu_cores.toFixed(1)} /></div>
           {estimate.data.warnings.length > 0 && <Notice>{estimate.data.warnings.join(" ")}</Notice>}{estimate.data.blockers.length > 0 && <Notice tone="danger">{estimate.data.blockers.join(" ")}</Notice>}
           <label>Run name<input value={runName} maxLength={255} onChange={(e) => setRunName(e.target.value)} /></label>
           {launch.error && <Notice tone="danger">{launch.error.message}</Notice>}<Button className="full" disabled={!estimate.data.can_launch} loading={launch.isPending} onClick={() => launch.mutate()}><Sparkles size={16} />Launch training</Button>

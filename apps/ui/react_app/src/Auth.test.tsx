@@ -4,7 +4,7 @@ import { axe } from "jest-axe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { Auth } from "./Auth";
-import { setSession } from "./api";
+import { getSession, setSession } from "./api";
 
 describe("authentication experience", () => {
   const renderAuth = () => render(<MemoryRouter><Auth /></MemoryRouter>);
@@ -21,7 +21,7 @@ describe("authentication experience", () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 
-  it("switches to registration and submits the API contract", async () => {
+  it("returns to sign in without creating a session after registration", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
       user: {
@@ -42,5 +42,8 @@ describe("authentication experience", () => {
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
       full_name: "Ada Lovelace", email: "ada@example.com", password: "correct-horse",
     });
+    expect(await screen.findByRole("heading", { name: "Sign in to Sceptre" })).toBeInTheDocument();
+    expect(screen.getByText("Account created successfully. Sign in to continue.")).toBeInTheDocument();
+    expect(getSession()).toBeNull();
   });
 });

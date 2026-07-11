@@ -68,9 +68,9 @@ class Settings:
     local_object_store_path: Path = Path(".automl_object_store")
 
     dataset_cache_size_gb: int = 5
-    gpu_enabled: bool = False
+    gpu_enabled: bool = True
     max_cluster_cpu_percent: int = 70
-    max_node_available_fraction_per_job: float = 0.60
+    max_node_available_fraction_per_job: float = 1.0
     max_concurrent_jobs: int = 2
     mlflow_tracking_uri: str = "http://mlflow:5000"
     training_namespace: str = "automl"

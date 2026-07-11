@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  BarChart3, BrainCircuit, ChevronRight, CircleStop, FileCheck2, FileText,
-  Play, Plus, RefreshCw, TerminalSquare, Trophy,
+  Activity, BarChart3, BrainCircuit, ChevronDown, ChevronRight, CircleStop, Cpu,
+  FileCheck2, FileText, Gauge, MemoryStick, Play, Plus, RefreshCw, TerminalSquare, Trophy,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { useParams } from "react-router-dom";
 import { api, json } from "../api";
 import {
@@ -11,7 +12,7 @@ import {
 } from "../components/ui";
 import { formatBytes, formatDate, titleCase } from "../lib";
 import type {
-  Dataset, DatasetVersion, Estimator, Leaderboard, ModelRun, TaskType,
+  Dataset, DatasetVersion, Estimator, Leaderboard, ModelRun, TaskType, TrainingResourceUsage,
 } from "../types";
 
 type Analysis = ModelRun & { run_name: string | null };
@@ -23,6 +24,7 @@ interface AnalysisResult {
 }
 interface Logs { run_id: string; status: string; lines: string[] }
 interface VersionOption { id: string; label: string; columns: string[] }
+const PlotlyChart = lazy(() => import("../components/PlotlyChart"));
 
 export function RunsPage() {
   const { projectId = "" } = useParams();
@@ -75,6 +77,16 @@ function RunDetail({ projectId, run, invalidate }: {
     queryFn: () => api<Leaderboard>(`/projects/${projectId}/training/runs/${run.id}/leaderboard`),
     refetchInterval: ["queued", "precheck_running", "running"].includes(run.status) ? 3000 : false,
   });
+  const resources = useQuery({
+    queryKey: ["run-resources", projectId, run.id],
+    queryFn: () => api<TrainingResourceUsage>(`/projects/${projectId}/training/runs/${run.id}/resources`),
+    refetchInterval: ["queued", "precheck_running", "running"].includes(run.status) ? 2000 : false,
+  });
+  const logs = useQuery({
+    queryKey: ["logs", run.id],
+    queryFn: () => api<Logs>(`/projects/${projectId}/training/runs/${run.id}/logs`),
+    refetchInterval: ["queued", "precheck_running", "running"].includes(run.status) ? 2000 : false,
+  });
   const cancel = useMutation({
     mutationFn: () => api(`/projects/${projectId}/training/runs/${run.id}/cancel`, json("POST")),
     onSuccess: invalidate,
@@ -92,6 +104,7 @@ function RunDetail({ projectId, run, invalidate }: {
         <Badge status={run.status} />
       </div>
       {run.plain_english_failure && <Notice tone="danger">{run.plain_english_failure}</Notice>}
+      {run.failure_message && <details className="run-failure"><summary>Technical failure details</summary><pre>{run.failure_message}</pre></details>}
       <div className="metrics-grid metrics-grid--compact">
         <Metric label="Candidates" value={leaderboard.data?.entries.length || "—"} />
         <Metric label="Winner" value={leaderboard.data?.winner || "Pending"} />
@@ -117,21 +130,27 @@ function RunDetail({ projectId, run, invalidate }: {
       <button role="tab" aria-selected={tab === "logs"} className={tab === "logs" ? "active" : ""}
         onClick={() => setTab("logs")}>Logs</button>
     </div>
-    {tab === "leaderboard" && <LeaderboardPanel leaderboard={leaderboard} winner={winner} />}
+    {tab === "leaderboard" && <LeaderboardPanel leaderboard={leaderboard} winner={winner}
+      task={run.task_type} resources={resources} logs={logs} />}
     {tab === "analysis" && <AnalysisPanel projectId={projectId} run={run}
       successfulModels={leaderboard.data?.entries.filter((entry) => entry.status === "succeeded").map((entry) => entry.model) || []} />}
-    {tab === "logs" && <LogsPanel projectId={projectId} run={run} />}
+    {tab === "logs" && <LogsPanel logs={logs} />}
     {showAdd && <AddModelsModal projectId={projectId} run={run}
       completed={new Set(leaderboard.data?.entries.map((entry) => entry.model))}
       close={() => setShowAdd(false)} done={() => { setShowAdd(false); invalidate(); }} />}
   </div>;
 }
 
-function LeaderboardPanel({ leaderboard, winner }: {
+function LeaderboardPanel({ leaderboard, winner, task, resources, logs }: {
   leaderboard: ReturnType<typeof useQuery<Leaderboard>>;
   winner: Leaderboard["entries"][number] | undefined;
+  task: TaskType;
+  resources: ReturnType<typeof useQuery<TrainingResourceUsage>>;
+  logs: ReturnType<typeof useQuery<Logs>>;
 }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
   return <Card className="section-card">
+    <LiveTrainingSummary resources={resources} />
     {leaderboard.isLoading ? <Loading label="Loading model evidence…" />
       : leaderboard.error ? <ErrorState error={leaderboard.error} retry={() => leaderboard.refetch()} />
       : leaderboard.data?.entries.length ? <>
@@ -140,26 +159,195 @@ function LeaderboardPanel({ leaderboard, winner }: {
           <small>{winner?.primary_score != null
             ? `${titleCase(leaderboard.data.primary_metric || "score")}: ${winner.primary_score.toFixed(4)}`
             : "Results are still being collected"}</small></div></div>
-        <div className="table-wrap"><table><thead><tr><th>Rank</th><th>Model</th><th>Status</th>
-          <th>{titleCase(leaderboard.data.primary_metric || "Score")}</th><th>Duration</th></tr></thead>
-          <tbody>{leaderboard.data.entries.map((entry) => <tr key={entry.model}>
-            <td className="rank">{entry.rank || "—"}</td>
-            <td><b>{entry.model}</b><small className="cell-sub">{titleCase(entry.cost_tier)} cost</small>
-              {entry.error && <small className="cell-error">{entry.error}</small>}</td>
-            <td><Badge status={entry.status} /></td>
-            <td className="score">{entry.primary_score?.toFixed(4) || "—"}</td>
-            <td>{entry.duration_seconds ? `${entry.duration_seconds.toFixed(1)}s` : "—"}</td>
-          </tr>)}</tbody></table></div>
-        <details className="diagnostics"><summary>Candidate metrics and parameters</summary>
-          {leaderboard.data.entries.filter((entry) => entry.status === "succeeded").map((entry) =>
-            <div key={entry.model}><h3>{entry.model}</h3>
-              <div className="metric-pills">{Object.entries(entry.metrics).map(([name, value]) =>
-                <span key={name}><small>{titleCase(name)}</small><b>{value.toFixed(4)}</b></span>)}</div>
-              <pre>{JSON.stringify(entry.best_params, null, 2)}</pre></div>)}
-        </details>
+        <div className="leaderboard-accordion" role="table" aria-label="Model leaderboard">
+          <div className="leaderboard-accordion__head" role="row"><span>Rank</span><span>Model</span><span>Status</span>
+            <span>{titleCase(leaderboard.data.primary_metric || "Score")}</span><span>Duration</span><span /></div>
+          {leaderboard.data.entries.map((entry) => {
+            const open = expanded === entry.model;
+            return <article className={`leaderboard-model${open ? " leaderboard-model--open" : ""}`} key={entry.model}>
+              <button type="button" className="leaderboard-model__trigger" aria-expanded={open}
+                onClick={() => setExpanded(open ? null : entry.model)}>
+                <span className="rank">{entry.rank || "—"}</span><span><b>{entry.model}</b><small>{titleCase(entry.cost_tier)} cost</small></span>
+                <Badge status={entry.status} /><span className="score">{entry.primary_score?.toFixed(4) || "—"}</span>
+                <span>{entry.duration_seconds ? `${entry.duration_seconds.toFixed(1)}s` : "—"}</span><ChevronDown size={17} />
+              </button>
+              {entry.error && <small className="cell-error leaderboard-model__error">{entry.error}</small>}
+              {open && <ModelEvidence entry={entry} task={task}
+                metricDirections={leaderboard.data.metric_directions} resources={resources} logs={logs} />}
+            </article>;
+          })}
+        </div>
       </> : <EmptyState title="Results are on their way"
         description="Candidates appear progressively as training completes." />}
   </Card>;
+}
+
+type LeaderboardEntry = Leaderboard["entries"][number];
+type Curve = { label: string; points: Array<Record<string, number | null>> };
+type PredictionSample = { order: number; actual: number; predicted: number; residual: number };
+
+function ModelEvidence({ entry, task, metricDirections, resources, logs }: {
+  entry: LeaderboardEntry;
+  task: TaskType;
+  metricDirections: Record<string, string>;
+  resources: ReturnType<typeof useQuery<TrainingResourceUsage>>;
+  logs: ReturnType<typeof useQuery<Logs>>;
+}) {
+  const [tab, setTab] = useState<"metrics" | "diagnostics" | "resources" | "parameters" | "logs">("metrics");
+  return <div className="leaderboard-model__body">
+    <div className="model-tabs" role="tablist" aria-label={`${entry.model} evidence`}>
+      {(["metrics", "diagnostics", "resources", "parameters", "logs"] as const).map((name) =>
+        <button key={name} role="tab" aria-selected={tab === name} className={tab === name ? "active" : ""}
+          onClick={() => setTab(name)}>{titleCase(name)}</button>)}
+    </div>
+    {tab === "metrics" && <section><h3>Metrics</h3><div className="metric-pills">
+      {Object.entries(entry.metrics).map(([name, value]) => <span key={name}>
+        <small>{titleCase(name)} · {metricDirections[name] || "review"}</small><b>{value.toFixed(4)}</b></span>)}</div></section>}
+    {tab === "diagnostics" && <ModelDiagnosticCharts diagnostics={entry.diagnostics} task={task} />}
+    {tab === "resources" && <ResourcePanel resources={resources} />}
+    {tab === "parameters" && <pre className="model-parameters-json">{JSON.stringify(entry.best_params, null, 2)}</pre>}
+    {tab === "logs" && (logs.isLoading ? <Loading /> : logs.error
+      ? <ErrorState error={logs.error} retry={() => logs.refetch()} />
+      : <pre className="log-viewer" aria-label="Training logs">{logs.data?.lines.join("\n") || "No log output yet."}</pre>)}
+  </div>;
+}
+
+function LiveTrainingSummary({ resources }: {
+  resources: ReturnType<typeof useQuery<TrainingResourceUsage>>;
+}) {
+  if (resources.isLoading) return <Loading label="Loading training progress…" />;
+  if (resources.error) return <Notice tone="danger">Live training details are temporarily unavailable.</Notice>;
+  const value = resources.data;
+  if (!value) return null;
+  const total = value.total_candidates || 0;
+  const completed = value.completed_candidates || 0;
+  const progress = Number.isFinite(value.progress) ? value.progress : 0;
+  return <div className="live-training-summary">
+    <div><Activity size={18} /><span><small>Active model</small><b>{value.current_candidate || "Waiting for candidate"}</b></span></div>
+    <div><Gauge size={18} /><span><small>Current phase</small><b>{titleCase(value.current_phase || value.pod_phase || value.status || "waiting")}</b></span></div>
+    <div className="live-training-summary__progress"><span>
+      <b>Candidate {Math.min(completed + (value.current_candidate ? 1 : 0), total)} of {total}</b>
+      <small>{Math.round(progress * 100)}% complete</small></span>
+      <progress max={1} value={progress} /></div>
+  </div>;
+}
+
+function ResourcePanel({ resources }: { resources: ReturnType<typeof useQuery<TrainingResourceUsage>> }) {
+  if (resources.isLoading) return <Loading label="Loading resource telemetry…" />;
+  if (resources.error) return <ErrorState error={resources.error} retry={() => resources.refetch()} />;
+  const value = resources.data;
+  if (!value) return null;
+  const cpuPercent = value.cpu_limit_cores ? (value.cpu_usage_cores || 0) / value.cpu_limit_cores * 100 : 0;
+  const memoryPercent = value.memory_limit_mb ? (value.memory_usage_mb || 0) / value.memory_limit_mb * 100 : 0;
+  return <div className="resource-panel">
+    <div className="resource-cards">
+      <ResourceMeter icon={<Cpu />} label="CPU" current={value.cpu_usage_cores == null ? "Unavailable" : `${value.cpu_usage_cores.toFixed(2)} cores`}
+        detail={`Peak ${formatNumber(value.peak_cpu_usage_cores, " cores")} · limit ${formatNumber(value.cpu_limit_cores, " cores")}`} percent={cpuPercent} />
+      <ResourceMeter icon={<MemoryStick />} label="Memory" current={value.memory_usage_mb == null ? "Unavailable" : `${value.memory_usage_mb.toLocaleString()} MB`}
+        detail={`Peak ${formatNumber(value.peak_memory_usage_mb, " MB")} · limit ${formatNumber(value.memory_limit_mb, " MB")}`} percent={memoryPercent} />
+      <ResourceMeter icon={<Gauge />} label="Accelerator"
+        current={value.gpu_count ? `${titleCase(value.gpu_vendor || "GPU")} × ${value.gpu_count}` : "CPU"}
+        detail={value.gpu_resource || "No GPU allocated"} percent={value.gpu_utilization_percent || 0} hideProgress={!value.gpu_telemetry_available} />
+    </div>
+    <div className="resource-meta"><span>Pod <b>{value.pod_name || "Expired"}</b></span>
+      <span>Node <b>{value.node_name || "—"}</b></span><span>Restarts <b>{value.restart_count}</b></span>
+      <span>Elapsed <b>{formatDuration(value.elapsed_seconds)}</b></span>
+      <span>Remaining <b>{value.estimated_remaining_seconds == null ? "Estimating…" : formatDuration(value.estimated_remaining_seconds)}</b></span></div>
+    {!value.telemetry_available && <Notice>Live CPU and memory require Kubernetes Metrics Server. Peak and last-known values remain visible after the pod expires.</Notice>}
+    {value.gpu_count > 0 && !value.gpu_telemetry_available && <Notice>GPU allocation is confirmed, but utilization and VRAM require NVIDIA DCGM or Intel GPU telemetry.</Notice>}
+  </div>;
+}
+
+function ResourceMeter({ icon, label, current, detail, percent, hideProgress = false }: {
+  icon: ReactNode; label: string; current: string; detail: string; percent: number; hideProgress?: boolean;
+}) {
+  return <section className="resource-meter"><div>{icon}<span><small>{label}</small><b>{current}</b></span></div>
+    {!hideProgress && <progress max={100} value={Math.min(100, Math.max(0, percent))} />}
+    <small>{detail}</small></section>;
+}
+
+function formatNumber(value: number | null, suffix: string) { return value == null ? "—" : `${value.toLocaleString()}${suffix}`; }
+function formatDuration(seconds: number) {
+  const minutes = Math.floor(seconds / 60); const remainder = Math.round(seconds % 60);
+  return minutes ? `${minutes}m ${remainder}s` : `${remainder}s`;
+}
+
+function ModelDiagnosticCharts({ diagnostics, task }: {
+  diagnostics: Record<string, unknown>;
+  task: TaskType;
+}) {
+  const learning = diagnostics.learning_curve as { scoring?: string; points?: Array<Record<string, number>> } | undefined;
+  const crossValidation = diagnostics.cross_validation as Record<string, unknown> | undefined;
+  return <div className="model-evidence-grid">
+    {task === "classification" && <ClassificationCharts diagnostics={diagnostics} />}
+    {(task === "regression" || task === "time_series") && <RegressionCharts diagnostics={diagnostics} timeSeries={task === "time_series"} />}
+    {task === "clustering" && <ClusteringCharts diagnostics={diagnostics} />}
+    {learning?.points?.length ? <EvidenceChart title={`Learning curve · ${titleCase(learning.scoring || "score")}`}
+      data={[
+        { type: "scatter", mode: "lines+markers", name: "Training", x: learning.points.map((point) => point.training_rows), y: learning.points.map((point) => point.training_mean), line: { color: "#3159e8" } },
+        { type: "scatter", mode: "lines+markers", name: "Validation", x: learning.points.map((point) => point.training_rows), y: learning.points.map((point) => point.validation_mean), line: { color: "#e08835" } },
+      ]} xTitle="Training rows" yTitle={titleCase(learning.scoring || "score")} /> : null}
+    {crossValidation && typeof crossValidation.mean === "number" ? <EvidenceChart title="Cross-validation stability"
+      data={[{ type: "bar", x: ["Mean", "Standard deviation"], y: [crossValidation.mean, Number(crossValidation.standard_deviation || 0)], marker: { color: ["#3159e8", "#9aa7d8"] } }]} /> : null}
+  </div>;
+}
+
+function ClassificationCharts({ diagnostics }: { diagnostics: Record<string, unknown> }) {
+  const labels = Array.isArray(diagnostics.labels) ? diagnostics.labels.map(String) : [];
+  const matrix = Array.isArray(diagnostics.confusion_matrix) ? diagnostics.confusion_matrix as number[][] : [];
+  const rocCurves = Array.isArray(diagnostics.roc_curves) ? diagnostics.roc_curves as Curve[] : [];
+  const precisionRecall = Array.isArray(diagnostics.precision_recall_curves) ? diagnostics.precision_recall_curves as Curve[] : [];
+  const report = diagnostics.classification_report as Record<string, Record<string, number>> | undefined;
+  const reportLabels = report ? Object.keys(report).filter((label) => typeof report[label] === "object" && "precision" in report[label]) : [];
+  return <>
+    {matrix.length ? <EvidenceChart title="Confusion matrix" data={[{ type: "heatmap", z: matrix, x: labels, y: labels, colorscale: "Blues", text: matrix.map((row) => row.map(String)), texttemplate: "%{text}", hovertemplate: "Actual %{y}<br>Predicted %{x}<br>Count %{z}<extra></extra>" }]} xTitle="Predicted" yTitle="Actual" /> : null}
+    {rocCurves.length ? <EvidenceChart title="ROC curve" data={[
+      ...rocCurves.map((curve) => ({ type: "scatter", mode: "lines", name: curve.label, x: curve.points.map((point) => point.false_positive_rate), y: curve.points.map((point) => point.true_positive_rate) })),
+      { type: "scatter", mode: "lines", name: "Random", x: [0, 1], y: [0, 1], line: { dash: "dash", color: "#9aa1b2" } },
+    ]} xTitle="False positive rate" yTitle="True positive rate" /> : null}
+    {precisionRecall.length ? <EvidenceChart title="Precision–recall curve" data={precisionRecall.map((curve) => ({ type: "scatter", mode: "lines", name: curve.label, x: curve.points.map((point) => point.recall), y: curve.points.map((point) => point.precision) }))} xTitle="Recall" yTitle="Precision" /> : null}
+    {reportLabels.length ? <EvidenceChart title="Per-class quality" data={["precision", "recall", "f1-score"].map((metric) => ({ type: "bar", name: titleCase(metric), x: reportLabels, y: reportLabels.map((label) => Number(report?.[label]?.[metric] || 0)) }))} yTitle="Score" /> : null}
+  </>;
+}
+
+function RegressionCharts({ diagnostics, timeSeries }: { diagnostics: Record<string, unknown>; timeSeries: boolean }) {
+  const samples = Array.isArray(diagnostics.prediction_samples) ? diagnostics.prediction_samples as PredictionSample[] : [];
+  if (!samples.length) return null;
+  const minimum = Math.min(...samples.flatMap((item) => [item.actual, item.predicted]));
+  const maximum = Math.max(...samples.flatMap((item) => [item.actual, item.predicted]));
+  return <>
+    <EvidenceChart title="Actual vs predicted" data={[
+      { type: "scatter", mode: "markers", name: "Predictions", x: samples.map((item) => item.actual), y: samples.map((item) => item.predicted), marker: { color: "#3159e8", opacity: .65 } },
+      { type: "scatter", mode: "lines", name: "Ideal", x: [minimum, maximum], y: [minimum, maximum], line: { dash: "dash", color: "#e08835" } },
+    ]} xTitle="Actual" yTitle="Predicted" />
+    <EvidenceChart title="Residual distribution" data={[{ type: "histogram", x: samples.map((item) => item.residual), marker: { color: "#3159e8" } }]} xTitle="Residual" yTitle="Rows" />
+    {timeSeries ? <EvidenceChart title="Chronological holdout" data={[
+      { type: "scatter", mode: "lines", name: "Actual", x: samples.map((item) => item.order), y: samples.map((item) => item.actual) },
+      { type: "scatter", mode: "lines", name: "Predicted", x: samples.map((item) => item.order), y: samples.map((item) => item.predicted) },
+    ]} xTitle="Holdout order" yTitle="Target" /> : null}
+  </>;
+}
+
+function ClusteringCharts({ diagnostics }: { diagnostics: Record<string, unknown> }) {
+  const sizes = diagnostics.cluster_sizes as Record<string, number> | undefined;
+  const crossValidation = diagnostics.cross_validation as { fold_metrics?: Array<Record<string, number>> } | undefined;
+  const foldMetrics = crossValidation?.fold_metrics || [];
+  const metricNames = [...new Set(foldMetrics.flatMap((fold) => Object.keys(fold)))];
+  return <>
+    {sizes && Object.keys(sizes).length ? <EvidenceChart title="Cluster sizes" data={[{ type: "bar", x: Object.keys(sizes), y: Object.values(sizes), marker: { color: "#3159e8" } }]} xTitle="Cluster" yTitle="Rows" /> : null}
+    {foldMetrics.length ? <EvidenceChart title="Cross-validation by fold" data={metricNames.map((metric) => ({ type: "scatter", mode: "lines+markers", name: titleCase(metric), x: foldMetrics.map((_, index) => index + 1), y: foldMetrics.map((fold) => fold[metric]) }))} xTitle="Fold" yTitle="Metric" /> : null}
+  </>;
+}
+
+function EvidenceChart({ title, data, xTitle, yTitle }: {
+  title: string;
+  data: Array<Record<string, unknown>>;
+  xTitle?: string;
+  yTitle?: string;
+}) {
+  return <section className="model-evidence-chart"><h3>{title}</h3><Suspense fallback={<Loading label="Loading visualization…" />}>
+    <PlotlyChart data={data} layout={{ autosize: true, height: 310, margin: { l: 55, r: 15, t: 15, b: 55 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "#f8f9fc", barmode: "group", xaxis: { title: { text: xTitle }, automargin: true }, yaxis: { title: { text: yTitle }, automargin: true }, legend: { orientation: "h", y: 1.12 }, font: { family: "Inter, system-ui, sans-serif", size: 10, color: "#4e5870" } }} config={{ displayModeBar: false, responsive: true }} useResizeHandler style={{ width: "100%" }} />
+  </Suspense></section>;
 }
 
 function AnalysisPanel({ projectId, run, successfulModels }: {
@@ -288,12 +476,7 @@ function AnalysisResultPanel({ result }: { result: AnalysisResult }) {
   </div>;
 }
 
-function LogsPanel({ projectId, run }: { projectId: string; run: ModelRun }) {
-  const logs = useQuery({
-    queryKey: ["logs", run.id],
-    queryFn: () => api<Logs>(`/projects/${projectId}/training/runs/${run.id}/logs`),
-    refetchInterval: ["queued", "precheck_running", "running"].includes(run.status) ? 2000 : false,
-  });
+function LogsPanel({ logs }: { logs: ReturnType<typeof useQuery<Logs>> }) {
   return <Card className="logs-card"><div className="section-heading"><div><h2>Training logs</h2>
     <p>Polling safely while the run is active.</p></div><TerminalSquare /></div>
     {logs.isLoading ? <Loading /> : logs.error ? <ErrorState error={logs.error} retry={() => logs.refetch()} />

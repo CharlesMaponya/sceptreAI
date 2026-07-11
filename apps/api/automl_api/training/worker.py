@@ -7,11 +7,33 @@ import uuid
 from automl_api.db.session import get_session_factory
 from automl_api.models.enums import RunKind
 from automl_api.models.runs import ModelRun
-from automl_api.training.analysis import execute_analysis_run
-from automl_api.training.pipeline import execute_training_run, tabular_automl_pipeline
+
+
+def _enable_rapids_accelerator() -> bool:
+    if os.getenv("AUTOML_GPU_VENDOR", "").strip().lower() != "nvidia":
+        os.environ["AUTOML_RAPIDS_ACTIVE"] = "0"
+        return False
+    try:
+        from cuml import accel
+
+        accel.install()
+    except Exception as exc:
+        os.environ["AUTOML_RAPIDS_ACTIVE"] = "0"
+        print(
+            f"RAPIDS cuML accelerator unavailable; continuing with CPU fallback: {exc}",
+            flush=True,
+        )
+        return False
+    os.environ["AUTOML_RAPIDS_ACTIVE"] = "1"
+    print("RAPIDS cuML accelerator enabled for supported sklearn estimators", flush=True)
+    return True
 
 
 def main() -> None:
+    _enable_rapids_accelerator()
+    from automl_api.training.analysis import execute_analysis_run
+    from automl_api.training.pipeline import execute_training_run, tabular_automl_pipeline
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-id", required=True)
     args = parser.parse_args()

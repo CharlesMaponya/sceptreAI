@@ -43,6 +43,39 @@ async function raw<T>(path: string, options: RequestInit = {}, token?: string): 
   return data as T;
 }
 
+function multipartRequest<T>(
+  path: string,
+  body: FormData,
+  token: string | undefined,
+  onProgress: (percent: number) => void,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", `${API_ROOT}${path}`);
+    if (token) request.setRequestHeader("Authorization", `Bearer ${token}`);
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable && event.total > 0) {
+        onProgress(Math.min(100, Math.round((event.loaded / event.total) * 100)));
+      }
+    };
+    request.onload = () => {
+      let data: unknown = null;
+      try { data = request.responseText ? JSON.parse(request.responseText) : null; }
+      catch { data = request.responseText; }
+      if (request.status >= 200 && request.status < 300) {
+        onProgress(100);
+        resolve(data as T);
+      } else {
+        reject(new ApiError(messageFrom(data, request.status), request.status));
+      }
+    };
+    request.onerror = () => reject(new Error("The upload could not reach the API."));
+    request.onabort = () => reject(new Error("The upload was cancelled."));
+    onProgress(0);
+    request.send(body);
+  });
+}
+
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   try {
     return await raw<T>(path, options, session?.tokens.access_token);
@@ -61,13 +94,37 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   }
 }
 
+export async function uploadFormData<T>(
+  path: string,
+  body: FormData,
+  onProgress: (percent: number) => void,
+): Promise<T> {
+  try {
+    return await multipartRequest<T>(path, body, session?.tokens.access_token, onProgress);
+  } catch (error) {
+    if (!(error instanceof ApiError) || !session?.tokens.refresh_token || error.status !== 401) {
+      throw error;
+    }
+    try {
+      const tokens = await raw<Tokens>("/auth/refresh", {
+        method: "POST", body: JSON.stringify({ refresh_token: session.tokens.refresh_token }),
+      });
+      setSession({ user: session.user, tokens });
+      return multipartRequest<T>(path, body, tokens.access_token, onProgress);
+    } catch {
+      setSession(null);
+      throw new Error("Your session has expired. Please sign in again.");
+    }
+  }
+}
+
 export const json = (method: string, body?: unknown): RequestInit => ({
   method, body: body === undefined ? undefined : JSON.stringify(body),
 });
 
 export async function authenticate(mode: "login" | "register", values: Record<string, string>) {
   const result = await raw<AuthResponse>(`/auth/${mode}`, json("POST", values));
-  setSession(result);
+  if (mode === "login") setSession(result);
   return result;
 }
 
@@ -79,10 +136,3 @@ export async function signOut() {
       current.tokens.access_token).catch(() => undefined);
   }
 }
-
-export const fileToBase64 = (file: File) => new Promise<string>((resolve, reject) => {
-  const reader = new FileReader();
-  reader.onerror = () => reject(reader.error);
-  reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
-  reader.readAsDataURL(file);
-});

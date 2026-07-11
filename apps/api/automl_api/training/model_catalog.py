@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
 
-from sklearn.base import BaseEstimator, ClassifierMixin, ClusterMixin, RegressorMixin
+from sklearn.base import BaseEstimator, ClassifierMixin, ClusterMixin, RegressorMixin, clone
 from sklearn.preprocessing import LabelEncoder
 from sklearn.utils import all_estimators
 from skopt.space import Categorical, Integer, Real
@@ -44,6 +44,7 @@ class XGBLabelEncodingClassifier(ClassifierMixin, BaseEstimator):
         reg_lambda: float = 1.0,
         random_state: int = 42,
         n_jobs: int = 1,
+        device: str = "cpu",
     ) -> None:
         self.n_estimators = n_estimators
         self.learning_rate = learning_rate
@@ -55,6 +56,7 @@ class XGBLabelEncodingClassifier(ClassifierMixin, BaseEstimator):
         self.reg_lambda = reg_lambda
         self.random_state = random_state
         self.n_jobs = n_jobs
+        self.device = device
 
     def fit(self, features: Any, target: Any) -> XGBLabelEncodingClassifier:
         from xgboost import XGBClassifier
@@ -73,6 +75,7 @@ class XGBLabelEncodingClassifier(ClassifierMixin, BaseEstimator):
             random_state=self.random_state,
             n_jobs=self.n_jobs,
             tree_method="hist",
+            device=self.device,
             eval_metric="logloss",
             verbosity=0,
         )
@@ -169,6 +172,23 @@ MEDIUM_COST_MODELS = {
 }
 
 HIGH_COST_MODELS.update({"CatBoostClassifier", "CatBoostRegressor"})
+
+RAPIDS_ACCEL_MODELS = {
+    "DBSCAN",
+    "ElasticNet",
+    "KMeans",
+    "KernelRidge",
+    "KNeighborsClassifier",
+    "KNeighborsRegressor",
+    "Lasso",
+    "LinearRegression",
+    "LogisticRegression",
+    "RandomForestClassifier",
+    "RandomForestRegressor",
+    "Ridge",
+    "SVC",
+    "SVR",
+}
 
 
 @lru_cache
@@ -278,6 +298,55 @@ def select_candidates(
     else:
         selected = [candidate for candidate in catalog if candidate.default_selected]
     return selected[: max(1, min(limit, len(selected)))]
+
+
+def configure_estimator_for_training(
+    candidate: CandidateSpec,
+    *,
+    cpu_threads: int,
+    gpu_vendor: str | None,
+    rapids_active: bool = False,
+) -> tuple[Any, str]:
+    estimator = clone(candidate.estimator)
+    parameters = estimator.get_params(deep=False)
+    updates: dict[str, Any] = {}
+    if "n_jobs" in parameters:
+        updates["n_jobs"] = max(1, cpu_threads)
+    if "thread_count" in parameters:
+        updates["thread_count"] = max(1, cpu_threads)
+
+    accelerator = "cpu"
+    if gpu_vendor == "nvidia" and rapids_active and candidate.name in RAPIDS_ACCEL_MODELS:
+        accelerator = "rapids_cuml"
+    elif gpu_vendor == "nvidia":
+        if candidate.name.startswith("XGB"):
+            updates["device"] = "cuda"
+            accelerator = "nvidia"
+        elif candidate.name.startswith("LGBM"):
+            updates["device_type"] = "gpu"
+            accelerator = "nvidia"
+        elif candidate.name.startswith("CatBoost"):
+            updates.update({"task_type": "GPU", "devices": "0"})
+            accelerator = "nvidia"
+    elif gpu_vendor == "intel" and candidate.name.startswith("LGBM"):
+        # LightGBM's OpenCL backend supports Intel GPUs when the runtime image
+        # contains a GPU-enabled LightGBM build and the Intel OpenCL runtime.
+        updates["device_type"] = "gpu"
+        accelerator = "intel"
+
+    if updates:
+        estimator.set_params(**updates)
+    return estimator, accelerator
+
+
+def supported_gpu_vendors(model_name: str) -> set[str]:
+    if model_name in RAPIDS_ACCEL_MODELS:
+        return {"nvidia"}
+    if model_name.startswith("LGBM"):
+        return {"nvidia", "intel"}
+    if model_name.startswith(("XGB", "CatBoost")):
+        return {"nvidia"}
+    return set()
 
 
 def estimator_catalog_payload(task_type: TaskType) -> list[dict[str, Any]]:

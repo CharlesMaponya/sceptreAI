@@ -1,22 +1,57 @@
 from __future__ import annotations
 
-import base64
 import json
 import math
 import os
+import secrets
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any
 
-import altair as alt
+try:
+    import altair as alt
+except Exception:  # pragma: no cover - exercised when Altair is unavailable
+    alt = None
+
 import pandas as pd
 import streamlit as st
 
 API_BASE_URL = os.getenv("AUTOML_API_URL", "http://127.0.0.1:8000/api/v1")
 DEFAULT_API_TIMEOUT_SECONDS = int(os.getenv("AUTOML_API_TIMEOUT_SECONDS", "30"))
 UPLOAD_TIMEOUT_SECONDS = int(os.getenv("AUTOML_UPLOAD_TIMEOUT_SECONDS", "300"))
+
+
+class _FallbackChart:
+    def __init__(self, data: list[dict[str, Any]]) -> None:
+        self._data = data
+
+    def mark_bar(self) -> "_FallbackChart":
+        return self
+
+    def encode(self, **_: Any) -> "_FallbackChart":
+        return self
+
+    def properties(self, **_: Any) -> "_FallbackChart":
+        return self
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "mark": "bar",
+            "data": {"values": self._data},
+            "encoding": {
+                "x": {"field": "contribution_percent", "type": "quantitative"},
+                "y": {
+                    "field": "feature",
+                    "type": "nominal",
+                    "sort": {
+                        "field": "contribution_percent",
+                        "order": "descending",
+                    },
+                },
+            },
+        }
 
 
 def profile_display_value(value: Any) -> str:
@@ -63,8 +98,10 @@ def normalize_shap_importance_rows(
 
 def shap_importance_chart(
     feature_importance: list[dict[str, Any]],
-) -> alt.Chart:
+) -> Any:
     chart_data = pd.DataFrame(feature_importance[:30])
+    if alt is None:
+        return _FallbackChart(chart_data.to_dict(orient="records"))
     return (
         alt.Chart(chart_data)
         .mark_bar()
@@ -117,16 +154,17 @@ def api_request(
     path: str,
     *,
     payload: dict[str, Any] | None = None,
+    form_fields: dict[str, str] | None = None,
+    upload: tuple[str, str, bytes] | None = None,
     token: str | None = None,
     timeout: int = DEFAULT_API_TIMEOUT_SECONDS,
 ) -> tuple[int, dict[str, Any] | list[Any] | str]:
-    status_code, response = _api_request_once(
-        method,
-        path,
-        payload=payload,
-        token=token,
-        timeout=timeout,
-    )
+    request_kwargs: dict[str, Any] = {"payload": payload, "token": token, "timeout": timeout}
+    if form_fields is not None:
+        request_kwargs["form_fields"] = form_fields
+    if upload is not None:
+        request_kwargs["upload"] = upload
+    status_code, response = _api_request_once(method, path, **request_kwargs)
     if (
         status_code != 401
         or not token
@@ -149,13 +187,8 @@ def api_request(
 
     st.session_state["access_token"] = refreshed["access_token"]
     st.session_state["refresh_token"] = refreshed["refresh_token"]
-    return _api_request_once(
-        method,
-        path,
-        payload=payload,
-        token=refreshed["access_token"],
-        timeout=timeout,
-    )
+    request_kwargs["token"] = refreshed["access_token"]
+    return _api_request_once(method, path, **request_kwargs)
 
 
 def _api_request_once(
@@ -163,11 +196,17 @@ def _api_request_once(
     path: str,
     *,
     payload: dict[str, Any] | None = None,
+    form_fields: dict[str, str] | None = None,
+    upload: tuple[str, str, bytes] | None = None,
     token: str | None = None,
     timeout: int = DEFAULT_API_TIMEOUT_SECONDS,
 ) -> tuple[int, dict[str, Any] | list[Any] | str]:
-    body = json.dumps(payload).encode("utf-8") if payload is not None else None
-    headers = {"Content-Type": "application/json"}
+    if upload is not None:
+        body, content_type = _encode_multipart(form_fields or {}, upload)
+    else:
+        body = json.dumps(payload).encode("utf-8") if payload is not None else None
+        content_type = "application/json"
+    headers = {"Content-Type": content_type}
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
@@ -192,6 +231,38 @@ def _api_request_once(
         return 0, f"Could not reach API at {API_BASE_URL}: {exc.reason}"
     except TimeoutError:
         return 0, f"Request timed out after {timeout} seconds."
+
+
+def _encode_multipart(
+    fields: dict[str, str],
+    upload: tuple[str, str, bytes],
+) -> tuple[bytes, str]:
+    boundary = f"----sceptre-{secrets.token_hex(12)}"
+    field_name, filename, content = upload
+    parts: list[bytes] = []
+    for name, value in fields.items():
+        parts.extend(
+            [
+                f"--{boundary}\r\n".encode(),
+                f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode(),
+                value.encode(),
+                b"\r\n",
+            ]
+        )
+    parts.extend(
+        [
+            f"--{boundary}\r\n".encode(),
+            (
+                f'Content-Disposition: form-data; name="{field_name}"; '
+                f'filename="{filename}"\r\n'
+            ).encode(),
+            b"Content-Type: application/octet-stream\r\n\r\n",
+            content,
+            b"\r\n",
+            f"--{boundary}--\r\n".encode(),
+        ]
+    )
+    return b"".join(parts), f"multipart/form-data; boundary={boundary}"
 
 
 def set_auth(response: dict[str, Any]) -> None:
@@ -948,10 +1019,21 @@ def render_validation_workspace(
                         "Percentages sum to 100% across all dataset features; "
                         "the chart shows the 30 largest contributors."
                     )
-                    st.altair_chart(
-                        shap_importance_chart(normalized_importance),
-                        use_container_width=True,
-                    )
+                    if alt is None:
+                        chart_frame = pd.DataFrame(
+                            {
+                                "feature": [item["feature"] for item in normalized_importance],
+                                "contribution_percent": [
+                                    item["contribution_percent"] for item in normalized_importance
+                                ],
+                            }
+                        ).set_index("feature")
+                        st.bar_chart(chart_frame, use_container_width=True)
+                    else:
+                        st.altair_chart(
+                            shap_importance_chart(normalized_importance),
+                            use_container_width=True,
+                        )
                 if result.get("artifacts"):
                     st.dataframe(
                         [
@@ -1938,13 +2020,12 @@ def render_project_detail(project_id: str, access_token: str) -> None:
                 status_code, upload_response = api_request(
                     "POST",
                     f"/projects/{project_id}/datasets/upload",
-                    payload={
+                    form_fields={
                         "dataset_name": dataset_name,
                         "description": description,
-                        "filename": upload_file.name,
-                        "content_base64": base64.b64encode(file_bytes).decode("ascii"),
-                        "tags": {},
+                        "tags": "{}",
                     },
+                    upload=("file", upload_file.name, file_bytes),
                     token=access_token,
                     timeout=upload_timeout,
                 )
@@ -1957,10 +2038,7 @@ def render_project_detail(project_id: str, access_token: str) -> None:
                 )
                 st.session_state[f"upload_notice:{project_id}"] = (
                     f"Uploaded version {uploaded_version['version_number']} "
-                    f"for {uploaded_dataset['name']}. Profiling started in the background."
-                )
-                st.session_state[f"profile_job:{uploaded_version['id']}"] = str(
-                    upload_response["profiling_job_id"]
+                    f"for {uploaded_dataset['name']}. Choose a target column to start profiling."
                 )
                 st.rerun()
             else:
