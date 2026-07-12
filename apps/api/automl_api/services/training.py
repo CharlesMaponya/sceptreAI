@@ -639,16 +639,42 @@ def training_leaderboard(
                 "mlflow_run_id": None,
             },
         )
+    primary_metric = (
+        leaderboard_run.tags.get("leaderboard_primary_metric")
+        or run.tags.get("leaderboard_primary_metric")
+    )
     entries = list(by_model.values())
+    if primary_metric:
+        entries = _rank_combined_leaderboard(entries, primary_metric)
+    successful = [entry for entry in entries if entry.get("status") == "succeeded"]
     metric_names = {name for entry in entries for name in entry.get("metrics", {})}
     return TrainingLeaderboardRead(
         run_id=run.id,
         status=run.status,
-        primary_metric=leaderboard_run.tags.get("leaderboard_primary_metric"),
-        winner=leaderboard_run.tags.get("winner"),
+        primary_metric=primary_metric,
+        winner=successful[0]["model"] if successful else None,
         metric_directions={name: metric_direction(name) for name in sorted(metric_names)},
         entries=entries,
     )
+
+
+def _rank_combined_leaderboard(
+    entries: list[dict],
+    primary_metric: str,
+) -> list[dict]:
+    successful = [entry for entry in entries if entry.get("status") == "succeeded"]
+    remaining = [entry for entry in entries if entry.get("status") != "succeeded"]
+    successful.sort(
+        key=lambda entry: float(entry.get("metrics", {}).get(primary_metric, float("-inf"))),
+        reverse=metric_direction(primary_metric) == "maximize",
+    )
+    for rank, entry in enumerate(successful, start=1):
+        entry["rank"] = rank
+        entry["primary_score"] = entry.get("metrics", {}).get(primary_metric)
+    for entry in remaining:
+        entry["rank"] = None
+        entry["primary_score"] = None
+    return [*successful, *remaining]
 
 
 def _leaderboard_parent(db: Session, run: ModelRun) -> ModelRun:

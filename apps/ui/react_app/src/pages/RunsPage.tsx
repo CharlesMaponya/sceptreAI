@@ -399,7 +399,8 @@ function AnalysisPanel({ projectId, run, successfulModels }: {
   );
   const validationSchemaReady = trainingColumns.length > 0;
   const visibleAnalyses = useMemo(() => (analyses.data || []).filter((item) =>
-    item.run_kind === analysisTab), [analyses.data, analysisTab]);
+    item.run_kind === analysisTab && item.params.model_name === model),
+  [analyses.data, analysisTab, model]);
   const completedExplanation = useMemo(() => (analyses.data || []).find((item) =>
     item.run_kind === "explainability" && item.status === "succeeded"
     && item.params.model_name === model), [analyses.data, model]);
@@ -536,8 +537,8 @@ function AnalysisPanel({ projectId, run, successfulModels }: {
           <span><b>{item.run_name || item.id.slice(0, 8)}</b><small>{titleCase(item.run_kind)}</small></span>
           <Badge status={item.status} />
         </button>)}</div>}
-      {result.isLoading ? <Loading label="Loading analysis result…" />
-        : result.data && <AnalysisResultPanel result={result.data} />}
+      {selectedRun && (result.isLoading ? <Loading label="Loading analysis result…" />
+        : result.data && <AnalysisResultPanel result={result.data} />)}
     </> : <p className="muted">No {analysisTab === "validation" ? "validation" : "explainability"} jobs yet.</p>}
   </Card>;
 }

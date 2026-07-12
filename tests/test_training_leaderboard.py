@@ -7,6 +7,7 @@ import automl_api.training.pipeline as training_pipeline
 import pandas as pd
 import pytest
 from automl_api.models.enums import TaskType
+from automl_api.services.training import _rank_combined_leaderboard
 from automl_api.training.model_catalog import (
     CandidateSpec,
     candidate_catalog,
@@ -249,7 +250,71 @@ def test_incremental_models_replace_failed_entries_and_rerank() -> None:
         "RandomForestClassifier",
     ]
     assert merged[0]["rank"] == 1
+    assert merged[1]["rank"] == 2
     assert merged[0]["extension_run_id"] == ("11111111-1111-1111-1111-111111111111")
+
+
+def test_ranking_replaces_child_local_ranks_and_clears_pending_ranks() -> None:
+    ranked = rank_leaderboard(
+        [
+            {
+                "model": "OriginalWinner",
+                "status": "succeeded",
+                "metrics": {"balanced_accuracy": 0.91},
+                "rank": 1,
+            },
+            {
+                "model": "ExtensionWinner",
+                "status": "succeeded",
+                "metrics": {"balanced_accuracy": 0.95},
+                "rank": 1,
+            },
+            {
+                "model": "NotStarted",
+                "status": "pending",
+                "metrics": {},
+                "rank": 2,
+                "primary_score": 0.8,
+            },
+        ],
+        "balanced_accuracy",
+    )
+
+    assert [entry["rank"] for entry in ranked] == [1, 2, None]
+    assert [entry["model"] for entry in ranked[:2]] == [
+        "ExtensionWinner",
+        "OriginalWinner",
+    ]
+    assert ranked[2]["primary_score"] is None
+
+
+def test_api_combined_leaderboard_has_one_entry_per_rank() -> None:
+    combined = _rank_combined_leaderboard(
+        [
+            {
+                "model": "ParentA",
+                "status": "succeeded",
+                "metrics": {"rmse": 2.0},
+                "rank": 1,
+            },
+            {
+                "model": "ChildA",
+                "status": "succeeded",
+                "metrics": {"rmse": 1.0},
+                "rank": 1,
+            },
+            {
+                "model": "ChildB",
+                "status": "succeeded",
+                "metrics": {"rmse": 1.5},
+                "rank": 2,
+            },
+        ],
+        "rmse",
+    )
+
+    assert [entry["model"] for entry in combined] == ["ChildA", "ChildB", "ParentA"]
+    assert [entry["rank"] for entry in combined] == [1, 2, 3]
 
 
 def test_time_series_split_is_chronological() -> None:

@@ -824,6 +824,9 @@ def rank_leaderboard(
 ) -> list[dict[str, Any]]:
     successful = [entry for entry in entries if entry["status"] == "succeeded"]
     failed = [entry for entry in entries if entry["status"] != "succeeded"]
+    for entry in failed:
+        entry["rank"] = None
+        entry["primary_score"] = None
     reverse = metric_direction(primary_metric) == "maximize"
     successful.sort(
         key=lambda entry: float(entry["metrics"][primary_metric]),
@@ -917,7 +920,9 @@ def _persist_partial_leaderboard(
                     "winner_mlflow_run_id": (
                         merged_successful[0].get("mlflow_run_id") if merged_successful else None
                     ),
-                    "completed_candidates": len(merged),
+                    "completed_candidates": sum(
+                        entry["status"] in {"succeeded", "failed"} for entry in merged
+                    ),
                     "leaderboard_updated_at": datetime.now(UTC).isoformat(),
                 }
         db.commit()

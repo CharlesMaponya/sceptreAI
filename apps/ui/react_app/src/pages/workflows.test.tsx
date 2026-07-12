@@ -106,6 +106,10 @@ describe("core workflow integrations", () => {
           rank: 1, model: "RandomForestClassifier", status: "succeeded", cost_tier: "medium",
           primary_score: .91, metrics: { balanced_accuracy: .91 }, diagnostics: {},
           best_params: {}, duration_seconds: 10, error: null,
+        }, {
+          rank: 2, model: "GradientBoostingClassifier", status: "succeeded", cost_tier: "medium",
+          primary_score: .89, metrics: { balanced_accuracy: .89 }, diagnostics: {},
+          best_params: {}, duration_seconds: 12, error: null,
         }],
       });
       if (url.endsWith("/resources")) return response({
@@ -115,7 +119,7 @@ describe("core workflow integrations", () => {
       if (url.endsWith("/logs")) return response({ run_id: "run-1", status: "succeeded", lines: [] });
       if (url.endsWith("/analyses")) return response([{
         ...run, id: "analysis-1", run_kind: "explainability", status: "running",
-        run_name: "SHAP · RandomForestClassifier",
+        run_name: "SHAP · RandomForestClassifier", params: { model_name: "RandomForestClassifier" },
       }]);
       if (url.endsWith("/analyses/analysis-1")) {
         resultRequests += 1;
@@ -138,6 +142,9 @@ describe("core workflow integrations", () => {
     expect(await screen.findByText("customer_tenure", {}, { timeout: 4000 })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Calculate SHAP" })).not.toBeInTheDocument();
     expect(resultRequests).toBeGreaterThan(1);
+    await userEvent.selectOptions(screen.getByLabelText("Candidate model"), "GradientBoostingClassifier");
+    expect(screen.queryByText("customer_tenure")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Calculate SHAP" })).toBeInTheDocument();
   }, 8000);
 
   it("uploads first, then returns to overview without starting profiling", async () => {
