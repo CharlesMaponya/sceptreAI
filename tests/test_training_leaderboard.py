@@ -15,7 +15,9 @@ from automl_api.training.model_catalog import (
     supported_gpu_vendors,
 )
 from automl_api.training.pipeline import (
+    _log_metrics_synchronously,
     _normalize_temporal_features,
+    _pending_candidate,
     _registered_model_name,
     _supervised_split,
     merge_leaderboard_entries,
@@ -123,6 +125,25 @@ def test_leaderboard_ranks_higher_and_lower_metrics_correctly() -> None:
     assert [entry["model"] for entry in regression] == ["B", "A"]
 
 
+def test_pending_candidate_is_visible_without_metrics_or_rank() -> None:
+    candidate = CandidateSpec(
+        name="ExtraTreesClassifier",
+        estimator=RandomForestClassifier(),
+        search_space={},
+        cost_tier="medium",
+        default_selected=True,
+    )
+
+    entry = _pending_candidate(candidate)
+    ranked = rank_leaderboard([entry], "balanced_accuracy")
+
+    assert ranked == [entry]
+    assert entry["status"] == "pending"
+    assert entry["metrics"] == {}
+    assert entry["primary_score"] is None
+    assert entry["rank"] is None
+
+
 def test_rapids_accelerator_is_selected_for_supported_sklearn_models() -> None:
     candidate = CandidateSpec(
         name="RandomForestClassifier",
@@ -144,7 +165,7 @@ def test_rapids_accelerator_is_selected_for_supported_sklearn_models() -> None:
     assert supported_gpu_vendors(candidate.name) == {"nvidia"}
 
 
-def test_successful_candidate_metrics_are_mirrored_to_mlflow_parent(monkeypatch) -> None:
+def test_candidate_parent_linkage_does_not_duplicate_mlflow_metrics(monkeypatch) -> None:
     metrics: list[tuple[str, str, float]] = []
     tags: list[tuple[str, str, str]] = []
     client = SimpleNamespace(
@@ -163,11 +184,39 @@ def test_successful_candidate_metrics_are_mirrored_to_mlflow_parent(monkeypatch)
         registry_name,
     )
 
-    assert ("parent-run", "candidate.Random-Forest-Classifier.accuracy", 0.91) in metrics
+    assert metrics == []
+    assert ("parent-run", "candidate.Random-Forest-Classifier.metric_count", "2") in tags
     assert any(
         key.endswith("registered_model") and value == registry_name
         for _, key, value in tags
     )
+
+
+def test_mlflow_metrics_are_logged_individually_and_synchronously(monkeypatch) -> None:
+    calls: list[tuple[str, float, int, bool]] = []
+    monkeypatch.setattr(
+        training_pipeline.mlflow,
+        "log_metric",
+        lambda name, value, *, step, synchronous: calls.append(
+            (name, value, step, synchronous)
+        ),
+    )
+
+    _log_metrics_synchronously({"mse": 4.2, "r2": 0.98})
+
+    assert calls == [
+        ("mse", 4.2, 0, True),
+        ("r2", 0.98, 0, True),
+    ]
+
+
+def test_duplicate_mlflow_metric_retry_is_treated_as_already_persisted(monkeypatch) -> None:
+    def duplicate(*args, **kwargs):
+        raise RuntimeError("duplicate key value violates unique constraint metric_pk")
+
+    monkeypatch.setattr(training_pipeline.mlflow, "log_metric", duplicate)
+
+    _log_metrics_synchronously({"mse": 4.2})
 
 
 def test_incremental_models_replace_failed_entries_and_rerank() -> None:

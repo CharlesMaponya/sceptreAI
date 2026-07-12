@@ -109,7 +109,7 @@ def execute_training_run(run_id: uuid.UUID) -> dict[str, float]:
             )
             result = _fit_model(dataframe, run)
             mlflow.log_params(_json_safe(result.params))
-            mlflow.log_metrics(result.metrics)
+            _log_metrics_synchronously(result.metrics)
             mlflow.log_dict(
                 {
                     "primary_metric": result.primary_metric,
@@ -206,9 +206,9 @@ def _fit_model(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
         if run.task_type == TaskType.CLASSIFICATION
         else "neg_root_mean_squared_error"
     )
-    leaderboard: list[dict[str, Any]] = []
+    leaderboard: list[dict[str, Any]] = [_pending_candidate(candidate) for candidate in candidates]
     fitted: dict[str, tuple[Any, dict[str, Any], dict[str, float]]] = {}
-    for candidate in candidates:
+    for index, candidate in enumerate(candidates):
         _persist_candidate_phase(run.id, candidate.name, "preparing_data")
         entry = _fit_candidate(
             candidate,
@@ -222,7 +222,7 @@ def _fit_model(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
             scoring,
             run,
         )
-        leaderboard.append(entry)
+        leaderboard[index] = entry
         if entry["status"] == "succeeded":
             fitted[candidate.name] = (
                 entry.pop("_model"),
@@ -452,10 +452,10 @@ def _fit_candidate(
                 }
             )
             mlflow.log_params(params)
-            mlflow.log_metrics(metrics)
-            mlflow.log_metric("cv_primary_mean", cv_mean)
-            mlflow.log_metric("cv_primary_standard_deviation", cv_std)
-            mlflow.log_metric("fit_duration_seconds", duration)
+            _log_metrics_synchronously(metrics)
+            _log_metric_synchronously("cv_primary_mean", cv_mean)
+            _log_metric_synchronously("cv_primary_standard_deviation", cv_std)
+            _log_metric_synchronously("fit_duration_seconds", duration)
             mlflow.log_dict(_json_safe(diagnostics), "evaluation.json")
             mlflow_sklearn.log_model(
                 fitted,
@@ -540,9 +540,9 @@ def _fit_clustering(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
     folds = min(requested_folds, max(2, len(dataframe) // 10))
     splitter = KFold(n_splits=folds, shuffle=True, random_state=42)
 
-    leaderboard: list[dict[str, Any]] = []
+    leaderboard: list[dict[str, Any]] = [_pending_candidate(candidate) for candidate in candidates]
     fitted: dict[str, tuple[Any, dict[str, Any], dict[str, float]]] = {}
-    for candidate in candidates:
+    for index, candidate in enumerate(candidates):
         _persist_candidate_phase(run.id, candidate.name, "preparing_data")
         entry = _fit_clustering_candidate(
             candidate,
@@ -552,7 +552,7 @@ def _fit_clustering(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
             preprocessor,
             run,
         )
-        leaderboard.append(entry)
+        leaderboard[index] = entry
         if entry["status"] == "succeeded":
             fitted[candidate.name] = (
                 entry.pop("_model"),
@@ -686,8 +686,8 @@ def _fit_clustering_candidate(
                 }
             )
             mlflow.log_params(_json_safe(params))
-            mlflow.log_metrics(best_metrics)
-            mlflow.log_metric("fit_duration_seconds", duration)
+            _log_metrics_synchronously(best_metrics)
+            _log_metric_synchronously("fit_duration_seconds", duration)
             mlflow.log_dict(_json_safe(diagnostics), "evaluation.json")
             mlflow_sklearn.log_model(
                 pipeline_model,
@@ -744,7 +744,7 @@ def _failed_candidate(
                 "failure_message": message[:250],
             }
         )
-        mlflow.log_metric("fit_duration_seconds", duration)
+        _log_metric_synchronously("fit_duration_seconds", duration)
     return {
         "rank": None,
         "model": candidate.name,
@@ -787,18 +787,35 @@ def _mirror_candidate_evidence_to_parent(
         return
     client = MlflowClient()
     safe_candidate = re.sub(r"[^A-Za-z0-9_.-]+", "-", candidate_name).strip("-")
-    for metric_name, value in metrics.items():
-        client.log_metric(
-            parent_run_id,
-            f"candidate.{safe_candidate}.{metric_name}"[:250],
-            float(value),
-        )
+    # Metrics belong to the nested candidate run. Mirroring the same points to
+    # the parent can make MLflow retries violate its metric primary key.
+    client.set_tag(parent_run_id, f"candidate.{safe_candidate}.metric_count", str(len(metrics)))
     client.set_tag(parent_run_id, f"candidate.{safe_candidate}.run_id", candidate_run_id)
     client.set_tag(
         parent_run_id,
         f"candidate.{safe_candidate}.registered_model",
         registered_model_name,
     )
+
+
+def _log_metrics_synchronously(metrics: dict[str, float]) -> None:
+    """Avoid MLflow batch retries that can duplicate partially committed rows."""
+    for name, value in metrics.items():
+        _log_metric_synchronously(name, value)
+
+
+def _log_metric_synchronously(name: str, value: float) -> None:
+    try:
+        mlflow.log_metric(name, float(value), step=0, synchronous=True)
+    except Exception as exc:
+        message = str(exc).lower()
+        if "duplicate key" in message and "metric_pk" in message:
+            print(
+                f"MLflow already persisted metric {name}; continuing after a safe retry.",
+                flush=True,
+            )
+            return
+        raise
 
 
 def rank_leaderboard(
@@ -816,6 +833,22 @@ def rank_leaderboard(
         entry["rank"] = rank
         entry["primary_score"] = entry["metrics"][primary_metric]
     return [*successful, *failed]
+
+
+def _pending_candidate(candidate: CandidateSpec) -> dict[str, Any]:
+    return {
+        "rank": None,
+        "model": candidate.name,
+        "status": "pending",
+        "cost_tier": candidate.cost_tier,
+        "primary_score": None,
+        "metrics": {},
+        "diagnostics": {},
+        "best_params": {},
+        "duration_seconds": None,
+        "error": None,
+        "mlflow_run_id": None,
+    }
 
 
 def merge_leaderboard_entries(
@@ -846,7 +879,9 @@ def _persist_partial_leaderboard(
             "leaderboard": _json_safe(ranked),
             "winner": successful[0]["model"] if successful else None,
             "winner_mlflow_run_id": (successful[0].get("mlflow_run_id") if successful else None),
-            "completed_candidates": len(ranked),
+            "completed_candidates": sum(
+                entry["status"] in {"succeeded", "failed"} for entry in ranked
+            ),
             "current_candidate": None,
             "candidate_phase": "between_candidates",
             "leaderboard_updated_at": datetime.now(UTC).isoformat(),
@@ -893,11 +928,17 @@ def _persist_candidate_phase(run_id: uuid.UUID, candidate: str, phase: str) -> N
         run = db.get(ModelRun, run_id)
         if run is None:
             return
+        leaderboard = [
+            ({**entry, "status": "running"} if entry.get("model") == candidate
+             and entry.get("status") == "pending" else entry)
+            for entry in (run.tags or {}).get("leaderboard", [])
+        ]
         run.tags = {
             **(run.tags or {}),
             "current_candidate": candidate,
             "candidate_phase": phase,
             "candidate_phase_updated_at": datetime.now(UTC).isoformat(),
+            "leaderboard": leaderboard,
         }
         db.commit()
 

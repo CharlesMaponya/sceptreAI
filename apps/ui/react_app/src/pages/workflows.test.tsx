@@ -79,6 +79,8 @@ describe("core workflow integrations", () => {
     });
     renderRoute(<RunsPage />, "/projects/project-1/runs");
     expect((await screen.findAllByText("RandomForestClassifier")).length).toBeGreaterThan(0);
+    expect(screen.getByRole("link", { name: "Deploy model" }))
+      .toHaveAttribute("href", "/projects/project-1/operations?trainingRunId=run-1&model=RandomForestClassifier");
     await userEvent.click(screen.getByRole("button", { name: /RandomForestClassifier/i }));
     await userEvent.click(screen.getByRole("tab", { name: "Diagnostics" }));
     expect(await screen.findByRole("heading", { name: "Confusion matrix" })).toBeInTheDocument();
@@ -93,13 +95,56 @@ describe("core workflow integrations", () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/logs"))).toBe(true);
   });
 
-  it("uploads first, then waits for target selection before profiling", async () => {
+  it("renders SHAP features automatically when explainability completes", async () => {
+    let resultRequests = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.endsWith("/training/runs")) return response([run]);
+      if (url.endsWith("/leaderboard")) return response({
+        run_id: "run-1", status: "succeeded", primary_metric: "balanced_accuracy",
+        winner: "RandomForestClassifier", metric_directions: {}, entries: [{
+          rank: 1, model: "RandomForestClassifier", status: "succeeded", cost_tier: "medium",
+          primary_score: .91, metrics: { balanced_accuracy: .91 }, diagnostics: {},
+          best_params: {}, duration_seconds: 10, error: null,
+        }],
+      });
+      if (url.endsWith("/resources")) return response({
+        run_id: "run-1", status: "succeeded", completed_candidates: 1,
+        total_candidates: 1, progress: 1, elapsed_seconds: 10,
+      });
+      if (url.endsWith("/logs")) return response({ run_id: "run-1", status: "succeeded", lines: [] });
+      if (url.endsWith("/analyses")) return response([{
+        ...run, id: "analysis-1", run_kind: "explainability", status: "running",
+        run_name: "SHAP · RandomForestClassifier",
+      }]);
+      if (url.endsWith("/analyses/analysis-1")) {
+        resultRequests += 1;
+        return response({
+          run_id: "analysis-1", status: resultRequests > 1 ? "succeeded" : "running",
+          model_name: "RandomForestClassifier", metrics: {}, diagnostics: {}, artifacts: [],
+          feature_importance: resultRequests > 1
+            ? [{ feature: "customer_tenure", mean_absolute_shap: 0.75 }] : [],
+        });
+      }
+      if (url.endsWith("/datasets")) return response([]);
+      return response([]);
+    });
+
+    renderRoute(<RunsPage />, "/projects/project-1/runs");
+    expect((await screen.findAllByText("RandomForestClassifier")).length).toBeGreaterThan(0);
+    await userEvent.click(screen.getByRole("tab", { name: "Validate & explain" }));
+    await userEvent.click(screen.getByRole("tab", { name: "SHAP explainability" }));
+    expect(await screen.findByText(/Explainability is still running/i)).toBeInTheDocument();
+    expect(await screen.findByText("customer_tenure", {}, { timeout: 4000 })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Calculate SHAP" })).not.toBeInTheDocument();
+    expect(resultRequests).toBeGreaterThan(1);
+  }, 8000);
+
+  it("uploads first, then returns to overview without starting profiling", async () => {
     let uploadBody: unknown = null;
-    let profileBody: unknown = null;
     let finishUpload: (() => void) | undefined;
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
       if (String(input).endsWith("/profile-jobs") && options?.method === "POST") {
-        profileBody = JSON.parse(String(options.body));
         return response({ id: "profile-1", status: "queued" }, 202);
       }
       return response([]);
@@ -149,18 +194,8 @@ describe("core workflow integrations", () => {
     expect(form.get("file")).toBeInstanceOf(File);
     expect((form.get("file") as File).name).toBe("customers.csv");
     act(() => finishUpload?.());
-    expect(await screen.findByRole("heading", { name: "Choose the profiling target" }))
-      .toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "No target" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "value" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/profile-jobs"))).toBe(false);
-
-    await user.selectOptions(screen.getByLabelText("Target column"), "value");
-    await user.click(screen.getByRole("button", { name: "Start profile" }));
-    await waitFor(() => expect(profileBody).toEqual({ target_column: "value", force: false }));
-    await waitFor(() => expect(screen.queryByRole("heading", {
-      name: "Choose the profiling target",
-    })).not.toBeInTheDocument());
   });
 
   it("profiles only on request and shows regression target guidance", async () => {
@@ -256,7 +291,11 @@ describe("core workflow integrations", () => {
         active_deployments: 0, components: { database: "ok" },
       });
       if (url.endsWith("/operations/registry")) return response([]);
-      if (url.endsWith("/operations/deployments")) return response([]);
+      if (url.endsWith("/operations/deployments")) return response([{
+        run: { id: "deploy-1", run_name: "one-click", created_at: "2026-01-01T00:00:00Z" },
+        runtime_state: "ready", endpoint: "https://model.example.test", docs_url: "https://model.example.test/docs",
+        status: "running",
+      }]);
       if (url.endsWith("/operations/drift-runs")) return response([]);
       if (url.endsWith("/datasets")) return response([]);
       if (url.endsWith("/operations/cleanup")) {
@@ -271,6 +310,7 @@ describe("core workflow integrations", () => {
     });
     renderRoute(<OperationsPage />, "/projects/project-1/operations");
     await screen.findByText("Resource cleanup");
+    expect(screen.queryByRole("link", { name: /Endpoint/i })).not.toBeInTheDocument();
     const deleteButton = screen.getByRole("button", { name: /Delete eligible resources/i });
     expect(deleteButton).toBeDisabled();
     await userEvent.click(screen.getByRole("button", { name: "Preview cleanup" }));

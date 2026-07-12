@@ -1,9 +1,14 @@
 # Sceptre React UI migration plan
 
+## Status
+
+Completed. The React application is the sole supported UI and the transitional
+Streamlit application has been removed from the repository.
+
 ## Product verdict
 
-The Streamlit application proves the platform workflow and remains useful as an
-internal diagnostic console. It is not the recommended customer experience.
+The former Streamlit application proved the initial platform workflow but was
+not suitable as the long-term customer experience.
 
 The main usability constraints are:
 

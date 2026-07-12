@@ -282,6 +282,38 @@ def launch_drift_check(
     entry = _registry_entry(db, project_id, entry_id)
     source = entry.model_run
     current_version = _dataset_version(db, project_id, request.dataset_version_id)
+    if current_version.id == source.dataset_version_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Drift requires an external dataset version; select a version "
+                "different from the model's training dataset."
+            ),
+        )
+    excluded_columns = {
+        value
+        for value in (source.target_column, source.params.get("evaluation_column"))
+        if value
+    }
+    required_columns = {
+        str(item.get("name"))
+        for item in source.dataset_version.schema_json.get("columns", [])
+        if item.get("name") and item.get("name") not in excluded_columns
+    }
+    current_columns = {
+        str(item.get("name"))
+        for item in current_version.schema_json.get("columns", [])
+        if item.get("name")
+    }
+    missing_columns = sorted(required_columns - current_columns)
+    if missing_columns:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "External drift columns do not match the training feature space. "
+                f"Missing columns: {', '.join(missing_columns)}."
+            ),
+        )
     k8s = client or KubernetesTrainingClient()
     estimate = estimate_training_run(
         db,
@@ -325,6 +357,7 @@ def launch_drift_check(
         params={
             "registry_entry_id": str(entry.id),
             "reference_dataset_version_id": str(source.dataset_version_id),
+            "evaluation_column": source.params.get("evaluation_column"),
             "max_rows": request.max_rows,
         },
         tags={"registry_entry_id": str(entry.id)},
@@ -807,6 +840,17 @@ def registry_entry_read(entry: ModelRegistryEntry) -> RegistryEntryRead:
         updated_at=entry.updated_at,
         model_artifact_uri=entry.model_artifact.object_uri,
         is_fallback=bool(entry.registry_metadata.get("fallback")),
+        training_dataset_version_id=entry.model_run.dataset_version_id,
+        training_feature_columns=[
+            str(item.get("name"))
+            for item in entry.model_run.dataset_version.schema_json.get("columns", [])
+            if item.get("name")
+            and item.get("name")
+            not in {
+                entry.model_run.target_column,
+                entry.model_run.params.get("evaluation_column"),
+            }
+        ],
     )
 
 

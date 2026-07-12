@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity, AlertTriangle, Box, CloudCog, Cpu, Database, ExternalLink, Gauge,
-  RefreshCw, Rocket, ShieldCheck, Square, Trash2,
+  FileSpreadsheet, RefreshCw, Rocket, ShieldCheck, Square, Trash2, Upload,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
-import { api, json } from "../api";
+import { useParams, useSearchParams } from "react-router-dom";
+import { api, json, uploadFormData } from "../api";
 import {
   Badge, Button, Card, EmptyState, ErrorState, Loading, Metric, Modal, Notice, PageHeader,
 } from "../components/ui";
@@ -16,6 +16,8 @@ interface Registry {
   id: string; model_run_id: string; stage: string; model_name: string; version: number;
   champion_metric_name: string | null; champion_metric_value: number | null;
   is_fallback: boolean; created_at: string;
+  training_dataset_version_id: string;
+  training_feature_columns: string[];
 }
 interface DeployStatus {
   run: ModelRun; runtime_state: string; endpoint: string | null; docs_url?: string | null;
@@ -28,12 +30,19 @@ interface CleanupResult {
   dry_run: boolean; artifact_count: number; artifact_bytes: number; artifact_ids: string[];
   deleted_object_uris: string[]; deleted_kubernetes_jobs: string[]; errors: string[];
 }
-interface VersionOption { id: string; label: string }
+interface DatasetUploadResult { dataset: Dataset; version: DatasetVersion }
 
 export function OperationsPage() {
   const { projectId = "" } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const client = useQueryClient();
-  const [registerOpen, setRegisterOpen] = useState(false);
+  const requestedRunId = searchParams.get("trainingRunId") || "";
+  const requestedModel = searchParams.get("model") || "";
+  const [registerOpen, setRegisterOpen] = useState(Boolean(requestedRunId || requestedModel));
+  const closeRegister = () => {
+    setRegisterOpen(false);
+    if (requestedRunId || requestedModel) setSearchParams({}, { replace: true });
+  };
   const health = useQuery({
     queryKey: ["health", projectId],
     queryFn: () => api<PlatformHealth>(`/projects/${projectId}/operations/health`),
@@ -54,18 +63,6 @@ export function OperationsPage() {
     queryFn: () => api<DriftRun[]>(`/projects/${projectId}/operations/drift-runs`),
     refetchInterval: (query) => query.state.data?.some((item) =>
       ["queued", "precheck_running", "running"].includes(item.status)) ? 5000 : false,
-  });
-  const versions = useQuery({
-    queryKey: ["operation-versions", projectId],
-    queryFn: async () => {
-      const datasets = await api<Dataset[]>(`/projects/${projectId}/datasets`);
-      const groups = await Promise.all(datasets.map(async (dataset) => ({
-        dataset,
-        versions: await api<DatasetVersion[]>(`/projects/${projectId}/datasets/${dataset.id}/versions`),
-      })));
-      return groups.flatMap(({ dataset, versions: items }): VersionOption[] =>
-        items.map((version) => ({ id: version.id, label: `${dataset.name} · v${version.version_number}` })));
-    },
   });
   const refreshOperations = () => {
     client.invalidateQueries({ queryKey: ["registry", projectId] });
@@ -95,7 +92,7 @@ export function OperationsPage() {
         <p>The governed source of deployable model versions.</p></div><ShieldCheck className="section-icon" /></div>
       {registry.data?.length ? <div className="registry-grid">{registry.data.map((entry) =>
         <RegistryCard key={entry.id} projectId={projectId} entry={entry}
-          versions={versions.data || []} refresh={refreshOperations} />)}</div>
+          refresh={refreshOperations} />)}</div>
         : <EmptyState icon={<Box />} title="No registered models"
           description="Register a successful training candidate before promoting or deploying it."
           action={<Button onClick={() => setRegisterOpen(true)}>Register model</Button>} />}
@@ -113,13 +110,14 @@ export function OperationsPage() {
           <small>Promote a registry entry and deploy it when the evidence is ready.</small></span></div>}
     </Card>
     <CleanupPanel projectId={projectId} />
-    {registerOpen && <RegisterModal projectId={projectId} close={() => setRegisterOpen(false)}
-      done={() => { setRegisterOpen(false); registry.refetch(); }} />}
+    {registerOpen && <RegisterModal projectId={projectId} initialRunId={requestedRunId}
+      initialModel={requestedModel} close={closeRegister}
+      done={() => { closeRegister(); registry.refetch(); }} />}
   </>;
 }
 
-function RegistryCard({ projectId, entry, versions, refresh }: {
-  projectId: string; entry: Registry; versions: VersionOption[]; refresh: () => void;
+function RegistryCard({ projectId, entry, refresh }: {
+  projectId: string; entry: Registry; refresh: () => void;
 }) {
   const [stage, setStage] = useState(entry.stage);
   const [driftOpen, setDriftOpen] = useState(false);
@@ -149,12 +147,12 @@ function RegistryCard({ projectId, entry, versions, refresh }: {
         onClick={() => action.mutate({ path: "stage", body: { stage } })}>Update stage</Button>
       <Button variant="secondary" disabled={entry.is_fallback || entry.stage !== "staging"}
         onClick={() => action.mutate({ path: "fallback" })}>Set fallback</Button>
-      <Button variant="secondary" disabled={!versions.length} onClick={() => setDriftOpen(true)}>
+      <Button variant="secondary" onClick={() => setDriftOpen(true)}>
         <RefreshCw size={15} />Drift</Button>
       <Button disabled={!["staging", "production"].includes(entry.stage)}
         onClick={() => setDeployOpen(true)}><Rocket size={15} />Deploy</Button>
     </div>
-    {driftOpen && <DriftModal projectId={projectId} entry={entry} versions={versions}
+    {driftOpen && <DriftModal projectId={projectId} entry={entry}
       close={() => setDriftOpen(false)} done={() => { setDriftOpen(false); refresh(); }} />}
     {deployOpen && <ConfirmModal title={`Deploy ${entry.model_name} v${entry.version}?`}
       description="This creates an inference workload in Kubernetes using one replica, 500m CPU, and 1 GiB memory."
@@ -165,26 +163,61 @@ function RegistryCard({ projectId, entry, versions, refresh }: {
   </div>;
 }
 
-function DriftModal({ projectId, entry, versions, close, done }: {
-  projectId: string; entry: Registry; versions: VersionOption[]; close: () => void; done: () => void;
+function DriftModal({ projectId, entry, close, done }: {
+  projectId: string; entry: Registry; close: () => void; done: () => void;
 }) {
-  const [versionId, setVersionId] = useState(versions[0]?.id || "");
+  const [file, setFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploaded, setUploaded] = useState<DatasetUploadResult | null>(null);
   const [maxRows, setMaxRows] = useState(10_000);
+  const uploadedColumns = (uploaded?.version.schema_json || uploaded?.version.dataset_schema)
+    ?.columns?.map((column) => column.name) || [];
+  const trainingFeatureColumns = entry.training_feature_columns || [];
+  const missingColumns = trainingFeatureColumns.filter(
+    (column) => !uploadedColumns.includes(column),
+  );
+  const upload = useMutation({
+    mutationFn: async (selected: File) => {
+      const body = new FormData();
+      body.set("dataset_name", `Drift comparison · ${selected.name}`.slice(0, 220));
+      body.set("description", `External drift data for ${entry.model_name}`);
+      body.set("tags", JSON.stringify({ purpose: "drift", registry_entry_id: entry.id }));
+      body.set("file", selected, selected.name);
+      return uploadFormData<DatasetUploadResult>(
+        `/projects/${projectId}/datasets/upload`, body, setUploadProgress,
+      );
+    },
+    onSuccess: setUploaded,
+  });
   const launch = useMutation({
     mutationFn: () => api(`/projects/${projectId}/operations/registry/${entry.id}/drift`,
-      json("POST", { dataset_version_id: versionId, max_rows: maxRows, expected_minutes: 10 })),
+      json("POST", { dataset_version_id: uploaded!.version.id, max_rows: maxRows, expected_minutes: 10 })),
     onSuccess: done,
   });
   return <Modal title="Run a drift check"
     description={`Compare current data with the training baseline for ${entry.model_name}.`} onClose={close}>
-    <div className="stack"><label>Current dataset version<select value={versionId}
-      onChange={(event) => setVersionId(event.target.value)}>
-      {versions.map((version) => <option value={version.id} key={version.id}>{version.label}</option>)}</select></label>
+    <div className="stack"><Notice>Upload external data. Drift starts only after its feature columns match the registered model's training schema.</Notice>
+      <label className="dropzone analysis-upload"><input type="file"
+        accept=".csv,.parquet,.xlsx,.xls,.json,.jsonl" onChange={(event) => {
+          setFile(event.target.files?.[0] || null); setUploaded(null); setUploadProgress(0); upload.reset();
+        }} />
+        <FileSpreadsheet /><b>{file?.name || "Choose external drift data"}</b>
+        <span>CSV, Parquet, Excel, JSON, or JSONL</span></label>
+      {file && !uploaded && <Button variant="secondary" loading={upload.isPending}
+        onClick={() => upload.mutate(file)}><Upload size={15} />Upload and inspect</Button>}
+      {upload.isPending && <div className="progress-panel"><div><b>Uploading drift dataset</b>
+        <span>{uploadProgress}%</span></div><progress value={uploadProgress} max={100} /></div>}
+      {upload.error && <Notice tone="danger">{upload.error.message}</Notice>}
+      {uploaded && missingColumns.length > 0 && <Notice tone="danger">
+        Drift cannot start. Missing training features: {missingColumns.join(", ")}.</Notice>}
+      {uploaded && missingColumns.length === 0 && <Notice tone="success">
+        Schema matched: all {trainingFeatureColumns.length} training features are present.</Notice>}
       <label>Maximum rows<input type="number" min={100} max={100000} step={100}
         value={maxRows} onChange={(event) => setMaxRows(Number(event.target.value))} /></label>
       {launch.error && <Notice tone="danger">{launch.error.message}</Notice>}
       <div className="modal__actions"><Button variant="ghost" onClick={close}>Cancel</Button>
-        <Button disabled={!versionId} loading={launch.isPending} onClick={() => launch.mutate()}>
+        <Button disabled={!uploaded || missingColumns.length > 0}
+          loading={launch.isPending} onClick={() => launch.mutate()}>
           Run drift check</Button></div>
     </div>
   </Modal>;
@@ -225,7 +258,7 @@ function DeploymentRow({ projectId, deployment, refresh }: {
   return <tr><td><b>{deployment.run.run_name || deployment.run.id.slice(0, 8)}</b>
     <small className="cell-sub">{formatDate(deployment.run.created_at)}</small></td>
     <td>{titleCase(deployment.runtime_state)}</td><td><Badge status={deployment.status} /></td>
-    <td>{deployment.endpoint ? <span className="endpoint-links">
+    <td>{deployment.status === "succeeded" && deployment.endpoint ? <span className="endpoint-links">
       <a href={deployment.endpoint} target="_blank" rel="noreferrer">Endpoint <ExternalLink size={13} /></a>
       {deployment.docs_url && <a href={deployment.docs_url} target="_blank" rel="noreferrer">Docs <ExternalLink size={13} /></a>}
     </span> : "Pending"}</td>
@@ -290,11 +323,12 @@ function ConfirmModal({ title, description, confirmLabel, action, close, danger 
   </Modal>;
 }
 
-function RegisterModal({ projectId, close, done }: {
-  projectId: string; close: () => void; done: () => void;
+function RegisterModal({ projectId, initialRunId, initialModel, close, done }: {
+  projectId: string; initialRunId: string; initialModel: string;
+  close: () => void; done: () => void;
 }) {
-  const [runId, setRunId] = useState("");
-  const [model, setModel] = useState("");
+  const [runId, setRunId] = useState(initialRunId);
+  const [model, setModel] = useState(initialModel);
   const runs = useQuery({
     queryKey: ["runs", projectId],
     queryFn: () => api<ModelRun[]>(`/projects/${projectId}/training/runs`),

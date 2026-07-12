@@ -14,7 +14,7 @@
 - JWT-style access tokens and refresh-token rotation: implemented
 - Simple-auth/SSO toggle foundation: implemented
 - Project RBAC and share links: implemented
-- Streamlit session handling and workspace shell: implemented
+- React session handling and workspace shell: implemented
 
 ## Phase 3: Dataset Ingestion and Storage
 
@@ -73,7 +73,7 @@
 - External validation against compatible dataset versions: implemented
 - Task-specific metrics and stored MinIO diagnostic artifacts: implemented
 - On-demand isolated SHAP jobs with mixed-type feature support: implemented
-- Progressive Streamlit validation and explainability results: implemented
+- Progressive React validation and explainability results: implemented
 - Failure parsing and user-facing remediation messages: implemented
 
 ## Phase 7: Monitoring, Registry, and Deployment

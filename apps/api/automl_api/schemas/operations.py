@@ -43,6 +43,8 @@ class RegistryEntryRead(BaseModel):
     updated_at: datetime
     model_artifact_uri: str
     is_fallback: bool = False
+    training_dataset_version_id: uuid.UUID
+    training_feature_columns: list[str] = Field(default_factory=list)
 
 
 class DriftLaunchRequest(BaseModel):

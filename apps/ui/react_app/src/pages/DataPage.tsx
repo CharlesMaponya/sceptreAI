@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Database, FileSpreadsheet, Plus, RefreshCw, Upload, X } from "lucide-react";
+import { Database, FileSpreadsheet, Play, Plus, RefreshCw, Upload, X } from "lucide-react";
 import { lazy, Suspense, DragEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { api, json, uploadFormData } from "../api";
 import { Badge, Button, Card, EmptyState, ErrorState, Loading, Metric, Modal, Notice, PageHeader } from "../components/ui";
 import { formatBytes, titleCase } from "../lib";
 import type { Dataset, DatasetVersion, ProfileJob } from "../types";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 type ProfileResult = ProfileJob & {
   feature_profiles_json: Record<string, {
@@ -19,18 +19,16 @@ type ProfileResult = ProfileJob & {
 };
 
 type DatasetUploadResult = { dataset: Dataset; version: DatasetVersion };
-const NO_TARGET = "No target";
 const PlotlyChart = lazy(() => import("../components/PlotlyChart"));
 
 export function DataPage() {
   const { projectId = "" } = useParams();
+  const navigate = useNavigate();
   const client = useQueryClient();
   const [showUpload, setShowUpload] = useState(false);
   const [selected, setSelected] = useState<Dataset | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploaded, setUploaded] = useState<DatasetUploadResult | null>(null);
-  const [target, setTarget] = useState(NO_TARGET);
   const datasets = useQuery({ queryKey: ["datasets", projectId], queryFn: () => api<Dataset[]>(`/projects/${projectId}/datasets`) });
   useEffect(() => {
     if (!selected && datasets.data?.length) setSelected(datasets.data[0]);
@@ -53,32 +51,13 @@ export function DataPage() {
     onSuccess: (result) => {
       client.invalidateQueries({ queryKey: ["datasets", projectId] });
       client.invalidateQueries({ queryKey: ["versions", projectId, result.dataset.id] });
-      setUploaded(result);
-      setTarget(NO_TARGET);
       setFile(null);
-    },
-  });
-  const startProfile = useMutation({
-    mutationFn: () => api<ProfileJob>(
-      `/projects/${projectId}/datasets/${uploaded!.dataset.id}/versions/${uploaded!.version.id}/profile-jobs`,
-      json("POST", { target_column: target === NO_TARGET ? null : target, force: false }),
-    ),
-    onSuccess: () => {
-      client.invalidateQueries({ queryKey: ["profile", uploaded?.version.id] });
       setShowUpload(false);
-      setUploaded(null);
+      navigate(`/projects/${projectId}`);
     },
   });
-  const uploadedColumns = useMemo(
-    () => (uploaded?.version.schema_json || uploaded?.version.dataset_schema)?.columns
-      ?.map((column) => column.name) || [],
-    [uploaded],
-  );
   const openUpload = () => {
     upload.reset();
-    startProfile.reset();
-    setUploaded(null);
-    setTarget(NO_TARGET);
     setUploadProgress(0);
     setShowUpload(true);
   };
@@ -101,20 +80,10 @@ export function DataPage() {
         action={<Button onClick={openUpload}><Plus size={16} />Upload first dataset</Button>} /></Card> :
         selected && <DatasetDetail projectId={projectId} dataset={selected} datasets={datasets.data} onDatasetChange={setSelected} />}
     {showUpload && <Modal
-      title={uploaded ? "Choose the profiling target" : "Upload a dataset"}
-      description={uploaded ? "Select the outcome column to analyse, or choose no target for exploratory profiling." : "A new immutable dataset version will be created before profiling begins."}
+      title="Upload a dataset"
+      description="A new immutable dataset version will be created. You will choose its target from the project overview."
       onClose={() => setShowUpload(false)}>
-      {uploaded ? <div className="stack">
-        <Notice tone="success">{uploaded.dataset.name} version {uploaded.version.version_number} uploaded successfully.</Notice>
-        <label>Target column<select value={target} onChange={(event) => setTarget(event.target.value)} autoFocus>
-          <option value={NO_TARGET}>{NO_TARGET}</option>
-          {uploadedColumns.map((column) => <option value={column} key={column}>{column}</option>)}
-        </select></label>
-        <p className="muted">The target is excluded from feature preprocessing and used for relationship and task analysis.</p>
-        {startProfile.error && <Notice tone="danger">{startProfile.error.message}</Notice>}
-        <div className="modal__actions"><Button variant="ghost" type="button" onClick={() => setShowUpload(false)}>Later</Button>
-          <Button loading={startProfile.isPending} onClick={() => startProfile.mutate()}>Start profile</Button></div>
-      </div> : <form className="stack" onSubmit={submit}><label>Dataset name<input name="name" required maxLength={220} autoFocus placeholder="Q2 customer activity" /></label>
+      <form className="stack" onSubmit={submit}><label>Dataset name<input name="name" required maxLength={220} autoFocus placeholder="Q2 customer activity" /></label>
         <label>Description <span className="optional">Optional</span><textarea name="description" rows={2} placeholder="Source, purpose, or collection period" /></label>
         <label className="dropzone" onDragOver={(e) => e.preventDefault()} onDrop={(e: DragEvent) => { e.preventDefault(); acceptFile(e.dataTransfer.files[0]); }}>
           <input type="file" accept=".csv,.parquet,.xlsx,.xls,.json,.jsonl" onChange={(e) => acceptFile(e.target.files?.[0])} />
@@ -128,7 +97,7 @@ export function DataPage() {
         </div>}
         {upload.error && <Notice tone="danger">{upload.error.message}</Notice>}
         <div className="modal__actions"><Button variant="ghost" type="button" onClick={() => setShowUpload(false)}>Cancel</Button><Button disabled={!file} loading={upload.isPending}>Upload dataset</Button></div>
-      </form>}
+      </form>
     </Modal>}
   </>;
 }
@@ -144,6 +113,7 @@ function DatasetDetail({
   datasets: Dataset[];
   onDatasetChange: (dataset: Dataset) => void;
 }) {
+  const navigate = useNavigate();
   const client = useQueryClient();
   const versions = useQuery({ queryKey: ["versions", projectId, dataset.id], queryFn: () => api<DatasetVersion[]>(`/projects/${projectId}/datasets/${dataset.id}/versions`) });
   const [versionId, setVersionId] = useState("");
@@ -178,7 +148,9 @@ function DatasetDetail({
         <div className="progress-panel"><div><b>{titleCase(profile.data.current_stage || "Preparing")}</b><span>{Math.round((profile.data.progress || 0) * 100)}%</span></div><progress value={profile.data.progress || 0} max={1} /><p>Profiling {profile.data.completed_columns || 0} of {profile.data.total_columns || 0} columns. You can leave this page safely.</p></div>
         : result.data ? <><div className="profile-summary"><div><span>Inferred task</span><strong>{titleCase(result.data.overview_json?.task_inference?.task_type || "Pending")}</strong></div>
           <div><span>Confidence</span><strong>{Math.round((result.data.overview_json?.task_inference?.confidence || 0) * 100)}%</strong></div><p>{result.data.overview_json?.task_inference?.rationale}</p></div>
-          <FeatureAccordions columns={columns} target={result.data.target_column} relationships={result.data.relationships_json} preparation={result.data.preparation_json} /></>
+          <FeatureAccordions columns={columns} target={result.data.target_column} relationships={result.data.relationships_json} preparation={result.data.preparation_json} />
+          <div className="profile-training-action"><Button className="full" onClick={() => navigate(`/projects/${projectId}/training`)}>
+            <Play size={15} />Start training</Button></div></>
           : <div className="inline-empty"><Database /><span><b>No completed profile</b><small>Profile this version before configuring a training run.</small></span></div>}
     </Card>
   </div>;

@@ -74,7 +74,7 @@ class Settings:
     max_concurrent_jobs: int = 2
     mlflow_tracking_uri: str = "http://mlflow:5000"
     training_namespace: str = "automl"
-    training_image: str = "automl-training:local"
+    training_image: str = "automl-training:metrics-v2"
     training_service_account: str = "default"
     inference_image: str = "automl-inference:local"
     inference_service_account: str = "default"

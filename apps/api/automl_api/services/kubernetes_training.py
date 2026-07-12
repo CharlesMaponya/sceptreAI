@@ -451,6 +451,7 @@ class KubernetesTrainingClient:
                     "name": "MLFLOW_TRACKING_URI",
                     "value": "http://automl-mlflow:5000",
                 },
+                {"name": "MLFLOW_ENABLE_ASYNC_LOGGING", "value": "false"},
             ],
             "resources": {
                 "requests": {

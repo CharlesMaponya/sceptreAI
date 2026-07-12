@@ -5,6 +5,7 @@ import sys
 import uuid
 from types import SimpleNamespace
 
+import automl_api.services.validation as validation_service
 import joblib
 import numpy as np
 import pandas as pd
@@ -12,6 +13,7 @@ import pytest
 from automl_api.models.enums import RunStatus, TaskType
 from automl_api.services.validation import _reusable_explainability_run
 from automl_api.training import analysis, pipeline
+from fastapi import HTTPException
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.pipeline import Pipeline
@@ -242,6 +244,45 @@ def test_completed_historical_explanation_is_reused() -> None:
     )
 
     assert result is completed
+
+
+def test_failed_training_run_allows_shap_for_successful_candidate(monkeypatch) -> None:
+    source = SimpleNamespace(
+        status=RunStatus.FAILED,
+        tags={
+            "leaderboard": [
+                {"model": "RandomForestClassifier", "status": "succeeded", "metrics": {}}
+            ]
+        },
+    )
+    monkeypatch.setattr(validation_service, "require_project_role", lambda *_: None)
+    monkeypatch.setattr(validation_service, "_training_run", lambda *_: source)
+    monkeypatch.setattr(validation_service, "_leaderboard_parent", lambda _, run: run)
+
+    selected_source, entry = validation_service._source_model(
+        SimpleNamespace(),
+        SimpleNamespace(),
+        uuid.uuid4(),
+        uuid.uuid4(),
+        "RandomForestClassifier",
+        require_artifact=False,
+        require_source_complete=False,
+    )
+
+    assert selected_source is source
+    assert entry["status"] == "succeeded"
+
+
+def test_external_validation_rejects_missing_training_columns() -> None:
+    source = SimpleNamespace(dataset_version=SimpleNamespace(schema_json={
+        "columns": [{"name": "age"}, {"name": "income"}, {"name": "target"}],
+    }))
+    external = SimpleNamespace(schema_json={
+        "columns": [{"name": "age"}, {"name": "target"}],
+    })
+
+    with pytest.raises(HTTPException, match="Missing columns: income"):
+        validation_service._require_matching_validation_columns(source, external)
 
 
 def test_non_predictive_cluster_model_uses_fitted_centroids() -> None:

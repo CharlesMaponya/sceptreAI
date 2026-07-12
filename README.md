@@ -224,7 +224,7 @@ pip install -e ".[dev,ml,k8s]"
 ```bash
 minikube addons enable metrics-server
 minikube image build -t automl-mlflow:local -f Dockerfile.mlflow .
-minikube image build -t automl-training:local -f Dockerfile.training .
+minikube image build -t automl-training:metrics-v2 -f Dockerfile.training .
 minikube image build -t automl-inference:local -f Dockerfile.inference .
 ```
 
@@ -273,10 +273,6 @@ cd apps/ui/react_app
 npm install
 npm run dev
 ```
-
-The previous Streamlit application remains available as an internal diagnostic
-console during the phased migration. The product UX and new feature work live
-in the React application.
 
 ### Service URLs
 
@@ -345,7 +341,7 @@ Current quality baseline:
 - XML and HTML coverage reports retained by CI for 14 days
 
 The suite covers ingestion, temporal inference, exact and Dask profiling,
-authentication, route contracts, Streamlit navigation, Kubernetes resource
+authentication, route contracts, React workflows, Kubernetes resource
 estimation, adaptive deadlines, task metrics, estimator discovery, leaderboards,
 external validation, MinIO model recovery, historical reconstruction, SHAP
 percentage contributions, registry fallback, generated Dockerfiles, inference
@@ -368,7 +364,7 @@ python -m compileall apps packages alembic tests
 ```text
 apps/
   api/                 FastAPI service and training runtime
-  ui/                  Streamlit multipage application
+  ui/react_app/        React and TypeScript product application
 packages/              Shared Python packages
 alembic/               Database migrations
 infra/k8s/base/        Kubernetes and Minikube manifests

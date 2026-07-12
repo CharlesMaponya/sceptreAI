@@ -5,12 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "smme-tabular-automl"
 version = "0.1.0"
-description = "SMME-safe tabular AutoML platform scaffold with FastAPI, Streamlit, PostgreSQL, and Kubernetes."
+description = "SMME-safe tabular AutoML platform with FastAPI, React, PostgreSQL, and Kubernetes."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "alembic>=1.13",
-    "altair>=5,<6",
     "dask[dataframe]>=2024.8",
     "fastapi>=0.111",
     "minio>=7.2",
@@ -22,7 +21,6 @@ dependencies = [
     "psutil>=5.9",
     "s3fs>=2024.6",
     "sqlalchemy>=2.0",
-    "streamlit>=1.35",
     "uvicorn[standard]>=0.30",
 ]
 
@@ -61,8 +59,8 @@ training = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["apps/api", "apps/ui", "packages"]
-include = ["automl_api*", "streamlit_app*", "automl_shared*"]
+where = ["apps/api", "packages"]
+include = ["automl_api*", "automl_shared*"]
 
 [tool.ruff]
 line-length = 100
@@ -73,11 +71,11 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["apps/api", "apps/ui", "packages"]
+pythonpath = ["apps/api", "packages"]
 
 [tool.coverage.run]
 branch = true
-source = ["automl_api", "streamlit_app"]
+source = ["automl_api"]
 
 [tool.coverage.report]
 show_missing = true

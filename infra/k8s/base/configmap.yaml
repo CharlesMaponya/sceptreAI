@@ -12,7 +12,7 @@ data:
   MAX_CONCURRENT_JOBS: "2"
   MLFLOW_TRACKING_URI: http://automl-mlflow:5000
   TRAINING_NAMESPACE: automl
-  TRAINING_IMAGE: automl-training:local
+  TRAINING_IMAGE: automl-training:metrics-v2
   INFERENCE_IMAGE: automl-inference:local
   INFERENCE_SERVICE_ACCOUNT: default
   INFERENCE_SERVICE_TYPE: NodePort

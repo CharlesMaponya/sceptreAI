@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity, BarChart3, BrainCircuit, ChevronDown, ChevronRight, CircleStop, Cpu,
-  FileCheck2, FileText, Gauge, MemoryStick, Play, Plus, RefreshCw, TerminalSquare, Trophy,
+  FileCheck2, FileSpreadsheet, FileText, Gauge, MemoryStick, Play, Plus, RefreshCw,
+  Rocket, TerminalSquare, Trophy, Upload,
 } from "lucide-react";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { useParams } from "react-router-dom";
-import { api, json } from "../api";
+import { Link, useParams } from "react-router-dom";
+import { api, json, uploadFormData } from "../api";
 import {
   Badge, Button, Card, EmptyState, ErrorState, Loading, Metric, Modal, Notice, PageHeader,
 } from "../components/ui";
@@ -24,6 +25,7 @@ interface AnalysisResult {
 }
 interface Logs { run_id: string; status: string; lines: string[] }
 interface VersionOption { id: string; label: string; columns: string[] }
+interface DatasetUploadResult { dataset: Dataset; version: DatasetVersion }
 const PlotlyChart = lazy(() => import("../components/PlotlyChart"));
 
 export function RunsPage() {
@@ -130,7 +132,7 @@ function RunDetail({ projectId, run, invalidate }: {
       <button role="tab" aria-selected={tab === "logs"} className={tab === "logs" ? "active" : ""}
         onClick={() => setTab("logs")}>Logs</button>
     </div>
-    {tab === "leaderboard" && <LeaderboardPanel leaderboard={leaderboard} winner={winner}
+    {tab === "leaderboard" && <LeaderboardPanel projectId={projectId} leaderboard={leaderboard} winner={winner}
       task={run.task_type} resources={resources} logs={logs} />}
     {tab === "analysis" && <AnalysisPanel projectId={projectId} run={run}
       successfulModels={leaderboard.data?.entries.filter((entry) => entry.status === "succeeded").map((entry) => entry.model) || []} />}
@@ -141,7 +143,8 @@ function RunDetail({ projectId, run, invalidate }: {
   </div>;
 }
 
-function LeaderboardPanel({ leaderboard, winner, task, resources, logs }: {
+function LeaderboardPanel({ projectId, leaderboard, winner, task, resources, logs }: {
+  projectId: string;
   leaderboard: ReturnType<typeof useQuery<Leaderboard>>;
   winner: Leaderboard["entries"][number] | undefined;
   task: TaskType;
@@ -158,7 +161,10 @@ function LeaderboardPanel({ leaderboard, winner, task, resources, logs }: {
           <b>{leaderboard.data.winner || "Ranking in progress"}</b>
           <small>{winner?.primary_score != null
             ? `${titleCase(leaderboard.data.primary_metric || "score")}: ${winner.primary_score.toFixed(4)}`
-            : "Results are still being collected"}</small></div></div>
+            : "Results are still being collected"}</small></div>
+          {leaderboard.data.winner && <Link className="button button--primary"
+            to={`/projects/${projectId}/operations?trainingRunId=${leaderboard.data.run_id}&model=${encodeURIComponent(leaderboard.data.winner)}`}>
+            <Rocket size={15} />Deploy model</Link>}</div>
         <div className="leaderboard-accordion" role="table" aria-label="Model leaderboard">
           <div className="leaderboard-accordion__head" role="row"><span>Rank</span><span>Model</span><span>Status</span>
             <span>{titleCase(leaderboard.data.primary_metric || "Score")}</span><span>Duration</span><span /></div>
@@ -353,13 +359,17 @@ function EvidenceChart({ title, data, xTitle, yTitle }: {
 function AnalysisPanel({ projectId, run, successfulModels }: {
   projectId: string; run: ModelRun; successfulModels: string[];
 }) {
+  const client = useQueryClient();
   const [model, setModel] = useState("");
-  const [versionId, setVersionId] = useState("");
   const [evaluationColumn, setEvaluationColumn] = useState("");
+  const [validationFile, setValidationFile] = useState<File | null>(null);
+  const [validationUploadProgress, setValidationUploadProgress] = useState(0);
+  const [uploadedValidation, setUploadedValidation] = useState<DatasetUploadResult | null>(null);
   const [maxRows, setMaxRows] = useState(200);
   const [selectedAnalysis, setSelectedAnalysis] = useState("");
+  const [analysisTab, setAnalysisTab] = useState<"validation" | "explainability">("validation");
   const analyses = useQuery({
-    queryKey: ["analyses", run.id], enabled: run.status === "succeeded",
+    queryKey: ["analyses", run.id], enabled: successfulModels.length > 0,
     queryFn: () => api<Analysis[]>(`/projects/${projectId}/training/runs/${run.id}/analyses`),
     refetchInterval: (query) => query.state.data?.some((item) =>
       ["queued", "precheck_running", "running"].includes(item.status)) ? 5000 : false,
@@ -381,75 +391,154 @@ function AnalysisPanel({ projectId, run, successfulModels }: {
   useEffect(() => {
     if (successfulModels.length && !successfulModels.includes(model)) setModel(successfulModels[0]);
   }, [successfulModels, model]);
+  const trainingColumns = versions.data?.find((item) => item.id === run.dataset_version_id)?.columns || [];
+  const uploadedValidationColumns = (uploadedValidation?.version.schema_json
+    || uploadedValidation?.version.dataset_schema)?.columns?.map((column) => column.name) || [];
+  const missingValidationColumns = trainingColumns.filter(
+    (column) => !uploadedValidationColumns.includes(column),
+  );
+  const validationSchemaReady = trainingColumns.length > 0;
+  const visibleAnalyses = useMemo(() => (analyses.data || []).filter((item) =>
+    item.run_kind === analysisTab), [analyses.data, analysisTab]);
+  const completedExplanation = useMemo(() => (analyses.data || []).find((item) =>
+    item.run_kind === "explainability" && item.status === "succeeded"
+    && item.params.model_name === model), [analyses.data, model]);
   useEffect(() => {
-    if (versions.data?.length && !versions.data.some((item) => item.id === versionId)) setVersionId(versions.data[0].id);
-  }, [versions.data, versionId]);
-  useEffect(() => {
-    if (analyses.data?.length && !analyses.data.some((item) => item.id === selectedAnalysis)) {
-      setSelectedAnalysis(analyses.data[0].id);
+    const preferred = analysisTab === "explainability" && completedExplanation
+      ? completedExplanation : visibleAnalyses[0];
+    if (completedExplanation && analysisTab === "explainability"
+      && selectedAnalysis !== completedExplanation.id) {
+      setSelectedAnalysis(completedExplanation.id);
+    } else if (preferred && !visibleAnalyses.some((item) => item.id === selectedAnalysis)) {
+      setSelectedAnalysis(preferred.id);
+    } else if (!preferred && selectedAnalysis) {
+      setSelectedAnalysis("");
     }
-  }, [analyses.data, selectedAnalysis]);
+  }, [analysisTab, completedExplanation, selectedAnalysis, visibleAnalyses]);
   const explain = useMutation({
-    mutationFn: () => api(`/projects/${projectId}/training/runs/${run.id}/explanations`,
+    mutationFn: () => api<{ run: Analysis }>(`/projects/${projectId}/training/runs/${run.id}/explanations`,
       json("POST", { model_name: model, max_rows: maxRows, expected_minutes: 10 })),
-    onSuccess: () => analyses.refetch(),
+    onSuccess: ({ run: launched }) => {
+      setSelectedAnalysis(launched.id);
+      client.removeQueries({ queryKey: ["analysis-result", run.id, launched.id] });
+      analyses.refetch();
+    },
+  });
+  const uploadValidation = useMutation({
+    mutationFn: async (file: File) => {
+      const body = new FormData();
+      body.set("dataset_name", `External validation · ${file.name}`.slice(0, 220));
+      body.set("description", `Uploaded to validate ${run.run_name || run.id}`);
+      body.set("tags", JSON.stringify({ purpose: "external_validation", source_run_id: run.id }));
+      body.set("file", file, file.name);
+      return uploadFormData<DatasetUploadResult>(
+        `/projects/${projectId}/datasets/upload`, body, setValidationUploadProgress,
+      );
+    },
+    onSuccess: (uploaded) => {
+      setUploadedValidation(uploaded);
+      setEvaluationColumn("");
+      client.invalidateQueries({ queryKey: ["datasets", projectId] });
+    },
   });
   const validate = useMutation({
-    mutationFn: () => api(`/projects/${projectId}/training/runs/${run.id}/validations`,
+    mutationFn: () => api<{ run: Analysis }>(`/projects/${projectId}/training/runs/${run.id}/validations`,
       json("POST", {
-        model_name: model, dataset_version_id: versionId,
+        model_name: model, dataset_version_id: uploadedValidation!.version.id,
         evaluation_column: run.task_type === "clustering" ? evaluationColumn || null : null,
         expected_minutes: 5,
       })),
-    onSuccess: () => analyses.refetch(),
+    onSuccess: ({ run: launched }) => {
+      setSelectedAnalysis(launched.id);
+      client.removeQueries({ queryKey: ["analysis-result", run.id, launched.id] });
+      analyses.refetch();
+    },
   });
   const result = useQuery({
     queryKey: ["analysis-result", run.id, selectedAnalysis], enabled: Boolean(selectedAnalysis),
     queryFn: () => api<AnalysisResult>(
       `/projects/${projectId}/training/runs/${run.id}/analyses/${selectedAnalysis}`),
+    refetchInterval: (query) => ["queued", "precheck_running", "running"].includes(
+      query.state.data?.status || "",
+    ) ? 2000 : false,
   });
-  const currentVersion = versions.data?.find((item) => item.id === versionId);
+  const selectedRun = visibleAnalyses.find((item) => item.id === selectedAnalysis);
+  const explanationSucceeded = analysisTab === "explainability"
+    && selectedRun?.run_kind === "explainability"
+    && result.data?.status === "succeeded";
   return <Card className="analysis-card">
     <div><BrainCircuit /><span><h2>Challenge a candidate</h2>
       <p>Test on an external dataset or calculate feature contributions before promotion.</p></span></div>
     {!successfulModels.length ? <Notice>Successful model candidates are required before analysis.</Notice> : <>
       <label>Candidate model<select value={model} onChange={(event) => setModel(event.target.value)}>
         {successfulModels.map((name) => <option key={name}>{name}</option>)}</select></label>
-      <div className="analysis-actions">
-        <section><FileCheck2 /><h3>External validation</h3>
-          <p>Measure this candidate against a separate immutable dataset version.</p>
-          <label>Dataset version<select value={versionId} onChange={(event) => setVersionId(event.target.value)}>
-            {versions.data?.map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</select></label>
+      <div className="analysis-mode-tabs" role="tablist" aria-label="Model analysis type">
+        <button role="tab" aria-selected={analysisTab === "validation"}
+          className={analysisTab === "validation" ? "active" : ""}
+          onClick={() => setAnalysisTab("validation")}>External validation</button>
+        <button role="tab" aria-selected={analysisTab === "explainability"}
+          className={analysisTab === "explainability" ? "active" : ""}
+          onClick={() => setAnalysisTab("explainability")}>SHAP explainability</button>
+      </div>
+      {analysisTab === "validation" && <div className="analysis-actions analysis-actions--single">
+        <section><FileCheck2 /><h3>Validate on external data</h3>
+          <p>Upload an external dataset. Its columns are checked against the training data before validation can start.</p>
+          <label className="dropzone analysis-upload"><input type="file"
+            accept=".csv,.parquet,.xlsx,.xls,.json,.jsonl" onChange={(event) => {
+              setValidationFile(event.target.files?.[0] || null);
+              setUploadedValidation(null);
+              setValidationUploadProgress(0);
+              uploadValidation.reset();
+            }} />
+            <FileSpreadsheet /><b>{validationFile?.name || "Choose an external dataset"}</b>
+            <span>CSV, Parquet, Excel, JSON, or JSONL</span></label>
+          {validationFile && !uploadedValidation && <Button variant="secondary"
+            loading={uploadValidation.isPending} onClick={() => uploadValidation.mutate(validationFile)}>
+            <Upload size={15} />Upload and inspect</Button>}
+          {uploadValidation.isPending && <div className="progress-panel"><div><b>Uploading external dataset</b>
+            <span>{validationUploadProgress}%</span></div><progress value={validationUploadProgress} max={100} /></div>}
+          {uploadValidation.error && <Notice tone="danger">{uploadValidation.error.message}</Notice>}
+          {uploadedValidation && !validationSchemaReady && <Notice>
+            Loading the training schema before validation can start.
+          </Notice>}
+          {uploadedValidation && validationSchemaReady && missingValidationColumns.length > 0 && <Notice tone="danger">
+            This file cannot be validated. Missing training columns: {missingValidationColumns.join(", ")}.
+          </Notice>}
+          {uploadedValidation && validationSchemaReady && missingValidationColumns.length === 0 && <Notice tone="success">
+            Schema matched: all {trainingColumns.length} training columns are present.
+          </Notice>}
           {run.task_type === "clustering" && <label>Reference label <span className="optional">Optional</span>
             <select value={evaluationColumn} onChange={(event) => setEvaluationColumn(event.target.value)}>
               <option value="">No reference label</option>
-              {currentVersion?.columns.map((column) => <option key={column}>{column}</option>)}
+              {uploadedValidationColumns.map((column) => <option key={column}>{column}</option>)}
             </select></label>}
-          <Button disabled={!versionId} loading={validate.isPending} onClick={() => validate.mutate()}>
+          <Button disabled={!uploadedValidation || !validationSchemaReady || missingValidationColumns.length > 0}
+            loading={validate.isPending} onClick={() => validate.mutate()}>
             <Play size={15} />Run validation</Button>
           {validate.error && <Notice tone="danger">{validate.error.message}</Notice>}
         </section>
-        <section><BrainCircuit /><h3>SHAP explainability</h3>
+      </div>}
+      {analysisTab === "explainability" && !explanationSucceeded &&
+        <div className="analysis-actions analysis-actions--single"><section><BrainCircuit /><h3>Explain with SHAP</h3>
           <p>Quantify which features contributed most to this model's decisions.</p>
           <label>Sample rows<input type="number" min={20} max={1000} step={20}
             value={maxRows} onChange={(event) => setMaxRows(Number(event.target.value))} /></label>
           <Button loading={explain.isPending} onClick={() => explain.mutate()}>
             <Play size={15} />Calculate SHAP</Button>
           {explain.error && <Notice tone="danger">{explain.error.message}</Notice>}
-        </section>
-      </div>
+        </section></div>}
     </>}
-    <h3>Analysis history</h3>
-    {analyses.data?.length ? <>
-      <div className="analysis-history">{analyses.data.map((item) =>
+    {!explanationSucceeded && <h3>{analysisTab === "validation" ? "Validation history" : "Explainability history"}</h3>}
+    {visibleAnalyses.length ? <>
+      {!explanationSucceeded && <div className="analysis-history">{visibleAnalyses.map((item) =>
         <button className={selectedAnalysis === item.id ? "active" : ""} key={item.id}
           onClick={() => setSelectedAnalysis(item.id)}>
           <span><b>{item.run_name || item.id.slice(0, 8)}</b><small>{titleCase(item.run_kind)}</small></span>
           <Badge status={item.status} />
-        </button>)}</div>
+        </button>)}</div>}
       {result.isLoading ? <Loading label="Loading analysis result…" />
         : result.data && <AnalysisResultPanel result={result.data} />}
-    </> : <p className="muted">No validation or explainability jobs yet.</p>}
+    </> : <p className="muted">No {analysisTab === "validation" ? "validation" : "explainability"} jobs yet.</p>}
   </Card>;
 }
 
@@ -461,6 +550,8 @@ function AnalysisResultPanel({ result }: { result: AnalysisResult }) {
   return <div className="analysis-result">
     <div className="section-heading"><div><h3>{result.model_name}</h3>
       <p>Persisted analysis evidence</p></div><Badge status={result.status} /></div>
+    {["queued", "precheck_running", "running"].includes(result.status) &&
+      <Notice>Explainability is still running. Feature contributions will appear here automatically.</Notice>}
     {Object.keys(result.metrics).length > 0 && <div className="metric-pills">
       {Object.entries(result.metrics).map(([name, value]) =>
         <span key={name}><small>{titleCase(name)}</small><b>{value.toFixed(4)}</b></span>)}</div>}
@@ -507,6 +598,9 @@ function AddModelsModal({ projectId, run, completed, close, done }: {
   return <Modal title="Train additional models"
     description="Completed candidates are preserved; only the selected additions will run." onClose={close}>
     {estimators.isLoading ? <Loading /> : available.length ? <div className="stack">
+      <div className="selection-actions"><Button variant="secondary" type="button"
+        onClick={() => setSelected(available.slice(0, 20).map((model) => model.name))}>Select all models</Button>
+        {selected.length > 0 && <Button variant="ghost" type="button" onClick={() => setSelected([])}>Clear selection</Button>}</div>
       <div className="model-grid">{available.map((item) => <label
         className={selected.includes(item.name) ? "model-option active" : "model-option"} key={item.name}>
         <input type="checkbox" checked={selected.includes(item.name)}

@@ -49,6 +49,7 @@ def launch_validation_run(
         request.model_name,
     )
     version = _dataset_version(db, project_id, request.dataset_version_id)
+    _require_matching_validation_columns(source, version)
     if source.target_column and not _has_column(version, source.target_column):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -90,6 +91,7 @@ def launch_explainability_run(
         training_run_id,
         request.model_name,
         require_artifact=False,
+        require_source_complete=False,
     )
     _lock_training_admission(db)
     existing = _reusable_explainability_run(
@@ -298,13 +300,14 @@ def _source_model(
     model_name: str,
     *,
     require_artifact: bool = True,
+    require_source_complete: bool = True,
 ) -> tuple[ModelRun, dict]:
     require_project_role(db, user, project_id, ProjectRole.EDITOR)
     source = _leaderboard_parent(
         db,
         _training_run(db, project_id, run_id),
     )
-    if source.status != RunStatus.SUCCEEDED:
+    if require_source_complete and source.status != RunStatus.SUCCEEDED:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="The source training run must be complete.",
@@ -415,3 +418,28 @@ def _reusable_explainability_run(
 
 def _has_column(version: DatasetVersion, column: str) -> bool:
     return column in {item.get("name") for item in version.schema_json.get("columns", [])}
+
+
+def _require_matching_validation_columns(
+    source: ModelRun,
+    external: DatasetVersion,
+) -> None:
+    required = {
+        str(item.get("name"))
+        for item in source.dataset_version.schema_json.get("columns", [])
+        if item.get("name")
+    }
+    available = {
+        str(item.get("name"))
+        for item in external.schema_json.get("columns", [])
+        if item.get("name")
+    }
+    missing = sorted(required - available)
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "External validation columns do not match the training dataset. "
+                f"Missing columns: {', '.join(missing)}."
+            ),
+        )

@@ -30,6 +30,9 @@ def _enable_rapids_accelerator() -> bool:
 
 
 def main() -> None:
+    # MLflow's async queue can retry a partially committed metric batch and
+    # violate the SQL metric primary key. Training favors durable synchronous writes.
+    os.environ.setdefault("MLFLOW_ENABLE_ASYNC_LOGGING", "false")
     _enable_rapids_accelerator()
     from automl_api.training.analysis import execute_analysis_run
     from automl_api.training.pipeline import execute_training_run, tabular_automl_pipeline

@@ -31,6 +31,7 @@ from automl_api.training.evaluation import metric_direction
 from automl_api.training.model_catalog import (
     candidate_catalog,
     estimator_catalog_payload,
+    select_candidates,
     supported_gpu_vendors,
 )
 
@@ -163,6 +164,34 @@ def launch_training_run(
         )
 
     now = datetime.now(UTC)
+    selected_candidates = select_candidates(
+        payload.task_type,
+        payload.candidate_models or None,
+        len(payload.candidate_models) if payload.candidate_models else payload.candidate_limit,
+    )
+    primary_metric = (
+        "silhouette"
+        if payload.task_type == TaskType.CLUSTERING
+        else "balanced_accuracy"
+        if payload.task_type == TaskType.CLASSIFICATION
+        else "rmse"
+    )
+    pending_leaderboard = [
+        {
+            "rank": None,
+            "model": candidate.name,
+            "status": "pending",
+            "cost_tier": candidate.cost_tier,
+            "primary_score": None,
+            "metrics": {},
+            "diagnostics": {},
+            "best_params": {},
+            "duration_seconds": None,
+            "error": None,
+            "mlflow_run_id": None,
+        }
+        for candidate in selected_candidates
+    ]
     run = ModelRun(
         project_id=project_id,
         dataset_version_id=payload.dataset_version_id,
@@ -203,6 +232,9 @@ def launch_training_run(
             "accelerator": estimate.gpu_vendor or "cpu",
             "accelerator_resource": estimate.gpu_resource,
             "selected_node": estimate.selected_node,
+            "leaderboard_primary_metric": primary_metric,
+            "leaderboard": pending_leaderboard,
+            "completed_candidates": 0,
         },
         queued_at=now,
     )
@@ -569,7 +601,45 @@ def training_leaderboard(
 ) -> TrainingLeaderboardRead:
     run = get_training_run(db, user, project_id, run_id)
     leaderboard_run = _leaderboard_parent(db, run)
-    entries = leaderboard_run.tags.get("leaderboard", [])
+    by_model = {
+        entry["model"]: dict(entry)
+        for entry in leaderboard_run.tags.get("leaderboard", [])
+    }
+    if leaderboard_run.id != run.id:
+        by_model.update(
+            {
+                entry["model"]: dict(entry)
+                for entry in run.tags.get("leaderboard", [])
+            }
+        )
+    requested = run.params.get("candidate_models")
+    selected = select_candidates(
+        run.task_type,
+        requested if isinstance(requested, list) and requested else None,
+        int(run.params.get("candidate_limit", 5)),
+    )
+    for candidate in selected:
+        by_model.setdefault(
+            candidate.name,
+            {
+                "rank": None,
+                "model": candidate.name,
+                "status": (
+                    "running"
+                    if run.tags.get("current_candidate") == candidate.name
+                    else "pending"
+                ),
+                "cost_tier": candidate.cost_tier,
+                "primary_score": None,
+                "metrics": {},
+                "diagnostics": {},
+                "best_params": {},
+                "duration_seconds": None,
+                "error": None,
+                "mlflow_run_id": None,
+            },
+        )
+    entries = list(by_model.values())
     metric_names = {name for entry in entries for name in entry.get("metrics", {})}
     return TrainingLeaderboardRead(
         run_id=run.id,

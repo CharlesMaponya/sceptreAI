@@ -134,6 +134,7 @@ def test_training_manifest_has_low_priority_limits_and_timeout() -> None:
     } in container["env"]
     assert manifest["spec"]["backoffLimit"] == 0
     assert manifest["spec"]["ttlSecondsAfterFinished"] == 30
+    assert {"name": "MLFLOW_ENABLE_ASYNC_LOGGING", "value": "false"} in container["env"]
 
 
 @pytest.mark.parametrize(

@@ -4,6 +4,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
+import automl_api.services.operations as operations_service
 import numpy as np
 import pandas as pd
 import pytest
@@ -12,7 +13,7 @@ from automl_api.core.config import Settings
 from automl_api.inference import app as inference_app
 from automl_api.inference.app import predict_records
 from automl_api.models.enums import GlobalRole, ModelStage, RunKind
-from automl_api.schemas.operations import ArtifactCleanupRequest
+from automl_api.schemas.operations import ArtifactCleanupRequest, DriftLaunchRequest
 from automl_api.services.kubernetes_training import KubernetesTrainingClient
 from automl_api.services.operations import (
     _adaptive_inference_memory,
@@ -23,6 +24,7 @@ from automl_api.services.operations import (
 from automl_api.services.training import BATCH_RUN_KINDS
 from automl_api.storage.object_store import EmbeddedObjectStore
 from automl_api.training.analysis import _drift_summary
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sklearn.linear_model import LinearRegression
 
@@ -47,6 +49,37 @@ def test_phase_seven_routes_are_registered() -> None:
 def test_long_lived_deployments_do_not_consume_batch_training_slots() -> None:
     assert RunKind.DEPLOYMENT not in BATCH_RUN_KINDS
     assert RunKind.DRIFT in BATCH_RUN_KINDS
+
+
+def test_drift_rejects_external_data_missing_training_features(monkeypatch) -> None:
+    project_id = uuid.uuid4()
+    source_version_id = uuid.uuid4()
+    current_version = SimpleNamespace(
+        id=uuid.uuid4(),
+        schema_json={"columns": [{"name": "age"}]},
+    )
+    source = SimpleNamespace(
+        dataset_version_id=source_version_id,
+        target_column="target",
+        params={},
+        dataset_version=SimpleNamespace(schema_json={
+            "columns": [{"name": "age"}, {"name": "income"}, {"name": "target"}],
+        }),
+    )
+    monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
+    monkeypatch.setattr(
+        operations_service, "_registry_entry", lambda *_: SimpleNamespace(model_run=source)
+    )
+    monkeypatch.setattr(operations_service, "_dataset_version", lambda *_: current_version)
+
+    with pytest.raises(HTTPException, match="Missing columns: income"):
+        operations_service.launch_drift_check(
+            SimpleNamespace(),
+            SimpleNamespace(),
+            project_id,
+            uuid.uuid4(),
+            DriftLaunchRequest(dataset_version_id=current_version.id),
+        )
 
 
 def test_generated_model_dockerfile_is_pinned_to_supplied_runtime() -> None:
