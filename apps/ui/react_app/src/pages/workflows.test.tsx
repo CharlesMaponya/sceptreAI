@@ -28,6 +28,15 @@ const run = {
   failure_message: null, created_at: "2026-01-01T00:00:00Z", finished_at: "2026-01-01T00:10:00Z",
 };
 
+const operationsHealth = {
+  capacity: {
+    connected: true, source: "kubernetes", available_cpu_cores: 4,
+    available_memory_mb: 8192, ready_nodes: 1, gpu_available: false,
+    active_training_jobs: 0, warnings: [],
+  },
+  active_deployments: 1, components: { database: "ok" },
+};
+
 describe("core workflow integrations", () => {
   beforeEach(() => {
     setSession(null);
@@ -414,6 +423,7 @@ describe("core workflow integrations", () => {
     });
     renderRoute(<OperationsPage />, "/projects/project-1/operations");
     await screen.findByText("Resource cleanup");
+    expect(screen.getByText("Provisioning")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Endpoint/i })).not.toBeInTheDocument();
     const deleteButton = screen.getByRole("button", { name: /Delete eligible resources/i });
     expect(deleteButton).toBeDisabled();
@@ -421,5 +431,121 @@ describe("core workflow integrations", () => {
     await waitFor(() => expect(deleteButton).toBeEnabled());
     expect(screen.getByText("3", { selector: "strong" })).toBeInTheDocument();
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/operations/cleanup"))).toBe(true);
+  });
+
+  it("shows every external API link only after deployment succeeds", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.endsWith("/operations/health")) return response(operationsHealth);
+      if (url.endsWith("/operations/registry")) return response([]);
+      if (url.endsWith("/operations/deployments")) return response([{
+        run: { id: "deploy-1", run_name: "fraud-api", created_at: "2026-01-01T00:00:00Z" },
+        runtime_state: "ready", status: "succeeded",
+        endpoint: "https://model.example.test/v1/predict",
+        docs_url: "https://model.example.test/docs",
+        openapi_url: "https://model.example.test/openapi.json",
+      }]);
+      if (url.endsWith("/operations/drift-runs")) return response([]);
+      return response([]);
+    });
+
+    renderRoute(<OperationsPage />, "/projects/project-1/operations");
+
+    expect(await screen.findByRole("link", { name: /^Endpoint/ })).toHaveAttribute(
+      "href", "https://model.example.test/v1/predict",
+    );
+    expect(screen.getByRole("link", { name: /^Docs/ })).toHaveAttribute(
+      "href", "https://model.example.test/docs",
+    );
+    expect(screen.getByRole("link", { name: /^OpenAPI/ })).toHaveAttribute(
+      "href", "https://model.example.test/openapi.json",
+    );
+  });
+
+  it("explains how to access a ready internal-only deployment", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.endsWith("/operations/health")) return response(operationsHealth);
+      if (url.endsWith("/operations/registry")) return response([]);
+      if (url.endsWith("/operations/deployments")) return response([{
+        run: { id: "deploy-1", run_name: "fraud-api", created_at: "2026-01-01T00:00:00Z" },
+        runtime_state: "ready", status: "succeeded", endpoint: null,
+        service_name: "sceptre-model-deploy-1", namespace: "sceptre",
+        internal_endpoint: "http://sceptre-model-deploy-1.sceptre.svc:8080/v1/predict",
+        internal_docs_url: "http://sceptre-model-deploy-1.sceptre.svc:8080/docs",
+        internal_openapi_url: "http://sceptre-model-deploy-1.sceptre.svc:8080/openapi.json",
+      }]);
+      if (url.endsWith("/operations/drift-runs")) return response([]);
+      return response([]);
+    });
+    const user = userEvent.setup();
+    renderRoute(<OperationsPage />, "/projects/project-1/operations");
+
+    await user.click(await screen.findByRole("button", { name: "Access internal endpoint" }));
+    expect(screen.getByRole("dialog", { name: "Access internal model endpoint" })).toBeInTheDocument();
+    expect(screen.getByText("http://sceptre-model-deploy-1.sceptre.svc:8080/v1/predict"))
+      .toBeInTheDocument();
+    expect(screen.getByText(
+      "kubectl -n sceptre port-forward service/sceptre-model-deploy-1 8081:8080",
+    )).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^Local endpoint/ })).toHaveAttribute(
+      "href", "http://127.0.0.1:8081/v1/predict",
+    );
+
+    const port = screen.getByLabelText("Local endpoint port");
+    await user.clear(port);
+    await user.type(port, "9090");
+    expect(screen.getByText(
+      "kubectl -n sceptre port-forward service/sceptre-model-deploy-1 9090:8080",
+    )).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^Local docs/ })).toHaveAttribute(
+      "href", "http://127.0.0.1:9090/docs",
+    );
+    expect(screen.getByRole("link", { name: /^Local OpenAPI/ })).toHaveAttribute(
+      "href", "http://127.0.0.1:9090/openapi.json",
+    );
+  });
+
+  it("shows deployment request failures and recovers on retry", async () => {
+    let deploymentRequests = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.endsWith("/operations/health")) return response(operationsHealth);
+      if (url.endsWith("/operations/registry")) return response([]);
+      if (url.endsWith("/operations/deployments")) {
+        deploymentRequests += 1;
+        return deploymentRequests === 1
+          ? response({ detail: "Deployment status unavailable." }, 503)
+          : response([]);
+      }
+      if (url.endsWith("/operations/drift-runs")) return response([]);
+      return response([]);
+    });
+    renderRoute(<OperationsPage />, "/projects/project-1/operations");
+
+    expect(await screen.findByText("Deployment status unavailable.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("No model deployments")).toBeInTheDocument();
+    expect(deploymentRequests).toBe(2);
+  });
+
+  it("keeps the deployment section in a loading state until status arrives", async () => {
+    let resolveDeployments!: (value: Response) => void;
+    const pendingDeployments = new Promise<Response>((resolve) => { resolveDeployments = resolve; });
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.endsWith("/operations/health")) return response(operationsHealth);
+      if (url.endsWith("/operations/registry")) return response([]);
+      if (url.endsWith("/operations/deployments")) return pendingDeployments;
+      if (url.endsWith("/operations/drift-runs")) return response([]);
+      return response([]);
+    });
+    renderRoute(<OperationsPage />, "/projects/project-1/operations");
+
+    expect(await screen.findByText("Loading deployments…")).toBeInTheDocument();
+    act(() => resolveDeployments(new Response("[]", {
+      status: 200, headers: { "Content-Type": "application/json" },
+    })));
+    expect(await screen.findByText("No model deployments")).toBeInTheDocument();
   });
 });

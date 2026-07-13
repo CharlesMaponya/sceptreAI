@@ -563,6 +563,18 @@ def deploy_registered_model(
     )
 
 
+def _internal_model_deployment_urls(
+    service_name: str,
+    namespace: str,
+) -> dict[str, str]:
+    base_url = f"http://{service_name}.{namespace}.svc:8080"
+    return {
+        "internal_endpoint": f"{base_url}/v1/predict",
+        "internal_docs_url": f"{base_url}/docs",
+        "internal_openapi_url": f"{base_url}/openapi.json",
+    }
+
+
 def list_model_deployments(
     db: Session,
     user: User,
@@ -582,6 +594,9 @@ def list_model_deployments(
     result = []
     for run in runs:
         runtime_state = "unknown"
+        service_name = run.tags.get("service_name") or run.k8s_job_name
+        namespace = run.k8s_namespace or k8s.settings.training_namespace
+        internal_urls: dict[str, str] = {}
         if run.k8s_job_name and run.status != RunStatus.CANCELLED:
             try:
                 runtime_state = k8s.model_deployment_state(run.k8s_job_name)
@@ -599,6 +614,11 @@ def list_model_deployments(
                     run.tags = {**tags, **urls}
                 except Exception:
                     pass
+                if service_name and namespace:
+                    internal_urls = _internal_model_deployment_urls(
+                        service_name,
+                        namespace,
+                    )
             elif runtime_state == "missing":
                 run.status = RunStatus.FAILED
                 run.failure_code = "KUBERNETES_DEPLOYMENT_MISSING"
@@ -638,10 +658,13 @@ def list_model_deployments(
             DeploymentStatusRead(
                 run=ModelRunRead.model_validate(run),
                 runtime_state=runtime_state,
+                service_name=service_name,
+                namespace=namespace,
                 endpoint=run.tags.get("endpoint"),
                 base_url=run.tags.get("base_url"),
                 docs_url=run.tags.get("docs_url"),
                 openapi_url=run.tags.get("openapi_url"),
+                **internal_urls,
                 status=run.status,
             )
         )

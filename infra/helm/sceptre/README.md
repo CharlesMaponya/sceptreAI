@@ -156,6 +156,10 @@ local fallback. Enabling `ingress` exposes the UI, which also proxies `/api`.
 One-click model deployment also creates ClusterIP first. It reports no external
 endpoint unless a configured LoadBalancer, NodePort host, or per-model Ingress is
 ready. Per-model ingress hosts support `{name}` and `{deployment_id}` templates.
+For a ready ClusterIP deployment, the Operations UI reports its cluster-internal
+addresses and generates the exact `kubectl port-forward` command needed for local
+access. This preserves a closed-by-default installation without presenting an
+unreachable `.svc` address as a public endpoint.
 
 ## Optional controls
 

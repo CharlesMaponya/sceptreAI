@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity, AlertTriangle, Box, CloudCog, Cpu, Database, ExternalLink, Gauge,
-  FileSpreadsheet, RefreshCw, Rocket, ShieldCheck, Square, Trash2, Upload,
+  FileSpreadsheet, Network, RefreshCw, Rocket, ShieldCheck, Square, Trash2, Upload,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
@@ -22,6 +22,9 @@ interface Registry {
 interface DeployStatus {
   run: ModelRun; runtime_state: string; endpoint: string | null; docs_url?: string | null;
   openapi_url?: string | null; status: string;
+  service_name?: string | null; namespace?: string | null;
+  internal_endpoint?: string | null; internal_docs_url?: string | null;
+  internal_openapi_url?: string | null;
 }
 interface DriftRun extends ModelRun {
   tags: { diagnostics?: { drift_share_percent?: number; drifted_feature_count?: number } };
@@ -56,7 +59,7 @@ export function OperationsPage() {
     queryKey: ["deployments", projectId],
     queryFn: () => api<DeployStatus[]>(`/projects/${projectId}/operations/deployments`),
     refetchInterval: (query) => query.state.data?.some((item) =>
-      ["queued", "precheck_running", "running"].includes(item.status)) ? 5000 : false,
+      ["queued", "precheck_running", "running", "succeeded"].includes(item.status)) ? 15_000 : false,
   });
   const driftRuns = useQuery({
     queryKey: ["drift-runs", projectId],
@@ -101,7 +104,9 @@ export function OperationsPage() {
     <Card className="section-card">
       <div className="section-heading"><div><h2>Deployments</h2>
         <p>Live and historical inference services.</p></div><CloudCog className="section-icon" /></div>
-      {deployments.data?.length ? <div className="table-wrap"><table><thead><tr>
+      {deployments.isLoading ? <Loading label="Loading deployments…" />
+        : deployments.error ? <ErrorState error={deployments.error} retry={() => deployments.refetch()} />
+          : deployments.data?.length ? <div className="table-wrap"><table><thead><tr>
         <th>Deployment</th><th>Runtime</th><th>Status</th><th>Endpoint</th><th /></tr></thead>
         <tbody>{deployments.data.map((deployment) =>
           <DeploymentRow key={deployment.run.id} projectId={projectId}
@@ -251,6 +256,7 @@ function DeploymentRow({ projectId, deployment, refresh }: {
   projectId: string; deployment: DeployStatus; refresh: () => void;
 }) {
   const [confirmStop, setConfirmStop] = useState(false);
+  const [internalAccessOpen, setInternalAccessOpen] = useState(false);
   const stop = useMutation({
     mutationFn: () => api(`/projects/${projectId}/operations/deployments/${deployment.run.id}/stop`, json("POST")),
     onSuccess: () => { setConfirmStop(false); refresh(); },
@@ -258,16 +264,102 @@ function DeploymentRow({ projectId, deployment, refresh }: {
   return <tr><td><b>{deployment.run.run_name || deployment.run.id.slice(0, 8)}</b>
     <small className="cell-sub">{formatDate(deployment.run.created_at)}</small></td>
     <td>{titleCase(deployment.runtime_state)}</td><td><Badge status={deployment.status} /></td>
-    <td>{deployment.status === "succeeded" && deployment.endpoint ? <span className="endpoint-links">
-      <a href={deployment.endpoint} target="_blank" rel="noreferrer">Endpoint <ExternalLink size={13} /></a>
-      {deployment.docs_url && <a href={deployment.docs_url} target="_blank" rel="noreferrer">Docs <ExternalLink size={13} /></a>}
-    </span> : "Pending"}</td>
+    <td><DeploymentAccess deployment={deployment} openInternal={() => setInternalAccessOpen(true)} /></td>
     <td>{!["cancelled", "failed"].includes(deployment.status) &&
       <Button variant="ghost" onClick={() => setConfirmStop(true)}><Square size={14} />Stop</Button>}
       {confirmStop && <ConfirmModal danger title="Stop this deployment?"
         description="The prediction endpoint will become unavailable. The registered model and evidence remain intact."
         confirmLabel="Stop deployment" close={() => setConfirmStop(false)}
-        action={() => stop.mutateAsync()} />}</td></tr>;
+        action={() => stop.mutateAsync()} />}
+      {internalAccessOpen && <InternalEndpointModal deployment={deployment}
+        close={() => setInternalAccessOpen(false)} />}</td></tr>;
+}
+
+function DeploymentAccess({ deployment, openInternal }: {
+  deployment: DeployStatus; openInternal: () => void;
+}) {
+  const succeeded = deployment.status === "succeeded";
+  if (succeeded && deployment.endpoint) {
+    return <span className="endpoint-links">
+      <a href={deployment.endpoint} target="_blank" rel="noreferrer">
+        Endpoint <ExternalLink size={13} /></a>
+      {deployment.docs_url && <a href={deployment.docs_url} target="_blank" rel="noreferrer">
+        Docs <ExternalLink size={13} /></a>}
+      {deployment.openapi_url && <a href={deployment.openapi_url} target="_blank" rel="noreferrer">
+        OpenAPI <ExternalLink size={13} /></a>}
+    </span>;
+  }
+  const internalReady = succeeded && deployment.runtime_state === "ready"
+    && deployment.service_name && deployment.namespace && deployment.internal_endpoint;
+  if (internalReady) {
+    return <Button variant="secondary" onClick={openInternal}>
+      <Network size={14} />Access internal endpoint</Button>;
+  }
+  if (["failed", "cancelled", "preempted"].includes(deployment.status)
+    || ["missing", "unavailable"].includes(deployment.runtime_state)) {
+    return <span className="endpoint-state endpoint-state--unavailable">Unavailable</span>;
+  }
+  if (succeeded) {
+    return <span className="endpoint-state">External access not configured</span>;
+  }
+  return <span className="endpoint-state">Provisioning</span>;
+}
+
+function InternalEndpointModal({ deployment, close }: {
+  deployment: DeployStatus; close: () => void;
+}) {
+  const [localPort, setLocalPort] = useState(8081);
+  const serviceName = deployment.service_name || "model-service";
+  const namespace = deployment.namespace || "default";
+  const internalEndpoint = deployment.internal_endpoint || "";
+  const remotePort = portFromUrl(internalEndpoint, 8080);
+  const command = `kubectl -n ${namespace} port-forward service/${serviceName} ${localPort}:${remotePort}`;
+  const localEndpoint = localUrl(internalEndpoint, localPort, "/v1/predict");
+  const localDocs = localUrl(deployment.internal_docs_url, localPort, "/docs");
+  const localOpenApi = localUrl(deployment.internal_openapi_url, localPort, "/openapi.json");
+  return <Modal title="Access internal model endpoint"
+    description="This deployment is ready inside Kubernetes but is not exposed outside the cluster."
+    onClose={close}>
+    <div className="stack endpoint-access">
+      <Notice>Run the port-forward command on the machine where kubectl is connected to this cluster, then use the localhost links below.</Notice>
+      <div className="endpoint-access__urls">
+        <EndpointValue label="Cluster endpoint" value={internalEndpoint} />
+        <EndpointValue label="Cluster docs" value={deployment.internal_docs_url} />
+        <EndpointValue label="Cluster OpenAPI" value={deployment.internal_openapi_url} />
+      </div>
+      <label>Local port<input aria-label="Local endpoint port" type="number" min={1024} max={65535}
+        value={localPort} onChange={(event) => setLocalPort(Number(event.target.value))} /></label>
+      <div className="endpoint-command"><span>Port-forward command</span><code>{command}</code></div>
+      <div className="endpoint-local-links">
+        <a href={localEndpoint} target="_blank" rel="noreferrer">Local endpoint <ExternalLink size={13} /></a>
+        <a href={localDocs} target="_blank" rel="noreferrer">Local docs <ExternalLink size={13} /></a>
+        <a href={localOpenApi} target="_blank" rel="noreferrer">Local OpenAPI <ExternalLink size={13} /></a>
+      </div>
+      <div className="modal__actions"><Button variant="ghost" onClick={close}>Close</Button></div>
+    </div>
+  </Modal>;
+}
+
+function EndpointValue({ label, value }: { label: string; value?: string | null }) {
+  return <div><span>{label}</span><code>{value || "Not reported"}</code></div>;
+}
+
+function portFromUrl(value: string | null | undefined, fallback: number) {
+  try {
+    const parsed = new URL(value || "");
+    return Number(parsed.port) || (parsed.protocol === "https:" ? 443 : 80);
+  } catch {
+    return fallback;
+  }
+}
+
+function localUrl(value: string | null | undefined, port: number, fallbackPath: string) {
+  try {
+    const parsed = new URL(value || "");
+    return `http://127.0.0.1:${port}${parsed.pathname}${parsed.search}`;
+  } catch {
+    return `http://127.0.0.1:${port}${fallbackPath}`;
+  }
 }
 
 function CleanupPanel({ projectId }: { projectId: string }) {

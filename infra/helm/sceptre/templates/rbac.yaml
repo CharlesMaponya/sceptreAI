@@ -49,6 +49,9 @@ rules:
   - apiGroups: ["apps"]
     resources: ["deployments"]
     verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments/status"]
+    verbs: ["get"]
   {{- if .Values.inference.ingress.enabled }}
   - apiGroups: ["networking.k8s.io"]
     resources: ["ingresses"]

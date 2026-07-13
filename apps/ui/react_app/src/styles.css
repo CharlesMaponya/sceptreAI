@@ -265,6 +265,9 @@ tbody tr:last-child td { border-bottom: 0; }
 .registry-card__actions { display: flex; gap: 7px; flex-wrap: wrap; }.registry-card__actions select { width: auto; flex: 1; min-width: 120px; padding: 7px; font-size: .72rem; }.registry-card__actions .button { min-height: 34px; padding: 0 10px; font-size: .7rem; }
 td a { display: inline-flex; align-items: center; gap: 4px; }
 .endpoint-links { display: flex; flex-wrap: wrap; gap: 10px; }
+.endpoint-state { color: var(--muted); font-size: .7rem; }.endpoint-state--unavailable { color: var(--danger); }
+.endpoint-access__urls { display: grid; gap: 7px; }.endpoint-access__urls > div { display: grid; gap: 3px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: #f8f9fc; }.endpoint-access__urls span, .endpoint-command > span { color: var(--muted); font-size: .64rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }.endpoint-access__urls code { overflow-wrap: anywhere; font-size: .7rem; }
+.endpoint-access > label { max-width: 180px; }.endpoint-command { display: grid; gap: 6px; }.endpoint-command code { overflow-x: auto; padding: 11px; border-radius: 8px; background: #141b30; color: #dce3ff; font-size: .7rem; white-space: nowrap; }.endpoint-local-links { display: flex; flex-wrap: wrap; gap: 12px; }
 .drift-summary { display: grid; grid-template-columns: 160px 160px 1fr; align-items: center; gap: 15px; padding: 14px; margin-bottom: 13px; border-radius: 9px; background: #f6f8ff; }.drift-summary progress { width: 100%; accent-color: var(--blue); }
 .cleanup-controls { display: flex; align-items: end; gap: 10px; flex-wrap: wrap; }.cleanup-controls label { max-width: 180px; }.cleanup-result { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 17px; padding: 15px; border-radius: 9px; background: #f7f8fc; }.cleanup-result .notice { grid-column: 1 / -1; }
 

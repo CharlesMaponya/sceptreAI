@@ -12,13 +12,22 @@ from automl_api.api.routes.operations import router
 from automl_api.core.config import Settings
 from automl_api.inference import app as inference_app
 from automl_api.inference.app import predict_records
-from automl_api.models.enums import GlobalRole, ModelStage, RunKind
+from automl_api.models.enums import (
+    GlobalRole,
+    ModelStage,
+    RunKind,
+    RunStatus,
+    TaskType,
+)
+from automl_api.models.runs import ModelRun
 from automl_api.schemas.operations import ArtifactCleanupRequest, DriftLaunchRequest
 from automl_api.services.kubernetes_training import KubernetesTrainingClient
 from automl_api.services.operations import (
     _adaptive_inference_memory,
     _generated_model_dockerfile,
+    _internal_model_deployment_urls,
     cleanup_project_resources,
+    list_model_deployments,
     update_registry_stage,
 )
 from automl_api.services.training import BATCH_RUN_KINDS
@@ -415,6 +424,14 @@ def test_cluster_ip_model_deployment_does_not_report_an_external_url() -> None:
     assert client.model_deployment_urls("model") is None
 
 
+def test_internal_model_deployment_urls_use_portable_service_dns() -> None:
+    assert _internal_model_deployment_urls("automl-model-1234", "sceptre") == {
+        "internal_endpoint": ("http://automl-model-1234.sceptre.svc:8080/v1/predict"),
+        "internal_docs_url": "http://automl-model-1234.sceptre.svc:8080/docs",
+        "internal_openapi_url": ("http://automl-model-1234.sceptre.svc:8080/openapi.json"),
+    }
+
+
 def test_model_ingress_url_is_reported_only_after_admission() -> None:
     client = KubernetesTrainingClient.__new__(KubernetesTrainingClient)
     client.settings = Settings(
@@ -553,6 +570,94 @@ class _SequenceSession:
 
     def delete(self, value):
         self.deleted.append(value)
+
+
+def _deployment_run(*, status: RunStatus = RunStatus.RUNNING) -> ModelRun:
+    now = datetime.now(UTC)
+    return ModelRun(
+        id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        dataset_version_id=uuid.uuid4(),
+        created_by_id=uuid.uuid4(),
+        run_kind=RunKind.DEPLOYMENT,
+        status=status,
+        task_type=TaskType.REGRESSION,
+        run_name="Deploy model",
+        pipeline_name="kubernetes_model_deployment_v1",
+        k8s_namespace="sceptre",
+        k8s_job_name="automl-model-1234",
+        gpu_requested=False,
+        params={},
+        tags={"service_name": "automl-model-1234"},
+        queued_at=now,
+        started_at=now,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def test_ready_deployment_reports_internal_and_external_access_metadata(
+    monkeypatch,
+) -> None:
+    run = _deployment_run()
+    db = _SequenceSession(scalars=[[run]])
+    client = SimpleNamespace(
+        settings=Settings(training_namespace="fallback"),
+        model_deployment_state=lambda _: "ready",
+        model_deployment_urls=lambda _: {
+            "base_url": "https://model.example.test",
+            "endpoint": "https://model.example.test/v1/predict",
+            "docs_url": "https://model.example.test/docs",
+            "openapi_url": "https://model.example.test/openapi.json",
+        },
+    )
+    monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
+
+    deployment = list_model_deployments(
+        db,
+        SimpleNamespace(),
+        run.project_id,
+        client,
+    )[0]
+
+    assert deployment.status == RunStatus.SUCCEEDED
+    assert deployment.service_name == "automl-model-1234"
+    assert deployment.namespace == "sceptre"
+    assert deployment.endpoint == "https://model.example.test/v1/predict"
+    assert deployment.docs_url == "https://model.example.test/docs"
+    assert deployment.openapi_url == "https://model.example.test/openapi.json"
+    assert deployment.internal_endpoint == ("http://automl-model-1234.sceptre.svc:8080/v1/predict")
+    assert deployment.internal_docs_url == ("http://automl-model-1234.sceptre.svc:8080/docs")
+    assert deployment.internal_openapi_url == (
+        "http://automl-model-1234.sceptre.svc:8080/openapi.json"
+    )
+
+
+def test_non_ready_deployment_hides_internal_access_urls(monkeypatch) -> None:
+    run = _deployment_run()
+    db = _SequenceSession(scalars=[[run]])
+    client = SimpleNamespace(
+        settings=Settings(training_namespace="fallback"),
+        model_deployment_state=lambda _: "progressing",
+        model_deployment_urls=lambda _: pytest.fail(
+            "external URLs must not be resolved before the deployment is ready"
+        ),
+    )
+    monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
+
+    deployment = list_model_deployments(
+        db,
+        SimpleNamespace(),
+        run.project_id,
+        client,
+    )[0]
+
+    assert deployment.status == RunStatus.RUNNING
+    assert deployment.service_name == "automl-model-1234"
+    assert deployment.namespace == "sceptre"
+    assert deployment.internal_endpoint is None
+    assert deployment.internal_docs_url is None
+    assert deployment.internal_openapi_url is None
 
 
 def test_production_promotion_preserves_previous_model_as_fallback() -> None:

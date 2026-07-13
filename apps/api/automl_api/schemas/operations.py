@@ -101,8 +101,13 @@ class ArtifactCleanupRead(BaseModel):
 class DeploymentStatusRead(BaseModel):
     run: ModelRunRead
     runtime_state: str
+    service_name: str | None = None
+    namespace: str | None = None
     endpoint: str | None = None
     base_url: str | None = None
     docs_url: str | None = None
     openapi_url: str | None = None
+    internal_endpoint: str | None = None
+    internal_docs_url: str | None = None
+    internal_openapi_url: str | None = None
     status: RunStatus

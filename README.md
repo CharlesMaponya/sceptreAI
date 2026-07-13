@@ -689,8 +689,20 @@ also permanently deletes cluster-local data.
 
 ### Deployed model APIs
 
-Each ready model deployment exposes project- and environment-specific Swagger
-documentation from the **Operations** tab:
+Each ready model deployment reports its prediction, documentation, and OpenAPI
+addresses in the **Operations** tab. When ingress, a LoadBalancer, or a reachable
+NodePort is configured, those addresses are directly clickable. The portable
+default is an internal `ClusterIP`; for that case, choose **Access internal
+endpoint** to see the Kubernetes addresses and a ready-to-run local port-forward
+command such as:
+
+```bash
+kubectl -n sceptre port-forward service/automl-model-12345678 8081:8080
+```
+
+The model API is then available at `http://127.0.0.1:8081`, including Swagger at
+`http://127.0.0.1:8081/docs`. The port-forward lasts only while that command is
+running.
 
 | Endpoint | Workload |
 | --- | --- |
@@ -743,7 +755,7 @@ Pull requests and pushes to `main` or `develop` must pass all CI gates:
 
 Current quality baseline:
 
-- **130 passing backend tests and 21 passing React tests**
+- **133 passing backend tests and 25 passing React tests**
 - **2 explicitly disabled compatibility tests**
 - **40% enforced coverage floor**
 - XML and HTML coverage reports retained by CI for 14 days
