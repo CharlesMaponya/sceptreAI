@@ -58,14 +58,14 @@ disposable Kubernetes Jobs, while PostgreSQL, MinIO, and MLflow retain the
 operational record. It is designed for shared environments where auditability,
 resource fairness, and reproducibility matter as much as raw model performance.
 
-> **Current maturity:** The working platform and provider-neutral Helm deployment
-> are implemented and tested. Before an internet-facing or regulated production
-> rollout, add organization-specific identity, TLS, managed secrets, backups,
-> monitoring, and multi-node capacity planning.
+> **Current maturity:** The working platform and provider-neutral Helm chart are
+> ready for local development, evaluation, and compatibility testing. The current
+> release is not production certified; shared or production environments require
+> the controls and qualification evidence documented below.
 
-The phased target architecture, provider-neutral packaging contract, and
-production acceptance gates are documented in the
-[Production Readiness Implementation Guide](docs/production-readiness/README.md).
+The environment boundary, current blockers, promotion contract, and production
+acceptance gates are documented in the
+[Local Development and Production Readiness Guide](docs/production-readiness/README.md).
 The implemented local-cluster boundary is documented in the
 [Kubernetes Portability Contract](docs/architecture/kubernetes-portability.md).
 
@@ -743,8 +743,8 @@ Pull requests and pushes to `main` or `develop` must pass all CI gates:
 
 Current quality baseline:
 
-- **103 passing backend tests and 16 passing React tests**
-- **4 explicitly disabled compatibility tests**
+- **130 passing backend tests and 21 passing React tests**
+- **2 explicitly disabled compatibility tests**
 - **40% enforced coverage floor**
 - XML and HTML coverage reports retained by CI for 14 days
 

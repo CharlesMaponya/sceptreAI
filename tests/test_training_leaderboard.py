@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import builtins
 import uuid
 from types import SimpleNamespace
 
@@ -10,6 +11,7 @@ from automl_api.models.enums import TaskType
 from automl_api.services.training import _rank_combined_leaderboard
 from automl_api.training.model_catalog import (
     CandidateSpec,
+    _external_estimators,
     candidate_catalog,
     configure_estimator_for_training,
     select_candidates,
@@ -28,7 +30,6 @@ from automl_api.training.pipeline import (
 from sklearn.ensemble import RandomForestClassifier
 
 
-@pytest.mark.skip(reason="Disabled pending stable cross-version scikit-learn tag discovery.")
 def test_supervised_tasks_have_bounded_candidate_catalogs() -> None:
     classification = candidate_catalog(TaskType.CLASSIFICATION)
     regression = candidate_catalog(TaskType.REGRESSION)
@@ -44,7 +45,6 @@ def test_supervised_tasks_have_bounded_candidate_catalogs() -> None:
     assert {candidate.name for candidate in clustering}.issuperset({"KMeans", "Birch", "DBSCAN"})
 
 
-@pytest.mark.skip(reason="Disabled pending stable optional boosting discovery in CI.")
 def test_external_boosting_estimators_are_available_for_supervised_tasks() -> None:
     expected = {
         TaskType.CLASSIFICATION: {
@@ -70,6 +70,39 @@ def test_external_boosting_estimators_are_available_for_supervised_tasks() -> No
 
     clustering_names = {candidate.name for candidate in candidate_catalog(TaskType.CLUSTERING)}
     assert not any(name.startswith(("XGB", "LGBM", "CatBoost")) for name in clustering_names)
+
+
+def test_one_broken_optional_estimator_library_does_not_hide_the_others(monkeypatch) -> None:
+    original_import = builtins.__import__
+
+    class StubEstimator:
+        def __init__(self, **_: object) -> None:
+            pass
+
+    modules = {
+        "xgboost": SimpleNamespace(XGBRegressor=StubEstimator),
+        "catboost": SimpleNamespace(
+            CatBoostClassifier=StubEstimator,
+            CatBoostRegressor=StubEstimator,
+        ),
+    }
+
+    def controlled_import(name, *args, **kwargs):
+        if name == "lightgbm":
+            raise OSError("libgomp.so.1 is unavailable")
+        if name in modules:
+            return modules[name]
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", controlled_import)
+
+    model_names = {
+        name for name, _ in _external_estimators(TaskType.REGRESSION)
+    }
+
+    assert "XGBRegressor" in model_names
+    assert "CatBoostRegressor" in model_names
+    assert "LGBMRegressor" not in model_names
 
 
 @pytest.mark.skip(

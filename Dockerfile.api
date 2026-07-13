@@ -11,7 +11,10 @@ COPY apps/api ./apps/api
 COPY packages ./packages
 COPY scripts/verify_database_schema.py ./scripts/verify_database_schema.py
 
-RUN python -m pip install --no-cache-dir ".[k8s,ml]" \
+RUN apt-get update \
+    && apt-get install --no-install-recommends --yes libgomp1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && python -m pip install --no-cache-dir ".[k8s,ml]" \
     && useradd --create-home --uid 10001 sceptre
 
 USER 10001

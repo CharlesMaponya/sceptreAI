@@ -32,6 +32,8 @@ from sklearn.model_selection import (
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OrdinalEncoder, StandardScaler
 from skopt import BayesSearchCV
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 from zenml import pipeline, step
 
 from automl_api.core.config import get_settings
@@ -60,6 +62,15 @@ from automl_api.training.model_catalog import (
     select_candidates,
 )
 
+_TERMINAL_RUN_STATUSES = frozenset(
+    {
+        RunStatus.SUCCEEDED,
+        RunStatus.FAILED,
+        RunStatus.CANCELLED,
+        RunStatus.PREEMPTED,
+    }
+)
+
 
 @dataclass
 class TournamentResult:
@@ -83,14 +94,16 @@ def tabular_automl_pipeline(run_id: str) -> None:
 def execute_training_run(run_id: uuid.UUID) -> dict[str, float]:
     session_factory = get_session_factory()
     with session_factory() as db:
-        run = db.get(ModelRun, run_id)
+        run = _locked_run(db, run_id)
         if run is None:
             raise ValueError(f"Model run {run_id} was not found.")
+        if run.status in _TERMINAL_RUN_STATUSES:
+            return {}
         version = db.get(DatasetVersion, run.dataset_version_id)
         if version is None:
             raise ValueError("Dataset version was not found.")
         run.status = RunStatus.RUNNING
-        run.started_at = datetime.now(UTC)
+        run.started_at = run.started_at or datetime.now(UTC)
         db.commit()
 
     try:
@@ -120,32 +133,8 @@ def execute_training_run(run_id: uuid.UUID) -> dict[str, float]:
             mlflow_sklearn.log_model(result.model, artifact_path="model")
             mlflow_run_id = mlflow_run.info.run_id
 
-        with session_factory() as db:
-            persisted_run = db.get(ModelRun, run_id)
-            assert persisted_run is not None
-            persisted_run.status = RunStatus.SUCCEEDED
-            persisted_run.mlflow_run_id = mlflow_run_id
-            persisted_run.finished_at = datetime.now(UTC)
-            persisted_run.tags = {
-                **persisted_run.tags,
-                "winner": result.leaderboard[0]["model"],
-                "winner_mlflow_run_id": result.leaderboard[0].get("mlflow_run_id"),
-                "leaderboard_primary_metric": result.primary_metric,
-                "leaderboard": result.leaderboard,
-            }
-            for name, value in result.metrics.items():
-                db.add(
-                    Metric(
-                        project_id=persisted_run.project_id,
-                        model_run_id=persisted_run.id,
-                        name=name,
-                        kind=MetricKind.PERFORMANCE,
-                        split=MetricSplit.VALIDATION,
-                        value=float(value),
-                        higher_is_better=metric_direction(name) == "maximize",
-                    )
-                )
-            db.commit()
+        if not _persist_training_success(run_id, result, mlflow_run_id):
+            return {}
         return result.metrics
     except Exception as exc:
         _mark_failed(run_id, exc)
@@ -873,8 +862,10 @@ def _persist_partial_leaderboard(
     ranked = rank_leaderboard(entries, primary_metric)
     successful = [entry for entry in ranked if entry["status"] == "succeeded"]
     with get_session_factory()() as db:
-        run = db.get(ModelRun, run_id)
+        run = _locked_run(db, run_id)
         if run is None:
+            return
+        if run.status in _TERMINAL_RUN_STATUSES:
             return
         run.tags = {
             **run.tags,
@@ -892,7 +883,7 @@ def _persist_partial_leaderboard(
         parent_id = run.tags.get("leaderboard_parent_run_id")
         if parent_id:
             try:
-                parent = db.get(ModelRun, uuid.UUID(str(parent_id)))
+                parent = _locked_run(db, uuid.UUID(str(parent_id)))
             except ValueError:
                 parent = None
             if parent is not None and parent.project_id == run.project_id:
@@ -930,8 +921,10 @@ def _persist_partial_leaderboard(
 
 def _persist_candidate_phase(run_id: uuid.UUID, candidate: str, phase: str) -> None:
     with get_session_factory()() as db:
-        run = db.get(ModelRun, run_id)
+        run = _locked_run(db, run_id)
         if run is None:
+            return
+        if run.status in _TERMINAL_RUN_STATUSES:
             return
         leaderboard = [
             ({**entry, "status": "running"} if entry.get("model") == candidate
@@ -1125,8 +1118,10 @@ def _json_default(value: Any) -> Any:
 
 def _mark_failed(run_id: uuid.UUID, exc: Exception) -> None:
     with get_session_factory()() as db:
-        run = db.get(ModelRun, run_id)
+        run = _locked_run(db, run_id)
         if run is None:
+            return
+        if run.status in _TERMINAL_RUN_STATUSES:
             return
         run.status = RunStatus.FAILED
         run.failure_code = "TRAINING_PIPELINE_FAILED"
@@ -1137,3 +1132,46 @@ def _mark_failed(run_id: uuid.UUID, exc: Exception) -> None:
         )
         run.finished_at = datetime.now(UTC)
         db.commit()
+
+
+def _persist_training_success(
+    run_id: uuid.UUID,
+    result: TournamentResult,
+    mlflow_run_id: str,
+) -> bool:
+    with get_session_factory()() as db:
+        persisted_run = _locked_run(db, run_id)
+        if persisted_run is None or persisted_run.status in _TERMINAL_RUN_STATUSES:
+            return False
+        persisted_run.status = RunStatus.SUCCEEDED
+        persisted_run.mlflow_run_id = mlflow_run_id
+        persisted_run.finished_at = datetime.now(UTC)
+        persisted_run.tags = {
+            **persisted_run.tags,
+            "winner": result.leaderboard[0]["model"],
+            "winner_mlflow_run_id": result.leaderboard[0].get("mlflow_run_id"),
+            "leaderboard_primary_metric": result.primary_metric,
+            "leaderboard": result.leaderboard,
+        }
+        for name, value in result.metrics.items():
+            db.add(
+                Metric(
+                    project_id=persisted_run.project_id,
+                    model_run_id=persisted_run.id,
+                    name=name,
+                    kind=MetricKind.PERFORMANCE,
+                    split=MetricSplit.VALIDATION,
+                    value=float(value),
+                    higher_is_better=metric_direction(name) == "maximize",
+                )
+            )
+        db.commit()
+    return True
+
+
+def _locked_run(db: Session, run_id: uuid.UUID) -> ModelRun | None:
+    return db.scalar(
+        select(ModelRun)
+        .where(ModelRun.id == run_id)
+        .with_for_update()
+    )

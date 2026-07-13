@@ -81,10 +81,13 @@ export function TrainingPage() {
           onClick={() => { setModels(estimators.data.slice(0, 20).map((model) => model.name)); estimate.reset(); }}>
           Select all models</Button>{models.length > 0 && <Button variant="ghost" type="button"
             onClick={() => { setModels([]); estimate.reset(); }}>Clear selection</Button>}</div> : null}
-        {estimators.isLoading ? <Loading label="Discovering compatible estimators…" /> : <div className="model-grid">{estimators.data?.map((model) =>
-          <label className={models.includes(model.name) ? "model-option active" : "model-option"} key={model.name}><input type="checkbox" checked={models.includes(model.name)} onChange={() => { setModels((current) => current.includes(model.name) ? current.filter((name) => name !== model.name) : current.length < 20 ? [...current, model.name] : current); estimate.reset(); }} />
-            <span><b>{model.name}</b><small>{titleCase(model.cost_tier)} cost · {model.tunable ? "Tuned" : "Fixed"}</small></span><i><Check size={13} /></i></label>)}</div>}
-        <span className="selection-count">{models.length} of {Math.min(20, estimators.data?.length || 20)} models selected</span>
+        {estimators.isLoading ? <Loading label="Discovering compatible estimators…" />
+          : estimators.error ? <ErrorState error={estimators.error} retry={() => estimators.refetch()} />
+            : estimators.data?.length ? <div className="model-grid">{estimators.data.map((model) =>
+              <label className={models.includes(model.name) ? "model-option active" : "model-option"} key={model.name}><input type="checkbox" checked={models.includes(model.name)} onChange={() => { setModels((current) => current.includes(model.name) ? current.filter((name) => name !== model.name) : current.length < 20 ? [...current, model.name] : current); estimate.reset(); }} />
+                <span><b>{model.name}</b><small>{titleCase(model.cost_tier)} cost · {model.tunable ? "Tuned" : "Fixed"}</small></span><i><Check size={13} /></i></label>)}</div>
+              : <Notice>No compatible estimators were reported for this task.</Notice>}
+        {!estimators.isLoading && !estimators.error && <span className="selection-count">{models.length} of {Math.min(20, estimators.data?.length ?? 0)} models selected</span>}
       </div></Card>
       <Card className="form-section"><span className="step-number">4</span><div className="form-section__body"><h2>Set the experiment budget</h2><p>These limits shape the search without compromising cluster safeguards.</p>
         <div className="form-grid form-grid--3"><label>Planned duration<input type="number" min={1} max={120} value={minutes} onChange={(e) => { setMinutes(Number(e.target.value)); estimate.reset(); }} /><small>minutes</small></label>

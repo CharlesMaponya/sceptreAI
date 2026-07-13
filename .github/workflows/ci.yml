@@ -166,3 +166,4 @@ jobs:
           grep -q 'alembic upgrade head' "$rendered"
           grep -q 'python scripts/verify_database_schema.py' "$rendered"
           grep -q 'waiting for complete API database schema' "$rendered"
+          grep -Fq 'resources: ["jobs/status"]' "$rendered"

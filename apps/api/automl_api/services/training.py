@@ -330,7 +330,14 @@ def cancel_training_run(
 ) -> ModelRun:
     require_project_role(db, user, project_id, ProjectRole.EDITOR)
     run = get_training_run(db, user, project_id, run_id, sync=False)
-    if run.status in {RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.CANCELLED}:
+    db.refresh(run, with_for_update=True)
+    if run.status in {RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.PREEMPTED}:
+        return run
+    now = datetime.now(UTC)
+    if run.status == RunStatus.CANCELLED:
+        run.tags = _cancelled_training_tags(run.tags, run.finished_at or now)
+        run.finished_at = run.finished_at or now
+        db.flush()
         return run
     if run.k8s_job_name:
         try:
@@ -339,9 +346,44 @@ def cancel_training_run(
             if exc.status != 404:
                 raise
     run.status = RunStatus.CANCELLED
-    run.finished_at = datetime.now(UTC)
+    run.tags = _cancelled_training_tags(run.tags, now)
+    run.finished_at = now
     db.flush()
     return run
+
+
+def _cancelled_training_tags(
+    source: dict | None,
+    cancelled_at: datetime,
+) -> dict:
+    tags = dict(source or {})
+    leaderboard: list[dict] = []
+    interrupted_candidate = tags.get("cancelled_candidate") or tags.get("current_candidate")
+    for source_entry in tags.get("leaderboard", []):
+        entry = dict(source_entry)
+        if entry.get("status") == "running":
+            interrupted_candidate = interrupted_candidate or entry.get("model")
+            entry = {
+                **entry,
+                "status": "cancelled",
+                "rank": None,
+                "primary_score": None,
+                "error": (
+                    entry.get("error")
+                    or "Training was cancelled before this candidate completed."
+                ),
+            }
+        leaderboard.append(entry)
+    timestamp = cancelled_at.isoformat()
+    return {
+        **tags,
+        "leaderboard": leaderboard,
+        "cancelled_candidate": interrupted_candidate,
+        "current_candidate": None,
+        "candidate_phase": "cancelled",
+        "candidate_phase_updated_at": timestamp,
+        "cancelled_at": timestamp,
+    }
 
 
 def restart_training_run(
@@ -511,9 +553,6 @@ def training_resources(
     client: KubernetesTrainingClient | None = None,
 ) -> TrainingResourceUsageRead:
     run = get_training_run(db, user, project_id, run_id, client=client)
-    tags = dict(run.tags or {})
-    params = dict(run.params or {})
-    previous = dict(tags.get("resource_usage") or {})
     try:
         snapshot = (client or KubernetesTrainingClient()).training_resource_usage(run.id)
     except ApiException as exc:
@@ -521,6 +560,14 @@ def training_resources(
             raise
         snapshot = {"telemetry_available": False, "status_reason": str(exc)}
 
+    # A resource request can outlive a concurrent cancellation while it waits on
+    # Kubernetes. Re-lock and refresh before merging telemetry so stale tags can
+    # never restore an interrupted candidate or phase.
+    db.flush()
+    db.refresh(run, with_for_update=True)
+    tags = dict(run.tags or {})
+    params = dict(run.params or {})
+    previous = dict(tags.get("resource_usage") or {})
     cpu_usage = snapshot.get("cpu_usage_cores")
     memory_usage = snapshot.get("memory_usage_mb")
     peak_cpu = max(float(previous.get("peak_cpu_usage_cores") or 0), float(cpu_usage or 0))
@@ -541,7 +588,12 @@ def training_resources(
         int(params.get("candidate_limit") or len(params.get("candidate_models") or []) or 1),
     )
     completed = min(total, int(tags.get("completed_candidates") or 0))
-    terminal = run.status in {RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.CANCELLED}
+    terminal = run.status in {
+        RunStatus.SUCCEEDED,
+        RunStatus.FAILED,
+        RunStatus.CANCELLED,
+        RunStatus.PREEMPTED,
+    }
     progress = 1.0 if run.status == RunStatus.SUCCEEDED else completed / total
     started = run.started_at or run.queued_at or run.created_at
     ended = run.finished_at if terminal and run.finished_at else datetime.now(UTC)
@@ -562,6 +614,7 @@ def training_resources(
             or params.get("selected_node")
         ),
         current_candidate=tags.get("current_candidate"),
+        last_candidate=tags.get("cancelled_candidate"),
         current_phase=(
             "complete"
             if run.status == RunStatus.SUCCEEDED
@@ -644,6 +697,15 @@ def training_leaderboard(
         or run.tags.get("leaderboard_primary_metric")
     )
     entries = list(by_model.values())
+    if run.status == RunStatus.CANCELLED:
+        entries = _cancelled_training_tags(
+            {
+                "leaderboard": entries,
+                "cancelled_candidate": run.tags.get("cancelled_candidate"),
+                "current_candidate": run.tags.get("current_candidate"),
+            },
+            run.finished_at or datetime.now(UTC),
+        )["leaderboard"]
     if primary_metric:
         entries = _rank_combined_leaderboard(entries, primary_metric)
     successful = [entry for entry in entries if entry.get("status") == "succeeded"]
@@ -712,6 +774,13 @@ def _sync_run_status(
     client: KubernetesTrainingClient,
 ) -> None:
     state = client.job_state(run.k8s_job_name or "")
+    db.refresh(run, with_for_update=True)
+    if run.status not in {
+        RunStatus.QUEUED,
+        RunStatus.PRECHECK_RUNNING,
+        RunStatus.RUNNING,
+    }:
+        return
     now = datetime.now(UTC)
     if state == "running":
         run.status = RunStatus.RUNNING

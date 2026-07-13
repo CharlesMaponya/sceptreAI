@@ -33,12 +33,20 @@ const messageFrom = (data: unknown, status: number) => {
   return `Request failed (${status})`;
 };
 
+async function responseData(response: Response): Promise<unknown> {
+  if (response.status === 204) return null;
+  const body = await response.text();
+  if (!body.trim()) return null;
+  try { return JSON.parse(body) as unknown; }
+  catch { return body; }
+}
+
 async function raw<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
   const headers = new Headers(options.headers);
   if (!(options.body instanceof FormData)) headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
   const response = await fetch(`${API_ROOT}${path}`, { ...options, headers });
-  const data = response.status === 204 ? null : await response.json().catch(() => response.text());
+  const data = await responseData(response);
   if (!response.ok) throw new ApiError(messageFrom(data, response.status), response.status);
   return data as T;
 }

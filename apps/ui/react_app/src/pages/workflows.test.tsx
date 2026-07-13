@@ -8,6 +8,7 @@ import { DataPage } from "./DataPage";
 import { OperationsPage } from "./OperationsPage";
 import { ProjectOverview } from "./ProjectOverview";
 import { RunsPage } from "./RunsPage";
+import { TrainingPage } from "./TrainingPage";
 
 const response = (data: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(data), {
   status, headers: { "Content-Type": "application/json" },
@@ -31,6 +32,43 @@ describe("core workflow integrations", () => {
   beforeEach(() => {
     setSession(null);
     vi.restoreAllMocks();
+  });
+
+  it("shows estimator catalog failures and recovers on retry", async () => {
+    let estimatorRequests = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.endsWith("/projects/project-1/datasets")) return response([{
+        id: "dataset-1", name: "Student performance", latest_version_number: 1,
+      }]);
+      if (url.endsWith("/datasets/dataset-1/versions")) return response([{
+        id: "version-1", dataset_id: "dataset-1", version_number: 1, status: "ready",
+        schema_json: { columns: [{ name: "attendance" }, { name: "performance_index" }] },
+      }]);
+      if (url.endsWith("/profile-jobs/latest")) return response(null);
+      if (url.includes("/training/estimators")) {
+        estimatorRequests += 1;
+        if (estimatorRequests === 1) {
+          return response({ detail: "Estimator catalog unavailable." }, 500);
+        }
+        return response([{
+          name: "RandomForestClassifier", task_type: "classification",
+          mixin: "ClassifierMixin", tunable: true, cost_tier: "medium",
+          default_selected: true,
+        }]);
+      }
+      return response([]);
+    });
+
+    renderRoute(<TrainingPage />, "/projects/project-1/training");
+
+    expect(await screen.findByText("Estimator catalog unavailable.")).toBeInTheDocument();
+    expect(screen.queryByText("0 of 20 models selected")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    expect(await screen.findByText("RandomForestClassifier")).toBeInTheDocument();
+    expect(await screen.findByText("1 of 1 models selected")).toBeInTheDocument();
   });
 
   it("renders progressive run evidence and fetches logs on demand", async () => {
@@ -93,6 +131,65 @@ describe("core workflow integrations", () => {
     await userEvent.click(logTabs[logTabs.length - 1]);
     expect(await screen.findByLabelText("Training logs")).toHaveTextContent("candidate completed");
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/logs"))).toBe(true);
+  });
+
+  it("refreshes run evidence and labels interrupted progress after cancellation", async () => {
+    let cancelled = false;
+    let leaderboardRequests = 0;
+    let resourceRequests = 0;
+    let logRequests = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.endsWith("/cancel")) {
+        cancelled = true;
+        return response({ ...run, status: "cancelled" });
+      }
+      if (url.endsWith("/training/runs")) return response([{
+        ...run,
+        status: cancelled ? "cancelled" : "running",
+        finished_at: cancelled ? "2026-01-01T00:04:00Z" : null,
+      }]);
+      if (url.endsWith("/leaderboard")) {
+        leaderboardRequests += 1;
+        return response({
+          run_id: "run-1", status: cancelled ? "cancelled" : "running",
+          primary_metric: "r2", winner: null, metric_directions: { r2: "maximize" },
+          entries: [{
+            rank: null, model: "RandomForestRegressor", status: cancelled ? "cancelled" : "running",
+            cost_tier: "medium", primary_score: null, metrics: {}, diagnostics: {}, best_params: {},
+            duration_seconds: null, error: null,
+          }],
+        });
+      }
+      if (url.endsWith("/resources")) {
+        resourceRequests += 1;
+        return response({
+          run_id: "run-1", status: cancelled ? "cancelled" : "running",
+          current_candidate: cancelled ? null : "RandomForestRegressor",
+          last_candidate: cancelled ? "RandomForestRegressor" : null,
+          current_phase: cancelled ? "cancelled" : "fitting_final_model",
+          completed_candidates: 3, total_candidates: 14, progress: 3 / 14,
+          elapsed_seconds: 240, estimated_remaining_seconds: null,
+        });
+      }
+      if (url.endsWith("/logs")) {
+        logRequests += 1;
+        return response({ run_id: "run-1", status: cancelled ? "cancelled" : "running", lines: [] });
+      }
+      return response([]);
+    });
+
+    renderRoute(<RunsPage />, "/projects/project-1/runs");
+    expect(await screen.findByText("Active model")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Cancel run" }));
+
+    expect(await screen.findByRole("button", { name: "Restart run" })).toBeInTheDocument();
+    expect(await screen.findByText("Last active model")).toBeInTheDocument();
+    expect(screen.getByText("Stopped on candidate 4 of 14")).toBeInTheDocument();
+    expect(screen.getByText("21% completed before cancellation")).toBeInTheDocument();
+    expect(leaderboardRequests).toBeGreaterThan(1);
+    expect(resourceRequests).toBeGreaterThan(1);
+    expect(logRequests).toBeGreaterThan(1);
   });
 
   it("renders SHAP features automatically when explainability completes", async () => {
