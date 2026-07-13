@@ -1,0 +1,12 @@
+Sceptre was installed into namespace {{ .Release.Namespace }}.
+
+{{- if .Values.ingress.enabled }}
+UI: {{ ternary "https" "http" .Values.ingress.tls.enabled }}://{{ .Values.ingress.host }}
+{{- else }}
+No ingress is required. Access the complete UI/API through a local port-forward:
+  kubectl -n {{ .Release.Namespace }} port-forward service/{{ include "sceptre.fullname" . }}-ui 8080:{{ .Values.ui.service.port }}
+  Open http://127.0.0.1:8080
+{{- end }}
+
+Optional capabilities are not installed by this chart. Metrics Server, ingress
+controllers, GPU device plugins, and storage provisioners remain cluster-owner concerns.

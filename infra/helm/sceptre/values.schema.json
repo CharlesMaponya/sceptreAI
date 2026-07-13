@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "global": {
+      "type": "object",
+      "properties": {
+        "imageRegistry": {"type": "string"},
+        "imagePullSecrets": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "training": {
+      "type": "object",
+      "properties": {
+        "maxConcurrentJobs": {"type": "integer", "minimum": 1},
+        "imagePullPolicy": {"enum": ["Always", "IfNotPresent", "Never"]},
+        "cpu": {
+          "type": "object",
+          "properties": {
+            "requestCores": {"type": "number", "minimum": 0.25},
+            "limitCores": {"type": "number", "minimum": 0.25},
+            "memoryRequestMb": {"type": "integer", "minimum": 256},
+            "memoryLimitMb": {"type": "integer", "minimum": 256}
+          }
+        },
+        "cache": {
+          "type": "object",
+          "properties": {
+            "mode": {"enum": ["ephemeral", "shared-pvc"]},
+            "emptyDirSizeGb": {"type": "integer", "minimum": 1}
+          }
+        }
+      }
+    },
+    "inference": {
+      "type": "object",
+      "properties": {
+        "serviceType": {"enum": ["ClusterIP", "NodePort", "LoadBalancer"]},
+        "externalScheme": {"enum": ["http", "https"]}
+      }
+    }
+  }
+}

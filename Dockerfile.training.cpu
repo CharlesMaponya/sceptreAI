@@ -1,0 +1,20 @@
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app/apps/api:/app/packages
+
+WORKDIR /app
+COPY requirements-training.txt requirements-zenml-local.txt ./
+RUN apt-get update \
+    && apt-get install --no-install-recommends --yes libgomp1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && python -m pip install --no-cache-dir -r requirements-training.txt \
+    && python -m pip install --no-cache-dir -r requirements-zenml-local.txt
+
+COPY apps ./apps
+COPY packages ./packages
+RUN useradd --create-home --uid 10001 sceptre
+USER 10001
+
+CMD ["python", "-m", "automl_api.training.worker", "--help"]

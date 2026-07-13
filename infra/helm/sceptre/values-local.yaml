@@ -1,0 +1,16 @@
+# Generic local profile. Build/import the versioned Sceptre images into your
+# cluster before installing; dependency images still use their normal policies.
+api:
+  image:
+    pullPolicy: Never
+ui:
+  image:
+    pullPolicy: Never
+mlflow:
+  image:
+    pullPolicy: Never
+training:
+  imagePullPolicy: Never
+inference:
+  image:
+    pullPolicy: Never

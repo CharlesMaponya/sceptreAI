@@ -1,0 +1,11 @@
+# Import the versioned images with `k3d image import` before installation.
+api:
+  image: {pullPolicy: Never}
+ui:
+  image: {pullPolicy: Never}
+mlflow:
+  image: {pullPolicy: Never}
+training:
+  imagePullPolicy: Never
+inference:
+  image: {pullPolicy: Never}

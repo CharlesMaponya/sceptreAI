@@ -248,6 +248,7 @@ def test_model_deployment_manifest_is_isolated_and_probe_enabled() -> None:
     client.settings = Settings(
         training_namespace="automl",
         inference_service_account="automl-inference",
+        workload_image_pull_secrets=("registry",),
     )
     deployment_id = uuid.uuid4()
 
@@ -268,6 +269,7 @@ def test_model_deployment_manifest_is_isolated_and_probe_enabled() -> None:
     container = pod_spec["containers"][0]
     assert pod_spec["automountServiceAccountToken"] is False
     assert pod_spec["serviceAccountName"] == "automl-inference"
+    assert pod_spec["imagePullSecrets"] == [{"name": "registry"}]
     assert container["image"] == "automl-inference@sha256:abc"
     assert container["startupProbe"]["httpGet"]["path"] == "/health/ready"
     environment = {
@@ -277,7 +279,7 @@ def test_model_deployment_manifest_is_isolated_and_probe_enabled() -> None:
     }
     assert environment["PROJECT_NAME"] == "Credit Risk"
     assert environment["DEPLOYMENT_ENVIRONMENT"] == "staging"
-    assert manifests["service"]["spec"]["type"] == "NodePort"
+    assert manifests["service"]["spec"]["type"] == "ClusterIP"
 
 
 class _FakeDeploymentApps:
@@ -370,7 +372,11 @@ def test_inference_memory_adapts_to_serialized_model_size() -> None:
 
 def test_model_deployment_urls_use_node_port() -> None:
     client = KubernetesTrainingClient.__new__(KubernetesTrainingClient)
-    client.settings = Settings(training_namespace="automl")
+    client.settings = Settings(
+        training_namespace="automl",
+        inference_service_type="NodePort",
+        inference_external_host="models.local",
+    )
     client.core = SimpleNamespace(
         read_namespaced_service=lambda **_: SimpleNamespace(
             spec=SimpleNamespace(
@@ -384,27 +390,81 @@ def test_model_deployment_urls_use_node_port() -> None:
                 ],
             )
         ),
-        list_node=lambda: SimpleNamespace(
-            items=[
-                SimpleNamespace(
-                    status=SimpleNamespace(
-                        addresses=[
-                            SimpleNamespace(
-                                type="InternalIP",
-                                address="192.168.49.2",
-                            )
-                        ]
-                    )
-                )
-            ]
-        ),
     )
 
     assert client.model_deployment_urls("model") == {
-        "base_url": "http://192.168.49.2:31234",
-        "endpoint": "http://192.168.49.2:31234/v1/predict",
-        "docs_url": "http://192.168.49.2:31234/docs",
-        "openapi_url": "http://192.168.49.2:31234/openapi.json",
+        "base_url": "http://models.local:31234",
+        "endpoint": "http://models.local:31234/v1/predict",
+        "docs_url": "http://models.local:31234/docs",
+        "openapi_url": "http://models.local:31234/openapi.json",
+    }
+
+
+def test_cluster_ip_model_deployment_does_not_report_an_external_url() -> None:
+    client = KubernetesTrainingClient.__new__(KubernetesTrainingClient)
+    client.settings = Settings(training_namespace="automl")
+    client.core = SimpleNamespace(
+        read_namespaced_service=lambda **_: SimpleNamespace(
+            spec=SimpleNamespace(
+                type="ClusterIP",
+                ports=[SimpleNamespace(name="http", port=8080, node_port=None)],
+            )
+        )
+    )
+
+    assert client.model_deployment_urls("model") is None
+
+
+def test_model_ingress_url_is_reported_only_after_admission() -> None:
+    client = KubernetesTrainingClient.__new__(KubernetesTrainingClient)
+    client.settings = Settings(
+        training_namespace="automl",
+        inference_ingress_enabled=True,
+        inference_ingress_class_name="nginx",
+        inference_ingress_host_template="{name}.models.local",
+    )
+    manifests = client.build_model_deployment_manifest(
+        deployment_id=uuid.UUID("11111111-1111-1111-1111-111111111111"),
+        project_id=uuid.uuid4(),
+        project_name="Credit Risk",
+        environment="local",
+        model_name="RandomForestClassifier",
+        model_uri="minio://automl/model.joblib",
+        image="sceptre-inference:0.1.0",
+        replicas=1,
+        cpu_request="500m",
+        memory_request="1Gi",
+    )
+    assert manifests["ingress"]["spec"]["ingressClassName"] == "nginx"
+    assert (
+        manifests["ingress"]["spec"]["rules"][0]["host"]
+        == "automl-model-11111111.models.local"
+    )
+    client.core = SimpleNamespace(
+        read_namespaced_service=lambda **_: SimpleNamespace(
+            spec=SimpleNamespace(
+                type="ClusterIP",
+                ports=[SimpleNamespace(name="http", port=8080, node_port=None)],
+            )
+        )
+    )
+    ingress = SimpleNamespace(
+        status=SimpleNamespace(load_balancer=SimpleNamespace(ingress=None)),
+        spec=SimpleNamespace(
+            rules=[SimpleNamespace(host="automl-model-11111111.models.local")]
+        ),
+    )
+    client.networking = SimpleNamespace(
+        read_namespaced_ingress_status=lambda **_: ingress
+    )
+
+    assert client.model_deployment_urls("automl-model-11111111") is None
+    ingress.status.load_balancer.ingress = [SimpleNamespace(ip="127.0.0.1")]
+    assert client.model_deployment_urls("automl-model-11111111") == {
+        "base_url": "http://automl-model-11111111.models.local",
+        "endpoint": "http://automl-model-11111111.models.local/v1/predict",
+        "docs_url": "http://automl-model-11111111.models.local/docs",
+        "openapi_url": "http://automl-model-11111111.models.local/openapi.json",
     }
 
 

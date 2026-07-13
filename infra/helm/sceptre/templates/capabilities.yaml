@@ -1,0 +1,67 @@
+{{- if eq .Values.training.cache.mode "shared-pvc" }}
+{{- if not .Values.training.cache.existingClaim }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "sceptre.fullname" . }}-dataset-cache
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+  {{- if .Values.training.cache.retainOnDelete }}
+  annotations:
+    helm.sh/resource-policy: keep
+  {{- end }}
+spec:
+  accessModes: [{{ .Values.training.cache.accessMode | quote }}]
+  {{- if .Values.training.cache.storageClass }}
+  storageClassName: {{ .Values.training.cache.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.training.cache.size }}
+---
+{{- end }}
+{{- end }}
+{{- if .Values.training.priorityClass.enabled }}
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: {{ default (printf "%s-training" (include "sceptre.fullname" .)) .Values.training.priorityClass.name }}
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+value: {{ .Values.training.priorityClass.value }}
+globalDefault: false
+preemptionPolicy: Never
+description: Low-priority Sceptre training workloads do not preempt other workloads.
+---
+{{- end }}
+{{- if .Values.resourceQuota.enabled }}
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: {{ include "sceptre.fullname" . }}
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+spec:
+  hard:
+    {{- toYaml .Values.resourceQuota.hard | nindent 4 }}
+---
+{{- end }}
+{{- if .Values.limitRange.enabled }}
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: {{ include "sceptre.fullname" . }}
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+spec:
+  limits:
+    - type: Container
+      {{- with .Values.limitRange.default }}
+      default:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.limitRange.defaultRequest }}
+      defaultRequest:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

@@ -1,0 +1,7 @@
+# Requires an Intel device plugin exposing the configured extended resource.
+capabilities:
+  clusterObserver:
+    enabled: true
+training:
+  intel:
+    enabled: true

@@ -1,0 +1,114 @@
+{{- if .Values.postgresql.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "sceptre.fullname" . }}-postgresql-init
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+data:
+  01-create-mlflow.sql: |
+    SELECT 'CREATE DATABASE mlflow OWNER {{ .Values.postgresql.auth.username }}'
+    WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'mlflow')\gexec
+{{- if .Values.postgresql.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "sceptre.fullname" . }}-postgresql
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+  {{- if .Values.postgresql.persistence.retainOnDelete }}
+  annotations:
+    helm.sh/resource-policy: keep
+  {{- end }}
+spec:
+  accessModes: [{{ .Values.postgresql.persistence.accessMode | quote }}]
+  {{- if .Values.postgresql.persistence.storageClass }}
+  storageClassName: {{ .Values.postgresql.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.postgresql.persistence.size }}
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "sceptre.fullname" . }}-postgresql
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "sceptre.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: postgresql
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "sceptre.fullname" . }}-postgresql
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "sceptre.fullname" . }}-postgresql
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "sceptre.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: postgresql
+  template:
+    metadata:
+      labels:
+        {{- include "sceptre.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: postgresql
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . | quote }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: postgresql
+          image: {{ include "sceptre.image" (dict "root" . "image" .Values.postgresql.image) | quote }}
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          envFrom:
+            - secretRef:
+                name: {{ include "sceptre.fullname" . }}-postgresql
+          ports:
+            - name: postgresql
+              containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.postgresql.auth.username | quote }}, "-d", {{ .Values.postgresql.auth.database | quote }}]
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.postgresql.auth.username | quote }}, "-d", {{ .Values.postgresql.auth.database | quote }}]
+            periodSeconds: 15
+            failureThreshold: 4
+          resources:
+            {{- toYaml .Values.postgresql.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+      volumes:
+        - name: data
+          {{- if .Values.postgresql.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "sceptre.fullname" . }}-postgresql
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: init
+          configMap:
+            name: {{ include "sceptre.fullname" . }}-postgresql-init
+{{- end }}

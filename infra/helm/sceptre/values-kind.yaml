@@ -1,0 +1,11 @@
+# Load the versioned images with `kind load docker-image` before installation.
+api:
+  image: {pullPolicy: Never}
+ui:
+  image: {pullPolicy: Never}
+mlflow:
+  image: {pullPolicy: Never}
+training:
+  imagePullPolicy: Never
+inference:
+  image: {pullPolicy: Never}

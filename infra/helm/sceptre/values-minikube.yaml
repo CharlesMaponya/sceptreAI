@@ -1,0 +1,11 @@
+# Minikube changes only image distribution; application behavior is generic.
+api:
+  image: {pullPolicy: Never}
+ui:
+  image: {pullPolicy: Never}
+mlflow:
+  image: {pullPolicy: Never}
+training:
+  imagePullPolicy: Never
+inference:
+  image: {pullPolicy: Never}

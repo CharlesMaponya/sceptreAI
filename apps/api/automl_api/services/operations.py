@@ -551,10 +551,6 @@ def deploy_registered_model(
         "project_name": project.name,
         "environment": k8s.settings.environment,
         **urls,
-        "endpoint": urls.get(
-            "endpoint",
-            f"http://{service_name}:8080/v1/predict",
-        ),
         "image": image,
         "model_artifact_id": str(entry.model_artifact_id),
         "dockerfile_uri": stored.uri,
@@ -597,7 +593,10 @@ def list_model_deployments(
                 run.failure_message = None
                 try:
                     urls = k8s.model_deployment_urls(run.k8s_job_name) or {}
-                    run.tags = {**run.tags, **urls}
+                    tags = dict(run.tags)
+                    for key in ("endpoint", "base_url", "docs_url", "openapi_url"):
+                        tags.pop(key, None)
+                    run.tags = {**tags, **urls}
                 except Exception:
                     pass
             elif runtime_state == "missing":
@@ -614,8 +613,8 @@ def list_model_deployments(
                 failure_details = {
                     "image_pull_error": (
                         "INFERENCE_IMAGE_PULL_FAILED",
-                        "Kubernetes could not pull the inference image. Build it "
-                        "inside Minikube or publish it to an accessible registry.",
+                        "Kubernetes could not pull the inference image. Publish it to "
+                        "an accessible registry or import it into the local cluster.",
                     ),
                     "crash_loop": (
                         "INFERENCE_CONTAINER_CRASH_LOOP",

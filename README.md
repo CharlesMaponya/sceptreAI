@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <a href="#quick-start-with-minikube"><strong>Run Sceptre locally</strong></a>
+  <a href="#quick-start-on-local-kubernetes"><strong>Run Sceptre locally</strong></a>
   ·
   <a href="#platform-workflow">See the workflow</a>
   ·
@@ -58,14 +58,16 @@ disposable Kubernetes Jobs, while PostgreSQL, MinIO, and MLflow retain the
 operational record. It is designed for shared environments where auditability,
 resource fairness, and reproducibility matter as much as raw model performance.
 
-> **Current maturity:** The working platform and Minikube deployment are
-> implemented and tested. Before an internet-facing or regulated production
+> **Current maturity:** The working platform and provider-neutral Helm deployment
+> are implemented and tested. Before an internet-facing or regulated production
 > rollout, add organization-specific identity, TLS, managed secrets, backups,
 > monitoring, and multi-node capacity planning.
 
 The phased target architecture, provider-neutral packaging contract, and
 production acceptance gates are documented in the
 [Production Readiness Implementation Guide](docs/production-readiness/README.md).
+The implemented local-cluster boundary is documented in the
+[Kubernetes Portability Contract](docs/architecture/kubernetes-portability.md).
 
 ## Why Teams Choose Sceptre
 
@@ -182,106 +184,84 @@ Sceptre is built for shared clusters:
 - PostgreSQL advisory locks serialize admission decisions.
 - The default global limit is two active compute Jobs.
 - Each project may hold one active training slot.
-- Live CPU and memory headroom determines whether a Job can launch.
-- A training Job reserves the selected node's available CPU and memory with equal
-  requests and limits, and is pinned to that node for predictable throughput.
+- Helm-configured CPU and memory requests/limits describe each training Job;
+  Kubernetes scheduling and namespace quotas make the final admission decision.
+- Jobs are not pinned to node names. Optional selectors or scheduling policy can
+  be added by cluster owners without changing application behavior.
 - NVIDIA and Intel device-plugin resources are detected explicitly; supported
   estimators use the matching accelerator and retry on CPU when GPU execution fails.
 - NVIDIA Jobs run on the RAPIDS 26.06 CUDA 12 image and enable `cuml.accel`
   before sklearn is imported. RAPIDS-supported sklearn estimators use cuML;
   unsupported operations retain the CPU fallback.
-- Low-priority Jobs can be preempted when the cluster needs resources.
+- PriorityClass support is optional and omitted by default.
 - Stale database state is reconciled against Kubernetes before admission.
 - Planned duration drives cost estimates; the safety deadline ranges from six to
   24 hours and is displayed separately.
 - Completed Kubernetes Jobs are removed automatically.
 
-Increasing `MAX_CONCURRENT_JOBS` permits more parallelism only when the cluster
-has sufficient aggregate capacity. It does not overcommit a single node.
+Increasing `MAX_CONCURRENT_JOBS` permits more application-level parallelism;
+Kubernetes ResourceQuota and the scheduler remain the final resource guardrails.
 
-## Quick Start with Minikube
+## Quick Start on Local Kubernetes
 
 ### Prerequisites
 
-- Python 3.11 or newer
 - Docker
-- Minikube
-- `kubectl`
+- Kubernetes 1.27 or newer (Minikube, kind, k3d, MicroK8s, Docker Desktop,
+  Rancher Desktop, k3s, or another conformant distribution)
+- Helm 3 or 4 and `kubectl`
 - A local machine with sufficient CPU, memory, and disk for the selected datasets
   and model budget
 
-### 1. Install the application
+### 1. Build the versioned application images
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-pip install -e ".[dev,ml,k8s]"
+docker build -t sceptre-api:0.1.0 -f Dockerfile.api .
+docker build -t sceptre-ui:0.1.0 apps/ui/react_app
+docker build -t sceptre-mlflow:0.1.0 -f Dockerfile.mlflow .
+docker build -t sceptre-training-cpu:0.1.0 -f Dockerfile.training.cpu .
+docker build -t sceptre-inference:0.1.0 -f Dockerfile.inference .
 ```
 
-### 2. Build the runtime images
+### 2. Make the images available to the cluster
 
 ```bash
-minikube addons enable metrics-server
-minikube image build -t automl-mlflow:local -f Dockerfile.mlflow .
-minikube image build -t automl-training:metrics-v2 -f Dockerfile.training .
-minikube image build -t automl-inference:local -f Dockerfile.inference .
+for image in sceptre-api:0.1.0 sceptre-ui:0.1.0 sceptre-mlflow:0.1.0 \
+  sceptre-training-cpu:0.1.0 sceptre-inference:0.1.0; do
+  minikube image load "$image"
+done
 ```
 
-The training image is based on the NVIDIA RAPIDS CUDA 12 image. NVIDIA nodes
-must expose `nvidia.com/gpu` through the NVIDIA device plugin and use a driver
-compatible with CUDA 12. Intel GPUs continue to use the Intel device-plugin
-resources and the LightGBM OpenCL path rather than RAPIDS, which is NVIDIA-only.
+Use the equivalent `kind load docker-image` or `k3d image import` command for
+those clusters. Docker Desktop can use its shared image store. A registry is the
+preferred path for repeatable installs; set `global.imageRegistry` and the image
+tags/digests in Helm values. Cluster-specific commands never run inside Sceptre.
 
-### 3. Deploy platform infrastructure
+### 3. Install the whole application with Helm
 
 ```bash
-kubectl apply -k infra/k8s/base
-kubectl -n automl rollout status statefulset/automl-postgres
-kubectl -n automl rollout status deployment/automl-mlflow
-kubectl -n automl get pods,pvc
+helm upgrade --install sceptre infra/helm/sceptre \
+  --namespace sceptre \
+  --create-namespace \
+  --values infra/helm/sceptre/values-local.yaml \
+  --wait --wait-for-jobs --timeout 15m
 ```
 
-### 4. Forward platform services
+This installs PostgreSQL, MinIO, MLflow, database migrations, the API, the UI,
+namespace-scoped RBAC, and the configuration used by training and inference
+workloads. No Metrics Server, ingress controller, GPU plugin, or Minikube binary
+is required.
 
-Run each command in a separate terminal:
+### 4. Open the UI
 
 ```bash
-kubectl -n automl port-forward svc/automl-postgres 55432:5432
-kubectl -n automl port-forward svc/automl-minio 9000:9000 9001:9001
-kubectl -n automl port-forward svc/automl-mlflow 5000:5000
+kubectl -n sceptre port-forward service/sceptre-ui 8080:80
 ```
 
-### 5. Start the API and UI
-
-```bash
-DATABASE_URL=postgresql+psycopg://automl:automl@127.0.0.1:55432/automl \
-OBJECT_STORE_TYPE=minio \
-OBJECT_STORE_ENDPOINT=http://127.0.0.1:9000 \
-OBJECT_STORE_BUCKET=automl \
-OBJECT_STORE_ACCESS_KEY=automl \
-OBJECT_STORE_SECRET_KEY=change-me-in-production \
-MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
-uvicorn automl_api.main:app --app-dir apps/api --host 0.0.0.0 --port 8000
-```
-
-In another terminal, start the React development server. It proxies `/api` to
-the FastAPI process on port 8000:
-
-```bash
-cd apps/ui/react_app
-npm install
-npm run dev
-```
-
-### Service URLs
-
-| Service | URL |
-| --- | --- |
-| Sceptre UI | [http://localhost:5173](http://localhost:5173) |
-| API documentation | [http://localhost:8000/docs](http://localhost:8000/docs) |
-| MinIO console | [http://localhost:9001](http://localhost:9001) |
-| MLflow | [http://localhost:5000](http://localhost:5000) |
+Open [http://127.0.0.1:8080](http://127.0.0.1:8080). The UI proxies API and
+health requests over Kubernetes service DNS. Optional ingress, external
+dependencies, persistence, GPU, registry, and uninstall instructions are in the
+[Helm chart guide](infra/helm/sceptre/README.md).
 
 ### Deployed model APIs
 
@@ -306,7 +286,10 @@ The most important operational settings are:
 | `DATABASE_URL` | Local PostgreSQL forward | Application metadata connection |
 | `MLFLOW_TRACKING_URI` | `http://mlflow:5000` | MLflow tracking endpoint |
 | `MAX_CONCURRENT_JOBS` | `2` | Global compute Job limit |
-| `MAX_NODE_AVAILABLE_FRACTION_PER_JOB` | `1.0` | Available node CPU and memory allocated to one training Job |
+| `TRAINING_CPU_REQUEST_CORES` | `1` | CPU requested from the Kubernetes scheduler per training Job |
+| `TRAINING_CPU_LIMIT_CORES` | `2` | CPU limit per training Job |
+| `TRAINING_MEMORY_REQUEST_MB` | `1024` | Minimum requested memory per training Job |
+| `TRAINING_MEMORY_LIMIT_MB` | `4096` | Maximum memory and preflight working-set ceiling |
 | `TRAINING_ACTIVE_DEADLINE_SECONDS` | `21600` | Minimum Job safety deadline |
 | `TRAINING_MAX_ACTIVE_DEADLINE_SECONDS` | `86400` | Maximum Job safety deadline |
 | `TRAINING_DEADLINE_MULTIPLIER` | `6` | Planned-duration safety multiplier |
@@ -315,9 +298,9 @@ The most important operational settings are:
 | `OBJECT_STORE_BUCKET` | `automl` | Shared bucket used by the API and Kubernetes Jobs |
 | `OBJECT_STORE_ACCESS_KEY` | Environment-specific | MinIO access key |
 | `OBJECT_STORE_SECRET_KEY` | Environment-specific | MinIO secret key |
-| `INFERENCE_IMAGE` | `automl-inference:local` | Kubernetes model-serving runtime |
-| `INFERENCE_SERVICE_ACCOUNT` | `default` | Service account assigned to model deployments |
-| `INFERENCE_SERVICE_TYPE` | `NodePort` | Kubernetes Service type used to expose model APIs |
+| `INFERENCE_IMAGE` | `sceptre-inference:0.1.0` | Kubernetes model-serving runtime |
+| `INFERENCE_SERVICE_ACCOUNT` | Chart-generated | Service account assigned to model deployments |
+| `INFERENCE_SERVICE_TYPE` | `ClusterIP` | Internal Service type used for model APIs |
 
 Use `.env.example` as the local configuration reference. Do not commit production
 credentials or reuse the development secrets in `infra/k8s/base`.
@@ -328,15 +311,16 @@ Pull requests and pushes to `main` or `develop` must pass all CI gates:
 
 | Gate | Command | Purpose |
 | --- | --- | --- |
-| Ruff | `ruff check apps packages alembic tests` | Correctness, imports, modernization, and style |
+| Ruff | `ruff check apps packages alembic scripts tests` | Correctness, imports, modernization, and style |
 | Tests and coverage | `pytest tests/ -v --tb=short --cov --cov-fail-under=40` | Behavioral, API, UI, training, and analysis verification |
-| Syntax | `python -m compileall apps packages alembic tests` | Python 3.11 syntax and import compilation |
+| Syntax | `python -m compileall apps packages alembic scripts tests` | Python 3.11 syntax and import compilation |
+| React | `npm test -- --run && npm run lint && npm run build` | UI workflows, types, lint, and production bundle |
+| Helm | `helm lint` plus all profile renders | Portable packaging and manifest regressions |
 
 Current quality baseline:
 
-- **88 passing automated tests**
+- **101 passing backend tests and 16 passing React tests**
 - **4 explicitly disabled compatibility tests**
-- **42.35% branch coverage**
 - **40% enforced coverage floor**
 - XML and HTML coverage reports retained by CI for 14 days
 
@@ -350,13 +334,13 @@ contracts, drift summaries, deployment manifests, and guarded cleanup.
 Run the complete local quality suite:
 
 ```bash
-ruff check apps packages alembic tests
+ruff check apps packages alembic scripts tests
 pytest tests/ -v --tb=short \
   --cov \
   --cov-report=term-missing \
   --cov-report=html \
   --cov-fail-under=40
-python -m compileall apps packages alembic tests
+python -m compileall apps packages alembic scripts tests
 ```
 
 ## Repository Structure
@@ -367,7 +351,8 @@ apps/
   ui/react_app/        React and TypeScript product application
 packages/              Shared Python packages
 alembic/               Database migrations
-infra/k8s/base/        Kubernetes and Minikube manifests
+infra/helm/sceptre/    Primary provider-neutral Helm distribution
+infra/k8s/base/        Legacy/development Kustomize resources
 scripts/               Validation and operational utilities
 tests/                 Automated test suite
 docs/                  Architecture, schema, and decision records
@@ -376,8 +361,8 @@ docs/                  Architecture, schema, and decision records
 ## Operational Considerations
 
 - The current scikit-learn tournaments are single-pod, in-memory workloads.
-- Multi-gigabyte datasets may exceed a node's safety ceiling even when the raw
-  file fits on disk.
+- Multi-gigabyte datasets may exceed the configured Job memory limit even when
+  the raw file fits on disk.
 - Horizontal model training requires additional Kubernetes nodes and a
   distributed backend such as Dask or Ray; an HPA cannot divide one in-memory
   scikit-learn fit across nodes.
@@ -385,8 +370,8 @@ docs/                  Architecture, schema, and decision records
   immutable source dataset and saved parameters before explainability runs.
 - PostgreSQL, MinIO, and MLflow PVCs require environment-specific backup,
   retention, and disaster-recovery policies.
-- Base manifests contain development defaults and must be hardened before
-  internet-facing or regulated deployment.
+- The default Helm values contain local-development credentials; override them
+  or use existing Secrets before sharing a cluster.
 
 ## Documentation
 

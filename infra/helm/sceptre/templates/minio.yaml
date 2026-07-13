@@ -1,0 +1,93 @@
+{{- if .Values.minio.enabled }}
+{{- if .Values.minio.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "sceptre.fullname" . }}-minio
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+  {{- if .Values.minio.persistence.retainOnDelete }}
+  annotations:
+    helm.sh/resource-policy: keep
+  {{- end }}
+spec:
+  accessModes: [{{ .Values.minio.persistence.accessMode | quote }}]
+  {{- if .Values.minio.persistence.storageClass }}
+  storageClassName: {{ .Values.minio.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.minio.persistence.size }}
+---
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "sceptre.fullname" . }}-minio
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "sceptre.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+  ports:
+    - {name: api, port: 9000, targetPort: api}
+    - {name: console, port: 9001, targetPort: console}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sceptre.fullname" . }}-minio
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "sceptre.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: minio
+  template:
+    metadata:
+      labels:
+        {{- include "sceptre.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: minio
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . | quote }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: minio
+          image: {{ include "sceptre.image" (dict "root" . "image" .Values.minio.image) | quote }}
+          imagePullPolicy: {{ .Values.minio.image.pullPolicy }}
+          args: ["server", "/data", "--console-address", ":9001"]
+          envFrom:
+            - secretRef:
+                name: {{ include "sceptre.objectStoreSecretName" . }}
+          ports:
+            - {name: api, containerPort: 9000}
+            - {name: console, containerPort: 9001}
+          readinessProbe:
+            httpGet: {path: /minio/health/ready, port: api}
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet: {path: /minio/health/live, port: api}
+            periodSeconds: 15
+            failureThreshold: 4
+          resources:
+            {{- toYaml .Values.minio.resources | nindent 12 }}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+      volumes:
+        - name: data
+          {{- if .Values.minio.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "sceptre.fullname" . }}-minio
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+{{- end }}

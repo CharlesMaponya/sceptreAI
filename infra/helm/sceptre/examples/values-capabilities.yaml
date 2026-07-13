@@ -1,0 +1,40 @@
+# Example for a cluster that already has nginx ingress and RWX dynamic storage.
+ingress:
+  enabled: true
+  className: nginx
+  host: sceptre.local
+
+inference:
+  ingress:
+    enabled: true
+    className: nginx
+    hostTemplate: "{name}.models.local"
+
+training:
+  cache:
+    mode: shared-pvc
+    size: 10Gi
+    accessMode: ReadWriteMany
+  priorityClass:
+    enabled: true
+
+capabilities:
+  clusterObserver:
+    enabled: true
+
+resourceQuota:
+  enabled: true
+  hard:
+    requests.cpu: "8"
+    requests.memory: 16Gi
+    limits.cpu: "16"
+    limits.memory: 32Gi
+
+limitRange:
+  enabled: true
+  default:
+    cpu: "2"
+    memory: 4Gi
+  defaultRequest:
+    cpu: 100m
+    memory: 128Mi

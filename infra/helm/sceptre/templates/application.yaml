@@ -1,0 +1,197 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "sceptre.fullname" . }}-api
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "sceptre.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+  ports:
+    - {name: http, port: 8000, targetPort: http}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sceptre.fullname" . }}-api
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.api.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "sceptre.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        {{- include "sceptre.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: api
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "sceptre.apiServiceAccount" . }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . | quote }}
+        {{- end }}
+      {{- end }}
+      initContainers:
+        - name: wait-for-migrations
+          image: {{ include "sceptre.image" (dict "root" . "image" .Values.api.image) | quote }}
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          command: ["/bin/sh", "-ec"]
+          args:
+            - until python scripts/verify_database_schema.py; do echo 'waiting for complete API database schema'; sleep 3; done
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sceptre.platformSecretName" . }}
+                  key: {{ .Values.platform.databaseUrlKey }}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 100m, memory: 128Mi}
+      containers:
+        - name: api
+          image: {{ include "sceptre.image" (dict "root" . "image" .Values.api.image) | quote }}
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "sceptre.fullname" . }}-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sceptre.platformSecretName" . }}
+                  key: {{ .Values.platform.databaseUrlKey }}
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sceptre.authSecretName" . }}
+                  key: {{ .Values.auth.jwtSecretKey }}
+            - {name: SIMPLE_AUTH_ENABLED, value: {{ .Values.auth.simpleAuthEnabled | quote }}}
+            - name: OBJECT_STORE_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sceptre.objectStoreSecretName" . }}
+                  key: {{ include "sceptre.objectStoreAccessKey" . }}
+            - name: OBJECT_STORE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sceptre.objectStoreSecretName" . }}
+                  key: {{ include "sceptre.objectStoreSecretKey" . }}
+          ports:
+            - {name: http, containerPort: 8000}
+          startupProbe:
+            httpGet: {path: /health/ready, port: http}
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: {path: /health/ready, port: http}
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: /health/live, port: http}
+            periodSeconds: 15
+            failureThreshold: 4
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+            runAsNonRoot: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "sceptre.fullname" . }}-ui
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.ui.service.type }}
+  selector:
+    {{- include "sceptre.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: ui
+  ports:
+    - {name: http, port: {{ .Values.ui.service.port }}, targetPort: http}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sceptre.fullname" . }}-ui
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.ui.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "sceptre.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ui
+  template:
+    metadata:
+      labels:
+        {{- include "sceptre.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: ui
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . | quote }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: ui
+          image: {{ include "sceptre.image" (dict "root" . "image" .Values.ui.image) | quote }}
+          imagePullPolicy: {{ .Values.ui.image.pullPolicy }}
+          env:
+            - {name: API_SERVICE_HOST, value: {{ printf "%s-api" (include "sceptre.fullname" .) | quote }}}
+            - {name: NGINX_ENVSUBST_FILTER, value: API_SERVICE_HOST}
+          ports:
+            - {name: http, containerPort: 80}
+          readinessProbe:
+            httpGet: {path: /, port: http}
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: /, port: http}
+            periodSeconds: 15
+            failureThreshold: 4
+          resources:
+            {{- toYaml .Values.ui.resources | nindent 12 }}
+{{- if .Values.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "sceptre.fullname" . }}
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className | quote }}
+  {{- end }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts: [{{ .Values.ingress.host | quote }}]
+      secretName: {{ required "ingress.tls.secretName is required when TLS is enabled" .Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "sceptre.fullname" . }}-ui
+                port:
+                  name: http
+{{- end }}

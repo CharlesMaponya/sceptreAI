@@ -15,7 +15,7 @@ spec:
     spec:
       initContainers:
         - name: migrate-database
-          image: automl-mlflow:local
+          image: sceptre-mlflow:0.1.0
           imagePullPolicy: IfNotPresent
           args:
             - python
@@ -38,7 +38,7 @@ spec:
               mountPath: /mlflow
       containers:
         - name: mlflow
-          image: automl-mlflow:local
+          image: sceptre-mlflow:0.1.0
           imagePullPolicy: IfNotPresent
           args:
             - mlflow

@@ -1,0 +1,18 @@
+postgresql:
+  enabled: false
+minio:
+  enabled: false
+
+# Create these Secrets before installation. The platform Secret must contain
+# DATABASE_URL; the object-store Secret must contain ACCESS_KEY and SECRET_KEY.
+platform:
+  existingSecret: sceptre-external-database
+auth:
+  existingSecret: sceptre-auth
+externalObjectStore:
+  endpoint: https://minio.example.test
+  bucket: sceptre
+  existingSecret: sceptre-external-object-store
+mlflow:
+  enabled: false
+  externalTrackingUri: https://mlflow.example.test

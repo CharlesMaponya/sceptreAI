@@ -1,0 +1,11 @@
+ARG CPU_BASE_IMAGE=sceptre-training-cpu:0.1.0
+FROM ${CPU_BASE_IMAGE}
+
+USER root
+RUN apt-get update \
+    && apt-get install --no-install-recommends --yes intel-opencl-icd ocl-icd-libopencl1 \
+    && rm -rf /var/lib/apt/lists/*
+USER 10001
+
+ENV AUTOML_INTEL_OPENCL_AVAILABLE=1
+CMD ["python", "-m", "automl_api.training.worker", "--help"]

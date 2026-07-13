@@ -1,0 +1,29 @@
+{{- if .Values.tests.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "sceptre.fullname" . }}-smoke-test
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+    app.kubernetes.io/component: smoke-test
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  {{- with .Values.global.imagePullSecrets }}
+  imagePullSecrets:
+    {{- range . }}
+    - name: {{ . | quote }}
+    {{- end }}
+  {{- end }}
+  containers:
+    - name: smoke-test
+      image: {{ include "sceptre.image" (dict "root" . "image" .Values.tests.image) | quote }}
+      imagePullPolicy: {{ .Values.tests.image.pullPolicy }}
+      command: ["/bin/sh", "-ec"]
+      args:
+        - |
+          wget -qO- http://{{ include "sceptre.fullname" . }}-ui/
+          wget -qO- http://{{ include "sceptre.fullname" . }}-ui/health/ready | grep -q '"status":"ok"'
+{{- end }}
