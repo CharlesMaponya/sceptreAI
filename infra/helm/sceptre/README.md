@@ -21,7 +21,7 @@ not block CPU training or normal UI/API operation.
 
 ## Prerequisites
 
-- Kubernetes 1.27+
+- Kubernetes 1.27+ API compatibility; use a currently supported upstream minor
 - Helm 3 or 4
 - A default dynamic StorageClass, unless storage classes are set explicitly
 - Versioned Sceptre images in a registry reachable by the cluster, or imported
@@ -72,10 +72,13 @@ kind load docker-image $IMAGES --name <cluster>
 k3d image import $IMAGES --cluster <cluster>
 ```
 
-Docker Desktop normally shares the Docker image store. For MicroK8s, tag and
-push the images to its local registry (commonly `localhost:32000`) and install
-with `values-microk8s.yaml`. Image import is an installation action; the Sceptre
-API never invokes these commands.
+Docker Desktop's single-node kubeadm provisioner can use locally built images
+with `values-local.yaml`. Its kind provisioner requires Docker Desktop's
+containerd image store and a kind-compatible image workflow. For MicroK8s, tag
+and push the images to its local registry (commonly `localhost:32000`) and
+install with `values-microk8s.yaml`. Image import is an installation action; the
+Sceptre API never invokes these commands. Complete Windows and Linux beginner
+walkthroughs are in the repository's [main README](../../../README.md#quick-start-on-local-kubernetes).
 
 ## Install
 
@@ -96,8 +99,8 @@ Check the installation:
 
 ```bash
 kubectl -n sceptre get pods,jobs,pvc
-kubectl -n sceptre port-forward service/sceptre-ui 8080:80
 helm test sceptre -n sceptre
+kubectl -n sceptre port-forward service/sceptre-ui 8080:80
 ```
 
 Open `http://127.0.0.1:8080`. API requests are proxied through the UI service.

@@ -204,64 +204,488 @@ Kubernetes ResourceQuota and the scheduler remain the final resource guardrails.
 
 ## Quick Start on Local Kubernetes
 
-### Prerequisites
+This section is written for a data analyst who has not operated Kubernetes
+before. Follow either the Windows path or the Linux path from top to bottom. You
+do **not** need to install Python, Node.js, PostgreSQL, MinIO, or MLflow on your
+computer. Docker builds them into images and one Helm command installs the
+complete application.
 
-- Docker
-- Kubernetes 1.27 or newer (Minikube, kind, k3d, MicroK8s, Docker Desktop,
-  Rancher Desktop, k3s, or another conformant distribution)
-- Helm 3 or 4 and `kubectl`
-- A local machine with sufficient CPU, memory, and disk for the selected datasets
-  and model budget
+### What you are installing
 
-### 1. Build the versioned application images
+The few infrastructure words used below mean:
 
-```bash
-docker build -t sceptre-api:0.1.0 -f Dockerfile.api .
-docker build -t sceptre-ui:0.1.0 apps/ui/react_app
-docker build -t sceptre-mlflow:0.1.0 -f Dockerfile.mlflow .
-docker build -t sceptre-training-cpu:0.1.0 -f Dockerfile.training.cpu .
-docker build -t sceptre-inference:0.1.0 -f Dockerfile.inference .
+| Term | Plain-language meaning |
+| --- | --- |
+| Docker image | A packaged application component |
+| Kubernetes cluster | The local service that runs and restarts those components |
+| `kubectl` | The command used to inspect the cluster |
+| Helm | The installer that creates the complete Sceptre application |
+| Pod | One running application component |
+| PVC | Local disk space retained for application data |
+
+The Helm release creates PostgreSQL, MinIO, MLflow, the API, the React UI,
+namespace-scoped permissions, training configuration, and persistent volumes.
+It also creates the `automl` and `mlflow` databases, applies every Alembic
+migration, creates all 13 application tables, and prevents the API from starting
+against an incomplete schema.
+
+### Choose a Kubernetes version
+
+`infra/helm/sceptre/Chart.yaml` accepts Kubernetes 1.27 or newer for API
+compatibility. That does not mean an end-of-life version should be installed.
+Kubernetes maintains only its three newest minor releases.
+
+As of **13 July 2026**, the supported upstream minors are 1.34, 1.35, and 1.36.
+For a new local installation:
+
+- choose the newest stable patch offered for 1.35 or 1.36;
+- do not choose an alpha, beta, release-candidate, or nightly build;
+- keep `kubectl` within one minor version of the cluster;
+- check the [official Kubernetes release table](https://kubernetes.io/releases/)
+  if this guide is more than a few months old.
+
+The Windows beginner path lets Docker Desktop select a supported Kubernetes
+patch. The Linux path below pins K3s/Kubernetes 1.35.6 so every command is
+repeatable; update the kubectl and K3s version pins together when upgrading.
+
+Choose the local Kubernetes distribution separately from its version:
+
+| Your situation | Recommended local cluster | Why |
+| --- | --- | --- |
+| Windows analyst | Docker Desktop Kubernetes with one kubeadm node | GUI-managed Docker, Kubernetes, networking, and storage |
+| Linux analyst | k3d with one K3s server and one worker | Lightweight, version-pinned, and includes local storage |
+| An existing local cluster | Keep it if it is supported and has a default StorageClass | The Helm chart is provider-neutral; use its matching thin profile |
+
+Do not install `kubeadm` or K3s manually for the two beginner paths. Docker
+Desktop and k3d create and manage them for you.
+
+### Computer and network requirements
+
+The guide targets an x86-64/AMD64 laptop or workstation. Start with CPU training;
+GPU setup adds host drivers and a Kubernetes device plugin and is deliberately
+left out of the first installation.
+
+| Resource | Practical local recommendation |
+| --- | --- |
+| CPU | 6 or more logical cores; 4 is the practical minimum |
+| Memory | 16 GiB host RAM, with 10–12 GiB available to the cluster |
+| Disk | At least 50 GiB free; defaults reserve 20 GiB of PVCs plus image and training-cache space |
+| Network | Internet access for base images and Python/npm dependencies during the first build |
+
+The first build downloads several large machine-learning dependencies and can
+take a while. Closing memory-heavy programs before building and training helps.
+
+### Windows 10 or 11: Docker Desktop path
+
+Use current Windows with WSL 2 and hardware virtualization enabled in BIOS/UEFI.
+This guide uses ordinary PowerShell; commands marked **Administrator** require an
+elevated PowerShell window.
+
+#### Windows 1: Install WSL, Git, Docker Desktop, and Helm
+
+In **Administrator PowerShell**, install or update WSL and then restart Windows
+if requested:
+
+```powershell
+wsl --install
+wsl --update
+wsl --version
 ```
 
-### 2. Make the images available to the cluster
+In PowerShell, install Git and Helm:
 
-```bash
-for image in sceptre-api:0.1.0 sceptre-ui:0.1.0 sceptre-mlflow:0.1.0 \
-  sceptre-training-cpu:0.1.0 sceptre-inference:0.1.0; do
-  minikube image load "$image"
-done
+```powershell
+winget install --exact --id Git.Git
+winget install --exact --id Helm.Helm
 ```
 
-Use the equivalent `kind load docker-image` or `k3d image import` command for
-those clusters. Docker Desktop can use its shared image store. A registry is the
-preferred path for repeatable installs; set `global.imageRegistry` and the image
-tags/digests in Helm values. Cluster-specific commands never run inside Sceptre.
+Install the current
+[Docker Desktop for Windows](https://docs.docker.com/desktop/setup/install/windows-install/),
+select the WSL 2 backend, and start Docker Desktop. Use Linux containers; the
+Kubernetes view is not available in Windows-container mode. If Docker Desktop
+shows a resource allocation control, allow approximately 6 CPUs, 10–12 GiB RAM,
+and at least 50 GiB disk.
 
-### 3. Install the whole application with Helm
+Open Docker Desktop and make these selections:
+
+1. In **Settings → General**, use the WSL 2 engine and keep the containerd image
+   store enabled.
+2. Open **Kubernetes → Create cluster**.
+3. Choose the single-node **kubeadm** provisioner. It is the simplest option for
+   locally built images and Docker Desktop manages its Kubernetes patch.
+4. Create the cluster and wait until Docker Desktop reports it as running.
+
+The newer `kind` provisioner is also supported, but it uses a separate
+containerd-based image path. Use it only when you specifically need its version
+selector or multiple nodes; the chart's `values-kind.yaml` profile and explicit
+image loading/registry workflow are documented in the
+[Helm chart guide](infra/helm/sceptre/README.md).
+
+Close and reopen PowerShell after installing command-line tools, then verify the
+host and cluster:
+
+```powershell
+docker version
+docker info --format '{{.OSType}}'
+kubectl config use-context docker-desktop
+kubectl get nodes
+kubectl version
+kubectl get storageclass
+helm version
+```
+
+Continue only when the node is `Ready`, Docker reports `linux`, and one
+StorageClass is marked as the default. If Kubernetes is older than the supported
+range described above, update Docker Desktop and reset/recreate its local
+cluster before installing Sceptre.
+
+#### Windows 2: Download Sceptre and build its images
+
+Choose a folder with plenty of free disk space:
+
+```powershell
+git clone https://github.com/CharlesMaponya/sceptreAI.git
+Set-Location .\sceptreAI
+
+docker build --tag sceptre-api:0.1.0 --file Dockerfile.api .
+docker build --tag sceptre-ui:0.1.0 .\apps\ui\react_app
+docker build --tag sceptre-mlflow:0.1.0 --file Dockerfile.mlflow .
+docker build --tag sceptre-training-cpu:0.1.0 --file Dockerfile.training.cpu .
+docker build --tag sceptre-inference:0.1.0 --file Dockerfile.inference .
+
+docker image ls --format '{{.Repository}}:{{.Tag}}' | Select-String '^sceptre-'
+```
+
+The final command must show all five `0.1.0` images. Run every remaining command
+from the repository root—the directory containing `README.md`.
+
+#### Windows 3: Generate local-only secrets
+
+The following creates a small Helm values file with random local credentials.
+Its `.env.*` name is ignored by Git. Keep the same file for later upgrades; do
+not share or commit it.
+
+```powershell
+function New-SceptreSecret {
+  ([guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N'))
+}
+
+$JwtSecret = New-SceptreSecret
+$DatabasePassword = New-SceptreSecret
+$MinioPassword = New-SceptreSecret
+
+@"
+auth:
+  jwtSecret: "$JwtSecret"
+postgresql:
+  auth:
+    password: "$DatabasePassword"
+minio:
+  auth:
+    rootPassword: "$MinioPassword"
+"@ | Set-Content -Encoding utf8 .\.env.sceptre-local.yaml
+```
+
+#### Windows 4: Install the entire application
+
+```powershell
+helm upgrade --install sceptre .\infra\helm\sceptre `
+  --namespace sceptre `
+  --create-namespace `
+  --values .\infra\helm\sceptre\values-local.yaml `
+  --values .\.env.sceptre-local.yaml `
+  --wait --wait-for-jobs --timeout 30m
+
+helm status sceptre --namespace sceptre
+kubectl --namespace sceptre get pods,jobs,pvc
+helm test sceptre --namespace sceptre
+```
+
+All long-running pods should become `Running`, migration/bootstrap Jobs should
+be `Complete`, and the PostgreSQL, MinIO, and MLflow PVCs should be `Bound`.
+
+#### Windows 5: Open Sceptre
+
+Run this command and leave its PowerShell window open:
+
+```powershell
+kubectl --namespace sceptre port-forward service/sceptre-ui 8080:80
+```
+
+Open [http://127.0.0.1:8080](http://127.0.0.1:8080). Press `Ctrl+C` when you want
+to stop the port-forward; this does not delete or stop Sceptre.
+
+### Linux: k3d/K3s path
+
+This path is intended for Ubuntu, Debian, Fedora, Rocky/AlmaLinux, Arch, and
+similar systemd-based distributions. It runs K3s inside Docker through k3d and
+includes a default local StorageClass. Commands use Bash.
+
+#### Linux 1: Install basic packages and Docker
+
+On Ubuntu or Debian:
 
 ```bash
+sudo apt-get update
+sudo apt-get install --yes ca-certificates curl git openssl
+```
+
+On Fedora, Rocky Linux, or AlmaLinux:
+
+```bash
+sudo dnf install --assumeyes ca-certificates curl git openssl
+```
+
+For those distributions, the official Docker convenience installer is suitable
+for this local development workstation. Managed or production machines should
+instead follow the matching
+[Docker Engine repository instructions](https://docs.docker.com/engine/install/).
+
+```bash
+curl --fail --silent --show-error --location \
+  https://get.docker.com --output /tmp/get-docker.sh
+sudo sh /tmp/get-docker.sh
+rm /tmp/get-docker.sh
+sudo systemctl enable --now docker
+sudo usermod --append --groups docker "$USER"
+```
+
+On Arch Linux or Manjaro, use distribution packages instead:
+
+```bash
+sudo pacman -Syu --needed ca-certificates curl git openssl docker docker-buildx
+sudo systemctl enable --now docker
+sudo usermod --append --groups docker "$USER"
+```
+
+Log out of Linux and log back in after adding yourself to the `docker` group.
+Membership grants administrator-equivalent access to Docker, so only add trusted
+users. Then verify:
+
+```bash
+docker version
+docker run --rm hello-world
+```
+
+#### Linux 2: Install kubectl, k3d, and Helm
+
+Install the Kubernetes 1.35.6 client for an AMD64 machine and verify its
+checksum:
+
+```bash
+KUBECTL_VERSION=v1.35.6
+curl --fail --location --remote-name \
+  "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+curl --fail --location --remote-name \
+  "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl.sha256"
+echo "$(cat kubectl.sha256)  kubectl" | sha256sum --check
+sudo install --owner root --group root --mode 0755 kubectl /usr/local/bin/kubectl
+rm kubectl kubectl.sha256
+```
+
+Install current k3d and Helm 4 using their official installers:
+
+```bash
+curl --silent --show-error --location \
+  https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh \
+  --output /tmp/install-k3d.sh
+bash /tmp/install-k3d.sh
+rm /tmp/install-k3d.sh
+
+curl --fail --silent --show-error --location \
+  https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 \
+  --output /tmp/get-helm.sh
+chmod 700 /tmp/get-helm.sh
+/tmp/get-helm.sh
+rm /tmp/get-helm.sh
+
+kubectl version --client
+k3d version
+helm version
+```
+
+#### Linux 3: Create the local Kubernetes cluster
+
+This creates one control-plane node and one worker. K3s supplies local storage
+and Metrics Server, while Sceptre remains portable standard Kubernetes code.
+
+```bash
+k3d cluster create sceptre-local \
+  --image rancher/k3s:v1.35.6-k3s1 \
+  --servers 1 --agents 1 \
+  --servers-memory 4g --agents-memory 8g \
+  --wait --timeout 5m
+
+kubectl config current-context
+kubectl get nodes
+kubectl version
+kubectl get storageclass
+```
+
+The context should be `k3d-sceptre-local`, both nodes should become `Ready`, and
+the `local-path` StorageClass should be the default.
+
+#### Linux 4: Download Sceptre, build, and import its images
+
+```bash
+git clone https://github.com/CharlesMaponya/sceptreAI.git
+cd sceptreAI
+
+docker build --tag sceptre-api:0.1.0 --file Dockerfile.api .
+docker build --tag sceptre-ui:0.1.0 apps/ui/react_app
+docker build --tag sceptre-mlflow:0.1.0 --file Dockerfile.mlflow .
+docker build --tag sceptre-training-cpu:0.1.0 --file Dockerfile.training.cpu .
+docker build --tag sceptre-inference:0.1.0 --file Dockerfile.inference .
+
+k3d image import \
+  sceptre-api:0.1.0 \
+  sceptre-ui:0.1.0 \
+  sceptre-mlflow:0.1.0 \
+  sceptre-training-cpu:0.1.0 \
+  sceptre-inference:0.1.0 \
+  --cluster sceptre-local
+```
+
+#### Linux 5: Generate local-only secrets and install everything
+
+```bash
+umask 077
+JWT_SECRET="$(openssl rand -hex 32)"
+DATABASE_PASSWORD="$(openssl rand -hex 32)"
+MINIO_PASSWORD="$(openssl rand -hex 32)"
+
+cat > .env.sceptre-local.yaml <<EOF
+auth:
+  jwtSecret: "${JWT_SECRET}"
+postgresql:
+  auth:
+    password: "${DATABASE_PASSWORD}"
+minio:
+  auth:
+    rootPassword: "${MINIO_PASSWORD}"
+EOF
+
+unset JWT_SECRET DATABASE_PASSWORD MINIO_PASSWORD
+
 helm upgrade --install sceptre infra/helm/sceptre \
   --namespace sceptre \
   --create-namespace \
-  --values infra/helm/sceptre/values-local.yaml \
-  --wait --wait-for-jobs --timeout 15m
+  --values infra/helm/sceptre/values-k3d.yaml \
+  --values .env.sceptre-local.yaml \
+  --wait --wait-for-jobs --timeout 30m
+
+helm status sceptre --namespace sceptre
+kubectl --namespace sceptre get pods,jobs,pvc
+helm test sceptre --namespace sceptre
 ```
 
-This installs PostgreSQL, MinIO, MLflow, database migrations, the API, the UI,
-namespace-scoped RBAC, and the configuration used by training and inference
-workloads. No Metrics Server, ingress controller, GPU plugin, or Minikube binary
-is required.
+#### Linux 6: Open Sceptre
 
-### 4. Open the UI
+Run this command and leave the terminal open:
 
 ```bash
-kubectl -n sceptre port-forward service/sceptre-ui 8080:80
+kubectl --namespace sceptre port-forward service/sceptre-ui 8080:80
 ```
 
-Open [http://127.0.0.1:8080](http://127.0.0.1:8080). The UI proxies API and
-health requests over Kubernetes service DNS. Optional ingress, external
-dependencies, persistence, GPU, registry, and uninstall instructions are in the
-[Helm chart guide](infra/helm/sceptre/README.md).
+Open [http://127.0.0.1:8080](http://127.0.0.1:8080). Press `Ctrl+C` to stop only
+the port-forward.
+
+### First use for an analyst
+
+There is no preconfigured application login.
+
+1. Select **Create account**, enter an email address, optional full name, and a
+   password of at least eight characters.
+2. After registration, sign in with that account.
+3. Create a project and upload a CSV, Parquet, Excel, JSON, or JSONL dataset.
+4. Select the target column. Sceptre immediately reports the provisional task
+   type and target visualization.
+5. Start profiling when ready, review feature summaries, and then move to model
+   selection.
+6. Keep GPU acceleration off for the first run, select a small model set, review
+   the resource estimate, and start training.
+
+The UI will show the Kubernetes job, current phase, model progress, resource
+telemetry when available, and progressive leaderboard results.
+
+### Starting Sceptre again later
+
+On Windows, start Docker Desktop, wait for its Kubernetes status to turn green,
+and run the port-forward command again.
+
+On Linux:
+
+```bash
+k3d cluster start sceptre-local
+kubectl get nodes
+kubectl --namespace sceptre port-forward service/sceptre-ui 8080:80
+```
+
+To release Linux memory without deleting data, press `Ctrl+C` on the
+port-forward and run `k3d cluster stop sceptre-local`.
+
+### Troubleshooting the first installation
+
+Start with these read-only diagnostics on either operating system:
+
+```bash
+kubectl config current-context
+kubectl get nodes
+kubectl get storageclass
+kubectl --namespace sceptre get pods,jobs,pvc
+kubectl --namespace sceptre get events --sort-by=.lastTimestamp
+kubectl --namespace sceptre logs deployment/sceptre-api --tail=200
+```
+
+| Symptom | What it usually means | What to do |
+| --- | --- | --- |
+| `kubectl` cannot connect | The local cluster is stopped or the wrong context is selected | Start Docker Desktop or k3d, then select `docker-desktop` or `k3d-sceptre-local` |
+| `ErrImageNeverPull` | One of the five Sceptre images is absent from the cluster | Rebuild it; on Linux rerun `k3d image import`; on Windows confirm Linux containers and rebuild in the active Docker Desktop image store |
+| PVC stays `Pending` | No default dynamic StorageClass is available | Do not continue until `kubectl get storageclass` shows a default; recreate the recommended cluster or configure storage |
+| Helm times out | A dependency, migration, image pull, or volume did not become ready | Inspect pods, Jobs, PVCs, and events with the commands above |
+| UI stays on `Checking session…` | The API is not ready or the port-forward points at an old/stopped cluster | Check `http://127.0.0.1:8080/health/ready` and API logs |
+| Training remains `Pending` | The cluster cannot satisfy the requested CPU or memory | Close other workloads or lower the training request/limit in a local values override |
+| Port 8080 is already used | Another program or old port-forward owns it | Use `8081:80` and open `http://127.0.0.1:8081` |
+
+For a specific failing pod, replace `<pod-name>` below with a name shown by
+`kubectl get pods`:
+
+```bash
+kubectl --namespace sceptre describe pod <pod-name>
+kubectl --namespace sceptre logs <pod-name> --all-containers --tail=200
+```
+
+### Uninstall, retain data, or reset completely
+
+Remove the application while retaining the default PostgreSQL, MinIO, and MLflow
+PVCs:
+
+```bash
+helm uninstall sceptre --namespace sceptre
+```
+
+Reinstall with the same `.env.sceptre-local.yaml` to reconnect to that retained
+data. To permanently delete all local Sceptre data:
+
+```bash
+helm uninstall sceptre --namespace sceptre --ignore-not-found
+kubectl --namespace sceptre delete pvc sceptre-postgresql sceptre-minio sceptre-mlflow --ignore-not-found
+kubectl delete namespace sceptre --ignore-not-found
+```
+
+Deleting the `sceptre-local` k3d cluster or resetting Docker Desktop Kubernetes
+also permanently deletes cluster-local data.
+
+### Official installation references
+
+- [Supported Kubernetes releases](https://kubernetes.io/releases/)
+- [Docker Desktop for Windows](https://docs.docker.com/desktop/setup/install/windows-install/)
+- [Docker Desktop Kubernetes](https://docs.docker.com/desktop/use-desktop/kubernetes/)
+- [Docker Engine for Linux](https://docs.docker.com/engine/install/)
+- [Install kubectl on Linux](https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/)
+- [k3d installation and quick start](https://k3d.io/stable/)
+- [Install Helm](https://helm.sh/docs/intro/install/)
+- [Sceptre Helm configuration guide](infra/helm/sceptre/README.md)
 
 ### Deployed model APIs
 
@@ -319,7 +743,7 @@ Pull requests and pushes to `main` or `develop` must pass all CI gates:
 
 Current quality baseline:
 
-- **101 passing backend tests and 16 passing React tests**
+- **103 passing backend tests and 16 passing React tests**
 - **4 explicitly disabled compatibility tests**
 - **40% enforced coverage floor**
 - XML and HTML coverage reports retained by CI for 14 days
