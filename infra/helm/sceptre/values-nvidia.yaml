@@ -1,0 +1,7 @@
+# Requires the NVIDIA device plugin and the optional cluster-observer permission.
+capabilities:
+  clusterObserver:
+    enabled: true
+training:
+  nvidia:
+    enabled: true

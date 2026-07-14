@@ -1,0 +1,84 @@
+{{- if and .Values.postgresql.enabled .Values.mlflow.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "sceptre.fullname" . }}-db-bootstrap-{{ .Release.Revision }}
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database-bootstrap
+spec:
+  backoffLimit: 20
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        {{- include "sceptre.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: database-bootstrap
+    spec:
+      restartPolicy: Never
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . | quote }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: create-mlflow-database
+          image: {{ include "sceptre.image" (dict "root" . "image" .Values.postgresql.image) | quote }}
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              until pg_isready -h {{ include "sceptre.fullname" . }}-postgresql -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do sleep 2; done
+              psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" --set ON_ERROR_STOP=1 <<'SQL'
+              SELECT 'CREATE DATABASE mlflow OWNER {{ .Values.postgresql.auth.username }}'
+              WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'mlflow')\gexec
+              SQL
+          envFrom:
+            - secretRef:
+                name: {{ include "sceptre.fullname" . }}-postgresql
+          env:
+            - {name: PGHOST, value: {{ printf "%s-postgresql" (include "sceptre.fullname" .) | quote }}}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sceptre.fullname" . }}-postgresql
+                  key: POSTGRES_PASSWORD
+---
+{{- end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "sceptre.fullname" . }}-migrate-{{ .Release.Revision }}
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api-migration
+spec:
+  backoffLimit: 20
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        {{- include "sceptre.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: api-migration
+    spec:
+      restartPolicy: Never
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . | quote }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: migrate
+          image: {{ include "sceptre.image" (dict "root" . "image" .Values.api.image) | quote }}
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          command: ["/bin/sh", "-ec"]
+          args:
+            - alembic upgrade head && python scripts/verify_database_schema.py
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sceptre.platformSecretName" . }}
+                  key: {{ .Values.platform.databaseUrlKey }}

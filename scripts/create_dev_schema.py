@@ -3,17 +3,21 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "apps" / "api"))
+from alembic.config import Config
 
-from automl_api.db.base import Base
-from automl_api.db.session import get_engine
+from alembic import command
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def main() -> None:
-    engine = get_engine()
-    Base.metadata.create_all(bind=engine)
-    print(f"Created {len(Base.metadata.tables)} tables.")
+    config = Config(str(ROOT / "alembic.ini"))
+    config.set_main_option("script_location", str(ROOT / "alembic"))
+    command.upgrade(config, "head")
+    sys.path.insert(0, str(ROOT))
+    from scripts.verify_database_schema import main as verify_database_schema
+
+    verify_database_schema()
 
 
 if __name__ == "__main__":

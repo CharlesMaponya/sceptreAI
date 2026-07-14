@@ -551,10 +551,6 @@ def deploy_registered_model(
         "project_name": project.name,
         "environment": k8s.settings.environment,
         **urls,
-        "endpoint": urls.get(
-            "endpoint",
-            f"http://{service_name}:8080/v1/predict",
-        ),
         "image": image,
         "model_artifact_id": str(entry.model_artifact_id),
         "dockerfile_uri": stored.uri,
@@ -565,6 +561,37 @@ def deploy_registered_model(
         manifests=manifests,
         dockerfile_uri=stored.uri,
     )
+
+
+def _internal_model_deployment_urls(
+    service_name: str,
+    namespace: str,
+) -> dict[str, str]:
+    base_url = f"http://{service_name}.{namespace}.svc:8080"
+    return {
+        "internal_endpoint": f"{base_url}/v1/predict",
+        "internal_docs_url": f"{base_url}/docs",
+        "internal_openapi_url": f"{base_url}/openapi.json",
+    }
+
+
+def _platform_model_deployment_urls(
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+) -> dict[str, str]:
+    base_url = (
+        f"/api/v1/projects/{project_id}/operations/deployments/{run_id}/inference"
+    )
+    return {
+        "platform_endpoint": f"{base_url}/v1/predict",
+        "platform_online_endpoint": f"{base_url}/v1/predict/online",
+        "platform_offline_endpoint": f"{base_url}/v1/predict/offline",
+        "platform_metadata_url": f"{base_url}/v1/metadata",
+        "platform_docs_url": f"{base_url}/docs",
+        "platform_openapi_url": f"{base_url}/openapi.json",
+        "platform_live_url": f"{base_url}/health/live",
+        "platform_ready_url": f"{base_url}/health/ready",
+    }
 
 
 def list_model_deployments(
@@ -586,6 +613,10 @@ def list_model_deployments(
     result = []
     for run in runs:
         runtime_state = "unknown"
+        service_name = run.tags.get("service_name") or run.k8s_job_name
+        namespace = run.k8s_namespace or k8s.settings.training_namespace
+        internal_urls: dict[str, str] = {}
+        platform_urls: dict[str, str] = {}
         if run.k8s_job_name and run.status != RunStatus.CANCELLED:
             try:
                 runtime_state = k8s.model_deployment_state(run.k8s_job_name)
@@ -597,9 +628,21 @@ def list_model_deployments(
                 run.failure_message = None
                 try:
                     urls = k8s.model_deployment_urls(run.k8s_job_name) or {}
-                    run.tags = {**run.tags, **urls}
+                    tags = dict(run.tags)
+                    for key in ("endpoint", "base_url", "docs_url", "openapi_url"):
+                        tags.pop(key, None)
+                    run.tags = {**tags, **urls}
                 except Exception:
                     pass
+                if service_name and namespace:
+                    internal_urls = _internal_model_deployment_urls(
+                        service_name,
+                        namespace,
+                    )
+                    platform_urls = _platform_model_deployment_urls(
+                        project_id,
+                        run.id,
+                    )
             elif runtime_state == "missing":
                 run.status = RunStatus.FAILED
                 run.failure_code = "KUBERNETES_DEPLOYMENT_MISSING"
@@ -614,8 +657,8 @@ def list_model_deployments(
                 failure_details = {
                     "image_pull_error": (
                         "INFERENCE_IMAGE_PULL_FAILED",
-                        "Kubernetes could not pull the inference image. Build it "
-                        "inside Minikube or publish it to an accessible registry.",
+                        "Kubernetes could not pull the inference image. Publish it to "
+                        "an accessible registry or import it into the local cluster.",
                     ),
                     "crash_loop": (
                         "INFERENCE_CONTAINER_CRASH_LOOP",
@@ -639,10 +682,14 @@ def list_model_deployments(
             DeploymentStatusRead(
                 run=ModelRunRead.model_validate(run),
                 runtime_state=runtime_state,
+                service_name=service_name,
+                namespace=namespace,
                 endpoint=run.tags.get("endpoint"),
                 base_url=run.tags.get("base_url"),
                 docs_url=run.tags.get("docs_url"),
                 openapi_url=run.tags.get("openapi_url"),
+                **internal_urls,
+                **platform_urls,
                 status=run.status,
             )
         )

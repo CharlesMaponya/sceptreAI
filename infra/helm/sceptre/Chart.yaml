@@ -1,0 +1,7 @@
+apiVersion: v2
+name: sceptre
+description: Portable local-Kubernetes distribution of the Sceptre tabular AutoML platform
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.27.0-0"

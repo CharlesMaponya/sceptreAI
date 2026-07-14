@@ -8,6 +8,7 @@ import { DataPage } from "./DataPage";
 import { OperationsPage } from "./OperationsPage";
 import { ProjectOverview } from "./ProjectOverview";
 import { RunsPage } from "./RunsPage";
+import { TrainingPage } from "./TrainingPage";
 
 const response = (data: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(data), {
   status, headers: { "Content-Type": "application/json" },
@@ -27,10 +28,56 @@ const run = {
   failure_message: null, created_at: "2026-01-01T00:00:00Z", finished_at: "2026-01-01T00:10:00Z",
 };
 
+const operationsHealth = {
+  capacity: {
+    connected: true, source: "kubernetes", available_cpu_cores: 4,
+    available_memory_mb: 8192, ready_nodes: 1, gpu_available: false,
+    active_training_jobs: 0, warnings: [],
+  },
+  active_deployments: 1, components: { database: "ok" },
+};
+
 describe("core workflow integrations", () => {
   beforeEach(() => {
     setSession(null);
     vi.restoreAllMocks();
+  });
+
+  it("shows estimator catalog failures and recovers on retry", async () => {
+    let estimatorRequests = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.endsWith("/projects/project-1/datasets")) return response([{
+        id: "dataset-1", name: "Student performance", latest_version_number: 1,
+      }]);
+      if (url.endsWith("/datasets/dataset-1/versions")) return response([{
+        id: "version-1", dataset_id: "dataset-1", version_number: 1, status: "ready",
+        schema_json: { columns: [{ name: "attendance" }, { name: "performance_index" }] },
+      }]);
+      if (url.endsWith("/profile-jobs/latest")) return response(null);
+      if (url.includes("/training/estimators")) {
+        estimatorRequests += 1;
+        if (estimatorRequests === 1) {
+          return response({ detail: "Estimator catalog unavailable." }, 500);
+        }
+        return response([{
+          name: "RandomForestClassifier", task_type: "classification",
+          mixin: "ClassifierMixin", tunable: true, cost_tier: "medium",
+          default_selected: true,
+        }]);
+      }
+      return response([]);
+    });
+
+    renderRoute(<TrainingPage />, "/projects/project-1/training");
+
+    expect(await screen.findByText("Estimator catalog unavailable.")).toBeInTheDocument();
+    expect(screen.queryByText("0 of 20 models selected")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    expect(await screen.findByText("RandomForestClassifier")).toBeInTheDocument();
+    expect(await screen.findByText("1 of 1 models selected")).toBeInTheDocument();
   });
 
   it("renders progressive run evidence and fetches logs on demand", async () => {
@@ -93,6 +140,65 @@ describe("core workflow integrations", () => {
     await userEvent.click(logTabs[logTabs.length - 1]);
     expect(await screen.findByLabelText("Training logs")).toHaveTextContent("candidate completed");
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/logs"))).toBe(true);
+  });
+
+  it("refreshes run evidence and labels interrupted progress after cancellation", async () => {
+    let cancelled = false;
+    let leaderboardRequests = 0;
+    let resourceRequests = 0;
+    let logRequests = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.endsWith("/cancel")) {
+        cancelled = true;
+        return response({ ...run, status: "cancelled" });
+      }
+      if (url.endsWith("/training/runs")) return response([{
+        ...run,
+        status: cancelled ? "cancelled" : "running",
+        finished_at: cancelled ? "2026-01-01T00:04:00Z" : null,
+      }]);
+      if (url.endsWith("/leaderboard")) {
+        leaderboardRequests += 1;
+        return response({
+          run_id: "run-1", status: cancelled ? "cancelled" : "running",
+          primary_metric: "r2", winner: null, metric_directions: { r2: "maximize" },
+          entries: [{
+            rank: null, model: "RandomForestRegressor", status: cancelled ? "cancelled" : "running",
+            cost_tier: "medium", primary_score: null, metrics: {}, diagnostics: {}, best_params: {},
+            duration_seconds: null, error: null,
+          }],
+        });
+      }
+      if (url.endsWith("/resources")) {
+        resourceRequests += 1;
+        return response({
+          run_id: "run-1", status: cancelled ? "cancelled" : "running",
+          current_candidate: cancelled ? null : "RandomForestRegressor",
+          last_candidate: cancelled ? "RandomForestRegressor" : null,
+          current_phase: cancelled ? "cancelled" : "fitting_final_model",
+          completed_candidates: 3, total_candidates: 14, progress: 3 / 14,
+          elapsed_seconds: 240, estimated_remaining_seconds: null,
+        });
+      }
+      if (url.endsWith("/logs")) {
+        logRequests += 1;
+        return response({ run_id: "run-1", status: cancelled ? "cancelled" : "running", lines: [] });
+      }
+      return response([]);
+    });
+
+    renderRoute(<RunsPage />, "/projects/project-1/runs");
+    expect(await screen.findByText("Active model")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Cancel run" }));
+
+    expect(await screen.findByRole("button", { name: "Restart run" })).toBeInTheDocument();
+    expect(await screen.findByText("Last active model")).toBeInTheDocument();
+    expect(screen.getByText("Stopped on candidate 4 of 14")).toBeInTheDocument();
+    expect(screen.getByText("21% completed before cancellation")).toBeInTheDocument();
+    expect(leaderboardRequests).toBeGreaterThan(1);
+    expect(resourceRequests).toBeGreaterThan(1);
+    expect(logRequests).toBeGreaterThan(1);
   });
 
   it("renders SHAP features automatically when explainability completes", async () => {
@@ -317,6 +423,7 @@ describe("core workflow integrations", () => {
     });
     renderRoute(<OperationsPage />, "/projects/project-1/operations");
     await screen.findByText("Resource cleanup");
+    expect(screen.getByText("Provisioning")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Endpoint/i })).not.toBeInTheDocument();
     const deleteButton = screen.getByRole("button", { name: /Delete eligible resources/i });
     expect(deleteButton).toBeDisabled();
@@ -324,5 +431,156 @@ describe("core workflow integrations", () => {
     await waitFor(() => expect(deleteButton).toBeEnabled());
     expect(screen.getByText("3", { selector: "strong" })).toBeInTheDocument();
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/operations/cleanup"))).toBe(true);
+  });
+
+  it("shows configured external links separately from the authenticated platform API", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.endsWith("/operations/health")) return response(operationsHealth);
+      if (url.endsWith("/operations/registry")) return response([]);
+      if (url.endsWith("/operations/deployments")) return response([{
+        run: { id: "deploy-1", run_name: "fraud-api", created_at: "2026-01-01T00:00:00Z" },
+        runtime_state: "ready", status: "succeeded",
+        endpoint: "https://model.example.test/v1/predict",
+        docs_url: "https://model.example.test/docs",
+        openapi_url: "https://model.example.test/openapi.json",
+        platform_endpoint: "/api/v1/projects/project-1/operations/deployments/deploy-1/inference/v1/predict",
+      }]);
+      if (url.endsWith("/operations/drift-runs")) return response([]);
+      return response([]);
+    });
+
+    const user = userEvent.setup();
+    renderRoute(<OperationsPage />, "/projects/project-1/operations");
+
+    await user.click(await screen.findByRole("button", { name: "API access" }));
+    expect(screen.getByRole("heading", { name: "Application gateway" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Direct external service" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^Endpoint/ })).toHaveAttribute(
+      "href", "https://model.example.test/v1/predict",
+    );
+    expect(screen.getByRole("link", { name: /^Docs/ })).toHaveAttribute(
+      "href", "https://model.example.test/docs",
+    );
+    expect(screen.getByRole("link", { name: /^OpenAPI/ })).toHaveAttribute(
+      "href", "https://model.example.test/openapi.json",
+    );
+  });
+
+  it("shows authenticated platform URLs for a ready internal-only deployment", async () => {
+    const accessToken = "eyJhbGciOiJIUzI1NiJ9.current-session-token";
+    setSession({
+      user: {
+        id: "user-1", email: "analyst@example.test", full_name: "Data Analyst",
+        global_role: "user", is_active: true, is_verified: true,
+        created_at: "2026-01-01T00:00:00Z",
+      },
+      tokens: {
+        access_token: accessToken, refresh_token: "refresh-token", token_type: "bearer",
+        expires_in: 3600,
+      },
+    });
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.endsWith("/operations/health")) return response(operationsHealth);
+      if (url.endsWith("/operations/registry")) return response([]);
+      if (url.endsWith("/operations/deployments")) return response([{
+        run: { id: "deploy-1", run_name: "fraud-api", created_at: "2026-01-01T00:00:00Z" },
+        runtime_state: "ready", status: "succeeded", endpoint: null,
+        service_name: "sceptre-model-deploy-1", namespace: "sceptre",
+        internal_endpoint: "http://sceptre-model-deploy-1.sceptre.svc:8080/v1/predict",
+        internal_docs_url: "http://sceptre-model-deploy-1.sceptre.svc:8080/docs",
+        internal_openapi_url: "http://sceptre-model-deploy-1.sceptre.svc:8080/openapi.json",
+        platform_endpoint: "/api/v1/projects/project-1/operations/deployments/deploy-1/inference/v1/predict",
+        platform_online_endpoint: "/api/v1/projects/project-1/operations/deployments/deploy-1/inference/v1/predict/online",
+        platform_offline_endpoint: "/api/v1/projects/project-1/operations/deployments/deploy-1/inference/v1/predict/offline",
+        platform_metadata_url: "/api/v1/projects/project-1/operations/deployments/deploy-1/inference/v1/metadata",
+        platform_docs_url: "/api/v1/projects/project-1/operations/deployments/deploy-1/inference/docs",
+        platform_openapi_url: "/api/v1/projects/project-1/operations/deployments/deploy-1/inference/openapi.json",
+        platform_live_url: "/api/v1/projects/project-1/operations/deployments/deploy-1/inference/health/live",
+        platform_ready_url: "/api/v1/projects/project-1/operations/deployments/deploy-1/inference/health/ready",
+      }]);
+      if (url.endsWith("/operations/drift-runs")) return response([]);
+      return response([]);
+    });
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    renderRoute(<OperationsPage />, "/projects/project-1/operations");
+
+    await user.click(await screen.findByRole("button", { name: "API access" }));
+    expect(screen.getByRole("dialog", { name: "Model API access" })).toBeInTheDocument();
+    expect(screen.getByText("Bearer authentication required.")).toBeInTheDocument();
+    const token = screen.getByLabelText("Sceptre access token");
+    expect(token).toHaveAttribute("type", "password");
+    expect(token).toHaveValue(accessToken);
+    await user.click(screen.getByRole("button", { name: "Show access token" }));
+    expect(token).toHaveAttribute("type", "text");
+    expect(screen.getByText(`Authorization: Bearer ${accessToken}`)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Copy header value" }));
+    expect(writeText).toHaveBeenCalledWith(`Bearer ${accessToken}`);
+    expect(screen.getByRole("button", { name: "Header copied" })).toBeInTheDocument();
+    expect(screen.getByText(new URL(
+      "/api/v1/projects/project-1/operations/deployments/deploy-1/inference/v1/predict",
+      window.location.origin,
+    ).toString())).toBeInTheDocument();
+    expect(screen.getByText(new URL(
+      "/api/v1/projects/project-1/operations/deployments/deploy-1/inference/v1/predict/offline",
+      window.location.origin,
+    ).toString())).toBeInTheDocument();
+    expect(screen.getByText(new URL(
+      "/api/v1/projects/project-1/operations/deployments/deploy-1/inference/openapi.json",
+      window.location.origin,
+    ).toString())).toBeInTheDocument();
+    expect(screen.getByText("http://sceptre-model-deploy-1.sceptre.svc:8080/v1/predict"))
+      .toBeInTheDocument();
+    expect(screen.queryByText(/kubectl .*port-forward/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Local endpoint/ })).not.toBeInTheDocument();
+  });
+
+  it("shows deployment request failures and recovers on retry", async () => {
+    let deploymentRequests = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.endsWith("/operations/health")) return response(operationsHealth);
+      if (url.endsWith("/operations/registry")) return response([]);
+      if (url.endsWith("/operations/deployments")) {
+        deploymentRequests += 1;
+        return deploymentRequests === 1
+          ? response({ detail: "Deployment status unavailable." }, 503)
+          : response([]);
+      }
+      if (url.endsWith("/operations/drift-runs")) return response([]);
+      return response([]);
+    });
+    renderRoute(<OperationsPage />, "/projects/project-1/operations");
+
+    expect(await screen.findByText("Deployment status unavailable.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("No model deployments")).toBeInTheDocument();
+    expect(deploymentRequests).toBe(2);
+  });
+
+  it("keeps the deployment section in a loading state until status arrives", async () => {
+    let resolveDeployments!: (value: Response) => void;
+    const pendingDeployments = new Promise<Response>((resolve) => { resolveDeployments = resolve; });
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.endsWith("/operations/health")) return response(operationsHealth);
+      if (url.endsWith("/operations/registry")) return response([]);
+      if (url.endsWith("/operations/deployments")) return pendingDeployments;
+      if (url.endsWith("/operations/drift-runs")) return response([]);
+      return response([]);
+    });
+    renderRoute(<OperationsPage />, "/projects/project-1/operations");
+
+    expect(await screen.findByText("Loading deployments…")).toBeInTheDocument();
+    act(() => resolveDeployments(new Response("[]", {
+      status: 200, headers: { "Content-Type": "application/json" },
+    })));
+    expect(await screen.findByText("No model deployments")).toBeInTheDocument();
   });
 });

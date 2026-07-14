@@ -80,7 +80,8 @@ export interface ModelRun {
 }
 export interface TrainingResourceUsage {
   run_id: ID; status: RunStatus; pod_name: string | null; pod_phase: string | null;
-  node_name: string | null; current_candidate: string | null; current_phase: string | null;
+  node_name: string | null; current_candidate: string | null; last_candidate?: string | null;
+  current_phase: string | null;
   completed_candidates: number; total_candidates: number; progress: number;
   elapsed_seconds: number; estimated_remaining_seconds: number | null;
   cpu_request_cores: number | null; cpu_limit_cores: number | null;

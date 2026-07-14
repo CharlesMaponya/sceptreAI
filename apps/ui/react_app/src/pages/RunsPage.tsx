@@ -72,6 +72,7 @@ export function RunsPage() {
 function RunDetail({ projectId, run, invalidate }: {
   projectId: string; run: ModelRun; invalidate: () => void;
 }) {
+  const client = useQueryClient();
   const [tab, setTab] = useState<"leaderboard" | "analysis" | "logs">("leaderboard");
   const [showAdd, setShowAdd] = useState(false);
   const leaderboard = useQuery({
@@ -89,13 +90,21 @@ function RunDetail({ projectId, run, invalidate }: {
     queryFn: () => api<Logs>(`/projects/${projectId}/training/runs/${run.id}/logs`),
     refetchInterval: ["queued", "precheck_running", "running"].includes(run.status) ? 2000 : false,
   });
+  const refreshRunEvidence = () => {
+    invalidate();
+    void Promise.all([
+      client.invalidateQueries({ queryKey: ["leaderboard", projectId, run.id] }),
+      client.invalidateQueries({ queryKey: ["run-resources", projectId, run.id] }),
+      client.invalidateQueries({ queryKey: ["logs", run.id] }),
+    ]);
+  };
   const cancel = useMutation({
     mutationFn: () => api(`/projects/${projectId}/training/runs/${run.id}/cancel`, json("POST")),
-    onSuccess: invalidate,
+    onSuccess: refreshRunEvidence,
   });
   const restart = useMutation({
     mutationFn: () => api(`/projects/${projectId}/training/runs/${run.id}/restart`, json("POST")),
-    onSuccess: invalidate,
+    onSuccess: refreshRunEvidence,
   });
   const winner = leaderboard.data?.entries.find((entry) => entry.model === leaderboard.data?.winner);
   return <div className="run-detail">
@@ -139,7 +148,7 @@ function RunDetail({ projectId, run, invalidate }: {
     {tab === "logs" && <LogsPanel logs={logs} />}
     {showAdd && <AddModelsModal projectId={projectId} run={run}
       completed={new Set(leaderboard.data?.entries.map((entry) => entry.model))}
-      close={() => setShowAdd(false)} done={() => { setShowAdd(false); invalidate(); }} />}
+      close={() => setShowAdd(false)} done={() => { setShowAdd(false); refreshRunEvidence(); }} />}
   </div>;
 }
 
@@ -222,18 +231,32 @@ function LiveTrainingSummary({ resources }: {
   resources: ReturnType<typeof useQuery<TrainingResourceUsage>>;
 }) {
   if (resources.isLoading) return <Loading label="Loading training progress…" />;
-  if (resources.error) return <Notice tone="danger">Live training details are temporarily unavailable.</Notice>;
+  if (resources.error) return <ErrorState error={resources.error} retry={() => resources.refetch()} />;
   const value = resources.data;
   if (!value) return null;
   const total = value.total_candidates || 0;
   const completed = value.completed_candidates || 0;
   const progress = Number.isFinite(value.progress) ? value.progress : 0;
+  const terminal = ["succeeded", "failed", "cancelled", "preempted"].includes(value.status);
+  const displayedCandidate = terminal
+    ? (value.last_candidate || value.current_candidate)
+    : value.current_candidate;
+  const candidateNumber = Math.min(completed + (displayedCandidate ? 1 : 0), total);
+  const candidateCopy = value.status === "cancelled"
+    ? (displayedCandidate
+      ? `Stopped on candidate ${candidateNumber} of ${total}`
+      : `${completed} of ${total} candidates completed`)
+    : `Candidate ${candidateNumber} of ${total}`;
+  const progressCopy = value.status === "cancelled"
+    ? `${Math.round(progress * 100)}% completed before cancellation`
+    : `${Math.round(progress * 100)}% complete`;
   return <div className="live-training-summary">
-    <div><Activity size={18} /><span><small>Active model</small><b>{value.current_candidate || "Waiting for candidate"}</b></span></div>
+    <div><Activity size={18} /><span><small>{terminal ? "Last active model" : "Active model"}</small>
+      <b>{displayedCandidate || (terminal ? "No model active" : "Waiting for candidate")}</b></span></div>
     <div><Gauge size={18} /><span><small>Current phase</small><b>{titleCase(value.current_phase || value.pod_phase || value.status || "waiting")}</b></span></div>
     <div className="live-training-summary__progress"><span>
-      <b>Candidate {Math.min(completed + (value.current_candidate ? 1 : 0), total)} of {total}</b>
-      <small>{Math.round(progress * 100)}% complete</small></span>
+      <b>{candidateCopy}</b>
+      <small>{progressCopy}</small></span>
       <progress max={1} value={progress} /></div>
   </div>;
 }

@@ -1,0 +1,122 @@
+{{- if .Values.mlflow.enabled }}
+{{- if .Values.mlflow.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "sceptre.fullname" . }}-mlflow
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+  {{- if .Values.mlflow.persistence.retainOnDelete }}
+  annotations:
+    helm.sh/resource-policy: keep
+  {{- end }}
+spec:
+  accessModes: [{{ .Values.mlflow.persistence.accessMode | quote }}]
+  {{- if .Values.mlflow.persistence.storageClass }}
+  storageClassName: {{ .Values.mlflow.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.mlflow.persistence.size }}
+---
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "sceptre.fullname" . }}-mlflow
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "sceptre.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: mlflow
+  ports:
+    - {name: http, port: 5000, targetPort: http}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sceptre.fullname" . }}-mlflow
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "sceptre.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: mlflow
+  template:
+    metadata:
+      labels:
+        {{- include "sceptre.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: mlflow
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . | quote }}
+        {{- end }}
+      {{- end }}
+      initContainers:
+        - name: migrate-mlflow
+          image: {{ include "sceptre.image" (dict "root" . "image" .Values.mlflow.image) | quote }}
+          imagePullPolicy: {{ .Values.mlflow.image.pullPolicy }}
+          command: ["python", "/opt/automl/mlflow_migrate_if_initialized.py"]
+          env:
+            - name: MLFLOW_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sceptre.platformSecretName" . }}
+                  key: {{ .Values.platform.mlflowDatabaseUrlKey }}
+          resources:
+            requests: {cpu: 25m, memory: 64Mi}
+            limits: {cpu: 250m, memory: 256Mi}
+      containers:
+        - name: mlflow
+          image: {{ include "sceptre.image" (dict "root" . "image" .Values.mlflow.image) | quote }}
+          imagePullPolicy: {{ .Values.mlflow.image.pullPolicy }}
+          args:
+            - mlflow
+            - server
+            - --host
+            - 0.0.0.0
+            - --port
+            - "5000"
+            - --backend-store-uri
+            - $(MLFLOW_DATABASE_URL)
+            - --artifacts-destination
+            - /mlflow/artifacts
+          env:
+            - name: MLFLOW_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sceptre.platformSecretName" . }}
+                  key: {{ .Values.platform.mlflowDatabaseUrlKey }}
+          ports:
+            - {name: http, containerPort: 5000}
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 15
+            failureThreshold: 4
+          resources:
+            {{- toYaml .Values.mlflow.resources | nindent 12 }}
+          volumeMounts:
+            - {name: data, mountPath: /mlflow}
+      volumes:
+        - name: data
+          {{- if .Values.mlflow.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "sceptre.fullname" . }}-mlflow
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+{{- end }}

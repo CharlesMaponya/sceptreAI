@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response, status
 from sqlalchemy import text
 
 from automl_api.api.routes import (
@@ -41,16 +41,18 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     @app.get("/health/ready", tags=["health"])
-    def ready() -> dict[str, str]:
+    def ready(response: Response) -> dict[str, str]:
         try:
             with get_engine().connect() as connection:
                 connection.execute(text("select 1"))
         except Exception as exc:
+            response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
             return {"status": "degraded", "database": "unavailable", "detail": str(exc)}
 
         try:
             get_object_store().healthcheck()
         except Exception as exc:
+            response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
             return {
                 "status": "degraded",
                 "database": "ok",

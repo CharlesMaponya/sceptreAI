@@ -3,7 +3,6 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - configmap.yaml
-  - priorityclass-automl-low.yaml
   - minio-secret.yaml
   - minio-pvc.yaml
   - minio-deployment.yaml
@@ -17,4 +16,3 @@ resources:
   - mlflow-pvc.yaml
   - mlflow-deployment.yaml
   - mlflow-service.yaml
-  - dataset-cache-pvc.yaml

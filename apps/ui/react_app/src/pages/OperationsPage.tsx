@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Activity, AlertTriangle, Box, CloudCog, Cpu, Database, ExternalLink, Gauge,
-  FileSpreadsheet, RefreshCw, Rocket, ShieldCheck, Square, Trash2, Upload,
+  Activity, AlertTriangle, Box, Braces, CloudCog, Copy, Cpu, Database, ExternalLink,
+  Eye, EyeOff, Gauge, FileSpreadsheet, RefreshCw, Rocket, ShieldCheck, Square,
+  Trash2, Upload,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
-import { api, json, uploadFormData } from "../api";
+import { api, getSession, json, uploadFormData } from "../api";
 import {
   Badge, Button, Card, EmptyState, ErrorState, Loading, Metric, Modal, Notice, PageHeader,
 } from "../components/ui";
@@ -22,6 +23,13 @@ interface Registry {
 interface DeployStatus {
   run: ModelRun; runtime_state: string; endpoint: string | null; docs_url?: string | null;
   openapi_url?: string | null; status: string;
+  service_name?: string | null; namespace?: string | null;
+  internal_endpoint?: string | null; internal_docs_url?: string | null;
+  internal_openapi_url?: string | null;
+  platform_endpoint?: string | null; platform_online_endpoint?: string | null;
+  platform_offline_endpoint?: string | null; platform_metadata_url?: string | null;
+  platform_docs_url?: string | null; platform_openapi_url?: string | null;
+  platform_live_url?: string | null; platform_ready_url?: string | null;
 }
 interface DriftRun extends ModelRun {
   tags: { diagnostics?: { drift_share_percent?: number; drifted_feature_count?: number } };
@@ -56,7 +64,7 @@ export function OperationsPage() {
     queryKey: ["deployments", projectId],
     queryFn: () => api<DeployStatus[]>(`/projects/${projectId}/operations/deployments`),
     refetchInterval: (query) => query.state.data?.some((item) =>
-      ["queued", "precheck_running", "running"].includes(item.status)) ? 5000 : false,
+      ["queued", "precheck_running", "running", "succeeded"].includes(item.status)) ? 15_000 : false,
   });
   const driftRuns = useQuery({
     queryKey: ["drift-runs", projectId],
@@ -101,7 +109,9 @@ export function OperationsPage() {
     <Card className="section-card">
       <div className="section-heading"><div><h2>Deployments</h2>
         <p>Live and historical inference services.</p></div><CloudCog className="section-icon" /></div>
-      {deployments.data?.length ? <div className="table-wrap"><table><thead><tr>
+      {deployments.isLoading ? <Loading label="Loading deployments…" />
+        : deployments.error ? <ErrorState error={deployments.error} retry={() => deployments.refetch()} />
+          : deployments.data?.length ? <div className="table-wrap"><table><thead><tr>
         <th>Deployment</th><th>Runtime</th><th>Status</th><th>Endpoint</th><th /></tr></thead>
         <tbody>{deployments.data.map((deployment) =>
           <DeploymentRow key={deployment.run.id} projectId={projectId}
@@ -251,6 +261,7 @@ function DeploymentRow({ projectId, deployment, refresh }: {
   projectId: string; deployment: DeployStatus; refresh: () => void;
 }) {
   const [confirmStop, setConfirmStop] = useState(false);
+  const [apiAccessOpen, setApiAccessOpen] = useState(false);
   const stop = useMutation({
     mutationFn: () => api(`/projects/${projectId}/operations/deployments/${deployment.run.id}/stop`, json("POST")),
     onSuccess: () => { setConfirmStop(false); refresh(); },
@@ -258,16 +269,160 @@ function DeploymentRow({ projectId, deployment, refresh }: {
   return <tr><td><b>{deployment.run.run_name || deployment.run.id.slice(0, 8)}</b>
     <small className="cell-sub">{formatDate(deployment.run.created_at)}</small></td>
     <td>{titleCase(deployment.runtime_state)}</td><td><Badge status={deployment.status} /></td>
-    <td>{deployment.status === "succeeded" && deployment.endpoint ? <span className="endpoint-links">
-      <a href={deployment.endpoint} target="_blank" rel="noreferrer">Endpoint <ExternalLink size={13} /></a>
-      {deployment.docs_url && <a href={deployment.docs_url} target="_blank" rel="noreferrer">Docs <ExternalLink size={13} /></a>}
-    </span> : "Pending"}</td>
+    <td><DeploymentAccess deployment={deployment} openApiAccess={() => setApiAccessOpen(true)} /></td>
     <td>{!["cancelled", "failed"].includes(deployment.status) &&
       <Button variant="ghost" onClick={() => setConfirmStop(true)}><Square size={14} />Stop</Button>}
       {confirmStop && <ConfirmModal danger title="Stop this deployment?"
         description="The prediction endpoint will become unavailable. The registered model and evidence remain intact."
         confirmLabel="Stop deployment" close={() => setConfirmStop(false)}
-        action={() => stop.mutateAsync()} />}</td></tr>;
+        action={() => stop.mutateAsync()} />}
+      {apiAccessOpen && <ApiAccessModal deployment={deployment}
+        close={() => setApiAccessOpen(false)} />}</td></tr>;
+}
+
+function DeploymentAccess({ deployment, openApiAccess }: {
+  deployment: DeployStatus; openApiAccess: () => void;
+}) {
+  const succeeded = deployment.status === "succeeded";
+  const ready = succeeded && deployment.runtime_state === "ready";
+  if (ready && (deployment.platform_endpoint || deployment.endpoint)) {
+    return <Button variant="secondary" onClick={openApiAccess}>
+      <Braces size={14} />API access</Button>;
+  }
+  if (["failed", "cancelled", "preempted"].includes(deployment.status)
+    || ["missing", "unavailable"].includes(deployment.runtime_state)) {
+    return <span className="endpoint-state endpoint-state--unavailable">Unavailable</span>;
+  }
+  if (succeeded) {
+    return <span className="endpoint-state">API access unavailable</span>;
+  }
+  return <span className="endpoint-state">Provisioning</span>;
+}
+
+function ApiAccessModal({ deployment, close }: {
+  deployment: DeployStatus; close: () => void;
+}) {
+  const [accessToken, setAccessToken] = useState(
+    () => getSession()?.tokens.access_token || "",
+  );
+  const [tokenVisible, setTokenVisible] = useState(false);
+  const [copied, setCopied] = useState<"token" | "header" | null>(null);
+  const [copyError, setCopyError] = useState("");
+  useEffect(() => {
+    const syncSessionToken = () => {
+      setAccessToken(getSession()?.tokens.access_token || "");
+      setTokenVisible(false);
+      setCopied(null);
+      setCopyError("");
+    };
+    window.addEventListener("sceptre-session", syncSessionToken);
+    return () => window.removeEventListener("sceptre-session", syncSessionToken);
+  }, []);
+  const copyCredential = async (value: string, kind: "token" | "header") => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(kind);
+      setCopyError("");
+    } catch {
+      setCopyError("Clipboard access was blocked. Reveal and copy the token manually.");
+    }
+  };
+  const platformEndpoints = [
+    ["POST", "Batch prediction", deployment.platform_endpoint],
+    ["POST", "Online prediction", deployment.platform_online_endpoint],
+    ["POST", "Offline file prediction", deployment.platform_offline_endpoint],
+    ["GET", "Model metadata", deployment.platform_metadata_url],
+    ["GET", "Swagger documentation", deployment.platform_docs_url],
+    ["GET", "OpenAPI schema", deployment.platform_openapi_url],
+    ["GET", "Liveness", deployment.platform_live_url],
+    ["GET", "Readiness", deployment.platform_ready_url],
+  ] as const;
+  const clusterDetails = [
+    ["Cluster endpoint", deployment.internal_endpoint],
+    ["Cluster docs", deployment.internal_docs_url],
+    ["Cluster OpenAPI", deployment.internal_openapi_url],
+  ] as const;
+  const hasClusterDetails = clusterDetails.some(([, value]) => Boolean(value));
+  return <Modal title="Model API access"
+    description="Use Sceptre's authenticated gateway from the same address as this workspace."
+    onClose={close}>
+    <div className="stack endpoint-access">
+      <Notice><strong>Bearer authentication required.</strong> Your current Sceptre access token is available below.</Notice>
+      <section className="endpoint-access__section">
+        <h3>Authentication</h3>
+        <p>Use this current-session token for API requests. Treat it like a password and never put it in a URL.</p>
+        {accessToken ? <div className="endpoint-token">
+          <label htmlFor="deployment-access-token">Bearer token</label>
+          <div className="endpoint-token__control">
+            <input id="deployment-access-token" aria-label="Sceptre access token"
+              type={tokenVisible ? "text" : "password"} readOnly value={accessToken}
+              autoComplete="off" spellCheck={false} />
+            <Button variant="secondary" aria-label={tokenVisible ? "Hide access token" : "Show access token"}
+              onClick={() => setTokenVisible((visible) => !visible)}>
+              {tokenVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+              {tokenVisible ? "Hide" : "Reveal"}
+            </Button>
+            <Button variant="secondary" onClick={() => copyCredential(accessToken, "token")}>
+              <Copy size={14} />{copied === "token" ? "Token copied" : "Copy token"}
+            </Button>
+          </div>
+          <div className="endpoint-token__header">
+            <span>Authorization header</span>
+            <code>{tokenVisible ? `Authorization: Bearer ${accessToken}`
+              : "Authorization: Bearer ••••••••"}</code>
+            <Button variant="secondary"
+              onClick={() => copyCredential(`Bearer ${accessToken}`, "header")}>
+              <Copy size={14} />{copied === "header" ? "Header copied" : "Copy header value"}
+            </Button>
+          </div>
+          <small>This access token expires with your session. Return here to copy the current token after it refreshes.</small>
+        </div> : <Notice tone="danger">Your session token is unavailable. Sign in again before calling this API.</Notice>}
+        {copyError && <Notice tone="danger">{copyError}</Notice>}
+      </section>
+      <section className="endpoint-access__section">
+        <h3>Application gateway</h3>
+        <p>These project-scoped URLs work through the API already serving this UI.</p>
+        <div className="gateway-endpoints">{platformEndpoints.map(([method, label, path]) =>
+          path && <PlatformEndpoint key={label} method={method} label={label} path={path} />)}</div>
+      </section>
+      {deployment.endpoint && <section className="endpoint-access__section">
+        <h3>Direct external service</h3>
+        <p>These links are available because external model exposure is configured for this cluster.</p>
+        <div className="endpoint-links">
+          <a href={deployment.endpoint} target="_blank" rel="noreferrer">
+            Endpoint <ExternalLink size={13} /></a>
+          {deployment.docs_url && <a href={deployment.docs_url} target="_blank" rel="noreferrer">
+            Docs <ExternalLink size={13} /></a>}
+          {deployment.openapi_url && <a href={deployment.openapi_url} target="_blank" rel="noreferrer">
+            OpenAPI <ExternalLink size={13} /></a>}
+        </div>
+      </section>}
+      {hasClusterDetails && <section className="endpoint-access__section endpoint-access__section--secondary">
+        <h3>Kubernetes internal</h3>
+        <p>These service addresses are reachable by workloads inside the cluster.</p>
+        <div className="endpoint-access__urls">
+          {clusterDetails.map(([label, value]) => value
+            && <EndpointValue key={label} label={label} value={value} />)}
+        </div>
+        {deployment.service_name && deployment.namespace && <small>
+          Service {deployment.service_name} in namespace {deployment.namespace}
+        </small>}
+      </section>}
+      <div className="modal__actions"><Button variant="ghost" onClick={close}>Close</Button></div>
+    </div>
+  </Modal>;
+}
+
+function PlatformEndpoint({ method, label, path }: {
+  method: string; label: string; path: string;
+}) {
+  const url = new URL(path, window.location.origin).toString();
+  return <div><span className={`gateway-method gateway-method--${method.toLowerCase()}`}>{method}</span>
+    <span><b>{label}</b><code>{url}</code></span></div>;
+}
+
+function EndpointValue({ label, value }: { label: string; value?: string | null }) {
+  return <div><span>{label}</span><code>{value || "Not reported"}</code></div>;
 }
 
 function CleanupPanel({ projectId }: { projectId: string }) {

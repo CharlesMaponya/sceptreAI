@@ -1,0 +1,13 @@
+# Push the versioned images to the MicroK8s local registry first.
+global:
+  imageRegistry: localhost:32000
+api:
+  image: {pullPolicy: Always}
+ui:
+  image: {pullPolicy: Always}
+mlflow:
+  image: {pullPolicy: Always}
+training:
+  imagePullPolicy: Always
+inference:
+  image: {pullPolicy: Always}

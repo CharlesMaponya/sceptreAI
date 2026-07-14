@@ -19,10 +19,11 @@
 │   ├── architecture/              # ecosystem design and implementation sequencing
 │   └── decisions/                 # architecture decision records
 ├── infra/
+│   ├── helm/
+│   │   └── sceptre/               # primary portable full-stack distribution
 │   ├── k8s/
-│   │   ├── base/                  # namespace, ConfigMap, PriorityClass, base manifests
-│   │   └── overlays/              # environment-specific Kustomize overlays
-│   └── helm/                      # future packaged deployment chart
+│   │   ├── base/                  # legacy low-level development manifests
+│   │   └── overlays/              # legacy Kustomize development overlays
 └── tests/                         # fast tests around contracts and metadata
 ```
 
@@ -35,7 +36,11 @@ the FastAPI backend rather than reading PostgreSQL or Kubernetes directly.
 
 `packages/automl_shared` is reserved for stable contracts shared by API, UI, and training containers. Keep it small to avoid tight coupling.
 
-`infra/k8s/base` stores low-overhead Kubernetes primitives suitable for 1-3 node clusters. Heavy dependencies should stay optional.
+`infra/helm/sceptre` is the supported installation boundary. It packages the UI,
+API, database migration, PostgreSQL, MinIO, MLflow, namespaced RBAC, durable
+storage, and optional capability profiles without depending on a cluster vendor.
+`infra/k8s/base` remains a low-level development reference and should not fork
+application behavior.
 
 ## Future Modules
 

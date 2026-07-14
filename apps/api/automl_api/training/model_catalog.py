@@ -234,56 +234,82 @@ def candidate_catalog(task_type: TaskType) -> tuple[CandidateSpec, ...]:
 
 
 def _external_estimators(task_type: TaskType) -> list[tuple[str, Any]]:
-    try:
-        from catboost import CatBoostClassifier, CatBoostRegressor
-        from lightgbm import LGBMClassifier, LGBMRegressor
-        from xgboost import XGBRegressor
-    except ImportError:
+    if task_type == TaskType.CLUSTERING:
         return []
 
-    if task_type == TaskType.CLASSIFICATION:
-        return [
-            ("XGBClassifier", XGBLabelEncodingClassifier()),
-            (
-                "LGBMClassifier",
-                LGBMClassifier(random_state=42, n_jobs=1, verbosity=-1),
-            ),
-            (
-                "CatBoostClassifier",
-                CatBoostClassifier(
-                    random_seed=42,
-                    thread_count=1,
-                    verbose=False,
-                    allow_writing_files=False,
-                ),
-            ),
-        ]
-    if task_type in {TaskType.REGRESSION, TaskType.TIME_SERIES}:
-        return [
-            (
-                "XGBRegressor",
-                XGBRegressor(
-                    random_state=42,
-                    n_jobs=1,
-                    tree_method="hist",
-                    verbosity=0,
-                ),
-            ),
-            (
-                "LGBMRegressor",
-                LGBMRegressor(random_state=42, n_jobs=1, verbosity=-1),
-            ),
-            (
-                "CatBoostRegressor",
-                CatBoostRegressor(
-                    random_seed=42,
-                    thread_count=1,
-                    verbose=False,
-                    allow_writing_files=False,
-                ),
-            ),
-        ]
-    return []
+    candidates: list[tuple[str, Any]] = []
+
+    try:
+        from xgboost import XGBRegressor
+    except (ImportError, OSError):
+        pass
+    else:
+        if task_type == TaskType.CLASSIFICATION:
+            candidates.append(("XGBClassifier", XGBLabelEncodingClassifier()))
+        else:
+            candidates.append(
+                (
+                    "XGBRegressor",
+                    XGBRegressor(
+                        random_state=42,
+                        n_jobs=1,
+                        tree_method="hist",
+                        verbosity=0,
+                    ),
+                )
+            )
+
+    try:
+        from lightgbm import LGBMClassifier, LGBMRegressor
+    except (ImportError, OSError):
+        pass
+    else:
+        if task_type == TaskType.CLASSIFICATION:
+            candidates.append(
+                (
+                    "LGBMClassifier",
+                    LGBMClassifier(random_state=42, n_jobs=1, verbosity=-1),
+                )
+            )
+        else:
+            candidates.append(
+                (
+                    "LGBMRegressor",
+                    LGBMRegressor(random_state=42, n_jobs=1, verbosity=-1),
+                )
+            )
+
+    try:
+        from catboost import CatBoostClassifier, CatBoostRegressor
+    except (ImportError, OSError):
+        pass
+    else:
+        if task_type == TaskType.CLASSIFICATION:
+            candidates.append(
+                (
+                    "CatBoostClassifier",
+                    CatBoostClassifier(
+                        random_seed=42,
+                        thread_count=1,
+                        verbose=False,
+                        allow_writing_files=False,
+                    ),
+                )
+            )
+        else:
+            candidates.append(
+                (
+                    "CatBoostRegressor",
+                    CatBoostRegressor(
+                        random_seed=42,
+                        thread_count=1,
+                        verbose=False,
+                        allow_writing_files=False,
+                    ),
+                )
+            )
+
+    return candidates
 
 
 def select_candidates(

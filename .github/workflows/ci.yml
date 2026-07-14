@@ -25,7 +25,7 @@ jobs:
           pip install ruff
       
       - name: Lint with ruff
-        run: ruff check apps packages alembic tests
+        run: ruff check apps packages alembic scripts tests
 
   test:
     name: Run Tests
@@ -64,6 +64,9 @@ jobs:
           DATABASE_URL: postgresql+psycopg://automl:automl@localhost:5432/automl_test
           JWT_SECRET_KEY: test-secret-key
         run: |
+          alembic upgrade head
+          python scripts/verify_database_schema.py
+          alembic check
           pytest tests/ -v --tb=short \
             --cov \
             --cov-report=term-missing \
@@ -82,6 +85,30 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  frontend:
+    name: React Regression
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/ui/react_app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/ui/react_app/package-lock.json
+
+      - run: npm ci
+      - run: npm test -- --run
+      - run: npm run lint
+      - run: npm run build
+
+      - name: Build the UI runtime image
+        working-directory: .
+        run: docker build --tag sceptre-ui:test apps/ui/react_app
+
   syntax-check:
     name: Python Syntax Check
     runs-on: ubuntu-latest
@@ -94,4 +121,65 @@ jobs:
           python-version: '3.11'
       
       - name: Check syntax with compileall
-        run: python -m compileall apps packages alembic tests
+        run: python -m compileall apps packages alembic scripts tests
+
+  helm-chart:
+    name: Helm Chart Regression
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v4.2.2
+
+      - name: Lint and render every supported profile
+        run: |
+          helm lint infra/helm/sceptre
+          for profile in \
+            values.yaml values-local.yaml values-minikube.yaml values-kind.yaml \
+            values-k3d.yaml values-microk8s.yaml values-nvidia.yaml values-intel.yaml
+          do
+            helm template sceptre infra/helm/sceptre \
+              --namespace sceptre \
+              --values "infra/helm/sceptre/${profile}" \
+              > "/tmp/sceptre-${profile}"
+          done
+          helm template sceptre infra/helm/sceptre \
+            --namespace sceptre \
+            --values infra/helm/sceptre/examples/values-external.yaml \
+            > /tmp/sceptre-values-external.yaml
+          helm template sceptre infra/helm/sceptre \
+            --namespace sceptre \
+            --values infra/helm/sceptre/examples/values-capabilities.yaml \
+            > /tmp/sceptre-values-capabilities.yaml
+
+      - name: Assert portable defaults
+        run: |
+          rendered=/tmp/sceptre-values.yaml
+          ! grep -q 'kind: ClusterRole' "$rendered"
+          ! grep -q 'nodeSelector:' "$rendered"
+          ! grep -qi 'minikube' "$rendered"
+          grep -q 'INFERENCE_SERVICE_TYPE: "ClusterIP"' "$rendered"
+          grep -q 'DATASET_CACHE_PVC_NAME: ""' "$rendered"
+          grep -q 'alembic upgrade head' "$rendered"
+          grep -q 'python scripts/verify_database_schema.py' "$rendered"
+          grep -q 'waiting for complete API database schema' "$rendered"
+          grep -Fq 'resources: ["jobs/status"]' "$rendered"
+          grep -Fq 'resources: ["deployments/status"]' "$rendered"
+
+      - name: Assert durable k3d image distribution
+        run: |
+          rendered=/tmp/sceptre-values-k3d.yaml
+          registry=sceptre-registry.localhost:5111
+          grep -Fq "image: \"${registry}/sceptre-api:0.1.0\"" "$rendered"
+          grep -Fq "image: \"${registry}/sceptre-ui:0.1.0\"" "$rendered"
+          grep -Fq "image: \"${registry}/sceptre-mlflow:0.1.0\"" "$rendered"
+          grep -Fq "TRAINING_IMAGE: \"${registry}/sceptre-training-cpu:0.1.0\"" "$rendered"
+          grep -Fq "TRAINING_IMAGE_NVIDIA: \"${registry}/sceptre-training-nvidia:0.1.0\"" "$rendered"
+          grep -Fq "TRAINING_IMAGE_INTEL: \"${registry}/sceptre-training-intel:0.1.0\"" "$rendered"
+          grep -Fq "INFERENCE_IMAGE: \"${registry}/sceptre-inference:0.1.0\"" "$rendered"
+          grep -Fq 'TRAINING_IMAGE_PULL_POLICY: "IfNotPresent"' "$rendered"
+          grep -Fq 'INFERENCE_IMAGE_PULL_POLICY: "IfNotPresent"' "$rendered"
+          ! grep -q 'imagePullPolicy: Never' "$rendered"

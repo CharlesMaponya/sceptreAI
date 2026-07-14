@@ -1,0 +1,212 @@
+nameOverride: ""
+fullnameOverride: ""
+
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+api:
+  replicaCount: 1
+  image:
+    repository: sceptre-api
+    tag: "0.1.0"
+    digest: ""
+    pullPolicy: IfNotPresent
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "1", memory: 1Gi}
+
+ui:
+  replicaCount: 1
+  image:
+    repository: sceptre-ui
+    tag: "0.1.0"
+    digest: ""
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 80
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+
+auth:
+  jwtSecret: change-me-before-sharing-this-installation
+  existingSecret: ""
+  jwtSecretKey: JWT_SECRET_KEY
+  simpleAuthEnabled: true
+
+postgresql:
+  enabled: true
+  image:
+    repository: postgres
+    useGlobal: false
+    tag: 16-alpine
+    digest: ""
+    pullPolicy: IfNotPresent
+  auth:
+    database: automl
+    username: automl
+    password: automl
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    retainOnDelete: true
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "1", memory: 1Gi}
+
+externalDatabase:
+  # Used when postgresql.enabled=false. Prefer platform.existingSecret for credentials.
+  url: ""
+  mlflowUrl: ""
+
+platform:
+  # Existing secret keys: DATABASE_URL and, for bundled MLflow, MLFLOW_DATABASE_URL.
+  existingSecret: ""
+  databaseUrlKey: DATABASE_URL
+  mlflowDatabaseUrlKey: MLFLOW_DATABASE_URL
+
+minio:
+  enabled: true
+  image:
+    repository: minio/minio
+    useGlobal: false
+    tag: RELEASE.2024-07-16T23-46-41Z
+    digest: ""
+    pullPolicy: IfNotPresent
+  auth:
+    rootUser: automl
+    rootPassword: change-me-before-sharing-this-installation
+    existingSecret: ""
+    accessKeyKey: MINIO_ROOT_USER
+    secretKeyKey: MINIO_ROOT_PASSWORD
+  bucket: automl
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    retainOnDelete: true
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+
+externalObjectStore:
+  # Used when minio.enabled=false.
+  endpoint: ""
+  bucket: automl
+  existingSecret: ""
+  accessKeyKey: ACCESS_KEY
+  secretKeyKey: SECRET_KEY
+
+mlflow:
+  enabled: true
+  image:
+    repository: sceptre-mlflow
+    tag: "0.1.0"
+    digest: ""
+    pullPolicy: IfNotPresent
+  externalTrackingUri: ""
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    retainOnDelete: true
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: 500m, memory: 1Gi}
+
+training:
+  maxConcurrentJobs: 2
+  activeDeadlineSeconds: 21600
+  maxActiveDeadlineSeconds: 86400
+  deadlineMultiplier: 6
+  jobTtlSeconds: 300
+  imagePullPolicy: IfNotPresent
+  cpu:
+    image:
+      repository: sceptre-training-cpu
+      tag: "0.1.0"
+      digest: ""
+    requestCores: 1
+    limitCores: 2
+    memoryRequestMb: 1024
+    memoryLimitMb: 4096
+  nvidia:
+    enabled: false
+    resourceKey: nvidia.com/gpu
+    image:
+      repository: sceptre-training-nvidia
+      tag: "0.1.0"
+      digest: ""
+  intel:
+    enabled: false
+    resourceKey: gpu.intel.com/xe
+    image:
+      repository: sceptre-training-intel
+      tag: "0.1.0"
+      digest: ""
+  cache:
+    mode: ephemeral
+    emptyDirSizeGb: 5
+    size: 5Gi
+    existingClaim: ""
+    storageClass: ""
+    accessMode: ReadWriteMany
+    retainOnDelete: false
+  priorityClass:
+    enabled: false
+    name: ""
+    value: -1000
+
+inference:
+  image:
+    repository: sceptre-inference
+    tag: "0.1.0"
+    digest: ""
+    pullPolicy: IfNotPresent
+  serviceType: ClusterIP
+  externalHost: ""
+  externalScheme: http
+  ingress:
+    enabled: false
+    className: ""
+    # Supports {name} and {deployment_id}; example: "{name}.models.local"
+    hostTemplate: ""
+    tlsSecretName: ""
+
+capabilities:
+  # Adds a separate ClusterRole for node/GPU and PriorityClass discovery.
+  clusterObserver:
+    enabled: false
+
+ingress:
+  enabled: false
+  className: ""
+  host: sceptre.local
+  annotations: {}
+  tls:
+    enabled: false
+    secretName: ""
+
+resourceQuota:
+  enabled: false
+  hard: {}
+
+limitRange:
+  enabled: false
+  default: {}
+  defaultRequest: {}
+
+tests:
+  enabled: true
+  image:
+    repository: busybox
+    useGlobal: false
+    tag: "1.36"
+    digest: ""
+    pullPolicy: IfNotPresent

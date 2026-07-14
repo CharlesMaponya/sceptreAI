@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -13,11 +14,13 @@ from automl_api.schemas.training import (
 from automl_api.services.kubernetes_training import (
     CapacitySnapshot,
     KubernetesTrainingClient,
-    NodeHeadroom,
+    NodeCapability,
     _cpu_cores,
     _memory_mb,
+    _namespace_quota_capacity,
     _node_gpu,
 )
+from kubernetes.client import ApiException
 from pydantic import ValidationError
 
 
@@ -46,11 +49,8 @@ def capacity_snapshot() -> CapacitySnapshot:
             active_training_jobs=0,
         ),
         nodes=[
-            NodeHeadroom(
+            NodeCapability(
                 name="worker",
-                available_cpu=6,
-                available_memory_mb=12_000,
-                gpu_present=False,
             )
         ],
         pvc_ready=True,
@@ -66,7 +66,7 @@ def test_kubernetes_quantities_are_normalized() -> None:
     assert _node_gpu({"gpu.intel.com/i915": "2"}) == ("intel", "gpu.intel.com/i915", 2)
 
 
-def test_default_estimate_reserves_all_available_resources_on_selected_node() -> None:
+def test_default_estimate_uses_configured_resources_without_pinning_a_node() -> None:
     training_client = FakeTrainingClient(capacity_snapshot(), Settings())
 
     estimate = training_client.estimate(
@@ -76,17 +76,16 @@ def test_default_estimate_reserves_all_available_resources_on_selected_node() ->
         prefer_gpu=False,
     )
 
-    assert estimate.cpu_request_cores == 6
-    assert estimate.cpu_limit_cores == 6
-    assert estimate.memory_request_mb == 12_000
-    assert estimate.memory_limit_mb == 12_000
-    assert estimate.selected_node == "worker"
+    assert estimate.cpu_request_cores == 1
+    assert estimate.cpu_limit_cores == 2
+    assert estimate.memory_request_mb == 1024
+    assert estimate.memory_limit_mb == 4096
+    assert estimate.selected_node is None
 
 
-def test_estimate_enforces_node_headroom_fraction_and_gpu_fallback() -> None:
+def test_estimate_enforces_configured_limit_and_gpu_fallback() -> None:
     settings = Settings(
         gpu_enabled=True,
-        max_node_available_fraction_per_job=0.6,
     )
     training_client = FakeTrainingClient(capacity_snapshot(), settings)
 
@@ -97,14 +96,20 @@ def test_estimate_enforces_node_headroom_fraction_and_gpu_fallback() -> None:
         prefer_gpu=True,
     )
 
-    assert estimate.cpu_request_cores == 3.6
-    assert estimate.memory_request_mb <= int(12_000 * 0.6)
+    assert estimate.cpu_request_cores == 1
+    assert estimate.memory_request_mb == 4096
     assert not estimate.gpu_requested
     assert "No schedulable node" in (estimate.gpu_fallback_reason or "")
 
 
-def test_training_manifest_has_low_priority_limits_and_timeout() -> None:
-    settings = Settings(training_image="automl-training:test")
+def test_training_manifest_has_optional_priority_ephemeral_cache_and_timeout() -> None:
+    settings = Settings(
+        training_image="automl-training:test",
+        training_image_pull_policy="Never",
+        training_priority_class_name="automl-low",
+        training_job_ttl_seconds=30,
+        workload_image_pull_secrets=("registry-one", "registry-two"),
+    )
     training_client = FakeTrainingClient(capacity_snapshot(), settings)
     estimate = training_client.estimate(
         dataset_bytes=50 * 1024**2,
@@ -122,12 +127,22 @@ def test_training_manifest_has_low_priority_limits_and_timeout() -> None:
     container = pod_spec["containers"][0]
     resources = container["resources"]
 
+    assert container["image"] == "automl-training:test"
+    assert container["imagePullPolicy"] == "Never"
     assert pod_spec["priorityClassName"] == "automl-low"
     assert manifest["spec"]["activeDeadlineSeconds"] == 21_600
     assert resources["requests"]["cpu"] == str(estimate.cpu_request_cores)
     assert resources["limits"]["memory"] == f"{estimate.memory_limit_mb}Mi"
-    assert resources["requests"] == resources["limits"]
-    assert pod_spec["nodeSelector"] == {"kubernetes.io/hostname": "worker"}
+    assert "nodeSelector" not in pod_spec
+    assert pod_spec["automountServiceAccountToken"] is False
+    assert pod_spec["imagePullSecrets"] == [
+        {"name": "registry-one"},
+        {"name": "registry-two"},
+    ]
+    assert pod_spec["volumes"][0] == {
+        "name": "dataset-cache",
+        "emptyDir": {"sizeLimit": "5Gi"},
+    }
     assert {
         "name": "TRAINING_EXECUTION_MODE",
         "value": "direct",
@@ -138,26 +153,24 @@ def test_training_manifest_has_low_priority_limits_and_timeout() -> None:
 
 
 @pytest.mark.parametrize(
-    ("vendor", "resource"),
+    ("vendor", "resource", "expected_image"),
     [
-        ("nvidia", "nvidia.com/gpu"),
-        ("intel", "gpu.intel.com/xe"),
-        ("intel", "gpu.intel.com/i915"),
+        ("nvidia", "nvidia.com/gpu", "sceptre-training-nvidia:0.1.0"),
+        ("intel", "gpu.intel.com/xe", "sceptre-training-intel:0.1.0"),
+        ("intel", "gpu.intel.com/i915", "sceptre-training-intel:0.1.0"),
     ],
 )
 def test_gpu_vendor_and_resource_are_propagated_to_training_job(
     vendor: str,
     resource: str,
+    expected_image: str,
 ) -> None:
     snapshot = capacity_snapshot()
     snapshot = CapacitySnapshot(
         capacity=snapshot.capacity.model_copy(update={"gpu_available": True}),
         nodes=[
-            NodeHeadroom(
+            NodeCapability(
                 name="gpu-worker",
-                available_cpu=6,
-                available_memory_mb=12_000,
-                gpu_present=True,
                 gpu_vendor=vendor,
                 gpu_resource=resource,
                 gpu_count=1,
@@ -185,6 +198,8 @@ def test_gpu_vendor_and_resource_are_propagated_to_training_job(
     assert estimate.gpu_requested
     assert estimate.gpu_vendor == vendor
     assert estimate.gpu_resource == resource
+    assert container["image"] == expected_image
+    assert container["imagePullPolicy"] == "IfNotPresent"
     assert container["resources"]["requests"][resource] == "1"
     assert container["resources"]["limits"][resource] == "1"
     assert {"name": "AUTOML_GPU_VENDOR", "value": vendor} in container["env"]
@@ -198,11 +213,8 @@ def test_cpu_only_estimators_do_not_reserve_an_available_gpu() -> None:
     snapshot = CapacitySnapshot(
         capacity=snapshot.capacity.model_copy(update={"gpu_available": True}),
         nodes=[
-            NodeHeadroom(
+            NodeCapability(
                 name="gpu-worker",
-                available_cpu=6,
-                available_memory_mb=12_000,
-                gpu_present=True,
                 gpu_vendor="nvidia",
                 gpu_resource="nvidia.com/gpu",
                 gpu_count=1,
@@ -251,7 +263,9 @@ def test_memory_estimate_scales_with_dataset_and_search_budget() -> None:
     )
 
     assert large.estimated_working_set_mb > small.estimated_working_set_mb
-    assert large.memory_request_mb == small.memory_request_mb == 12_000
+    assert small.memory_request_mb == 1024
+    assert large.memory_request_mb == 4096
+    assert not large.can_launch
 
 
 def test_training_request_accepts_up_to_twenty_models() -> None:
@@ -340,6 +354,99 @@ def test_deadline_failure_is_reported_from_job_condition() -> None:
     assert "deadline" in message
 
 
+@pytest.mark.parametrize(
+    ("reason", "pod_age", "expected_state"),
+    [
+        ("ErrImageNeverPull", timedelta(seconds=10), "terminal_waiting_failure"),
+        ("ImagePullBackOff", timedelta(minutes=3), "image_pull_backoff"),
+        ("ImagePullBackOff", timedelta(seconds=30), "image_pull_backoff"),
+        ("ErrImagePull", timedelta(minutes=3), "running"),
+        ("ContainerCreating", timedelta(minutes=3), "running"),
+        ("CreateContainerError", timedelta(minutes=3), "running"),
+        ("RunContainerError", timedelta(minutes=3), "running"),
+    ],
+)
+def test_active_job_classifies_container_waiting_states(
+    reason: str,
+    pod_age: timedelta,
+    expected_state: str,
+) -> None:
+    training_client = KubernetesTrainingClient.__new__(KubernetesTrainingClient)
+    training_client.settings = Settings(training_namespace="team-a")
+    training_client.batch = SimpleNamespace(
+        read_namespaced_job_status=lambda **_: SimpleNamespace(
+            status=SimpleNamespace(succeeded=0, failed=0, active=1)
+        )
+    )
+    waiting = SimpleNamespace(reason=reason, message="test pull failure")
+    container_status = SimpleNamespace(
+        name="trainer",
+        image="sceptre-training-cpu:0.1.0",
+        state=SimpleNamespace(waiting=waiting),
+    )
+    pod = SimpleNamespace(
+        metadata=SimpleNamespace(creation_timestamp=datetime.now(UTC) - pod_age),
+        status=SimpleNamespace(
+            phase="Pending",
+            init_container_statuses=[],
+            container_statuses=[container_status],
+        ),
+    )
+    training_client.core = SimpleNamespace(
+        list_namespaced_pod=lambda **_: SimpleNamespace(items=[pod])
+    )
+
+    assert training_client.job_state("automl-train-test") == expected_state
+
+
+@pytest.mark.parametrize(
+    ("reason", "expected_code", "message_fragment"),
+    [
+        ("ErrImageNeverPull", "TRAINING_IMAGE_NOT_PRESENT", "pull policy"),
+        ("ImagePullBackOff", "TRAINING_IMAGE_PULL_FAILED", "imagePullSecrets"),
+        ("InvalidImageName", "TRAINING_IMAGE_INVALID", "valid registry"),
+    ],
+)
+def test_image_waiting_failure_details_are_actionable(
+    reason: str,
+    expected_code: str,
+    message_fragment: str,
+) -> None:
+    training_client = KubernetesTrainingClient.__new__(KubernetesTrainingClient)
+    training_client.settings = Settings(training_namespace="team-a")
+    training_client.batch = SimpleNamespace(
+        read_namespaced_job_status=lambda **_: SimpleNamespace(
+            status=SimpleNamespace(conditions=[])
+        )
+    )
+    waiting = SimpleNamespace(reason=reason, message="registry unavailable")
+    container_status = SimpleNamespace(
+        name="trainer",
+        image="sceptre-training-cpu:0.1.0",
+        state=SimpleNamespace(waiting=waiting, terminated=None),
+    )
+    pod = SimpleNamespace(
+        metadata=SimpleNamespace(creation_timestamp=datetime.now(UTC)),
+        status=SimpleNamespace(
+            phase="Pending",
+            reason=None,
+            message=None,
+            init_container_statuses=[],
+            container_statuses=[container_status],
+            conditions=[],
+        ),
+    )
+    training_client.core = SimpleNamespace(
+        list_namespaced_pod=lambda **_: SimpleNamespace(items=[pod])
+    )
+
+    code, message = training_client.job_failure_details("automl-train-test")
+
+    assert code == expected_code
+    assert message_fragment in message
+    assert "sceptre-training-cpu:0.1.0" in message
+
+
 def test_byte_literal_pod_logs_are_split_into_lines() -> None:
     training_client = FakeTrainingClient(capacity_snapshot(), Settings())
     pod = SimpleNamespace(metadata=SimpleNamespace(name="trainer-pod"))
@@ -353,27 +460,110 @@ def test_byte_literal_pod_logs_are_split_into_lines() -> None:
     assert lines == ["first line", "second line"]
 
 
-def test_metrics_api_usage_is_grouped_by_scheduled_node() -> None:
-    training_client = FakeTrainingClient(capacity_snapshot(), Settings())
+def test_namespace_quota_capacity_uses_strictest_available_constraint() -> None:
+    quotas = [
+        SimpleNamespace(
+            status=SimpleNamespace(
+                hard={"requests.cpu": "8", "requests.memory": "16Gi"},
+                used={"requests.cpu": "3", "requests.memory": "4Gi"},
+            )
+        ),
+        SimpleNamespace(
+            status=SimpleNamespace(
+                hard={"limits.cpu": "6", "limits.memory": "10Gi"},
+                used={"limits.cpu": "2", "limits.memory": "3Gi"},
+            )
+        ),
+    ]
+
+    assert _namespace_quota_capacity(quotas) == (6.0, 2.0, 4.0, 10_240, 3072, 7168)
+
+
+def test_capacity_snapshot_uses_namespace_scope_without_node_access() -> None:
+    training_client = KubernetesTrainingClient.__new__(KubernetesTrainingClient)
+    training_client._configured = True
+    training_client.settings = Settings(
+        training_namespace="team-a",
+        gpu_enabled=False,
+    )
+    quota = SimpleNamespace(
+        status=SimpleNamespace(
+            hard={"requests.cpu": "8", "requests.memory": "16Gi"},
+            used={"requests.cpu": "2", "requests.memory": "4Gi"},
+        )
+    )
+    training_client.core = SimpleNamespace(
+        list_namespaced_pod=lambda **_: SimpleNamespace(items=[]),
+        list_namespaced_resource_quota=lambda **_: SimpleNamespace(items=[quota]),
+        read_namespaced_secret=lambda **_: SimpleNamespace(),
+    )
+
+    snapshot = training_client.capacity_snapshot()
+
+    assert snapshot.capacity.connected
+    assert snapshot.capacity.source == "namespace_resource_quota"
+    assert snapshot.capacity.available_cpu_cores == 6
+    assert snapshot.capacity.available_memory_mb == 12_288
+    assert snapshot.capacity.ready_nodes == 0
+    assert snapshot.runtime_dependencies_ready
+
+
+def test_optional_cluster_observer_forbidden_degrades_to_cpu() -> None:
+    training_client = KubernetesTrainingClient.__new__(KubernetesTrainingClient)
+    training_client._configured = True
+    training_client.settings = Settings(
+        training_namespace="team-a",
+        cluster_observer_enabled=True,
+    )
+
+    def forbidden_nodes():
+        raise ApiException(status=403, reason="Forbidden")
+
+    training_client.core = SimpleNamespace(
+        list_namespaced_pod=lambda **_: SimpleNamespace(items=[]),
+        list_namespaced_resource_quota=lambda **_: SimpleNamespace(items=[]),
+        list_node=forbidden_nodes,
+        read_namespaced_secret=lambda **_: SimpleNamespace(),
+    )
+
+    snapshot = training_client.capacity_snapshot()
+
+    assert snapshot.capacity.connected
+    assert not snapshot.capacity.gpu_available
+    assert any("observer cannot list nodes" in item for item in snapshot.capacity.warnings)
+
+
+def test_resource_usage_exposes_unschedulable_reason_without_metrics_server() -> None:
+    training_client = KubernetesTrainingClient.__new__(KubernetesTrainingClient)
+    training_client._configured = True
+    training_client.settings = Settings(training_namespace="team-a")
     pod = SimpleNamespace(
-        metadata=SimpleNamespace(namespace="automl", name="trainer"),
-        spec=SimpleNamespace(node_name="worker"),
+        metadata=SimpleNamespace(name="trainer", creation_timestamp=1),
+        spec=SimpleNamespace(node_name=None),
+        status=SimpleNamespace(
+            phase="Pending",
+            reason=None,
+            container_statuses=[],
+            conditions=[
+                SimpleNamespace(
+                    type="PodScheduled",
+                    status="False",
+                    reason="Unschedulable",
+                    message="0/1 nodes are available: insufficient memory.",
+                )
+            ],
+        ),
+    )
+    training_client.core = SimpleNamespace(
+        list_namespaced_pod=lambda **_: SimpleNamespace(items=[pod])
     )
     training_client.custom = SimpleNamespace(
-        list_cluster_custom_object=lambda **_: {
-            "items": [
-                {
-                    "metadata": {
-                        "namespace": "automl",
-                        "name": "trainer",
-                    },
-                    "containers": [{"usage": {"cpu": "250m", "memory": "512Mi"}}],
-                }
-            ]
-        }
+        get_namespaced_custom_object=lambda **_: (_ for _ in ()).throw(
+            ApiException(status=404, reason="metrics API unavailable")
+        )
     )
 
-    usage, warning = training_client._pod_usage_by_node([pod])
+    usage = training_client.training_resource_usage(uuid.uuid4())
 
-    assert usage == {"worker": (0.25, 512)}
-    assert warning is None
+    assert not usage["telemetry_available"]
+    assert "insufficient memory" in usage["status_reason"]

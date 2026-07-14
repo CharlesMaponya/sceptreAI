@@ -127,6 +127,7 @@ class TrainingResourceUsageRead(BaseModel):
     pod_phase: str | None = None
     node_name: str | None = None
     current_candidate: str | None = None
+    last_candidate: str | None = None
     current_phase: str | None = None
     completed_candidates: int = 0
     total_candidates: int = 0

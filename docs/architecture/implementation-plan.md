@@ -24,8 +24,8 @@
 - CSV and JSON metadata extraction: implemented
 - Parquet and Excel storage/versioning with deferred rich parsing: implemented
 - Embedded MinIO manifests: implemented
-- Dataset cache PVC base manifest: implemented
-- StorageClass auto-detection and fallback warnings: pending
+- Ephemeral per-Job dataset cache with optional shared PVC: implemented
+- Default or explicitly configured StorageClass through Helm: implemented
 
 ## Phase 4: Profiling and Preparation
 
@@ -44,12 +44,12 @@
 
 ## Phase 5: Training Orchestration
 
-- Kubernetes capacity, PVC, PriorityClass, and runtime dependency checks: implemented
-- Dynamic CPU and memory requests/limits capped at 60% of node headroom: implemented
-- Resource-derived parallelism across additional Kubernetes nodes: implemented
+- Namespace-scoped Kubernetes quota, optional capability, and runtime dependency checks: implemented
+- Helm-configured CPU and memory requests/limits with scheduler-owned admission: implemented
+- Portable CPU-first scheduling without node pinning: implemented
 - Cluster-wide concurrency guardrails and transaction-locked admission: implemented
 - One-active-run-per-project fairness across concurrent users: implemented
-- Low-priority preemptible Kubernetes Jobs with CPU/GPU deadlines: implemented
+- Optional PriorityClass and standard CPU/GPU resources with workload deadlines: implemented
 - ZenML pipeline assembly for classification, regression, time series, and clustering: implemented
 - Direct Kubernetes worker execution without a nested ephemeral ZenML local stack: implemented
 - Resource-bounded Bayesian model tournaments and task-specific leaderboards: implemented
@@ -63,7 +63,7 @@
 - In-cluster PostgreSQL for application and MLflow metadata with persistent storage: implemented
 - MLflow candidate models mirrored to MinIO for durable validation and recovery: implemented
 - HTTP and authenticated WebSocket log streaming: implemented
-- Live Kubernetes Metrics API headroom with conservative request fallback: implemented
+- Optional Kubernetes Metrics API workload telemetry with graceful fallback: implemented
 - Kubernetes/metadata reconciliation before multi-user admission checks: implemented
 - Workload-aware 6-to-24-hour Job deadlines with explicit expiry diagnostics: implemented
 

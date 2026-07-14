@@ -15,13 +15,23 @@ from automl_api.core.config import Settings, get_settings
 from automl_api.models.enums import TaskType
 from automl_api.schemas.training import ClusterCapacityRead, TrainingEstimateRead
 
+_FATAL_CONTAINER_WAITING_REASONS = {
+    "CreateContainerConfigError",
+    "ErrImageNeverPull",
+    "InvalidImageName",
+}
+_IMAGE_PULL_BACKOFF_REASONS = {"ImagePullBackOff"}
+_REPORTED_CONTAINER_WAITING_FAILURE_REASONS = {
+    *_FATAL_CONTAINER_WAITING_REASONS,
+    *_IMAGE_PULL_BACKOFF_REASONS,
+    "CreateContainerError",
+    "RunContainerError",
+}
+
 
 @dataclass(frozen=True)
-class NodeHeadroom:
+class NodeCapability:
     name: str
-    available_cpu: float
-    available_memory_mb: int
-    gpu_present: bool
     gpu_vendor: str | None = None
     gpu_resource: str | None = None
     gpu_count: int = 0
@@ -30,7 +40,7 @@ class NodeHeadroom:
 @dataclass(frozen=True)
 class CapacitySnapshot:
     capacity: ClusterCapacityRead
-    nodes: list[NodeHeadroom]
+    nodes: list[NodeCapability]
     pvc_ready: bool
     priority_class_ready: bool
     runtime_dependencies_ready: bool
@@ -49,6 +59,7 @@ class KubernetesTrainingClient:
             self.core = client.CoreV1Api()
             self.batch = client.BatchV1Api()
             self.apps = client.AppsV1Api()
+            self.networking = client.NetworkingV1Api()
             self.scheduling = client.SchedulingV1Api()
             self.custom = client.CustomObjectsApi()
             self._configured = True
@@ -79,112 +90,100 @@ class KubernetesTrainingClient:
                 runtime_dependencies_ready=False,
             )
 
-        nodes = self.core.list_node().items
-        pods = self.core.list_pod_for_all_namespaces().items
-        pod_usage_by_node, metrics_warning = self._pod_usage_by_node(pods)
-        pod_requests_by_node: dict[str, tuple[float, int]] = {}
-        gpu_requests_by_node: dict[str, dict[str, int]] = {}
-        active_training_jobs = 0
-        for pod in pods:
-            if pod.status.phase in {"Succeeded", "Failed"}:
-                continue
-            labels = pod.metadata.labels or {}
-            if labels.get("automl.platform/workload") == "training":
-                active_training_jobs += 1
-            node_name = pod.spec.node_name
-            if not node_name:
-                continue
-            cpu, memory = _pod_requests(pod)
-            current_cpu, current_memory = pod_requests_by_node.get(node_name, (0.0, 0))
-            pod_requests_by_node[node_name] = (
-                current_cpu + cpu,
-                current_memory + memory,
-            )
-            node_gpu_requests = gpu_requests_by_node.setdefault(node_name, {})
-            for resource, count in _pod_gpu_requests(pod).items():
-                node_gpu_requests[resource] = node_gpu_requests.get(resource, 0) + count
+        namespace = self.settings.training_namespace
+        warnings: list[str] = []
+        pods = self.core.list_namespaced_pod(
+            namespace=namespace,
+            label_selector="automl.platform/workload=training",
+        ).items
+        active_training_jobs = sum(
+            pod.status.phase not in {"Succeeded", "Failed"} for pod in pods
+        )
 
-        ready_nodes = []
-        total_cpu = 0.0
-        total_memory = 0
-        requested_cpu = 0.0
-        requested_memory = 0
-        used_cpu_total = 0.0
-        used_memory_total = 0
-        available_cpu_total = 0.0
-        available_memory_total = 0
-        gpu_available = False
-        for node in nodes:
-            if node.spec.unschedulable or not _node_is_ready(node):
-                continue
-            allocatable = node.status.allocatable or {}
-            node_cpu = _cpu_cores(allocatable.get("cpu", "0"))
-            node_memory = _memory_mb(allocatable.get("memory", "0"))
-            node_requested_cpu, node_requested_memory = pod_requests_by_node.get(
-                node.metadata.name,
-                (0.0, 0),
-            )
-            node_used_cpu, node_used_memory = pod_usage_by_node.get(
-                node.metadata.name,
-                (0.0, 0),
-            )
-            reserved_cpu = max(node_requested_cpu, node_used_cpu)
-            reserved_memory = max(node_requested_memory, node_used_memory)
-            node_available_cpu = max(0.0, node_cpu - reserved_cpu)
-            node_available_memory = max(0, node_memory - reserved_memory)
-            gpu_vendor, gpu_resource, gpu_count = _node_gpu(
-                allocatable,
-                gpu_requests_by_node.get(node.metadata.name, {}),
-            )
-            gpu_present = gpu_resource is not None
-            ready_nodes.append(
-                NodeHeadroom(
-                    name=node.metadata.name,
-                    available_cpu=node_available_cpu,
-                    available_memory_mb=node_available_memory,
-                    gpu_present=gpu_present,
-                    gpu_vendor=gpu_vendor,
-                    gpu_resource=gpu_resource,
-                    gpu_count=gpu_count,
+        total_cpu = requested_cpu = available_cpu = 0.0
+        total_memory = requested_memory = available_memory = 0
+        source = "kubernetes_scheduler"
+        try:
+            quotas = self.core.list_namespaced_resource_quota(namespace=namespace).items
+            quota_capacity = _namespace_quota_capacity(quotas)
+            if quota_capacity is not None:
+                (
+                    total_cpu,
+                    requested_cpu,
+                    available_cpu,
+                    total_memory,
+                    requested_memory,
+                    available_memory,
+                ) = quota_capacity
+                source = "namespace_resource_quota"
+            else:
+                warnings.append(
+                    "No namespace ResourceQuota exposes CPU and memory capacity; "
+                    "Kubernetes remains the scheduling authority."
                 )
+        except ApiException as exc:
+            warnings.append(
+                "Namespace quota discovery is unavailable; Kubernetes remains the "
+                f"scheduling authority ({exc.reason or exc.status})."
             )
-            total_cpu += node_cpu
-            total_memory += node_memory
-            requested_cpu += node_requested_cpu
-            requested_memory += node_requested_memory
-            used_cpu_total += node_used_cpu
-            used_memory_total += node_used_memory
-            available_cpu_total += node_available_cpu
-            available_memory_total += node_available_memory
-            gpu_available = gpu_available or gpu_present
 
-        warnings = [metrics_warning] if metrics_warning else []
-        source = (
-            "metrics_api_conservative_headroom"
-            if not metrics_warning
-            else "allocatable_minus_requests"
+        ready_nodes: list[NodeCapability] = []
+        ready_node_count = 0
+        if self.settings.cluster_observer_enabled:
+            try:
+                for node in self.core.list_node().items:
+                    if node.spec.unschedulable or not _node_is_ready(node):
+                        continue
+                    ready_node_count += 1
+                    vendor, resource, count = _node_gpu(
+                        node.status.allocatable or {},
+                        resources=self._gpu_resources(),
+                    )
+                    if resource:
+                        ready_nodes.append(
+                            NodeCapability(
+                                name=str(node.metadata.name),
+                                gpu_vendor=vendor,
+                                gpu_resource=resource,
+                                gpu_count=count,
+                            )
+                        )
+            except ApiException as exc:
+                warnings.append(
+                    "Optional cluster observer cannot list nodes; GPU discovery is "
+                    f"disabled ({exc.reason or exc.status})."
+                )
+        elif self.settings.gpu_enabled:
+            warnings.append(
+                "GPU discovery is disabled because the optional cluster observer is not enabled."
+            )
+
+        pvc_ready = (
+            not self.settings.dataset_cache_pvc_name
+            or self._pvc_is_bound(self.settings.dataset_cache_pvc_name)
         )
-        pvc_ready = self._pvc_is_bound("automl-dataset-cache")
-        priority_ready = self._priority_class_is_ready("automl-low")
-        runtime_dependencies_ready = (
-            self._secret_exists("automl-platform-secrets")
-            and self._secret_exists("automl-minio-credentials")
-            and self._service_exists("automl-mlflow")
+        priority_ready = (
+            not self.settings.training_priority_class_name
+            or not self.settings.cluster_observer_enabled
+            or self._priority_class_is_ready(self.settings.training_priority_class_name)
         )
+        runtime_dependencies_ready = self._secret_exists(
+            self.settings.database_secret_name
+        ) and self._secret_exists(self.settings.object_store_secret_name)
         return CapacitySnapshot(
             capacity=ClusterCapacityRead(
                 connected=True,
                 source=source,
                 total_cpu_cores=round(total_cpu, 3),
                 requested_cpu_cores=round(requested_cpu, 3),
-                used_cpu_cores=round(used_cpu_total, 3),
-                available_cpu_cores=round(available_cpu_total, 3),
+                used_cpu_cores=0,
+                available_cpu_cores=round(available_cpu, 3),
                 total_memory_mb=total_memory,
                 requested_memory_mb=requested_memory,
-                used_memory_mb=used_memory_total,
-                available_memory_mb=available_memory_total,
-                ready_nodes=len(ready_nodes),
-                gpu_available=gpu_available,
+                used_memory_mb=0,
+                available_memory_mb=available_memory,
+                ready_nodes=ready_node_count,
+                gpu_available=bool(ready_nodes),
                 active_training_jobs=active_training_jobs,
                 warnings=warnings,
             ),
@@ -194,45 +193,11 @@ class KubernetesTrainingClient:
             runtime_dependencies_ready=runtime_dependencies_ready,
         )
 
-    def _pod_usage_by_node(
-        self,
-        pods: list[Any],
-    ) -> tuple[dict[str, tuple[float, int]], str | None]:
-        pod_nodes = {
-            (pod.metadata.namespace, pod.metadata.name): pod.spec.node_name
-            for pod in pods
-            if pod.spec.node_name
-        }
-        try:
-            response = self.custom.list_cluster_custom_object(
-                group="metrics.k8s.io",
-                version="v1beta1",
-                plural="pods",
-            )
-        except Exception:
-            return (
-                {},
-                "Metrics API is unavailable; headroom is calculated from "
-                "allocatable capacity minus declared pod requests.",
-            )
-        usage_by_node: dict[str, tuple[float, int]] = {}
-        for item in response.get("items", []):
-            metadata = item.get("metadata", {})
-            node_name = pod_nodes.get((metadata.get("namespace"), metadata.get("name")))
-            if not node_name:
-                continue
-            cpu = 0.0
-            memory = 0
-            for container_usage in item.get("containers", []):
-                usage = container_usage.get("usage", {})
-                cpu += _cpu_cores(usage.get("cpu", "0"))
-                memory += _memory_mb(usage.get("memory", "0"))
-            current_cpu, current_memory = usage_by_node.get(node_name, (0.0, 0))
-            usage_by_node[node_name] = (
-                current_cpu + cpu,
-                current_memory + memory,
-            )
-        return usage_by_node, None
+    def _gpu_resources(self) -> tuple[tuple[str, str], ...]:
+        return (
+            ("nvidia", self.settings.nvidia_gpu_resource),
+            ("intel", self.settings.intel_gpu_resource),
+        )
 
     def estimate(
         self,
@@ -280,12 +245,7 @@ class KubernetesTrainingClient:
             if node.gpu_resource and node.gpu_vendor in compatible_vendors
         ]
         gpu_requested = bool(prefer_gpu and self.settings.gpu_enabled and gpu_nodes)
-        eligible_nodes = gpu_nodes if gpu_requested else snapshot.nodes
-        best_node = max(
-            eligible_nodes,
-            key=lambda node: (node.available_cpu, node.available_memory_mb),
-            default=None,
-        )
+        gpu_capability = gpu_nodes[0] if gpu_requested else None
         blockers = []
         warnings = list(capacity.warnings)
         gpu_fallback_reason = None
@@ -312,50 +272,59 @@ class KubernetesTrainingClient:
         if not capacity.connected:
             blockers.append("Kubernetes API is unavailable.")
         if not snapshot.pvc_ready:
-            blockers.append("Dataset cache PVC automl-dataset-cache is not Bound.")
+            warnings.append(
+                f"Optional dataset cache PVC {self.settings.dataset_cache_pvc_name} is not "
+                "Bound; switch to ephemeral cache or repair the claim."
+            )
         if not snapshot.priority_class_ready:
-            blockers.append(
-                "PriorityClass automl-low is missing or does not allow PreemptLowerPriority."
+            warnings.append(
+                f"Optional PriorityClass {self.settings.training_priority_class_name} is "
+                "unavailable; omit it or grant observer access."
             )
         if not snapshot.runtime_dependencies_ready:
             blockers.append(
-                "Training runtime Secret/MinIO credentials or MLflow Service is missing."
+                "Training runtime database or object-store Secret is missing."
             )
-        if best_node is None:
-            blockers.append("No schedulable Ready Kubernetes node is available.")
 
-        fraction = min(1.0, max(0.01, self.settings.max_node_available_fraction_per_job))
-        if best_node:
-            cpu_ceiling = best_node.available_cpu * fraction
-            memory_ceiling = int(best_node.available_memory_mb * fraction)
-            cpu_request = cpu_ceiling
-            memory_request = memory_ceiling
-        else:
-            cpu_ceiling = 0.0
-            memory_ceiling = 0
-            cpu_request = 0.0
-            memory_request = 0
-
+        cpu_request = max(0.0, self.settings.training_cpu_request_cores)
+        cpu_limit = max(cpu_request, self.settings.training_cpu_limit_cores)
+        memory_limit = max(
+            self.settings.training_memory_request_mb,
+            self.settings.training_memory_limit_mb,
+        )
+        memory_request = min(
+            memory_limit,
+            max(self.settings.training_memory_request_mb, desired_memory),
+        )
         if cpu_request < 0.25:
-            blockers.append("Insufficient CPU headroom for the minimum 0.25-core request.")
+            blockers.append("TRAINING_CPU_REQUEST_CORES must be at least 0.25.")
         if memory_request < 256:
-            blockers.append("Insufficient memory headroom for the minimum 256 MiB request.")
-        if best_node and desired_memory > memory_ceiling:
+            blockers.append("TRAINING_MEMORY_REQUEST_MB must be at least 256 MiB.")
+        if desired_memory > memory_limit:
             blockers.append(
                 f"Estimated training working set is {desired_memory} MiB, above the "
-                f"{memory_ceiling} MiB per-job safety ceiling on the best node. "
-                "Reduce the dataset, model budget, or search iterations."
+                f"configured {memory_limit} MiB per-job limit. Increase the Helm training "
+                "memory limit or reduce the dataset/model budget."
             )
 
-        cpu_request = round(max(0.0, cpu_request), 3)
-        memory_request = max(0, memory_request)
-        cpu_limit = cpu_request
-        memory_limit = memory_request
-        max_parallel = min(
-            self.settings.max_concurrent_jobs,
-            math.floor(capacity.total_cpu_cores / cpu_request) if cpu_request else 0,
-            (math.floor(capacity.total_memory_mb / memory_request) if memory_request else 0),
-        )
+        cpu_request = round(cpu_request, 3)
+        cpu_limit = round(cpu_limit, 3)
+        if capacity.source == "namespace_resource_quota":
+            if capacity.available_cpu_cores < cpu_request:
+                blockers.append(
+                    "The namespace ResourceQuota has insufficient CPU for this request."
+                )
+            if capacity.available_memory_mb < memory_request:
+                blockers.append(
+                    "The namespace ResourceQuota has insufficient memory for this request."
+                )
+        max_parallel = self.settings.max_concurrent_jobs
+        if capacity.source == "namespace_resource_quota":
+            max_parallel = min(
+                max_parallel,
+                math.floor(capacity.total_cpu_cores / cpu_request) if cpu_request else 0,
+                math.floor(capacity.total_memory_mb / memory_request) if memory_request else 0,
+            )
         if capacity.active_training_jobs >= max_parallel:
             blockers.append(
                 "Concurrent training limit reached "
@@ -371,9 +340,9 @@ class KubernetesTrainingClient:
             memory_limit_mb=memory_limit,
             gpu_requested=gpu_requested,
             gpu_fallback_reason=gpu_fallback_reason,
-            gpu_vendor=best_node.gpu_vendor if gpu_requested and best_node else None,
-            gpu_resource=best_node.gpu_resource if gpu_requested and best_node else None,
-            selected_node=best_node.name if best_node else None,
+            gpu_vendor=gpu_capability.gpu_vendor if gpu_capability else None,
+            gpu_resource=gpu_capability.gpu_resource if gpu_capability else None,
+            selected_node=None,
             expected_minutes=expected_minutes,
             active_deadline_seconds=_active_deadline_seconds(
                 expected_minutes,
@@ -397,10 +366,15 @@ class KubernetesTrainingClient:
         settings = self.settings
         cpu_threads = max(1, math.floor(estimate.cpu_request_cores))
         shared_memory_mb = max(512, min(8192, estimate.memory_request_mb // 4))
+        image = settings.training_image
+        if estimate.gpu_vendor == "nvidia":
+            image = settings.training_image_nvidia
+        elif estimate.gpu_vendor == "intel":
+            image = settings.training_image_intel
         container: dict[str, Any] = {
             "name": "trainer",
-            "image": settings.training_image,
-            "imagePullPolicy": "IfNotPresent",
+            "image": image,
+            "imagePullPolicy": settings.training_image_pull_policy,
             "command": [
                 "python",
                 "-m",
@@ -421,20 +395,23 @@ class KubernetesTrainingClient:
                     "name": "DATABASE_URL",
                     "valueFrom": {
                         "secretKeyRef": {
-                            "name": "automl-platform-secrets",
-                            "key": "DATABASE_URL",
+                            "name": settings.database_secret_name,
+                            "key": settings.database_secret_key,
                         }
                     },
                 },
                 {"name": "OBJECT_STORE_TYPE", "value": "minio"},
-                {"name": "OBJECT_STORE_ENDPOINT", "value": "http://automl-minio:9000"},
-                {"name": "OBJECT_STORE_BUCKET", "value": "automl"},
+                {
+                    "name": "OBJECT_STORE_ENDPOINT",
+                    "value": settings.object_store_endpoint or "",
+                },
+                {"name": "OBJECT_STORE_BUCKET", "value": settings.object_store_bucket},
                 {
                     "name": "OBJECT_STORE_ACCESS_KEY",
                     "valueFrom": {
                         "secretKeyRef": {
-                            "name": "automl-minio-credentials",
-                            "key": "MINIO_ROOT_USER",
+                            "name": settings.object_store_secret_name,
+                            "key": settings.object_store_access_key_secret_key,
                         }
                     },
                 },
@@ -442,14 +419,14 @@ class KubernetesTrainingClient:
                     "name": "OBJECT_STORE_SECRET_KEY",
                     "valueFrom": {
                         "secretKeyRef": {
-                            "name": "automl-minio-credentials",
-                            "key": "MINIO_ROOT_PASSWORD",
+                            "name": settings.object_store_secret_name,
+                            "key": settings.object_store_secret_key_secret_key,
                         }
                     },
                 },
                 {
                     "name": "MLFLOW_TRACKING_URI",
-                    "value": "http://automl-mlflow:5000",
+                    "value": settings.mlflow_tracking_uri,
                 },
                 {"name": "MLFLOW_ENABLE_ASYNC_LOGGING", "value": "false"},
             ],
@@ -470,13 +447,13 @@ class KubernetesTrainingClient:
         }
         pod_spec: dict[str, Any] = {
             "restartPolicy": "Never",
-            "priorityClassName": "automl-low",
             "serviceAccountName": settings.training_service_account,
+            "automountServiceAccountToken": False,
             "containers": [container],
             "volumes": [
                 {
                     "name": "dataset-cache",
-                    "persistentVolumeClaim": {"claimName": "automl-dataset-cache"},
+                    "emptyDir": {"sizeLimit": f"{settings.dataset_cache_size_gb}Gi"},
                 },
                 {
                     "name": "shared-memory",
@@ -487,8 +464,17 @@ class KubernetesTrainingClient:
                 },
             ],
         }
-        if estimate.selected_node:
-            pod_spec["nodeSelector"] = {"kubernetes.io/hostname": estimate.selected_node}
+        if settings.dataset_cache_pvc_name:
+            pod_spec["volumes"][0] = {
+                "name": "dataset-cache",
+                "persistentVolumeClaim": {"claimName": settings.dataset_cache_pvc_name},
+            }
+        if settings.training_priority_class_name:
+            pod_spec["priorityClassName"] = settings.training_priority_class_name
+        if settings.workload_image_pull_secrets:
+            pod_spec["imagePullSecrets"] = [
+                {"name": name} for name in settings.workload_image_pull_secrets
+            ]
         if estimate.gpu_requested and estimate.gpu_resource and estimate.gpu_vendor:
             container["resources"]["requests"][estimate.gpu_resource] = "1"
             container["resources"]["limits"][estimate.gpu_resource] = "1"
@@ -501,7 +487,22 @@ class KubernetesTrainingClient:
             if estimate.gpu_vendor == "nvidia":
                 container["env"].append({"name": "CUML_ACCEL_ENABLED", "value": "1"})
 
-        return {
+        job_spec: dict[str, Any] = {
+            "backoffLimit": 0,
+            "activeDeadlineSeconds": estimate.active_deadline_seconds,
+            "template": {
+                "metadata": {
+                    "labels": {
+                        "automl.platform/workload": "training",
+                        "automl.platform/run-id": str(run_id),
+                    }
+                },
+                "spec": pod_spec,
+            },
+        }
+        if settings.training_job_ttl_seconds > 0:
+            job_spec["ttlSecondsAfterFinished"] = settings.training_job_ttl_seconds
+        manifest: dict[str, Any] = {
             "apiVersion": "batch/v1",
             "kind": "Job",
             "metadata": {
@@ -513,21 +514,9 @@ class KubernetesTrainingClient:
                     "automl.platform/project-id": str(project_id),
                 },
             },
-            "spec": {
-                "backoffLimit": 0,
-                "activeDeadlineSeconds": estimate.active_deadline_seconds,
-                "ttlSecondsAfterFinished": 30,
-                "template": {
-                    "metadata": {
-                        "labels": {
-                            "automl.platform/workload": "training",
-                            "automl.platform/run-id": str(run_id),
-                        }
-                    },
-                    "spec": pod_spec,
-                },
-            },
+            "spec": job_spec,
         }
+        return manifest
 
     def create_job(self, manifest: dict[str, Any]) -> None:
         self.batch.create_namespaced_job(
@@ -557,7 +546,7 @@ class KubernetesTrainingClient:
             "automl.platform/deployment-id": str(deployment_id),
             "automl.platform/project-id": str(project_id),
         }
-        return {
+        manifests: dict[str, Any] = {
             "deployment": {
                 "apiVersion": "apps/v1",
                 "kind": "Deployment",
@@ -578,11 +567,21 @@ class KubernetesTrainingClient:
                         "spec": {
                             "serviceAccountName": self.settings.inference_service_account,
                             "automountServiceAccountToken": False,
+                            **(
+                                {
+                                    "imagePullSecrets": [
+                                        {"name": secret}
+                                        for secret in self.settings.workload_image_pull_secrets
+                                    ]
+                                }
+                                if self.settings.workload_image_pull_secrets
+                                else {}
+                            ),
                             "containers": [
                                 {
                                     "name": "model",
                                     "image": image,
-                                    "imagePullPolicy": "IfNotPresent",
+                                    "imagePullPolicy": self.settings.inference_image_pull_policy,
                                     "ports": [{"name": "http", "containerPort": 8080}],
                                     "env": [
                                         {"name": "MODEL_URI", "value": model_uri},
@@ -598,15 +597,21 @@ class KubernetesTrainingClient:
                                         {"name": "OBJECT_STORE_TYPE", "value": "minio"},
                                         {
                                             "name": "OBJECT_STORE_ENDPOINT",
-                                            "value": "http://automl-minio:9000",
+                                            "value": self.settings.object_store_endpoint or "",
                                         },
-                                        {"name": "OBJECT_STORE_BUCKET", "value": "automl"},
+                                        {
+                                            "name": "OBJECT_STORE_BUCKET",
+                                            "value": self.settings.object_store_bucket,
+                                        },
                                         {
                                             "name": "OBJECT_STORE_ACCESS_KEY",
                                             "valueFrom": {
                                                 "secretKeyRef": {
-                                                    "name": "automl-minio-credentials",
-                                                    "key": "MINIO_ROOT_USER",
+                                                    "name": self.settings.object_store_secret_name,
+                                                    "key": (
+                                                        self.settings
+                                                        .object_store_access_key_secret_key
+                                                    ),
                                                 }
                                             },
                                         },
@@ -614,8 +619,11 @@ class KubernetesTrainingClient:
                                             "name": "OBJECT_STORE_SECRET_KEY",
                                             "valueFrom": {
                                                 "secretKeyRef": {
-                                                    "name": "automl-minio-credentials",
-                                                    "key": "MINIO_ROOT_PASSWORD",
+                                                    "name": self.settings.object_store_secret_name,
+                                                    "key": (
+                                                        self.settings
+                                                        .object_store_secret_key_secret_key
+                                                    ),
                                                 }
                                             },
                                         },
@@ -673,6 +681,57 @@ class KubernetesTrainingClient:
                 },
             },
         }
+        if (
+            self.settings.inference_ingress_enabled
+            and self.settings.inference_ingress_host_template
+        ):
+            host = self.settings.inference_ingress_host_template.format(
+                name=name,
+                deployment_id=deployment_id,
+            )
+            ingress_spec: dict[str, Any] = {
+                "rules": [
+                    {
+                        "host": host,
+                        "http": {
+                            "paths": [
+                                {
+                                    "path": "/",
+                                    "pathType": "Prefix",
+                                    "backend": {
+                                        "service": {
+                                            "name": name,
+                                            "port": {"name": "http"},
+                                        }
+                                    },
+                                }
+                            ]
+                        },
+                    }
+                ]
+            }
+            if self.settings.inference_ingress_class_name:
+                ingress_spec["ingressClassName"] = (
+                    self.settings.inference_ingress_class_name
+                )
+            if self.settings.inference_ingress_tls_secret_name:
+                ingress_spec["tls"] = [
+                    {
+                        "hosts": [host],
+                        "secretName": self.settings.inference_ingress_tls_secret_name,
+                    }
+                ]
+            manifests["ingress"] = {
+                "apiVersion": "networking.k8s.io/v1",
+                "kind": "Ingress",
+                "metadata": {
+                    "name": name,
+                    "namespace": self.settings.training_namespace,
+                    "labels": labels,
+                },
+                "spec": ingress_spec,
+            }
+        return manifests
 
     def create_model_deployment(self, manifests: dict[str, Any]) -> None:
         deployment = manifests["deployment"]
@@ -681,7 +740,19 @@ class KubernetesTrainingClient:
         self.apps.create_namespaced_deployment(namespace=namespace, body=deployment)
         try:
             self.core.create_namespaced_service(namespace=namespace, body=service)
+            if ingress := manifests.get("ingress"):
+                self.networking.create_namespaced_ingress(
+                    namespace=namespace,
+                    body=ingress,
+                )
         except Exception:
+            try:
+                self.core.delete_namespaced_service(
+                    name=service["metadata"]["name"],
+                    namespace=namespace,
+                )
+            except Exception:
+                pass
             self.apps.delete_namespaced_deployment(
                 name=deployment["metadata"]["name"],
                 namespace=namespace,
@@ -761,36 +832,48 @@ class KubernetesTrainingClient:
         )
         if port is None:
             return None
-        if service.spec.type == "NodePort" and port.node_port:
-            nodes = self.core.list_node().items
-            addresses = [
-                address
-                for node in nodes
-                for address in (node.status.addresses or [])
-            ]
-            host = next(
-                (
-                    address.address
-                    for address in addresses
-                    if address.type == "ExternalIP"
-                ),
-                None,
-            ) or next(
-                (
-                    address.address
-                    for address in addresses
-                    if address.type == "InternalIP"
-                ),
-                None,
-            )
-            if not host:
-                return None
-            base_url = f"http://{host}:{port.node_port}"
-        else:
+        base_url: str | None = None
+        if self.settings.inference_ingress_enabled:
+            try:
+                ingress = self.networking.read_namespaced_ingress_status(
+                    name=name,
+                    namespace=self.settings.training_namespace,
+                )
+                load_balancer = getattr(ingress.status, "load_balancer", None)
+                admitted = getattr(load_balancer, "ingress", None) or []
+                rules = ingress.spec.rules or []
+                if admitted and rules and rules[0].host:
+                    scheme = (
+                        "https"
+                        if self.settings.inference_ingress_tls_secret_name
+                        else "http"
+                    )
+                    base_url = f"{scheme}://{rules[0].host}"
+            except ApiException as exc:
+                if exc.status != 404:
+                    raise
+        elif service.spec.type == "LoadBalancer":
+            load_balancer = getattr(getattr(service, "status", None), "load_balancer", None)
+            ingress = getattr(load_balancer, "ingress", None) or []
+            if ingress:
+                host = getattr(ingress[0], "hostname", None) or getattr(
+                    ingress[0], "ip", None
+                )
+                if host:
+                    base_url = (
+                        f"{self.settings.inference_external_scheme}://{host}:{port.port}"
+                    )
+        elif (
+            service.spec.type == "NodePort"
+            and port.node_port
+            and self.settings.inference_external_host
+        ):
             base_url = (
-                f"http://{name}.{self.settings.training_namespace}.svc:"
-                f"{port.port}"
+                f"{self.settings.inference_external_scheme}://"
+                f"{self.settings.inference_external_host}:{port.node_port}"
             )
+        if not base_url:
+            return None
         return {
             "base_url": base_url,
             "endpoint": f"{base_url}/v1/predict",
@@ -800,6 +883,12 @@ class KubernetesTrainingClient:
 
     def delete_model_deployment(self, name: str) -> None:
         namespace = self.settings.training_namespace
+        if self.settings.inference_ingress_enabled:
+            try:
+                self.networking.delete_namespaced_ingress(name=name, namespace=namespace)
+            except ApiException as exc:
+                if exc.status != 404:
+                    raise
         try:
             self.core.delete_namespaced_service(name=name, namespace=namespace)
         except ApiException as exc:
@@ -853,6 +942,14 @@ class KubernetesTrainingClient:
             return "succeeded"
         if job.status.failed:
             return "failed"
+        pods = self.core.list_namespaced_pod(
+            namespace=self.settings.training_namespace,
+            label_selector=f"job-name={job_name}",
+        ).items
+        if _container_waiting_failure(pods, _FATAL_CONTAINER_WAITING_REASONS) is not None:
+            return "terminal_waiting_failure"
+        if _container_waiting_failure(pods, _IMAGE_PULL_BACKOFF_REASONS) is not None:
+            return "image_pull_backoff"
         if job.status.active:
             return "running"
         return "queued"
@@ -880,6 +977,12 @@ class KubernetesTrainingClient:
                 "KUBERNETES_JOB_FAILED",
                 "The Kubernetes Job failed before a pod status was available.",
             )
+        waiting_failure = _container_waiting_failure(
+            pods,
+            _REPORTED_CONTAINER_WAITING_FAILURE_REASONS,
+        )
+        if waiting_failure is not None:
+            return waiting_failure
         pod = pods[0]
         status = pod.status
         messages: list[str] = []
@@ -959,6 +1062,11 @@ class KubernetesTrainingClient:
                 reason = waiting.reason
             elif terminated and terminated.reason:
                 reason = terminated.reason
+        for condition in pod.status.conditions or []:
+            if condition.type == "PodScheduled" and condition.status == "False":
+                reason = condition.reason or "Unschedulable"
+                if condition.message:
+                    reason = f"{reason}: {condition.message}"
         result: dict[str, Any] = {
             "pod_name": pod.metadata.name,
             "pod_phase": pod.status.phase,
@@ -1002,8 +1110,8 @@ class KubernetesTrainingClient:
 
     def _priority_class_is_ready(self, name: str) -> bool:
         try:
-            priority = self.scheduling.read_priority_class(name)
-            return priority.preemption_policy == "PreemptLowerPriority"
+            self.scheduling.read_priority_class(name)
+            return True
         except ApiException:
             return False
 
@@ -1026,6 +1134,76 @@ class KubernetesTrainingClient:
             return True
         except ApiException:
             return False
+
+
+def _container_waiting_failure(
+    pods: list[Any],
+    reasons: set[str],
+) -> tuple[str, str] | None:
+    """Return an actionable failure for container states that cannot make progress."""
+    for pod in pods:
+        pod_status = getattr(pod, "status", None)
+        if getattr(pod_status, "phase", None) in {"Failed", "Succeeded"}:
+            continue
+        statuses = [
+            *(getattr(pod_status, "init_container_statuses", None) or []),
+            *(getattr(pod_status, "container_statuses", None) or []),
+        ]
+        for container_status in statuses:
+            state = getattr(container_status, "state", None)
+            waiting = getattr(state, "waiting", None)
+            reason = str(getattr(waiting, "reason", None) or "")
+            if reason not in reasons:
+                continue
+            return _container_waiting_failure_details(
+                reason,
+                container_status,
+                waiting,
+            )
+    return None
+
+
+def _container_waiting_failure_details(
+    reason: str,
+    container_status: Any,
+    waiting: Any,
+) -> tuple[str, str]:
+    image = str(getattr(container_status, "image", None) or "the configured training image")
+    reported_message = str(getattr(waiting, "message", None) or "").strip()
+    reported = f" Kubernetes reported: {reported_message}" if reported_message else ""
+    if reason == "ErrImageNeverPull":
+        return (
+            "TRAINING_IMAGE_NOT_PRESENT",
+            f"Kubernetes cannot start training because image '{image}' is not present "
+            "on the node and its pull policy prevents downloading it. Import the image "
+            "into every local-cluster node, or publish it to a registry reachable by "
+            f"the cluster and use IfNotPresent or Always.{reported}",
+        )
+    if reason == "ImagePullBackOff":
+        return (
+            "TRAINING_IMAGE_PULL_FAILED",
+            f"Kubernetes repeatedly failed to pull training image '{image}'. Verify the "
+            "image name and tag, registry reachability, and imagePullSecrets. For a local "
+            "cluster, import the image into every node or use a cluster-visible "
+            f"registry.{reported}",
+        )
+    if reason == "InvalidImageName":
+        return (
+            "TRAINING_IMAGE_INVALID",
+            f"Kubernetes rejected training image reference '{image}'. Configure a valid "
+            f"registry, repository, and tag before starting another run.{reported}",
+        )
+    if reason == "CreateContainerConfigError":
+        return (
+            "TRAINING_CONTAINER_CONFIG_INVALID",
+            "Kubernetes cannot create the training container. Verify its required Secrets, "
+            f"ConfigMaps, environment variables, and volume mounts.{reported}",
+        )
+    return (
+        "TRAINING_CONTAINER_START_FAILED",
+        f"Kubernetes cannot start the training container ({reason}). Verify the image, "
+        f"runtime configuration, and pod events before starting another run.{reported}",
+    )
 
 
 def _active_deadline_seconds(
@@ -1055,13 +1233,14 @@ def _node_is_ready(node: Any) -> bool:
 def _node_gpu(
     allocatable: dict[str, Any],
     requested: dict[str, int] | None = None,
+    resources: tuple[tuple[str, str], ...] | None = None,
 ) -> tuple[str | None, str | None, int]:
-    resources = (
+    configured_resources = resources or (
         ("nvidia", "nvidia.com/gpu"),
         ("intel", "gpu.intel.com/xe"),
         ("intel", "gpu.intel.com/i915"),
     )
-    for vendor, resource in resources:
+    for vendor, resource in configured_resources:
         raw_count = allocatable.get(resource)
         if raw_count is None:
             continue
@@ -1071,31 +1250,46 @@ def _node_gpu(
     return None, None, 0
 
 
-def _pod_gpu_requests(pod: Any) -> dict[str, int]:
-    requested: dict[str, int] = {}
-    for container in pod.spec.containers or []:
-        limits = container.resources.limits or {}
-        resources = {**limits, **(container.resources.requests or {})}
-        for _, resource in (
-            ("nvidia", "nvidia.com/gpu"),
-            ("intel", "gpu.intel.com/xe"),
-            ("intel", "gpu.intel.com/i915"),
-        ):
-            if resource in resources:
-                requested[resource] = requested.get(resource, 0) + int(
-                    Decimal(parse_quantity(str(resources[resource])))
+def _namespace_quota_capacity(
+    quotas: list[Any],
+) -> tuple[float, float, float, int, int, int] | None:
+    """Return the strictest namespace CPU and memory ResourceQuota constraints."""
+
+    cpu_constraints: list[tuple[float, float]] = []
+    memory_constraints: list[tuple[int, int]] = []
+    for quota in quotas:
+        hard = getattr(quota.status, "hard", None) or {}
+        used = getattr(quota.status, "used", None) or {}
+        for key in ("requests.cpu", "limits.cpu", "cpu"):
+            if key in hard:
+                cpu_constraints.append(
+                    (_cpu_cores(hard[key]), _cpu_cores(used.get(key, "0")))
                 )
-    return requested
-
-
-def _pod_requests(pod: Any) -> tuple[float, int]:
-    cpu = 0.0
-    memory = 0
-    for container in pod.spec.containers or []:
-        requests = container.resources.requests or {}
-        cpu += _cpu_cores(requests.get("cpu", "0"))
-        memory += _memory_mb(requests.get("memory", "0"))
-    return cpu, memory
+                break
+        for key in ("requests.memory", "limits.memory", "memory"):
+            if key in hard:
+                memory_constraints.append(
+                    (_memory_mb(hard[key]), _memory_mb(used.get(key, "0")))
+                )
+                break
+    if not cpu_constraints or not memory_constraints:
+        return None
+    cpu_total, cpu_used = min(
+        cpu_constraints,
+        key=lambda item: max(0.0, item[0] - item[1]),
+    )
+    memory_total, memory_used = min(
+        memory_constraints,
+        key=lambda item: max(0, item[0] - item[1]),
+    )
+    return (
+        cpu_total,
+        cpu_used,
+        max(0.0, cpu_total - cpu_used),
+        memory_total,
+        memory_used,
+        max(0, memory_total - memory_used),
+    )
 
 
 def _cpu_cores(value: str) -> float:

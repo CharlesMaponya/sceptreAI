@@ -46,3 +46,32 @@ describe("API session handling", () => {
     expect(getSession()).toBeNull();
   });
 });
+
+describe("API response parsing", () => {
+  beforeEach(() => {
+    setSession(null);
+    vi.restoreAllMocks();
+  });
+
+  it("preserves a plain-text error response", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response("upstream unavailable", {
+      status: 502, headers: { "Content-Type": "text/plain" },
+    }));
+
+    await expect(api("/training/progress")).rejects.toThrow("upstream unavailable");
+  });
+
+  it("uses the status fallback for an empty error response", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(null, { status: 503 }));
+
+    await expect(api("/training/progress")).rejects.toThrow("Request failed (503)");
+  });
+
+  it("extracts detail from a JSON error response", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(JSON.stringify({
+      detail: "Training pod failed.",
+    }), { status: 500, headers: { "Content-Type": "application/json" } }));
+
+    await expect(api("/training/progress")).rejects.toThrow("Training pod failed.");
+  });
+});

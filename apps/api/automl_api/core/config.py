@@ -40,6 +40,11 @@ def _get_float(name: str, default: float, dotenv: dict[str, str]) -> float:
     return float(str(raw_value))
 
 
+def _get_csv(name: str, default: tuple[str, ...], dotenv: dict[str, str]) -> tuple[str, ...]:
+    raw_value = _get_env(name, ",".join(default), dotenv)
+    return tuple(item.strip() for item in str(raw_value or "").split(",") if item.strip())
+
+
 def resolve_database_url(database_url: str) -> str:
     if (
         database_url.startswith("postgresql+psycopg://")
@@ -68,17 +73,41 @@ class Settings:
     local_object_store_path: Path = Path(".automl_object_store")
 
     dataset_cache_size_gb: int = 5
-    gpu_enabled: bool = True
-    max_cluster_cpu_percent: int = 70
-    max_node_available_fraction_per_job: float = 1.0
+    dataset_cache_pvc_name: str | None = None
+    gpu_enabled: bool = False
+    cluster_observer_enabled: bool = False
+    nvidia_gpu_resource: str = "nvidia.com/gpu"
+    intel_gpu_resource: str = "gpu.intel.com/xe"
     max_concurrent_jobs: int = 2
     mlflow_tracking_uri: str = "http://mlflow:5000"
     training_namespace: str = "automl"
-    training_image: str = "automl-training:metrics-v2"
+    training_image: str = "sceptre-training-cpu:0.1.0"
+    training_image_nvidia: str = "sceptre-training-nvidia:0.1.0"
+    training_image_intel: str = "sceptre-training-intel:0.1.0"
+    training_image_pull_policy: str = "IfNotPresent"
+    workload_image_pull_secrets: tuple[str, ...] = ()
     training_service_account: str = "default"
-    inference_image: str = "automl-inference:local"
+    training_cpu_request_cores: float = 1.0
+    training_cpu_limit_cores: float = 2.0
+    training_memory_request_mb: int = 1024
+    training_memory_limit_mb: int = 4096
+    training_priority_class_name: str | None = None
+    training_job_ttl_seconds: int = 300
+    database_secret_name: str = "automl-platform-secrets"
+    database_secret_key: str = "DATABASE_URL"
+    object_store_secret_name: str = "automl-minio-credentials"
+    object_store_access_key_secret_key: str = "MINIO_ROOT_USER"
+    object_store_secret_key_secret_key: str = "MINIO_ROOT_PASSWORD"
+    inference_image: str = "sceptre-inference:0.1.0"
+    inference_image_pull_policy: str = "IfNotPresent"
     inference_service_account: str = "default"
-    inference_service_type: str = "NodePort"
+    inference_service_type: str = "ClusterIP"
+    inference_external_host: str | None = None
+    inference_external_scheme: str = "http"
+    inference_ingress_enabled: bool = False
+    inference_ingress_class_name: str | None = None
+    inference_ingress_host_template: str | None = None
+    inference_ingress_tls_secret_name: str | None = None
     training_active_deadline_seconds: int = 6 * 60 * 60
     training_max_active_deadline_seconds: int = 24 * 60 * 60
     training_deadline_multiplier: int = 6
@@ -133,16 +162,22 @@ def get_settings() -> Settings:
             Settings.dataset_cache_size_gb,
             dotenv,
         ),
-        gpu_enabled=_get_bool("GPU_ENABLED", Settings.gpu_enabled, dotenv),
-        max_cluster_cpu_percent=_get_int(
-            "MAX_CLUSTER_CPU_PERCENT",
-            Settings.max_cluster_cpu_percent,
+        dataset_cache_pvc_name=_get_env(
+            "DATASET_CACHE_PVC_NAME",
+            Settings.dataset_cache_pvc_name,
             dotenv,
         ),
-        max_node_available_fraction_per_job=_get_float(
-            "MAX_NODE_AVAILABLE_FRACTION_PER_JOB",
-            Settings.max_node_available_fraction_per_job,
+        gpu_enabled=_get_bool("GPU_ENABLED", Settings.gpu_enabled, dotenv),
+        cluster_observer_enabled=_get_bool(
+            "CLUSTER_OBSERVER_ENABLED",
+            Settings.cluster_observer_enabled,
             dotenv,
+        ),
+        nvidia_gpu_resource=str(
+            _get_env("NVIDIA_GPU_RESOURCE", Settings.nvidia_gpu_resource, dotenv)
+        ),
+        intel_gpu_resource=str(
+            _get_env("INTEL_GPU_RESOURCE", Settings.intel_gpu_resource, dotenv)
         ),
         max_concurrent_jobs=_get_int("MAX_CONCURRENT_JOBS", Settings.max_concurrent_jobs, dotenv),
         mlflow_tracking_uri=str(
@@ -150,6 +185,24 @@ def get_settings() -> Settings:
         ),
         training_namespace=str(_get_env("TRAINING_NAMESPACE", Settings.training_namespace, dotenv)),
         training_image=str(_get_env("TRAINING_IMAGE", Settings.training_image, dotenv)),
+        training_image_nvidia=str(
+            _get_env("TRAINING_IMAGE_NVIDIA", Settings.training_image_nvidia, dotenv)
+        ),
+        training_image_intel=str(
+            _get_env("TRAINING_IMAGE_INTEL", Settings.training_image_intel, dotenv)
+        ),
+        training_image_pull_policy=str(
+            _get_env(
+                "TRAINING_IMAGE_PULL_POLICY",
+                Settings.training_image_pull_policy,
+                dotenv,
+            )
+        ),
+        workload_image_pull_secrets=_get_csv(
+            "WORKLOAD_IMAGE_PULL_SECRETS",
+            Settings.workload_image_pull_secrets,
+            dotenv,
+        ),
         training_service_account=str(
             _get_env(
                 "TRAINING_SERVICE_ACCOUNT",
@@ -157,8 +210,68 @@ def get_settings() -> Settings:
                 dotenv,
             )
         ),
+        training_cpu_request_cores=_get_float(
+            "TRAINING_CPU_REQUEST_CORES",
+            Settings.training_cpu_request_cores,
+            dotenv,
+        ),
+        training_cpu_limit_cores=_get_float(
+            "TRAINING_CPU_LIMIT_CORES",
+            Settings.training_cpu_limit_cores,
+            dotenv,
+        ),
+        training_memory_request_mb=_get_int(
+            "TRAINING_MEMORY_REQUEST_MB",
+            Settings.training_memory_request_mb,
+            dotenv,
+        ),
+        training_memory_limit_mb=_get_int(
+            "TRAINING_MEMORY_LIMIT_MB",
+            Settings.training_memory_limit_mb,
+            dotenv,
+        ),
+        training_priority_class_name=_get_env(
+            "TRAINING_PRIORITY_CLASS_NAME",
+            Settings.training_priority_class_name,
+            dotenv,
+        ),
+        training_job_ttl_seconds=_get_int(
+            "TRAINING_JOB_TTL_SECONDS",
+            Settings.training_job_ttl_seconds,
+            dotenv,
+        ),
+        database_secret_name=str(
+            _get_env("DATABASE_SECRET_NAME", Settings.database_secret_name, dotenv)
+        ),
+        database_secret_key=str(
+            _get_env("DATABASE_SECRET_KEY", Settings.database_secret_key, dotenv)
+        ),
+        object_store_secret_name=str(
+            _get_env("OBJECT_STORE_SECRET_NAME", Settings.object_store_secret_name, dotenv)
+        ),
+        object_store_access_key_secret_key=str(
+            _get_env(
+                "OBJECT_STORE_ACCESS_KEY_SECRET_KEY",
+                Settings.object_store_access_key_secret_key,
+                dotenv,
+            )
+        ),
+        object_store_secret_key_secret_key=str(
+            _get_env(
+                "OBJECT_STORE_SECRET_KEY_SECRET_KEY",
+                Settings.object_store_secret_key_secret_key,
+                dotenv,
+            )
+        ),
         inference_image=str(
             _get_env("INFERENCE_IMAGE", Settings.inference_image, dotenv)
+        ),
+        inference_image_pull_policy=str(
+            _get_env(
+                "INFERENCE_IMAGE_PULL_POLICY",
+                Settings.inference_image_pull_policy,
+                dotenv,
+            )
         ),
         inference_service_account=str(
             _get_env(
@@ -173,6 +286,38 @@ def get_settings() -> Settings:
                 Settings.inference_service_type,
                 dotenv,
             )
+        ),
+        inference_external_host=_get_env(
+            "INFERENCE_EXTERNAL_HOST",
+            Settings.inference_external_host,
+            dotenv,
+        ),
+        inference_external_scheme=str(
+            _get_env(
+                "INFERENCE_EXTERNAL_SCHEME",
+                Settings.inference_external_scheme,
+                dotenv,
+            )
+        ),
+        inference_ingress_enabled=_get_bool(
+            "INFERENCE_INGRESS_ENABLED",
+            Settings.inference_ingress_enabled,
+            dotenv,
+        ),
+        inference_ingress_class_name=_get_env(
+            "INFERENCE_INGRESS_CLASS_NAME",
+            Settings.inference_ingress_class_name,
+            dotenv,
+        ),
+        inference_ingress_host_template=_get_env(
+            "INFERENCE_INGRESS_HOST_TEMPLATE",
+            Settings.inference_ingress_host_template,
+            dotenv,
+        ),
+        inference_ingress_tls_secret_name=_get_env(
+            "INFERENCE_INGRESS_TLS_SECRET_NAME",
+            Settings.inference_ingress_tls_secret_name,
+            dotenv,
         ),
         training_active_deadline_seconds=_get_int(
             "TRAINING_ACTIVE_DEADLINE_SECONDS",
