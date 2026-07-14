@@ -26,6 +26,7 @@ from automl_api.services.operations import (
     _adaptive_inference_memory,
     _generated_model_dockerfile,
     _internal_model_deployment_urls,
+    _platform_model_deployment_urls,
     cleanup_project_resources,
     list_model_deployments,
     update_registry_stage,
@@ -50,6 +51,7 @@ def test_phase_seven_routes_are_registered() -> None:
         "/projects/{project_id}/operations/drift-runs",
         "/projects/{project_id}/operations/registry/{entry_id}/deployments",
         "/projects/{project_id}/operations/deployments",
+        "/projects/{project_id}/operations/deployments/{run_id}/inference/{path:path}",
         "/projects/{project_id}/operations/deployments/{run_id}/stop",
         "/projects/{project_id}/operations/cleanup",
     }.issubset(paths)
@@ -432,6 +434,25 @@ def test_internal_model_deployment_urls_use_portable_service_dns() -> None:
     }
 
 
+def test_platform_model_deployment_urls_use_authenticated_api_paths() -> None:
+    project_id = uuid.UUID("11111111-1111-1111-1111-111111111111")
+    run_id = uuid.UUID("22222222-2222-2222-2222-222222222222")
+    base_url = (
+        f"/api/v1/projects/{project_id}/operations/deployments/{run_id}/inference"
+    )
+
+    assert _platform_model_deployment_urls(project_id, run_id) == {
+        "platform_endpoint": f"{base_url}/v1/predict",
+        "platform_online_endpoint": f"{base_url}/v1/predict/online",
+        "platform_offline_endpoint": f"{base_url}/v1/predict/offline",
+        "platform_metadata_url": f"{base_url}/v1/metadata",
+        "platform_docs_url": f"{base_url}/docs",
+        "platform_openapi_url": f"{base_url}/openapi.json",
+        "platform_live_url": f"{base_url}/health/live",
+        "platform_ready_url": f"{base_url}/health/ready",
+    }
+
+
 def test_model_ingress_url_is_reported_only_after_admission() -> None:
     client = KubernetesTrainingClient.__new__(KubernetesTrainingClient)
     client.settings = Settings(
@@ -631,6 +652,22 @@ def test_ready_deployment_reports_internal_and_external_access_metadata(
     assert deployment.internal_openapi_url == (
         "http://automl-model-1234.sceptre.svc:8080/openapi.json"
     )
+    platform_base = (
+        f"/api/v1/projects/{run.project_id}/operations/deployments/"
+        f"{run.id}/inference"
+    )
+    assert deployment.platform_endpoint == f"{platform_base}/v1/predict"
+    assert deployment.platform_online_endpoint == (
+        f"{platform_base}/v1/predict/online"
+    )
+    assert deployment.platform_offline_endpoint == (
+        f"{platform_base}/v1/predict/offline"
+    )
+    assert deployment.platform_metadata_url == f"{platform_base}/v1/metadata"
+    assert deployment.platform_docs_url == f"{platform_base}/docs"
+    assert deployment.platform_openapi_url == f"{platform_base}/openapi.json"
+    assert deployment.platform_live_url == f"{platform_base}/health/live"
+    assert deployment.platform_ready_url == f"{platform_base}/health/ready"
 
 
 def test_non_ready_deployment_hides_internal_access_urls(monkeypatch) -> None:
@@ -658,6 +695,14 @@ def test_non_ready_deployment_hides_internal_access_urls(monkeypatch) -> None:
     assert deployment.internal_endpoint is None
     assert deployment.internal_docs_url is None
     assert deployment.internal_openapi_url is None
+    assert deployment.platform_endpoint is None
+    assert deployment.platform_online_endpoint is None
+    assert deployment.platform_offline_endpoint is None
+    assert deployment.platform_metadata_url is None
+    assert deployment.platform_docs_url is None
+    assert deployment.platform_openapi_url is None
+    assert deployment.platform_live_url is None
+    assert deployment.platform_ready_url is None
 
 
 def test_production_promotion_preserves_previous_model_as_fallback() -> None:

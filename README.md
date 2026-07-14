@@ -689,28 +689,56 @@ also permanently deletes cluster-local data.
 
 ### Deployed model APIs
 
-Each ready model deployment reports its prediction, documentation, and OpenAPI
-addresses in the **Operations** tab. When ingress, a LoadBalancer, or a reachable
-NodePort is configured, those addresses are directly clickable. The portable
-default is an internal `ClusterIP`; for that case, choose **Access internal
-endpoint** to see the Kubernetes addresses and a ready-to-run local port-forward
-command such as:
+Each ready model is available through Sceptre's authenticated application
+gateway. In **Operations**, choose **API access** to copy the project-scoped URLs.
+They use the same scheme, host, and port as the Sceptre UI, so a model does not
+need its own ingress, public IP, or `kubectl port-forward` process.
+
+Every gateway request requires a Sceptre access token and at least viewer access
+to the project:
+
+```bash
+export SCEPTRE_ORIGIN="http://127.0.0.1:8080"
+export PROJECT_ID="<project-id>"
+export DEPLOYMENT_RUN_ID="<deployment-run-id>"
+export SCEPTRE_TOKEN="<access-token>"
+
+export MODEL_GATEWAY="$SCEPTRE_ORIGIN/api/v1/projects/$PROJECT_ID/operations/deployments/$DEPLOYMENT_RUN_ID/inference"
+
+curl --fail-with-body \
+  --header "Authorization: Bearer $SCEPTRE_TOKEN" \
+  "$MODEL_GATEWAY/v1/metadata"
+```
+
+| Gateway route | Method and workload |
+| --- | --- |
+| `/v1/predict/online` | `POST` one-record online prediction |
+| `/v1/predict` | `POST` online JSON record batch |
+| `/v1/predict/offline` | `POST` CSV, JSONL, JSON, or Parquet upload with downloadable CSV predictions |
+| `/v1/metadata` | `GET` project, environment, and model metadata |
+| `/openapi.json` | `GET` gateway-aware OpenAPI schema |
+| `/docs` | `GET` gateway-aware Swagger UI |
+| `/health/live` | `GET` model-process liveness |
+| `/health/ready` | `GET` model readiness |
+
+The table routes are appended to `MODEL_GATEWAY`. Authentication also protects
+the documentation and health routes; opening one in a new browser tab without
+an `Authorization` header returns `401`.
+
+Direct per-model Ingress, LoadBalancer, or NodePort exposure remains optional.
+When enabled, the Operations view reports those external addresses separately.
+They bypass Sceptre's project-authenticated gateway, so the cluster operator
+must provide appropriate TLS, authentication, and network policy at the edge.
+
+For cluster troubleshooting only, an operator can bypass the gateway temporarily:
 
 ```bash
 kubectl -n sceptre port-forward service/automl-model-12345678 8081:8080
 ```
 
-The model API is then available at `http://127.0.0.1:8081`, including Swagger at
-`http://127.0.0.1:8081/docs`. The port-forward lasts only while that command is
-running.
-
-| Endpoint | Workload |
-| --- | --- |
-| `POST /v1/predict/online` | One-record online prediction |
-| `POST /v1/predict` | Online JSON record batch |
-| `POST /v1/predict/offline` | CSV, JSONL, JSON, or Parquet upload with downloadable CSV predictions |
-| `GET /v1/metadata` | Project, environment, and model metadata |
-| `GET /docs` | Interactive Swagger documentation |
+This exposes the model directly at `http://127.0.0.1:8081` for as long as the
+command runs. It is not the normal application flow and does not enforce Sceptre
+project membership.
 
 ## Configuration
 

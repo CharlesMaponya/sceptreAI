@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.orm import Session
 
 from automl_api.api.deps import get_current_user
@@ -23,6 +23,10 @@ from automl_api.schemas.operations import (
     RegistryStageUpdateRequest,
 )
 from automl_api.schemas.training import ModelRunRead
+from automl_api.services.inference_gateway import (
+    proxy_deployment_inference,
+    resolve_deployment_inference_target,
+)
 from automl_api.services.operations import (
     cleanup_project_resources,
     deploy_registered_model,
@@ -178,6 +182,28 @@ def deployments(
     result = list_model_deployments(db, current_user, project_id)
     db.commit()
     return result
+
+
+@router.api_route(
+    "/deployments/{run_id}/inference/{path:path}",
+    methods=["GET", "POST"],
+    include_in_schema=False,
+)
+async def deployment_inference_gateway(
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    path: str,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> Response:
+    target = resolve_deployment_inference_target(
+        db,
+        current_user,
+        project_id,
+        run_id,
+    )
+    return await proxy_deployment_inference(request, target, path)
 
 
 @router.post("/deployments/{run_id}/stop", response_model=ModelRunRead)

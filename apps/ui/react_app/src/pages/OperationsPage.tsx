@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Activity, AlertTriangle, Box, CloudCog, Cpu, Database, ExternalLink, Gauge,
-  FileSpreadsheet, Network, RefreshCw, Rocket, ShieldCheck, Square, Trash2, Upload,
+  Activity, AlertTriangle, Box, Braces, CloudCog, Cpu, Database, ExternalLink, Gauge,
+  FileSpreadsheet, RefreshCw, Rocket, ShieldCheck, Square, Trash2, Upload,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
@@ -25,6 +25,10 @@ interface DeployStatus {
   service_name?: string | null; namespace?: string | null;
   internal_endpoint?: string | null; internal_docs_url?: string | null;
   internal_openapi_url?: string | null;
+  platform_endpoint?: string | null; platform_online_endpoint?: string | null;
+  platform_offline_endpoint?: string | null; platform_metadata_url?: string | null;
+  platform_docs_url?: string | null; platform_openapi_url?: string | null;
+  platform_live_url?: string | null; platform_ready_url?: string | null;
 }
 interface DriftRun extends ModelRun {
   tags: { diagnostics?: { drift_share_percent?: number; drifted_feature_count?: number } };
@@ -256,7 +260,7 @@ function DeploymentRow({ projectId, deployment, refresh }: {
   projectId: string; deployment: DeployStatus; refresh: () => void;
 }) {
   const [confirmStop, setConfirmStop] = useState(false);
-  const [internalAccessOpen, setInternalAccessOpen] = useState(false);
+  const [apiAccessOpen, setApiAccessOpen] = useState(false);
   const stop = useMutation({
     mutationFn: () => api(`/projects/${projectId}/operations/deployments/${deployment.run.id}/stop`, json("POST")),
     onSuccess: () => { setConfirmStop(false); refresh(); },
@@ -264,102 +268,104 @@ function DeploymentRow({ projectId, deployment, refresh }: {
   return <tr><td><b>{deployment.run.run_name || deployment.run.id.slice(0, 8)}</b>
     <small className="cell-sub">{formatDate(deployment.run.created_at)}</small></td>
     <td>{titleCase(deployment.runtime_state)}</td><td><Badge status={deployment.status} /></td>
-    <td><DeploymentAccess deployment={deployment} openInternal={() => setInternalAccessOpen(true)} /></td>
+    <td><DeploymentAccess deployment={deployment} openApiAccess={() => setApiAccessOpen(true)} /></td>
     <td>{!["cancelled", "failed"].includes(deployment.status) &&
       <Button variant="ghost" onClick={() => setConfirmStop(true)}><Square size={14} />Stop</Button>}
       {confirmStop && <ConfirmModal danger title="Stop this deployment?"
         description="The prediction endpoint will become unavailable. The registered model and evidence remain intact."
         confirmLabel="Stop deployment" close={() => setConfirmStop(false)}
         action={() => stop.mutateAsync()} />}
-      {internalAccessOpen && <InternalEndpointModal deployment={deployment}
-        close={() => setInternalAccessOpen(false)} />}</td></tr>;
+      {apiAccessOpen && <ApiAccessModal deployment={deployment}
+        close={() => setApiAccessOpen(false)} />}</td></tr>;
 }
 
-function DeploymentAccess({ deployment, openInternal }: {
-  deployment: DeployStatus; openInternal: () => void;
+function DeploymentAccess({ deployment, openApiAccess }: {
+  deployment: DeployStatus; openApiAccess: () => void;
 }) {
   const succeeded = deployment.status === "succeeded";
-  if (succeeded && deployment.endpoint) {
-    return <span className="endpoint-links">
-      <a href={deployment.endpoint} target="_blank" rel="noreferrer">
-        Endpoint <ExternalLink size={13} /></a>
-      {deployment.docs_url && <a href={deployment.docs_url} target="_blank" rel="noreferrer">
-        Docs <ExternalLink size={13} /></a>}
-      {deployment.openapi_url && <a href={deployment.openapi_url} target="_blank" rel="noreferrer">
-        OpenAPI <ExternalLink size={13} /></a>}
-    </span>;
-  }
-  const internalReady = succeeded && deployment.runtime_state === "ready"
-    && deployment.service_name && deployment.namespace && deployment.internal_endpoint;
-  if (internalReady) {
-    return <Button variant="secondary" onClick={openInternal}>
-      <Network size={14} />Access internal endpoint</Button>;
+  const ready = succeeded && deployment.runtime_state === "ready";
+  if (ready && (deployment.platform_endpoint || deployment.endpoint)) {
+    return <Button variant="secondary" onClick={openApiAccess}>
+      <Braces size={14} />API access</Button>;
   }
   if (["failed", "cancelled", "preempted"].includes(deployment.status)
     || ["missing", "unavailable"].includes(deployment.runtime_state)) {
     return <span className="endpoint-state endpoint-state--unavailable">Unavailable</span>;
   }
   if (succeeded) {
-    return <span className="endpoint-state">External access not configured</span>;
+    return <span className="endpoint-state">API access unavailable</span>;
   }
   return <span className="endpoint-state">Provisioning</span>;
 }
 
-function InternalEndpointModal({ deployment, close }: {
+function ApiAccessModal({ deployment, close }: {
   deployment: DeployStatus; close: () => void;
 }) {
-  const [localPort, setLocalPort] = useState(8081);
-  const serviceName = deployment.service_name || "model-service";
-  const namespace = deployment.namespace || "default";
-  const internalEndpoint = deployment.internal_endpoint || "";
-  const remotePort = portFromUrl(internalEndpoint, 8080);
-  const command = `kubectl -n ${namespace} port-forward service/${serviceName} ${localPort}:${remotePort}`;
-  const localEndpoint = localUrl(internalEndpoint, localPort, "/v1/predict");
-  const localDocs = localUrl(deployment.internal_docs_url, localPort, "/docs");
-  const localOpenApi = localUrl(deployment.internal_openapi_url, localPort, "/openapi.json");
-  return <Modal title="Access internal model endpoint"
-    description="This deployment is ready inside Kubernetes but is not exposed outside the cluster."
+  const platformEndpoints = [
+    ["POST", "Batch prediction", deployment.platform_endpoint],
+    ["POST", "Online prediction", deployment.platform_online_endpoint],
+    ["POST", "Offline file prediction", deployment.platform_offline_endpoint],
+    ["GET", "Model metadata", deployment.platform_metadata_url],
+    ["GET", "Swagger documentation", deployment.platform_docs_url],
+    ["GET", "OpenAPI schema", deployment.platform_openapi_url],
+    ["GET", "Liveness", deployment.platform_live_url],
+    ["GET", "Readiness", deployment.platform_ready_url],
+  ] as const;
+  const clusterDetails = [
+    ["Cluster endpoint", deployment.internal_endpoint],
+    ["Cluster docs", deployment.internal_docs_url],
+    ["Cluster OpenAPI", deployment.internal_openapi_url],
+  ] as const;
+  const hasClusterDetails = clusterDetails.some(([, value]) => Boolean(value));
+  return <Modal title="Model API access"
+    description="Use Sceptre's authenticated gateway from the same address as this workspace."
     onClose={close}>
     <div className="stack endpoint-access">
-      <Notice>Run the port-forward command on the machine where kubectl is connected to this cluster, then use the localhost links below.</Notice>
-      <div className="endpoint-access__urls">
-        <EndpointValue label="Cluster endpoint" value={internalEndpoint} />
-        <EndpointValue label="Cluster docs" value={deployment.internal_docs_url} />
-        <EndpointValue label="Cluster OpenAPI" value={deployment.internal_openapi_url} />
-      </div>
-      <label>Local port<input aria-label="Local endpoint port" type="number" min={1024} max={65535}
-        value={localPort} onChange={(event) => setLocalPort(Number(event.target.value))} /></label>
-      <div className="endpoint-command"><span>Port-forward command</span><code>{command}</code></div>
-      <div className="endpoint-local-links">
-        <a href={localEndpoint} target="_blank" rel="noreferrer">Local endpoint <ExternalLink size={13} /></a>
-        <a href={localDocs} target="_blank" rel="noreferrer">Local docs <ExternalLink size={13} /></a>
-        <a href={localOpenApi} target="_blank" rel="noreferrer">Local OpenAPI <ExternalLink size={13} /></a>
-      </div>
+      <Notice><strong>Bearer authentication required.</strong> Send your Sceptre access token in the <code>Authorization: Bearer &lt;token&gt;</code> header.</Notice>
+      <section className="endpoint-access__section">
+        <h3>Application gateway</h3>
+        <p>These project-scoped URLs work through the API already serving this UI.</p>
+        <div className="gateway-endpoints">{platformEndpoints.map(([method, label, path]) =>
+          path && <PlatformEndpoint key={label} method={method} label={label} path={path} />)}</div>
+      </section>
+      {deployment.endpoint && <section className="endpoint-access__section">
+        <h3>Direct external service</h3>
+        <p>These links are available because external model exposure is configured for this cluster.</p>
+        <div className="endpoint-links">
+          <a href={deployment.endpoint} target="_blank" rel="noreferrer">
+            Endpoint <ExternalLink size={13} /></a>
+          {deployment.docs_url && <a href={deployment.docs_url} target="_blank" rel="noreferrer">
+            Docs <ExternalLink size={13} /></a>}
+          {deployment.openapi_url && <a href={deployment.openapi_url} target="_blank" rel="noreferrer">
+            OpenAPI <ExternalLink size={13} /></a>}
+        </div>
+      </section>}
+      {hasClusterDetails && <section className="endpoint-access__section endpoint-access__section--secondary">
+        <h3>Kubernetes internal</h3>
+        <p>These service addresses are reachable by workloads inside the cluster.</p>
+        <div className="endpoint-access__urls">
+          {clusterDetails.map(([label, value]) => value
+            && <EndpointValue key={label} label={label} value={value} />)}
+        </div>
+        {deployment.service_name && deployment.namespace && <small>
+          Service {deployment.service_name} in namespace {deployment.namespace}
+        </small>}
+      </section>}
       <div className="modal__actions"><Button variant="ghost" onClick={close}>Close</Button></div>
     </div>
   </Modal>;
 }
 
+function PlatformEndpoint({ method, label, path }: {
+  method: string; label: string; path: string;
+}) {
+  const url = new URL(path, window.location.origin).toString();
+  return <div><span className={`gateway-method gateway-method--${method.toLowerCase()}`}>{method}</span>
+    <span><b>{label}</b><code>{url}</code></span></div>;
+}
+
 function EndpointValue({ label, value }: { label: string; value?: string | null }) {
   return <div><span>{label}</span><code>{value || "Not reported"}</code></div>;
-}
-
-function portFromUrl(value: string | null | undefined, fallback: number) {
-  try {
-    const parsed = new URL(value || "");
-    return Number(parsed.port) || (parsed.protocol === "https:" ? 443 : 80);
-  } catch {
-    return fallback;
-  }
-}
-
-function localUrl(value: string | null | undefined, port: number, fallbackPath: string) {
-  try {
-    const parsed = new URL(value || "");
-    return `http://127.0.0.1:${port}${parsed.pathname}${parsed.search}`;
-  } catch {
-    return `http://127.0.0.1:${port}${fallbackPath}`;
-  }
 }
 
 function CleanupPanel({ projectId }: { projectId: string }) {

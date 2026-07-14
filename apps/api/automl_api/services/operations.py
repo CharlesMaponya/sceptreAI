@@ -575,6 +575,25 @@ def _internal_model_deployment_urls(
     }
 
 
+def _platform_model_deployment_urls(
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+) -> dict[str, str]:
+    base_url = (
+        f"/api/v1/projects/{project_id}/operations/deployments/{run_id}/inference"
+    )
+    return {
+        "platform_endpoint": f"{base_url}/v1/predict",
+        "platform_online_endpoint": f"{base_url}/v1/predict/online",
+        "platform_offline_endpoint": f"{base_url}/v1/predict/offline",
+        "platform_metadata_url": f"{base_url}/v1/metadata",
+        "platform_docs_url": f"{base_url}/docs",
+        "platform_openapi_url": f"{base_url}/openapi.json",
+        "platform_live_url": f"{base_url}/health/live",
+        "platform_ready_url": f"{base_url}/health/ready",
+    }
+
+
 def list_model_deployments(
     db: Session,
     user: User,
@@ -597,6 +616,7 @@ def list_model_deployments(
         service_name = run.tags.get("service_name") or run.k8s_job_name
         namespace = run.k8s_namespace or k8s.settings.training_namespace
         internal_urls: dict[str, str] = {}
+        platform_urls: dict[str, str] = {}
         if run.k8s_job_name and run.status != RunStatus.CANCELLED:
             try:
                 runtime_state = k8s.model_deployment_state(run.k8s_job_name)
@@ -618,6 +638,10 @@ def list_model_deployments(
                     internal_urls = _internal_model_deployment_urls(
                         service_name,
                         namespace,
+                    )
+                    platform_urls = _platform_model_deployment_urls(
+                        project_id,
+                        run.id,
                     )
             elif runtime_state == "missing":
                 run.status = RunStatus.FAILED
@@ -665,6 +689,7 @@ def list_model_deployments(
                 docs_url=run.tags.get("docs_url"),
                 openapi_url=run.tags.get("openapi_url"),
                 **internal_urls,
+                **platform_urls,
                 status=run.status,
             )
         )

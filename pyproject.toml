@@ -12,6 +12,7 @@ dependencies = [
     "alembic>=1.13",
     "dask[dataframe]>=2024.8",
     "fastapi>=0.111",
+    "httpx>=0.27,<1",
     "minio>=7.2",
     "numpy>=1.26",
     "pandas>=2.2",

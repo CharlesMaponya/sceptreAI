@@ -433,7 +433,7 @@ describe("core workflow integrations", () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/operations/cleanup"))).toBe(true);
   });
 
-  it("shows every external API link only after deployment succeeds", async () => {
+  it("shows configured external links separately from the authenticated platform API", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       const url = String(input);
       if (url.endsWith("/operations/health")) return response(operationsHealth);
@@ -444,14 +444,19 @@ describe("core workflow integrations", () => {
         endpoint: "https://model.example.test/v1/predict",
         docs_url: "https://model.example.test/docs",
         openapi_url: "https://model.example.test/openapi.json",
+        platform_endpoint: "/api/v1/projects/project-1/operations/deployments/deploy-1/inference/v1/predict",
       }]);
       if (url.endsWith("/operations/drift-runs")) return response([]);
       return response([]);
     });
 
+    const user = userEvent.setup();
     renderRoute(<OperationsPage />, "/projects/project-1/operations");
 
-    expect(await screen.findByRole("link", { name: /^Endpoint/ })).toHaveAttribute(
+    await user.click(await screen.findByRole("button", { name: "API access" }));
+    expect(screen.getByRole("heading", { name: "Application gateway" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Direct external service" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^Endpoint/ })).toHaveAttribute(
       "href", "https://model.example.test/v1/predict",
     );
     expect(screen.getByRole("link", { name: /^Docs/ })).toHaveAttribute(
@@ -462,7 +467,7 @@ describe("core workflow integrations", () => {
     );
   });
 
-  it("explains how to access a ready internal-only deployment", async () => {
+  it("shows authenticated platform URLs for a ready internal-only deployment", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       const url = String(input);
       if (url.endsWith("/operations/health")) return response(operationsHealth);
@@ -474,6 +479,14 @@ describe("core workflow integrations", () => {
         internal_endpoint: "http://sceptre-model-deploy-1.sceptre.svc:8080/v1/predict",
         internal_docs_url: "http://sceptre-model-deploy-1.sceptre.svc:8080/docs",
         internal_openapi_url: "http://sceptre-model-deploy-1.sceptre.svc:8080/openapi.json",
+        platform_endpoint: "/api/v1/projects/project-1/operations/deployments/deploy-1/inference/v1/predict",
+        platform_online_endpoint: "/api/v1/projects/project-1/operations/deployments/deploy-1/inference/v1/predict/online",
+        platform_offline_endpoint: "/api/v1/projects/project-1/operations/deployments/deploy-1/inference/v1/predict/offline",
+        platform_metadata_url: "/api/v1/projects/project-1/operations/deployments/deploy-1/inference/v1/metadata",
+        platform_docs_url: "/api/v1/projects/project-1/operations/deployments/deploy-1/inference/docs",
+        platform_openapi_url: "/api/v1/projects/project-1/operations/deployments/deploy-1/inference/openapi.json",
+        platform_live_url: "/api/v1/projects/project-1/operations/deployments/deploy-1/inference/health/live",
+        platform_ready_url: "/api/v1/projects/project-1/operations/deployments/deploy-1/inference/health/ready",
       }]);
       if (url.endsWith("/operations/drift-runs")) return response([]);
       return response([]);
@@ -481,29 +494,25 @@ describe("core workflow integrations", () => {
     const user = userEvent.setup();
     renderRoute(<OperationsPage />, "/projects/project-1/operations");
 
-    await user.click(await screen.findByRole("button", { name: "Access internal endpoint" }));
-    expect(screen.getByRole("dialog", { name: "Access internal model endpoint" })).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "API access" }));
+    expect(screen.getByRole("dialog", { name: "Model API access" })).toBeInTheDocument();
+    expect(screen.getByText("Bearer authentication required.")).toBeInTheDocument();
+    expect(screen.getByText(new URL(
+      "/api/v1/projects/project-1/operations/deployments/deploy-1/inference/v1/predict",
+      window.location.origin,
+    ).toString())).toBeInTheDocument();
+    expect(screen.getByText(new URL(
+      "/api/v1/projects/project-1/operations/deployments/deploy-1/inference/v1/predict/offline",
+      window.location.origin,
+    ).toString())).toBeInTheDocument();
+    expect(screen.getByText(new URL(
+      "/api/v1/projects/project-1/operations/deployments/deploy-1/inference/openapi.json",
+      window.location.origin,
+    ).toString())).toBeInTheDocument();
     expect(screen.getByText("http://sceptre-model-deploy-1.sceptre.svc:8080/v1/predict"))
       .toBeInTheDocument();
-    expect(screen.getByText(
-      "kubectl -n sceptre port-forward service/sceptre-model-deploy-1 8081:8080",
-    )).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /^Local endpoint/ })).toHaveAttribute(
-      "href", "http://127.0.0.1:8081/v1/predict",
-    );
-
-    const port = screen.getByLabelText("Local endpoint port");
-    await user.clear(port);
-    await user.type(port, "9090");
-    expect(screen.getByText(
-      "kubectl -n sceptre port-forward service/sceptre-model-deploy-1 9090:8080",
-    )).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /^Local docs/ })).toHaveAttribute(
-      "href", "http://127.0.0.1:9090/docs",
-    );
-    expect(screen.getByRole("link", { name: /^Local OpenAPI/ })).toHaveAttribute(
-      "href", "http://127.0.0.1:9090/openapi.json",
-    );
+    expect(screen.queryByText(/kubectl .*port-forward/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Local endpoint/ })).not.toBeInTheDocument();
   });
 
   it("shows deployment request failures and recovers on retry", async () => {

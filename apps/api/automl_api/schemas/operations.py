@@ -110,4 +110,12 @@ class DeploymentStatusRead(BaseModel):
     internal_endpoint: str | None = None
     internal_docs_url: str | None = None
     internal_openapi_url: str | None = None
+    platform_endpoint: str | None = None
+    platform_online_endpoint: str | None = None
+    platform_offline_endpoint: str | None = None
+    platform_metadata_url: str | None = None
+    platform_docs_url: str | None = None
+    platform_openapi_url: str | None = None
+    platform_live_url: str | None = None
+    platform_ready_url: str | None = None
     status: RunStatus

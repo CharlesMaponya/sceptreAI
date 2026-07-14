@@ -153,13 +153,29 @@ those capabilities.
 The UI and API use ClusterIP Services by default. Port-forward is the universal
 local fallback. Enabling `ingress` exposes the UI, which also proxies `/api`.
 
-One-click model deployment also creates ClusterIP first. It reports no external
-endpoint unless a configured LoadBalancer, NodePort host, or per-model Ingress is
-ready. Per-model ingress hosts support `{name}` and `{deployment_id}` templates.
-For a ready ClusterIP deployment, the Operations UI reports its cluster-internal
-addresses and generates the exact `kubectl port-forward` command needed for local
-access. This preserves a closed-by-default installation without presenting an
-unreachable `.svc` address as a public endpoint.
+One-click model deployment creates a ClusterIP Service first. The Sceptre API
+provides an authenticated gateway from the existing application host to every
+ready model, so users do not need to expose or port-forward each model Service.
+The Operations UI reports project-scoped routes shaped as:
+
+```text
+/api/v1/projects/<project-id>/operations/deployments/<deployment-run-id>/inference/<model-route>
+```
+
+Supported model routes are `v1/predict`, `v1/predict/online`,
+`v1/predict/offline`, `v1/metadata`, `openapi.json`, `docs`, `health/live`, and
+`health/ready`. Every gateway request requires a Sceptre Bearer token and viewer
+access to the project.
+
+A configured LoadBalancer, NodePort host, or per-model Ingress can still expose
+a model directly. Per-model ingress hosts support `{name}` and
+`{deployment_id}` templates. Direct exposure bypasses the project-authenticated
+Sceptre gateway; the cluster operator is therefore responsible for TLS,
+authentication, and network policy at that edge.
+
+An operator may still run `kubectl port-forward` against a model Service for
+troubleshooting. That temporary direct connection bypasses project membership
+and is not the normal user-access path.
 
 ## Optional controls
 
