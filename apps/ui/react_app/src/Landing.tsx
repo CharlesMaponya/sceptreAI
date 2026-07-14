@@ -71,7 +71,7 @@ export function Landing() {
       <section className="marketing-hero">
         <div className="marketing-hero__copy">
           <span className="marketing-kicker"><i />Governed AutoML for teams that mean business</span>
-          <h1>Build models your business can trust—<em>and put them to work.</em></h1>
+          <h1>Build models your business can trust   <em>and put them to work.</em></h1>
           <p>From raw table to governed production endpoint, Sceptre gives growing data teams one place to profile, train, compare, validate, explain, and deploy on infrastructure they control.</p>
           <div className="marketing-hero__actions">
             <Link className="button button--primary marketing-cta" to={workspaceLink}>
