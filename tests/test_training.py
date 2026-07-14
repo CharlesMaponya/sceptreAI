@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -104,6 +105,7 @@ def test_estimate_enforces_configured_limit_and_gpu_fallback() -> None:
 def test_training_manifest_has_optional_priority_ephemeral_cache_and_timeout() -> None:
     settings = Settings(
         training_image="automl-training:test",
+        training_image_pull_policy="Never",
         training_priority_class_name="automl-low",
         training_job_ttl_seconds=30,
         workload_image_pull_secrets=("registry-one", "registry-two"),
@@ -125,6 +127,8 @@ def test_training_manifest_has_optional_priority_ephemeral_cache_and_timeout() -
     container = pod_spec["containers"][0]
     resources = container["resources"]
 
+    assert container["image"] == "automl-training:test"
+    assert container["imagePullPolicy"] == "Never"
     assert pod_spec["priorityClassName"] == "automl-low"
     assert manifest["spec"]["activeDeadlineSeconds"] == 21_600
     assert resources["requests"]["cpu"] == str(estimate.cpu_request_cores)
@@ -149,16 +153,17 @@ def test_training_manifest_has_optional_priority_ephemeral_cache_and_timeout() -
 
 
 @pytest.mark.parametrize(
-    ("vendor", "resource"),
+    ("vendor", "resource", "expected_image"),
     [
-        ("nvidia", "nvidia.com/gpu"),
-        ("intel", "gpu.intel.com/xe"),
-        ("intel", "gpu.intel.com/i915"),
+        ("nvidia", "nvidia.com/gpu", "sceptre-training-nvidia:0.1.0"),
+        ("intel", "gpu.intel.com/xe", "sceptre-training-intel:0.1.0"),
+        ("intel", "gpu.intel.com/i915", "sceptre-training-intel:0.1.0"),
     ],
 )
 def test_gpu_vendor_and_resource_are_propagated_to_training_job(
     vendor: str,
     resource: str,
+    expected_image: str,
 ) -> None:
     snapshot = capacity_snapshot()
     snapshot = CapacitySnapshot(
@@ -193,6 +198,8 @@ def test_gpu_vendor_and_resource_are_propagated_to_training_job(
     assert estimate.gpu_requested
     assert estimate.gpu_vendor == vendor
     assert estimate.gpu_resource == resource
+    assert container["image"] == expected_image
+    assert container["imagePullPolicy"] == "IfNotPresent"
     assert container["resources"]["requests"][resource] == "1"
     assert container["resources"]["limits"][resource] == "1"
     assert {"name": "AUTOML_GPU_VENDOR", "value": vendor} in container["env"]
@@ -345,6 +352,99 @@ def test_deadline_failure_is_reported_from_job_condition() -> None:
 
     assert code == "JOB_DEADLINE_EXCEEDED"
     assert "deadline" in message
+
+
+@pytest.mark.parametrize(
+    ("reason", "pod_age", "expected_state"),
+    [
+        ("ErrImageNeverPull", timedelta(seconds=10), "terminal_waiting_failure"),
+        ("ImagePullBackOff", timedelta(minutes=3), "image_pull_backoff"),
+        ("ImagePullBackOff", timedelta(seconds=30), "image_pull_backoff"),
+        ("ErrImagePull", timedelta(minutes=3), "running"),
+        ("ContainerCreating", timedelta(minutes=3), "running"),
+        ("CreateContainerError", timedelta(minutes=3), "running"),
+        ("RunContainerError", timedelta(minutes=3), "running"),
+    ],
+)
+def test_active_job_classifies_container_waiting_states(
+    reason: str,
+    pod_age: timedelta,
+    expected_state: str,
+) -> None:
+    training_client = KubernetesTrainingClient.__new__(KubernetesTrainingClient)
+    training_client.settings = Settings(training_namespace="team-a")
+    training_client.batch = SimpleNamespace(
+        read_namespaced_job_status=lambda **_: SimpleNamespace(
+            status=SimpleNamespace(succeeded=0, failed=0, active=1)
+        )
+    )
+    waiting = SimpleNamespace(reason=reason, message="test pull failure")
+    container_status = SimpleNamespace(
+        name="trainer",
+        image="sceptre-training-cpu:0.1.0",
+        state=SimpleNamespace(waiting=waiting),
+    )
+    pod = SimpleNamespace(
+        metadata=SimpleNamespace(creation_timestamp=datetime.now(UTC) - pod_age),
+        status=SimpleNamespace(
+            phase="Pending",
+            init_container_statuses=[],
+            container_statuses=[container_status],
+        ),
+    )
+    training_client.core = SimpleNamespace(
+        list_namespaced_pod=lambda **_: SimpleNamespace(items=[pod])
+    )
+
+    assert training_client.job_state("automl-train-test") == expected_state
+
+
+@pytest.mark.parametrize(
+    ("reason", "expected_code", "message_fragment"),
+    [
+        ("ErrImageNeverPull", "TRAINING_IMAGE_NOT_PRESENT", "pull policy"),
+        ("ImagePullBackOff", "TRAINING_IMAGE_PULL_FAILED", "imagePullSecrets"),
+        ("InvalidImageName", "TRAINING_IMAGE_INVALID", "valid registry"),
+    ],
+)
+def test_image_waiting_failure_details_are_actionable(
+    reason: str,
+    expected_code: str,
+    message_fragment: str,
+) -> None:
+    training_client = KubernetesTrainingClient.__new__(KubernetesTrainingClient)
+    training_client.settings = Settings(training_namespace="team-a")
+    training_client.batch = SimpleNamespace(
+        read_namespaced_job_status=lambda **_: SimpleNamespace(
+            status=SimpleNamespace(conditions=[])
+        )
+    )
+    waiting = SimpleNamespace(reason=reason, message="registry unavailable")
+    container_status = SimpleNamespace(
+        name="trainer",
+        image="sceptre-training-cpu:0.1.0",
+        state=SimpleNamespace(waiting=waiting, terminated=None),
+    )
+    pod = SimpleNamespace(
+        metadata=SimpleNamespace(creation_timestamp=datetime.now(UTC)),
+        status=SimpleNamespace(
+            phase="Pending",
+            reason=None,
+            message=None,
+            init_container_statuses=[],
+            container_statuses=[container_status],
+            conditions=[],
+        ),
+    )
+    training_client.core = SimpleNamespace(
+        list_namespaced_pod=lambda **_: SimpleNamespace(items=[pod])
+    )
+
+    code, message = training_client.job_failure_details("automl-train-test")
+
+    assert code == expected_code
+    assert message_fragment in message
+    assert "sceptre-training-cpu:0.1.0" in message
 
 
 def test_byte_literal_pod_logs_are_split_into_lines() -> None:

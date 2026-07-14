@@ -15,6 +15,19 @@ from automl_api.core.config import Settings, get_settings
 from automl_api.models.enums import TaskType
 from automl_api.schemas.training import ClusterCapacityRead, TrainingEstimateRead
 
+_FATAL_CONTAINER_WAITING_REASONS = {
+    "CreateContainerConfigError",
+    "ErrImageNeverPull",
+    "InvalidImageName",
+}
+_IMAGE_PULL_BACKOFF_REASONS = {"ImagePullBackOff"}
+_REPORTED_CONTAINER_WAITING_FAILURE_REASONS = {
+    *_FATAL_CONTAINER_WAITING_REASONS,
+    *_IMAGE_PULL_BACKOFF_REASONS,
+    "CreateContainerError",
+    "RunContainerError",
+}
+
 
 @dataclass(frozen=True)
 class NodeCapability:
@@ -929,6 +942,14 @@ class KubernetesTrainingClient:
             return "succeeded"
         if job.status.failed:
             return "failed"
+        pods = self.core.list_namespaced_pod(
+            namespace=self.settings.training_namespace,
+            label_selector=f"job-name={job_name}",
+        ).items
+        if _container_waiting_failure(pods, _FATAL_CONTAINER_WAITING_REASONS) is not None:
+            return "terminal_waiting_failure"
+        if _container_waiting_failure(pods, _IMAGE_PULL_BACKOFF_REASONS) is not None:
+            return "image_pull_backoff"
         if job.status.active:
             return "running"
         return "queued"
@@ -956,6 +977,12 @@ class KubernetesTrainingClient:
                 "KUBERNETES_JOB_FAILED",
                 "The Kubernetes Job failed before a pod status was available.",
             )
+        waiting_failure = _container_waiting_failure(
+            pods,
+            _REPORTED_CONTAINER_WAITING_FAILURE_REASONS,
+        )
+        if waiting_failure is not None:
+            return waiting_failure
         pod = pods[0]
         status = pod.status
         messages: list[str] = []
@@ -1107,6 +1134,76 @@ class KubernetesTrainingClient:
             return True
         except ApiException:
             return False
+
+
+def _container_waiting_failure(
+    pods: list[Any],
+    reasons: set[str],
+) -> tuple[str, str] | None:
+    """Return an actionable failure for container states that cannot make progress."""
+    for pod in pods:
+        pod_status = getattr(pod, "status", None)
+        if getattr(pod_status, "phase", None) in {"Failed", "Succeeded"}:
+            continue
+        statuses = [
+            *(getattr(pod_status, "init_container_statuses", None) or []),
+            *(getattr(pod_status, "container_statuses", None) or []),
+        ]
+        for container_status in statuses:
+            state = getattr(container_status, "state", None)
+            waiting = getattr(state, "waiting", None)
+            reason = str(getattr(waiting, "reason", None) or "")
+            if reason not in reasons:
+                continue
+            return _container_waiting_failure_details(
+                reason,
+                container_status,
+                waiting,
+            )
+    return None
+
+
+def _container_waiting_failure_details(
+    reason: str,
+    container_status: Any,
+    waiting: Any,
+) -> tuple[str, str]:
+    image = str(getattr(container_status, "image", None) or "the configured training image")
+    reported_message = str(getattr(waiting, "message", None) or "").strip()
+    reported = f" Kubernetes reported: {reported_message}" if reported_message else ""
+    if reason == "ErrImageNeverPull":
+        return (
+            "TRAINING_IMAGE_NOT_PRESENT",
+            f"Kubernetes cannot start training because image '{image}' is not present "
+            "on the node and its pull policy prevents downloading it. Import the image "
+            "into every local-cluster node, or publish it to a registry reachable by "
+            f"the cluster and use IfNotPresent or Always.{reported}",
+        )
+    if reason == "ImagePullBackOff":
+        return (
+            "TRAINING_IMAGE_PULL_FAILED",
+            f"Kubernetes repeatedly failed to pull training image '{image}'. Verify the "
+            "image name and tag, registry reachability, and imagePullSecrets. For a local "
+            "cluster, import the image into every node or use a cluster-visible "
+            f"registry.{reported}",
+        )
+    if reason == "InvalidImageName":
+        return (
+            "TRAINING_IMAGE_INVALID",
+            f"Kubernetes rejected training image reference '{image}'. Configure a valid "
+            f"registry, repository, and tag before starting another run.{reported}",
+        )
+    if reason == "CreateContainerConfigError":
+        return (
+            "TRAINING_CONTAINER_CONFIG_INVALID",
+            "Kubernetes cannot create the training container. Verify its required Secrets, "
+            f"ConfigMaps, environment variables, and volume mounts.{reported}",
+        )
+    return (
+        "TRAINING_CONTAINER_START_FAILED",
+        f"Kubernetes cannot start the training container ({reason}). Verify the image, "
+        f"runtime configuration, and pod events before starting another run.{reported}",
+    )
 
 
 def _active_deadline_seconds(

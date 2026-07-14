@@ -11,6 +11,7 @@ import pytest
 from automl_api.models.datasets import DatasetVersion
 from automl_api.models.enums import RunStatus
 from automl_api.training.pipeline import TournamentResult
+from kubernetes.client import ApiException
 
 
 class FakeSession(AbstractContextManager):
@@ -242,6 +243,157 @@ def test_resource_poll_cannot_restore_stale_candidate_after_cancel(monkeypatch) 
     assert usage.current_candidate is None
     assert usage.last_candidate == "RandomForestRegressor"
     assert usage.current_phase == "cancelled"
+
+
+def test_terminal_image_waiting_failure_deletes_job_before_marking_run_failed() -> None:
+    run = _run()
+    db = FakeSession(run)
+
+    class FatalWaitingClient(FakeKubernetesClient):
+        def job_state(self, job_name: str) -> str:
+            assert job_name == "automl-train-test"
+            return "terminal_waiting_failure"
+
+        def job_failure_details(self, job_name: str) -> tuple[str, str]:
+            assert job_name == "automl-train-test"
+            return (
+                "TRAINING_IMAGE_NOT_PRESENT",
+                "The image is absent and imagePullPolicy is Never.",
+            )
+
+        def delete_job(self, job_name: str) -> None:
+            assert run.status == RunStatus.RUNNING
+            super().delete_job(job_name)
+
+    client = FatalWaitingClient()
+
+    training_service._sync_run_status(db, run, client)
+
+    assert client.deleted_jobs == ["automl-train-test"]
+    assert run.status == RunStatus.FAILED
+    assert run.failure_code == "TRAINING_IMAGE_NOT_PRESENT"
+    assert run.failure_message == "The image is absent and imagePullPolicy is Never."
+    assert "not available inside this Kubernetes cluster" in run.plain_english_failure
+    assert run.finished_at is not None
+    assert db.flushes == 1
+
+
+def test_terminal_waiting_failure_is_rechecked_after_run_lock() -> None:
+    run = _run()
+    db = FakeSession(run)
+
+    class RecoveredClient(FakeKubernetesClient):
+        states = iter(("terminal_waiting_failure", "running"))
+
+        def job_state(self, job_name: str) -> str:
+            return next(self.states)
+
+        def job_failure_details(self, job_name: str) -> tuple[str, str]:
+            raise AssertionError("a recovered Job must not be reported as failed")
+
+    client = RecoveredClient()
+
+    training_service._sync_run_status(db, run, client)
+
+    assert run.status == RunStatus.RUNNING
+    assert run.started_at is not None
+    assert client.deleted_jobs == []
+    assert db.locked_reads == 1
+    assert db.flushes == 1
+
+
+def test_image_pull_backoff_uses_first_observation_before_failing() -> None:
+    run = _run()
+    db = FakeSession(run)
+
+    class BackoffClient(FakeKubernetesClient):
+        def job_state(self, job_name: str) -> str:
+            return "image_pull_backoff"
+
+        def job_failure_details(self, job_name: str) -> tuple[str, str]:
+            return "TRAINING_IMAGE_PULL_FAILED", "Registry is unavailable."
+
+    client = BackoffClient()
+
+    training_service._sync_run_status(db, run, client)
+
+    first_seen = run.tags[training_service._IMAGE_PULL_BACKOFF_FIRST_SEEN_TAG]
+    assert datetime.fromisoformat(first_seen).tzinfo is not None
+    assert run.status == RunStatus.RUNNING
+    assert client.deleted_jobs == []
+
+    run.tags[training_service._IMAGE_PULL_BACKOFF_FIRST_SEEN_TAG] = (
+        datetime.now(UTC) - timedelta(minutes=3)
+    ).isoformat()
+    training_service._sync_run_status(db, run, client)
+
+    assert run.status == RunStatus.FAILED
+    assert run.failure_code == "TRAINING_IMAGE_PULL_FAILED"
+    assert client.deleted_jobs == ["automl-train-test"]
+
+
+def test_image_pull_backoff_recovery_clears_first_observation() -> None:
+    run = _run()
+    run.tags[training_service._IMAGE_PULL_BACKOFF_FIRST_SEEN_TAG] = (
+        datetime.now(UTC) - timedelta(seconds=30)
+    ).isoformat()
+    db = FakeSession(run)
+
+    class RecoveredClient(FakeKubernetesClient):
+        states = iter(("image_pull_backoff", "running"))
+
+        def job_state(self, job_name: str) -> str:
+            return next(self.states)
+
+    client = RecoveredClient()
+
+    training_service._sync_run_status(db, run, client)
+
+    assert training_service._IMAGE_PULL_BACKOFF_FIRST_SEEN_TAG not in run.tags
+    assert run.status == RunStatus.RUNNING
+    assert client.deleted_jobs == []
+
+
+def test_terminal_waiting_cleanup_failure_does_not_mark_run_failed() -> None:
+    run = _run()
+    db = FakeSession(run)
+
+    class CleanupFailureClient(FakeKubernetesClient):
+        def job_state(self, job_name: str) -> str:
+            return "terminal_waiting_failure"
+
+        def job_failure_details(self, job_name: str) -> tuple[str, str]:
+            return "TRAINING_IMAGE_PULL_FAILED", "Registry is unavailable."
+
+        def delete_job(self, job_name: str) -> None:
+            raise ApiException(status=503, reason="Kubernetes API unavailable")
+
+    with pytest.raises(ApiException):
+        training_service._sync_run_status(db, run, CleanupFailureClient())
+
+    assert run.status == RunStatus.RUNNING
+    assert db.flushes == 0
+
+
+def test_terminal_waiting_cleanup_404_still_marks_run_failed() -> None:
+    run = _run()
+    db = FakeSession(run)
+
+    class MissingDuringCleanupClient(FakeKubernetesClient):
+        def job_state(self, job_name: str) -> str:
+            return "terminal_waiting_failure"
+
+        def job_failure_details(self, job_name: str) -> tuple[str, str]:
+            return "TRAINING_IMAGE_NOT_PRESENT", "The image is absent."
+
+        def delete_job(self, job_name: str) -> None:
+            raise ApiException(status=404, reason="already deleted")
+
+    training_service._sync_run_status(db, run, MissingDuringCleanupClient())
+
+    assert run.status == RunStatus.FAILED
+    assert run.failure_code == "TRAINING_IMAGE_NOT_PRESENT"
+    assert db.flushes == 1
 
 
 @pytest.mark.parametrize("terminal_status", TERMINAL_STATUSES)

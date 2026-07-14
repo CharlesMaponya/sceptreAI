@@ -468,6 +468,18 @@ describe("core workflow integrations", () => {
   });
 
   it("shows authenticated platform URLs for a ready internal-only deployment", async () => {
+    const accessToken = "eyJhbGciOiJIUzI1NiJ9.current-session-token";
+    setSession({
+      user: {
+        id: "user-1", email: "analyst@example.test", full_name: "Data Analyst",
+        global_role: "user", is_active: true, is_verified: true,
+        created_at: "2026-01-01T00:00:00Z",
+      },
+      tokens: {
+        access_token: accessToken, refresh_token: "refresh-token", token_type: "bearer",
+        expires_in: 3600,
+      },
+    });
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       const url = String(input);
       if (url.endsWith("/operations/health")) return response(operationsHealth);
@@ -492,11 +504,25 @@ describe("core workflow integrations", () => {
       return response([]);
     });
     const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
     renderRoute(<OperationsPage />, "/projects/project-1/operations");
 
     await user.click(await screen.findByRole("button", { name: "API access" }));
     expect(screen.getByRole("dialog", { name: "Model API access" })).toBeInTheDocument();
     expect(screen.getByText("Bearer authentication required.")).toBeInTheDocument();
+    const token = screen.getByLabelText("Sceptre access token");
+    expect(token).toHaveAttribute("type", "password");
+    expect(token).toHaveValue(accessToken);
+    await user.click(screen.getByRole("button", { name: "Show access token" }));
+    expect(token).toHaveAttribute("type", "text");
+    expect(screen.getByText(`Authorization: Bearer ${accessToken}`)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Copy header value" }));
+    expect(writeText).toHaveBeenCalledWith(`Bearer ${accessToken}`);
+    expect(screen.getByRole("button", { name: "Header copied" })).toBeInTheDocument();
     expect(screen.getByText(new URL(
       "/api/v1/projects/project-1/operations/deployments/deploy-1/inference/v1/predict",
       window.location.origin,

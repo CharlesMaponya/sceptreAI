@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Activity, AlertTriangle, Box, Braces, CloudCog, Cpu, Database, ExternalLink, Gauge,
-  FileSpreadsheet, RefreshCw, Rocket, ShieldCheck, Square, Trash2, Upload,
+  Activity, AlertTriangle, Box, Braces, CloudCog, Copy, Cpu, Database, ExternalLink,
+  Eye, EyeOff, Gauge, FileSpreadsheet, RefreshCw, Rocket, ShieldCheck, Square,
+  Trash2, Upload,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
-import { api, json, uploadFormData } from "../api";
+import { api, getSession, json, uploadFormData } from "../api";
 import {
   Badge, Button, Card, EmptyState, ErrorState, Loading, Metric, Modal, Notice, PageHeader,
 } from "../components/ui";
@@ -301,6 +302,31 @@ function DeploymentAccess({ deployment, openApiAccess }: {
 function ApiAccessModal({ deployment, close }: {
   deployment: DeployStatus; close: () => void;
 }) {
+  const [accessToken, setAccessToken] = useState(
+    () => getSession()?.tokens.access_token || "",
+  );
+  const [tokenVisible, setTokenVisible] = useState(false);
+  const [copied, setCopied] = useState<"token" | "header" | null>(null);
+  const [copyError, setCopyError] = useState("");
+  useEffect(() => {
+    const syncSessionToken = () => {
+      setAccessToken(getSession()?.tokens.access_token || "");
+      setTokenVisible(false);
+      setCopied(null);
+      setCopyError("");
+    };
+    window.addEventListener("sceptre-session", syncSessionToken);
+    return () => window.removeEventListener("sceptre-session", syncSessionToken);
+  }, []);
+  const copyCredential = async (value: string, kind: "token" | "header") => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(kind);
+      setCopyError("");
+    } catch {
+      setCopyError("Clipboard access was blocked. Reveal and copy the token manually.");
+    }
+  };
   const platformEndpoints = [
     ["POST", "Batch prediction", deployment.platform_endpoint],
     ["POST", "Online prediction", deployment.platform_online_endpoint],
@@ -321,7 +347,38 @@ function ApiAccessModal({ deployment, close }: {
     description="Use Sceptre's authenticated gateway from the same address as this workspace."
     onClose={close}>
     <div className="stack endpoint-access">
-      <Notice><strong>Bearer authentication required.</strong> Send your Sceptre access token in the <code>Authorization: Bearer &lt;token&gt;</code> header.</Notice>
+      <Notice><strong>Bearer authentication required.</strong> Your current Sceptre access token is available below.</Notice>
+      <section className="endpoint-access__section">
+        <h3>Authentication</h3>
+        <p>Use this current-session token for API requests. Treat it like a password and never put it in a URL.</p>
+        {accessToken ? <div className="endpoint-token">
+          <label htmlFor="deployment-access-token">Bearer token</label>
+          <div className="endpoint-token__control">
+            <input id="deployment-access-token" aria-label="Sceptre access token"
+              type={tokenVisible ? "text" : "password"} readOnly value={accessToken}
+              autoComplete="off" spellCheck={false} />
+            <Button variant="secondary" aria-label={tokenVisible ? "Hide access token" : "Show access token"}
+              onClick={() => setTokenVisible((visible) => !visible)}>
+              {tokenVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+              {tokenVisible ? "Hide" : "Reveal"}
+            </Button>
+            <Button variant="secondary" onClick={() => copyCredential(accessToken, "token")}>
+              <Copy size={14} />{copied === "token" ? "Token copied" : "Copy token"}
+            </Button>
+          </div>
+          <div className="endpoint-token__header">
+            <span>Authorization header</span>
+            <code>{tokenVisible ? `Authorization: Bearer ${accessToken}`
+              : "Authorization: Bearer ••••••••"}</code>
+            <Button variant="secondary"
+              onClick={() => copyCredential(`Bearer ${accessToken}`, "header")}>
+              <Copy size={14} />{copied === "header" ? "Header copied" : "Copy header value"}
+            </Button>
+          </div>
+          <small>This access token expires with your session. Return here to copy the current token after it refreshes.</small>
+        </div> : <Notice tone="danger">Your session token is unavailable. Sign in again before calling this API.</Notice>}
+        {copyError && <Notice tone="danger">{copyError}</Notice>}
+      </section>
       <section className="endpoint-access__section">
         <h3>Application gateway</h3>
         <p>These project-scoped URLs work through the API already serving this UI.</p>

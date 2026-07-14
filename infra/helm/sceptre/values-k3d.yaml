@@ -1,11 +1,15 @@
-# Import the versioned images with `k3d image import` before installation.
+# The documented k3d cluster creates this registry on host port 5111. Keeping
+# application images in a registry lets containerd re-pull dynamic training and
+# inference images after node image garbage collection.
+global:
+  imageRegistry: sceptre-registry.localhost:5111
 api:
-  image: {pullPolicy: Never}
+  image: {pullPolicy: IfNotPresent}
 ui:
-  image: {pullPolicy: Never}
+  image: {pullPolicy: IfNotPresent}
 mlflow:
-  image: {pullPolicy: Never}
+  image: {pullPolicy: IfNotPresent}
 training:
-  imagePullPolicy: Never
+  imagePullPolicy: IfNotPresent
 inference:
-  image: {pullPolicy: Never}
+  image: {pullPolicy: IfNotPresent}

@@ -57,7 +57,7 @@ For shared or repeatable installations, push these tags to a registry and set
 private registry; the chart propagates them to API/UI/dependencies and to model
 training/inference workloads. Digests can be set independently under each image.
 
-## Import images for local clusters
+## Publish images for local clusters
 
 ```bash
 IMAGES="sceptre-api:0.1.0 sceptre-ui:0.1.0 sceptre-mlflow:0.1.0 sceptre-training-cpu:0.1.0 sceptre-inference:0.1.0"
@@ -68,17 +68,50 @@ for image in $IMAGES; do minikube image load "$image"; done
 # kind
 kind load docker-image $IMAGES --name <cluster>
 
-# k3d
-k3d image import $IMAGES --cluster <cluster>
+# k3d: create the registry together with a new cluster
+set -euo pipefail
+k3d cluster create sceptre-local \
+  --registry-create sceptre-registry.localhost:127.0.0.1:5111 \
+  --enforce-registry-port-match
+
+for image in $IMAGES; do
+  docker tag "$image" "localhost:5111/$image"
+  docker push "localhost:5111/$image"
+done
+
+for repository in sceptre-api sceptre-ui sceptre-mlflow sceptre-training-cpu sceptre-inference; do
+  curl --fail --silent "http://127.0.0.1:5111/v2/${repository}/tags/list" \
+    | grep -Fq '"0.1.0"'
+done
 ```
+
+Install that cluster with `values-k3d.yaml`. It points application images at
+`sceptre-registry.localhost:5111` and uses `IfNotPresent`, allowing a node to
+re-pull a dynamic training or inference image after image garbage collection.
+The `--registry-create` form uses the exact registry name supplied above; it
+does not require the extra `k3d-` prefix used in some standalone-registry
+examples.
+An existing cluster created without this registry must be recreated to adopt
+the profile. Back up required data first: deleting a k3d cluster deletes its
+cluster-local persistent volumes. As a temporary recovery for an older cluster,
+`k3d image import sceptre-training-cpu:0.1.0 --cluster <cluster>` makes the CPU
+training image available again, but it is not durable against later garbage
+collection. Use `values-local.yaml` for Helm upgrades while keeping that legacy
+import-based cluster; `values-k3d.yaml` intentionally expects the managed
+registry.
+
+The baseline list contains only the CPU training image. Build, tag, and push
+`sceptre-training-nvidia:0.1.0` or `sceptre-training-intel:0.1.0` as well before
+enabling the corresponding GPU profile.
 
 Docker Desktop's single-node kubeadm provisioner can use locally built images
 with `values-local.yaml`. Its kind provisioner requires Docker Desktop's
 containerd image store and a kind-compatible image workflow. For MicroK8s, tag
 and push the images to its local registry (commonly `localhost:32000`) and
-install with `values-microk8s.yaml`. Image import is an installation action; the
-Sceptre API never invokes these commands. Complete Windows and Linux beginner
-walkthroughs are in the repository's [main README](../../../README.md#quick-start-on-local-kubernetes).
+install with `values-microk8s.yaml`. Loading or publishing images is an
+installation action; the Sceptre API never invokes these commands. Complete
+Windows and Linux beginner walkthroughs are in the repository's
+[main README](../../../README.md#quick-start-on-local-kubernetes).
 
 ## Install
 

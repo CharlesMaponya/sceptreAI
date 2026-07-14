@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, status
 from kubernetes.client import ApiException
@@ -41,6 +41,8 @@ BATCH_RUN_KINDS = (
     RunKind.EXPLAINABILITY,
     RunKind.DRIFT,
 )
+_IMAGE_PULL_BACKOFF_FIRST_SEEN_TAG = "image_pull_backoff_first_seen_at"
+_IMAGE_PULL_BACKOFF_GRACE = timedelta(minutes=2)
 
 
 def estimate_training_run(
@@ -782,6 +784,24 @@ def _sync_run_status(
     }:
         return
     now = datetime.now(UTC)
+    if state in {"image_pull_backoff", "terminal_waiting_failure"}:
+        # Recheck destructive failure decisions after acquiring the run lock. A
+        # registry can recover while this request waits behind another update.
+        state = client.job_state(run.k8s_job_name or "")
+    tags = dict(run.tags or {})
+    if state == "image_pull_backoff":
+        first_seen = _timestamp_from_tag(tags.get(_IMAGE_PULL_BACKOFF_FIRST_SEEN_TAG))
+        if first_seen is None:
+            tags[_IMAGE_PULL_BACKOFF_FIRST_SEEN_TAG] = now.isoformat()
+            run.tags = tags
+            db.flush()
+            return
+        if now - first_seen < _IMAGE_PULL_BACKOFF_GRACE:
+            return
+        state = "terminal_waiting_failure"
+    elif _IMAGE_PULL_BACKOFF_FIRST_SEEN_TAG in tags:
+        tags.pop(_IMAGE_PULL_BACKOFF_FIRST_SEEN_TAG, None)
+        run.tags = tags
     if state == "running":
         run.status = RunStatus.RUNNING
         run.started_at = run.started_at or now
@@ -789,13 +809,19 @@ def _sync_run_status(
         run.status = RunStatus.SUCCEEDED
         run.started_at = run.started_at or run.queued_at
         run.finished_at = now
-    elif state in {"failed", "missing"}:
-        run.status = RunStatus.FAILED
-        if state == "failed":
+    elif state in {"failed", "missing", "terminal_waiting_failure"}:
+        if state in {"failed", "terminal_waiting_failure"}:
             failure_code, failure_message = client.job_failure_details(run.k8s_job_name or "")
         else:
             failure_code = "KUBERNETES_JOB_MISSING"
             failure_message = "The Kubernetes Job no longer exists."
+        if state == "terminal_waiting_failure":
+            try:
+                client.delete_job(run.k8s_job_name or "")
+            except ApiException as exc:
+                if exc.status != 404:
+                    raise
+        run.status = RunStatus.FAILED
         run.failure_code = failure_code
         run.failure_message = failure_message
         if failure_code == "POD_OOM_KILLED":
@@ -814,6 +840,33 @@ def _sync_run_status(
                 "Kubernetes evicted this low-priority training pod because the "
                 "shared node needed its resources."
             )
+        elif failure_code == "TRAINING_IMAGE_NOT_PRESENT":
+            run.plain_english_failure = (
+                "The training image is not available inside this Kubernetes cluster. "
+                "Import it into every local-cluster node, or configure a pullable "
+                "registry image, then start a new run."
+            )
+        elif failure_code == "TRAINING_IMAGE_PULL_FAILED":
+            run.plain_english_failure = (
+                "Kubernetes could not download the training image. Check the image "
+                "name and tag, registry access, and pull credentials; local clusters "
+                "can instead import the image into every node."
+            )
+        elif failure_code == "TRAINING_IMAGE_INVALID":
+            run.plain_english_failure = (
+                "The configured training image name is invalid. Correct its registry, "
+                "repository, and tag before starting a new run."
+            )
+        elif failure_code == "TRAINING_CONTAINER_CONFIG_INVALID":
+            run.plain_english_failure = (
+                "Kubernetes could not assemble the training container. Check the "
+                "required Secrets, ConfigMaps, environment values, and volume mounts."
+            )
+        elif failure_code == "TRAINING_CONTAINER_START_FAILED":
+            run.plain_english_failure = (
+                "Kubernetes could not start the training container. Check its pod "
+                "events, image, and runtime configuration before starting a new run."
+            )
         else:
             run.plain_english_failure = (
                 "The training container failed or disappeared. Review the pod "
@@ -821,6 +874,18 @@ def _sync_run_status(
             )
         run.finished_at = now
     db.flush()
+
+
+def _timestamp_from_tag(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        observed_at = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if observed_at.tzinfo is None:
+        observed_at = observed_at.replace(tzinfo=UTC)
+    return observed_at.astimezone(UTC)
 
 
 def _reconcile_active_runs(
