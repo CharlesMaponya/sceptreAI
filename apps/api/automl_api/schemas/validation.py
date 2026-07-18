@@ -21,6 +21,7 @@ class ExplainabilityLaunchRequest(BaseModel):
     model_name: str = Field(min_length=1, max_length=220)
     max_rows: int = Field(default=200, ge=20, le=1000)
     expected_minutes: int = Field(default=10, ge=1, le=30)
+    force: bool = False
 
 
 class AnalysisLaunchRead(BaseModel):

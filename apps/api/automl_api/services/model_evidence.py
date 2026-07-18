@@ -272,6 +272,53 @@ def build_model_pipeline(
         "stages": stages,
         "feature_processing": processing,
         "parameters": parameters or {},
+        "diagram": _pipeline_diagram(model_name, task_type, processing, excluded_columns or []),
+    }
+
+
+def _pipeline_diagram(
+    model_name: str,
+    task_type: TaskType,
+    processing: dict[str, Any],
+    excluded_columns: list[str],
+) -> dict[str, Any]:
+    """Expose the fitted sklearn-style graph for UI and audit rendering."""
+    return {
+        "input_gates": [
+            "Immutable dataset version",
+            (
+                f"Leakage gate · {len(excluded_columns)} feature(s) removed"
+                if excluded_columns
+                else "Leakage gate · no excluded features"
+            ),
+            "Temporal normalization",
+        ],
+        "transformer": {
+            "name": "preprocessor",
+            "type": "ColumnTransformer",
+            "branches": [
+                {
+                    "key": "numeric",
+                    "label": "Numeric",
+                    "steps": list(processing["numeric_features"]),
+                },
+                {
+                    "key": "categorical",
+                    "label": "Categorical & text",
+                    "steps": list(processing["categorical_and_text_features"]),
+                },
+            ],
+        },
+        "selector": (
+            None
+            if task_type == TaskType.CLUSTERING
+            else {
+                "name": "feature selector",
+                "type": "SelectPercentile",
+                "summary": processing["supervised_feature_selection"],
+            }
+        ),
+        "estimator": {"name": "estimator", "type": model_name},
     }
 
 

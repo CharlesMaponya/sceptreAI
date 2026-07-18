@@ -4,13 +4,19 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from automl_api.core.config import get_settings
 from automl_api.models.enums import AuthProvider
 from automl_api.models.iam import PasswordResetToken, RefreshToken, User
-from automl_api.schemas.auth import RegisterRequest, TokenPair, normalize_email
+from automl_api.schemas.auth import (
+    PasswordChangeRequest,
+    RegisterRequest,
+    TokenPair,
+    UserUpdateRequest,
+    normalize_email,
+)
 from automl_api.security.passwords import hash_password, verify_password
 from automl_api.security.tokens import TokenError, create_signed_token, decode_token, token_hash
 
@@ -149,6 +155,41 @@ def logout_refresh_token(db: Session, refresh_token: str) -> None:
         existing.revoked_at = _now()
 
 
+def revoke_user_sessions(db: Session, user_id: uuid.UUID) -> None:
+    db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None))
+        .values(revoked_at=_now())
+    )
+
+
+def update_user_profile(db: Session, user: User, payload: UserUpdateRequest) -> User:
+    user.email = normalize_email(payload.email)
+    user.full_name = payload.full_name.strip() if payload.full_name else None
+    user.token_version += 1
+    revoke_user_sessions(db, user.id)
+    db.flush()
+    return user
+
+
+def change_user_password(db: Session, user: User, payload: PasswordChangeRequest) -> User:
+    if not user.password_hash or not verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The current password is incorrect.",
+        )
+    if verify_password(payload.new_password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Choose a password you have not already used for this account.",
+        )
+    user.password_hash = hash_password(payload.new_password)
+    user.token_version += 1
+    revoke_user_sessions(db, user.id)
+    db.flush()
+    return user
+
+
 def create_password_reset_token(db: Session, email: str) -> str | None:
     user = db.scalar(select(User).where(User.email == normalize_email(email)))
     if user is None or not user.is_active:
@@ -206,4 +247,5 @@ def confirm_password_reset(db: Session, reset_token: str, new_password: str) -> 
 
     user.password_hash = hash_password(new_password)
     user.token_version += 1
+    revoke_user_sessions(db, user.id)
     stored_token.used_at = _now()

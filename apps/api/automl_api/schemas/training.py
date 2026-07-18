@@ -172,6 +172,7 @@ class ModelPipelineRead(BaseModel):
     stages: list[ModelPipelineStageRead] = Field(default_factory=list)
     feature_processing: dict[str, Any] = Field(default_factory=dict)
     parameters: dict[str, Any] = Field(default_factory=dict)
+    diagram: dict[str, Any] = Field(default_factory=dict)
 
 
 class LeaderboardEntryRead(BaseModel):

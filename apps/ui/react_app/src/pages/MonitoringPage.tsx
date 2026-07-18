@@ -1,12 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Activity, BarChart3, Download, FileCheck2, Filter, Gauge, RefreshCw, Scale,
-  Settings2, Waves,
+  Activity, BarChart3, BellRing, CheckCircle2, ChevronRight, CircleAlert, Download,
+  FileCheck2, Filter, Gauge, RefreshCw, Scale, Settings2, ShieldCheck, Waves,
 } from "lucide-react";
 import { lazy, Suspense, useMemo, useState } from "react";
 import { api, getSession, json } from "../api";
 import {
-  Badge, Button, Card, EmptyState, ErrorState, Loading, Metric, Modal, Notice,
+  Badge, Button, Card, EmptyState, ErrorState, Loading, Modal, Notice,
   PageHeader,
 } from "../components/ui";
 import { formatDate, titleCase } from "../lib";
@@ -60,6 +60,7 @@ export function MonitoringPage() {
   const client = useQueryClient();
   const [projectFilter, setProjectFilter] = useState("all");
   const [healthFilter, setHealthFilter] = useState("all");
+  const [focusedId, setFocusedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<MonitoredDeployment | null>(null);
   const [panel, setPanel] = useState<"config" | "governance" | null>(null);
   const dashboard = useQuery({
@@ -74,20 +75,46 @@ export function MonitoringPage() {
     (projectFilter === "all" || item.project_id === projectFilter)
     && (healthFilter === "all" || item.health_status === healthFilter)),
   [dashboard.data, healthFilter, projectFilter]);
+  const focused = deployments.find((item) => item.deployment_run_id === focusedId) || deployments[0];
+  const reviewQueue = deployments.filter((item) => item.health_status === "critical"
+    || item.health_status === "warning" || !item.monitoring.enabled);
+  const coverage = dashboard.data?.deployment_count
+    ? Math.round(((dashboard.data.deployment_count - dashboard.data.unmonitored_count) / dashboard.data.deployment_count) * 100)
+    : 0;
   const refresh = () => client.invalidateQueries({ queryKey: ["monitoring-dashboard"] });
 
   if (dashboard.isLoading) return <Loading label="Loading model monitoring…" />;
   if (dashboard.error) return <ErrorState error={dashboard.error} retry={() => dashboard.refetch()} />;
   return <>
-    <PageHeader eyebrow="Model portfolio" title="Model metrics"
-      description="Performance, drift, retraining, and governance evidence across every deployment you can access."
+    <PageHeader eyebrow="Model governance" title="Governance dashboard"
+      description="A portfolio-level view of production health, drift, retraining, and audit evidence across every deployment you can access."
       action={<Button variant="secondary" onClick={refresh}><RefreshCw size={15} />Refresh evidence</Button>} />
-    <section className="monitoring-kpis" aria-label="Monitoring summary">
-      <Metric label="Deployments" value={dashboard.data?.deployment_count || 0} hint="across accessible projects" />
-      <Metric label="Healthy" value={dashboard.data?.healthy_count || 0} hint="within configured thresholds" />
-      <Metric label="Needs attention" value={dashboard.data?.attention_count || 0} hint="warning or critical" />
-      <Metric label="Open signals" value={dashboard.data?.open_alert_count || 0} hint="performance or drift" />
-      <Metric label="Not monitored" value={dashboard.data?.unmonitored_count || 0} hint="configuration disabled" />
+    <section className="governance-briefing" aria-label="Governance posture">
+      <article className="governance-posture">
+        <div className="governance-posture__lead"><span><ShieldCheck /></span><div><small>Portfolio posture</small>
+          <h2>{dashboard.data?.attention_count ? "Evidence needs review" : "Controls are operating normally"}</h2>
+          <p>{dashboard.data?.attention_count
+            ? `${dashboard.data.attention_count} deployment${dashboard.data.attention_count === 1 ? "" : "s"} crossed a configured threshold.`
+            : "No monitored deployment currently exceeds its policy thresholds."}</p></div></div>
+        <div className="governance-coverage"><strong>{coverage}%</strong><span>Monitoring coverage</span>
+          <progress value={coverage} max={100} aria-label="Monitoring coverage" /></div>
+        <dl className="governance-posture__facts">
+          <div><dt>Healthy</dt><dd>{dashboard.data?.healthy_count || 0}</dd></div>
+          <div><dt>Needs attention</dt><dd>{dashboard.data?.attention_count || 0}</dd></div>
+          <div><dt>Open evidence</dt><dd>{dashboard.data?.open_alert_count || 0}</dd></div>
+          <div><dt>Not monitored</dt><dd>{dashboard.data?.unmonitored_count || 0}</dd></div>
+        </dl>
+      </article>
+      <aside className="governance-review-queue">
+        <header><div><span className="eyebrow">Review queue</span><h2>Where to look next</h2></div>
+          <span className="governance-review-count">{reviewQueue.length}</span></header>
+        {reviewQueue.length ? <div>{reviewQueue.slice(0, 4).map((deployment) =>
+          <button key={deployment.deployment_run_id} onClick={() => setFocusedId(deployment.deployment_run_id)}>
+            {deployment.health_status === "critical" ? <CircleAlert /> : deployment.monitoring.enabled ? <BellRing /> : <Waves />}
+            <span><b>{deployment.model_name}</b><small>{deployment.project_name} · {deployment.monitoring.enabled ? titleCase(deployment.health_status) : "Monitoring disabled"}</small></span>
+            <ChevronRight /></button>)}</div>
+          : <div className="governance-queue-clear"><CheckCircle2 /><b>Nothing waiting</b><span>All monitored deployments are within policy.</span></div>}
+      </aside>
     </section>
     <Card className="monitoring-toolbar">
       <div><Filter size={16} /><span>Focus the portfolio</span></div>
@@ -102,10 +129,22 @@ export function MonitoringPage() {
       </select></label>
       <small>Updated {formatDate(dashboard.data?.generated_at)}</small>
     </Card>
-    {deployments.length ? <div className="monitoring-list">{deployments.map((deployment) =>
-      <DeploymentMonitor key={deployment.deployment_run_id} deployment={deployment}
-        configure={() => { setSelected(deployment); setPanel("config"); }}
-        govern={() => { setSelected(deployment); setPanel("governance"); }} />)}</div>
+    {deployments.length && focused ? <section className="monitoring-workbench" aria-label="Deployment evidence">
+      <aside className="monitoring-index"><header><span className="eyebrow">Deployment index</span>
+        <h2>{deployments.length} model{deployments.length === 1 ? "" : "s"}</h2></header>
+        <div>{deployments.map((deployment) => <button key={deployment.deployment_run_id}
+          className={deployment.deployment_run_id === focused.deployment_run_id ? "active" : ""}
+          aria-pressed={deployment.deployment_run_id === focused.deployment_run_id}
+          onClick={() => setFocusedId(deployment.deployment_run_id)}>
+          <i className={`timeline-dot timeline-dot--${deployment.health_status}`} />
+          <span><b>{deployment.model_name}</b>
+            <small>{deployment.project_name} · {titleCase(deployment.environment)}</small></span>
+          <Badge status={deployment.health_status} /></button>)}</div>
+      </aside>
+      <DeploymentEvidence key={focused.deployment_run_id} deployment={focused}
+        configure={() => { setSelected(focused); setPanel("config"); }}
+        govern={() => { setSelected(focused); setPanel("governance"); }} />
+    </section>
       : <Card><EmptyState icon={<Waves />} title="No deployments match this view"
         description="Change the filters, or deploy a registered model before collecting production evidence." /></Card>}
     {selected && panel === "config" && <MonitoringConfigModal deployment={selected}
@@ -115,7 +154,7 @@ export function MonitoringPage() {
   </>;
 }
 
-function DeploymentMonitor({ deployment, configure, govern }: {
+function DeploymentEvidence({ deployment, configure, govern }: {
   deployment: MonitoredDeployment; configure: () => void; govern: () => void;
 }) {
   const options = [
@@ -134,8 +173,8 @@ function DeploymentMonitor({ deployment, configure, govern }: {
     ? "Awaiting production evidence"
     : deployment.health_status === "healthy" ? "Within configured thresholds"
       : deployment.health_status === "warning" ? "Review recent degradation" : "Action required";
-  return <article className={`monitoring-deployment monitoring-deployment--${deployment.health_status}`}>
-    <header className="monitoring-deployment__header">
+  return <article className={`monitoring-focus monitoring-focus--${deployment.health_status}`}>
+    <header className="monitoring-focus__header">
       <div className="monitoring-model-mark"><Gauge /></div>
       <div><span>{deployment.project_name} · {titleCase(deployment.environment)}</span>
         <h2>{deployment.model_name}{deployment.model_version ? ` v${deployment.model_version}` : ""}</h2>
@@ -143,7 +182,7 @@ function DeploymentMonitor({ deployment, configure, govern }: {
       <div className="monitoring-health"><Badge status={deployment.health_status} />
         <small>{statusCopy}</small></div>
     </header>
-    <div className="monitoring-deployment__body">
+    <div className="monitoring-focus__body">
       <section className="monitoring-chart-panel">
         <div className="monitoring-chart-panel__head"><div><span>Evidence over time</span>
           <strong>{latest?.value == null ? "No observations" : formatMetric(latest.name, latest.value)}</strong></div>

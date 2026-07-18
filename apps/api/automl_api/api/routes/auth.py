@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import smtplib
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -14,25 +16,32 @@ from automl_api.schemas.auth import (
     AuthResponse,
     LoginRequest,
     LogoutRequest,
+    PasswordChangeRequest,
     PasswordResetConfirm,
     PasswordResetRequest,
     PasswordResetResponse,
     RefreshRequest,
     RegisterRequest,
+    RegistrationResponse,
     TokenPair,
     UserRead,
+    UserUpdateRequest,
 )
 from automl_api.services.auth import (
     authenticate_user,
+    change_user_password,
     confirm_password_reset,
     create_password_reset_token,
     issue_token_pair,
     logout_refresh_token,
     register_user,
     rotate_refresh_token,
+    update_user_profile,
 )
+from automl_api.services.email import send_password_reset_email
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 
 def _client_context(request: Request) -> tuple[str | None, str | None]:
@@ -41,12 +50,11 @@ def _client_context(request: Request) -> tuple[str | None, str | None]:
     return user_agent, ip_address
 
 
-@router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=RegistrationResponse, status_code=status.HTTP_201_CREATED)
 def register(
     payload: RegisterRequest,
-    request: Request,
     db: Annotated[Session, Depends(get_db)],
-) -> AuthResponse:
+) -> RegistrationResponse:
     settings = get_settings()
     if not settings.simple_auth_enabled:
         raise HTTPException(
@@ -56,9 +64,8 @@ def register(
 
     try:
         user = register_user(db, payload)
-        user_agent, ip_address = _client_context(request)
-        tokens = issue_token_pair(db, user, user_agent=user_agent, ip_address=ip_address)
         db.commit()
+        db.refresh(user)
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(
@@ -66,7 +73,7 @@ def register(
             detail="A user with this email already exists.",
         ) from exc
 
-    return AuthResponse(user=UserRead.model_validate(user), tokens=tokens)
+    return RegistrationResponse(user=UserRead.model_validate(user))
 
 
 @router.post("/login", response_model=AuthResponse)
@@ -122,6 +129,43 @@ def me(current_user: Annotated[User, Depends(get_current_user)]) -> UserRead:
     return UserRead.model_validate(current_user)
 
 
+@router.patch("/me", response_model=AuthResponse)
+def update_me(
+    payload: UserUpdateRequest,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> AuthResponse:
+    try:
+        user = update_user_profile(db, current_user, payload)
+        user_agent, ip_address = _client_context(request)
+        tokens = issue_token_pair(db, user, user_agent=user_agent, ip_address=ip_address)
+        db.commit()
+        db.refresh(user)
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A user with this email already exists.",
+        ) from exc
+    return AuthResponse(user=UserRead.model_validate(user), tokens=tokens)
+
+
+@router.post("/password/change", response_model=AuthResponse)
+def change_password(
+    payload: PasswordChangeRequest,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> AuthResponse:
+    user = change_user_password(db, current_user, payload)
+    user_agent, ip_address = _client_context(request)
+    tokens = issue_token_pair(db, user, user_agent=user_agent, ip_address=ip_address)
+    db.commit()
+    db.refresh(user)
+    return AuthResponse(user=UserRead.model_validate(user), tokens=tokens)
+
+
 @router.post("/password-reset/request", response_model=PasswordResetResponse)
 def request_password_reset(
     payload: PasswordResetRequest,
@@ -129,6 +173,12 @@ def request_password_reset(
 ) -> PasswordResetResponse:
     reset_token = create_password_reset_token(db, payload.email)
     db.commit()
+
+    if reset_token:
+        try:
+            send_password_reset_email(payload.email, reset_token)
+        except (OSError, smtplib.SMTPException):
+            logger.exception("Password reset email delivery failed")
 
     response = PasswordResetResponse()
     if get_settings().environment != "production":

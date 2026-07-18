@@ -9,3 +9,4 @@ training:
   imagePullPolicy: Never
 inference:
   image: {pullPolicy: Never}
+environment: local

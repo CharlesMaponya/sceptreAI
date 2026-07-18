@@ -181,8 +181,12 @@ describe("core workflow integrations", () => {
     expect(screen.getByText("Nvidia × 1")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: "Pipeline" }));
     expect(screen.getByRole("heading", { name: "Training pipeline" })).toBeInTheDocument();
-    expect(screen.getByText("Feature selection")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Audit document/i })).toBeInTheDocument();
+    expect(screen.getByText("ColumnTransformer")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Numeric" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Categorical & text" })).toBeInTheDocument();
+    expect(screen.getAllByText("Feature selection").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /Download PDF audit/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /JSON evidence/i })).not.toBeInTheDocument();
     const logTabs = screen.getAllByRole("tab", { name: "Logs" });
     await userEvent.click(logTabs[logTabs.length - 1]);
     expect(await screen.findByLabelText("Training logs")).toHaveTextContent("candidate completed");

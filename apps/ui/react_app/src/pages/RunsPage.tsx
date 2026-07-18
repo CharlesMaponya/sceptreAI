@@ -231,38 +231,64 @@ function ModelPipeline({ projectId, runId, entry, task }: {
   projectId: string; runId: string; entry: LeaderboardEntry; task: TaskType;
 }) {
   const [downloadError, setDownloadError] = useState("");
-  const [downloading, setDownloading] = useState<"html" | "json" | null>(null);
+  const [downloadStatus, setDownloadStatus] = useState("");
+  const diagram = entry.pipeline?.diagram || fallbackPipelineDiagram(entry, task);
   const stages = entry.pipeline?.stages || fallbackPipeline(entry, task);
-  const download = async (format: "html" | "json") => {
-    setDownloading(format); setDownloadError("");
+  const download = async () => {
+    setDownloadStatus("Preparing audit evidence…"); setDownloadError("");
     try {
-      await downloadModelAudit(projectId, runId, entry.model, format);
+      await downloadModelAudit(projectId, runId, entry.model, setDownloadStatus);
     } catch (error) {
       setDownloadError(error instanceof Error ? error.message : "The audit document could not be downloaded.");
     } finally {
-      setDownloading(null);
+      setDownloadStatus("");
     }
   };
   return <section className="model-pipeline-evidence">
-    <header><div><span className="eyebrow">Candidate execution</span><h3>Training pipeline</h3>
-      <p>Actual preprocessing, validation, fitting, evaluation, and persistence stages for this candidate.</p></div>
+    <header><div><span className="eyebrow">Fitted estimator graph</span><h3>Training pipeline</h3>
+      <p>The preprocessing branches that transform each feature family before they converge into this estimator.</p></div>
       <div className="model-audit-actions">
-        <Button variant="secondary" loading={downloading === "html"} onClick={() => download("html")}>
-          <Download size={14} />Audit document</Button>
-        <Button variant="ghost" loading={downloading === "json"} onClick={() => download("json")}>
-          JSON evidence</Button>
+        <Button variant="secondary" loading={Boolean(downloadStatus)} onClick={download}>
+          <Download size={14} />Download PDF audit</Button>
       </div></header>
     {downloadError && <Notice tone="danger">{downloadError}</Notice>}
-    <ol className="model-pipeline-flow">
-      {stages.map((stage, index) => <li key={stage.key} data-status={stage.status}>
-        <div><span>{index + 1}</span><GitBranch size={15} /></div><small>{titleCase(stage.status)}</small>
-        <b>{stage.label}</b><p>{stage.summary}</p>
-      </li>)}
-    </ol>
+    {downloadStatus && <Notice>{downloadStatus}</Notice>}
+    <PipelineDiagram diagram={diagram} modelName={entry.model} />
+    <details className="pipeline-lifecycle"><summary>Execution evidence</summary><ol>
+      {stages.map((stage) => <li key={stage.key} data-status={stage.status}>
+        <i className={`timeline-dot timeline-dot--${stage.status}`} /><span><b>{stage.label}</b><small>{stage.summary}</small></span>
+        <Badge status={stage.status} /></li>)}</ol></details>
     <div className="pipeline-footnote"><FileCheck2 size={15} /><p><b>Audit scope</b>
-      The download includes target evidence, every recorded preparation step, model mathematics, metrics,
-      diagnostics, and model-specific SHAP evidence when it has been calculated.</p></div>
+      The PDF includes project context, UI-consistent target evidence, every recorded preparation step,
+      all model metrics, tabular diagnostics, and a required model-specific SHAP waterfall.</p></div>
   </section>;
+}
+
+function PipelineDiagram({ diagram, modelName }: {
+  diagram: NonNullable<NonNullable<Leaderboard["entries"][number]["pipeline"]>["diagram"]>;
+  modelName: string;
+}) {
+  const transformer = diagram.transformer;
+  const branches = transformer?.branches || [];
+  return <div className="pipeline-diagram" aria-label={`${modelName} fitted pipeline`}>
+    <div className="pipeline-gates">{(diagram.input_gates || []).map((gate) => <span key={gate}>{gate}</span>)}</div>
+    <div className="pipeline-node pipeline-node--root"><GitBranch /><span><small>Pipeline step</small><b>Feature preprocessing</b></span></div>
+    <i className="pipeline-connector pipeline-connector--down" />
+    <section className="pipeline-transformer">
+      <header><ChevronDown /><span><small>{transformer?.name || "preprocessor"}</small><b>{transformer?.type || "ColumnTransformer"}</b></span></header>
+      <div className="pipeline-branches">{branches.map((branch) => <article key={branch.key}>
+        <h4><GitBranch />{branch.label}</h4><ol>{branch.steps.map((step, index) =>
+          <li key={`${step}-${index}`}><span>{index + 1}</span><b>{step}</b></li>)}</ol>
+      </article>)}</div>
+      <div className="pipeline-convergence" aria-hidden><i /><i /><b /></div>
+    </section>
+    {diagram.selector && <><i className="pipeline-connector pipeline-connector--down" />
+      <div className="pipeline-node pipeline-node--selector"><span><small>{diagram.selector.name}</small>
+        <b>{diagram.selector.type}</b><em>{diagram.selector.summary}</em></span></div></>}
+    <i className="pipeline-connector pipeline-connector--down" />
+    <div className="pipeline-node pipeline-node--estimator"><Gauge /><span><small>{diagram.estimator?.name || "estimator"}</small>
+      <b>{diagram.estimator?.type || modelName}</b></span></div>
+  </div>;
 }
 
 function fallbackPipeline(entry: LeaderboardEntry, task: TaskType) {
@@ -280,15 +306,44 @@ function fallbackPipeline(entry: LeaderboardEntry, task: TaskType) {
   ];
 }
 
+function fallbackPipelineDiagram(entry: LeaderboardEntry, task: TaskType) {
+  return {
+    input_gates: ["Immutable dataset version", "Leakage gate", "Temporal normalization"],
+    transformer: { name: "preprocessor", type: "ColumnTransformer", branches: [
+      { key: "numeric", label: "Numeric", steps: ["Median imputation", "Standard scaling"] },
+      { key: "categorical", label: "Categorical & text", steps: ["Most-frequent imputation", "Ordinal encoding"] },
+    ] },
+    selector: task === "clustering" ? null : {
+      name: "Feature selection", type: "SelectPercentile", summary: "Keep the top 80% by mutual information.",
+    },
+    estimator: { name: "estimator", type: entry.model },
+  };
+}
+
 async function downloadModelAudit(
   projectId: string,
   runId: string,
   modelName: string,
-  format: "html" | "json",
+  updateStatus: (status: string) => void,
 ) {
-  const token = getSession()?.tokens.access_token;
-  const path = `/api/v1/projects/${projectId}/training/runs/${runId}/models/${encodeURIComponent(modelName)}/audit-document?format=${format}`;
-  const response = await fetch(path, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  const path = `/api/v1/projects/${projectId}/training/runs/${runId}/models/${encodeURIComponent(modelName)}/audit-document`;
+  const fetchAudit = () => {
+    const token = getSession()?.tokens.access_token;
+    return fetch(path, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  };
+  let response = await fetchAudit();
+  if (response.status === 409) {
+    const body = await response.json().catch(() => null) as { detail?: { code?: string; message?: string } } | null;
+    if (body?.detail?.code !== "AUDIT_SHAP_REQUIRED") {
+      throw new Error(body?.detail?.message || `Audit preparation failed (${response.status}).`);
+    }
+    updateStatus("Calculating the required representative SHAP waterfall…");
+    const launched = await api<{ run: Analysis }>(`/projects/${projectId}/training/runs/${runId}/explanations`,
+      json("POST", { model_name: modelName, max_rows: 200, expected_minutes: 10, force: true }));
+    await waitForAuditExplanation(projectId, runId, launched.run.id, updateStatus);
+    updateStatus("Rendering the verified PDF evidence package…");
+    response = await fetchAudit();
+  }
   if (!response.ok) {
     const detail = await response.text();
     throw new Error(detail || `Audit download failed (${response.status}).`);
@@ -296,9 +351,27 @@ async function downloadModelAudit(
   const url = URL.createObjectURL(await response.blob());
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `${modelName.replace(/[^A-Za-z0-9_.-]+/g, "-")}-audit.${format}`;
+  anchor.download = `${modelName.replace(/[^A-Za-z0-9_.-]+/g, "-")}-audit.pdf`;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+async function waitForAuditExplanation(
+  projectId: string, runId: string, analysisRunId: string,
+  updateStatus: (status: string) => void,
+) {
+  for (let attempt = 0; attempt < 300; attempt += 1) {
+    const result = await api<AnalysisResult>(
+      `/projects/${projectId}/training/runs/${runId}/analyses/${analysisRunId}`,
+    );
+    if (result.status === "succeeded") return;
+    if (["failed", "cancelled", "preempted"].includes(result.status)) {
+      throw new Error("SHAP preparation did not complete, so the audit PDF was not generated.");
+    }
+    updateStatus(`Calculating SHAP evidence · ${titleCase(result.status)}`);
+    await new Promise((resolve) => window.setTimeout(resolve, 2000));
+  }
+  throw new Error("SHAP preparation timed out before the audit PDF could be generated.");
 }
 
 function LiveTrainingSummary({ resources }: {

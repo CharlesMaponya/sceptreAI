@@ -99,7 +99,8 @@ def launch_explainability_run(
         source,
         str(model_entry["model"]),
     )
-    if existing is not None:
+    active_statuses = {RunStatus.QUEUED, RunStatus.PRECHECK_RUNNING, RunStatus.RUNNING}
+    if existing is not None and (not request.force or existing.status in active_statuses):
         return AnalysisLaunchRead(
             run=ModelRunRead.model_validate(existing),
             cached=True,

@@ -5,12 +5,14 @@ export type RunStatus =
 
 export interface User {
   id: ID; email: string; full_name: string | null; global_role: string;
-  is_active: boolean; is_verified: boolean; created_at: string;
+  auth_provider?: string; is_active: boolean; is_verified: boolean; created_at: string;
 }
 export interface Tokens {
   access_token: string; refresh_token: string; token_type: string; expires_in: number;
 }
 export interface AuthResponse { user: User; tokens: Tokens }
+export interface RegistrationResponse { user: User; message: string }
+export interface PasswordResetResponse { message: string; reset_token_for_dev?: string | null }
 export interface Project {
   id: ID; owner_id: ID; name: string; description: string | null;
   status: string; settings: Record<string, unknown>; created_at: string; updated_at: string;
@@ -113,6 +115,12 @@ export interface LeaderboardEntry {
     model_name: string; task_type: string; state: string; current_phase?: string | null;
     stages: Array<{ key: string; label: string; status: string; summary: string }>;
     feature_processing: Record<string, unknown>; parameters: Record<string, unknown>;
+    diagram?: {
+      input_gates?: string[];
+      transformer?: { name: string; type: string; branches: Array<{ key: string; label: string; steps: string[] }> };
+      selector?: { name: string; type: string; summary: string } | null;
+      estimator?: { name: string; type: string };
+    };
   };
 }
 export interface Leaderboard {

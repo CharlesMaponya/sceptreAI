@@ -1,5 +1,6 @@
 nameOverride: ""
 fullnameOverride: ""
+environment: production
 
 global:
   imageRegistry: ""
@@ -42,6 +43,19 @@ auth:
   existingSecret: ""
   jwtSecretKey: JWT_SECRET_KEY
   simpleAuthEnabled: true
+  publicAppUrl: http://localhost:8080
+  passwordResetEmail:
+    # Leave host/fromEmail empty for local development. The API then exposes a
+    # one-time reset link only outside production.
+    host: ""
+    port: 587
+    username: ""
+    password: ""
+    usernameKey: SMTP_USERNAME
+    passwordKey: SMTP_PASSWORD
+    fromEmail: ""
+    startTls: true
+    useSsl: false
 
 postgresql:
   enabled: true

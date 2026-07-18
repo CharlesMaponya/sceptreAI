@@ -6,6 +6,7 @@ import { Auth } from "./Auth";
 import { Layout } from "./Layout";
 import { Landing } from "./Landing";
 import { DataPage } from "./pages/DataPage";
+import { AccountPage } from "./pages/AccountPage";
 import { MembersPage } from "./pages/MembersPage";
 import { MonitoringPage } from "./pages/MonitoringPage";
 import { OperationsPage } from "./pages/OperationsPage";
@@ -41,6 +42,7 @@ const router = createBrowserRouter([
   { element: <Protected />, children: [
     { path: "/projects", element: <ProjectsPage /> },
     { path: "/monitoring", element: <MonitoringPage /> },
+    { path: "/account", element: <AccountPage /> },
     { path: "/projects/:projectId", children: [
       { index: true, element: <ProjectOverview /> },
       { path: "data", element: <DataPage /> },

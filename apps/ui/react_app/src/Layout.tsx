@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   Activity, BarChart3, Boxes, ChevronDown, Database, FolderKanban, Gauge,
-  LogOut, Menu, Settings, ShieldCheck, Users, X,
+  LogOut, Menu, Settings, ShieldCheck, UserRound, Users, X,
 } from "lucide-react";
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
@@ -38,7 +38,6 @@ export function Layout() {
       <nav className="sidebar__nav sidebar__nav--portfolio" aria-label="Portfolio navigation">
         <span>Portfolio</span>
         <NavLink to="/projects" end onClick={() => setOpen(false)}><FolderKanban size={18} /><span>Projects</span></NavLink>
-        <NavLink to="/monitoring" onClick={() => setOpen(false)}><Activity size={18} /><span>Model metrics</span></NavLink>
       </nav>
       {projectId && <>
         <div className="project-switcher">
@@ -57,6 +56,10 @@ export function Layout() {
         </nav>
       </>}
       {!projectId && <div className="sidebar__pitch"><ShieldCheck /><b>Private by design</b><p>Project access and model lineage stay governed at every step.</p></div>}
+      <nav className="sidebar__account" aria-label="Account and governance">
+        <NavLink to="/monitoring" onClick={() => setOpen(false)}><ShieldCheck size={17} /><span>Governance dashboard</span></NavLink>
+        <NavLink to="/account" onClick={() => setOpen(false)}><UserRound size={17} /><span>Profile & security</span></NavLink>
+      </nav>
       <div className="sidebar__user"><div className="avatar">{initials(session.user.full_name, session.user.email)}</div>
         <div><b>{session.user.full_name || "Sceptre user"}</b><small>{session.user.email}</small></div>
         <button className="icon-button" onClick={logout} title="Sign out" aria-label="Sign out"><LogOut size={17} /></button>

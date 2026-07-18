@@ -844,6 +844,9 @@ The most important operational settings are:
 | `TRAINING_MAX_ACTIVE_DEADLINE_SECONDS` | `86400` | Maximum Job safety deadline |
 | `TRAINING_DEADLINE_MULTIPLIER` | `6` | Planned-duration safety multiplier |
 | `JWT_ACCESS_TOKEN_MINUTES` | `1440` | Access-token lifetime |
+| `PUBLIC_APP_URL` | `http://localhost:8080` | Browser URL used in password-reset links |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM_EMAIL` | Unset, `587`, unset | Optional production password-reset email transport |
+| `SMTP_USERNAME`, `SMTP_PASSWORD` | Unset | Optional SMTP credentials; store these in a Kubernetes Secret |
 | `OBJECT_STORE_ENDPOINT` | Environment-specific | MinIO or compatible object-store endpoint |
 | `OBJECT_STORE_BUCKET` | `automl` | Shared bucket used by the API and Kubernetes Jobs |
 | `OBJECT_STORE_ACCESS_KEY` | Environment-specific | MinIO access key |

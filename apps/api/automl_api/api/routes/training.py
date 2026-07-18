@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from typing import Annotated, Literal
+from typing import Annotated
 
 from fastapi import (
     APIRouter,
@@ -196,7 +196,6 @@ def audit_document(
     model_name: str,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    output_format: Annotated[Literal["html", "json"], Query(alias="format")] = "html",
 ) -> Response:
     content, media_type, filename, evidence_hash = model_audit_document(
         db,
@@ -204,7 +203,7 @@ def audit_document(
         project_id,
         run_id,
         model_name,
-        output_format,
+        "pdf",
     )
     return Response(
         content=content,

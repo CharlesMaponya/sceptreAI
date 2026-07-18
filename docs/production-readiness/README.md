@@ -155,8 +155,7 @@ The following are code or operational gaps, not configuration suggestions.
 
 | Area | Current baseline | Production implication |
 | --- | --- | --- |
-| Environment mode | The Helm ConfigMap hard-codes `ENVIRONMENT: kubernetes` | API docs remain enabled and password-reset responses can expose a development reset token; production launch is blocked |
-| Identity | Local email/password authentication and self-registration are enabled by default; tokens are stored in browser `localStorage` | Disabling registration is not OIDC/SSO. Identity, account lifecycle, secure token handling, and CSRF/session policy require an approved design |
+| Identity | Local email/password authentication includes registration, login, rotating refresh tokens, profile updates, password change, and SMTP-backed reset; self-registration remains enabled by default and browser tokens use `localStorage` | Production still requires configured SMTP, an approved registration policy, hardened browser token/session handling, and a reviewed CSRF/XSS threat model |
 | Dataset ingestion | The browser reports multipart progress, but FastAPI calls `file.file.read()` and buffers the complete upload before object-store persistence | The former 5 GB or 10 GB goal is not a supported current limit; memory-safe resumable or direct-to-object-store upload is required |
 | Training memory | Training reads complete dataset objects before creating in-memory pandas structures | Raw file size is not a memory requirement; large-data claims require a bounded or distributed implementation and load evidence |
 | Profiling durability | Profiling runs in a FastAPI-owned thread pool and incomplete jobs are resumed at API startup | API restarts and multiple API replicas do not provide safe exactly-once or leased execution |
@@ -167,7 +166,7 @@ The following are code or operational gaps, not configuration suggestions.
 | Secrets | Defaults contain local JWT, PostgreSQL, and MinIO credentials | Default values are unsafe anywhere shared; static object-store root credentials also exceed least privilege |
 | Serving security | Generic inference endpoints have no built-in authentication, authorization, rate limit, or request quota | An external gateway alone must not expose them until protection and tenant isolation are verified |
 | Model delivery | A Dockerfile is generated as evidence, but no model builder scans, signs, pushes, resolves, or deploys a model-specific immutable image | Current one-click deployment is a functional baseline, not a governed supply-chain boundary |
-| Observability | Health probes, run status, logs, optional resource telemetry, and analyst-initiated drift checks exist | Central platform telemetry, deployment-anchored model performance/drift history, dashboards, alerts, audit export, SLOs, and on-call runbooks are not supplied |
+| Observability | Health probes, run status, logs, optional resource telemetry, deployment-linked metric/drift history, a governance dashboard, and versioned audit evidence exist | Operator alert delivery, durable telemetry retention policy, platform SLOs, and on-call runbooks still require deployment-specific integration and validation |
 | Recovery | Retained PVCs and migrations exist; backup/restore automation does not | Restore time, restore point, credential continuity, and rollback are unproven |
 | Release safety | Unit/frontend/migration/render CI exists | Live cluster upgrade, rollback, disaster recovery, security, performance, and multi-cluster qualification are incomplete |
 
