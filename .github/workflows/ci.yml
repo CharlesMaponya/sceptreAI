@@ -11,10 +11,10 @@ jobs:
     name: Lint & Format Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -46,10 +46,10 @@ jobs:
           - 5432:5432
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -59,7 +59,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev,ml,k8s]"
       
-      - name: Run tests with coverage
+      - name: Verify database migrations
         env:
           DATABASE_URL: postgresql+psycopg://automl:automl@localhost:5432/automl_test
           JWT_SECRET_KEY: test-secret-key
@@ -67,6 +67,12 @@ jobs:
           alembic upgrade head
           python scripts/verify_database_schema.py
           alembic check
+
+      - name: Run tests with coverage
+        env:
+          DATABASE_URL: postgresql+psycopg://automl:automl@localhost:5432/automl_test
+          JWT_SECRET_KEY: test-secret-key
+        run: |
           pytest tests/ -v --tb=short \
             --cov \
             --cov-report=term-missing \
@@ -75,8 +81,8 @@ jobs:
             --cov-fail-under=40
 
       - name: Upload coverage reports
-        if: always()
-        uses: actions/upload-artifact@v4
+        if: ${{ always() && hashFiles('coverage.xml') != '' }}
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-report
           path: |
@@ -92,9 +98,9 @@ jobs:
       run:
         working-directory: apps/ui/react_app
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: npm
@@ -113,10 +119,10 @@ jobs:
     name: Python Syntax Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
       
@@ -127,10 +133,10 @@ jobs:
     name: Helm Chart Regression
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v5
         with:
           version: v4.2.2
 

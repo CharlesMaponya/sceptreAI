@@ -22,7 +22,6 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import (
     Flowable,
-    Image,
     PageBreak,
     Paragraph,
     SimpleDocTemplate,
@@ -88,7 +87,6 @@ def model_audit_document(
         parameters=dict(entry.get("best_params") or {}),
         excluded_columns=excluded_columns,
     )
-    _require_audit_waterfall(contributions)
     generated_at = datetime.now(UTC)
     missing_evidence = _missing_evidence(profile, target_profile, entry, contributions)
     primary_metric = source.tags.get("leaderboard_primary_metric")
@@ -434,21 +432,6 @@ def _missing_evidence(
     return missing
 
 
-def _require_audit_waterfall(contributions: dict[str, Any]) -> None:
-    if contributions.get("waterfall", {}).get("status") == "available":
-        return
-    raise HTTPException(
-        status_code=status.HTTP_409_CONFLICT,
-        detail={
-            "code": "AUDIT_SHAP_REQUIRED",
-            "message": (
-                "A representative SHAP waterfall is required before the audit PDF "
-                "can be generated. Recalculate explainability for this model."
-            ),
-        },
-    )
-
-
 NAVY = colors.HexColor("#172136")
 BLUE = colors.HexColor("#2854C5")
 BLUE_SOFT = colors.HexColor("#EAF0FB")
@@ -488,49 +471,42 @@ def _audit_pdf(report: dict[str, Any]) -> bytes:
     )
     story: list[Any] = []
 
+    story.append(Paragraph('<a name="overview"/>', styles["body"]))
     story.extend(_pdf_brand_header(identity, styles))
+    story.append(_section_heading("1. Overview", "overview-section", styles))
     project_description = (
         identity.get("project_description") or "No project description was supplied."
     )
     story.append(Paragraph(_escape(project_description), styles["project_description"]))
+    story.append(Spacer(1, 4 * mm))
+    story.append(_pdf_overview_grid(report, styles))
     story.append(Spacer(1, 5 * mm))
-    story.append(
-        _pdf_table(
-            [
-                ("Project", identity.get("project_name")),
-                ("Task", str(identity.get("task_type", "")).replace("_", " ").title()),
-                ("Target", identity.get("target_column") or "Not applicable"),
-                ("Candidate status", identity.get("candidate_status")),
-                ("Leaderboard rank", identity.get("rank")),
-                ("Training run", identity.get("training_run_id")),
-                ("Generated", document.get("generated_at")),
-                ("Evidence SHA-256", document.get("evidence_sha256")),
-            ],
-            styles,
-            key_value=True,
-            column_widths=[37 * mm, 112 * mm],
-        )
-    )
+    story.append(Paragraph("Document contents", styles["subheading"]))
+    story.append(_pdf_contents_table(styles))
     if document.get("missing_evidence"):
-        story.append(Spacer(1, 4 * mm))
+        story.append(Spacer(1, 3 * mm))
         story.append(
             _pdf_notice(
                 "Evidence still unavailable: " + ", ".join(document["missing_evidence"]),
                 styles,
             )
         )
-    story.append(Spacer(1, 7 * mm))
-    story.extend(_pdf_contents(styles))
 
     story.append(PageBreak())
-    story.append(_section_heading("Project and target", "project-target", styles))
-    story.extend(_pdf_project_target_intro(identity, dataset, styles))
+    story.append(
+        _section_heading(
+            "2. Task type and target visualization",
+            "task-and-target",
+            styles,
+        )
+    )
+    story.extend(_pdf_task_target_intro(identity, dataset, styles))
     story.extend(_pdf_target_section(identity, dataset, styles))
 
     story.append(PageBreak())
     story.append(
         _section_heading(
-            "Feature preparation and recorded actions",
+            "3. Feature preparation and recorded actions",
             "feature-preparation",
             styles,
         )
@@ -538,48 +514,38 @@ def _audit_pdf(report: dict[str, Any]) -> bytes:
     story.extend(_pdf_feature_processing_section(processing, styles))
 
     story.append(PageBreak())
-    story.append(_section_heading("Training pipeline", "training-pipeline", styles))
+    story.append(
+        _section_heading(
+            "4. Training pipeline, record and tuning",
+            "training-pipeline",
+            styles,
+        )
+    )
     story.append(
         Paragraph(
             "The fitted preprocessing branches converge into the exact candidate estimator. "
-            "Execution status is retained as separate audit evidence.",
+            "The execution record and tuning contract below preserve how that fitted model was produced.",
             styles["body"],
         )
     )
-    story.append(Spacer(1, 4 * mm))
-    story.append(
-        PipelinePdfFlowable(
-            report["training_pipeline"].get("diagram") or {},
-            width=CONTENT_WIDTH,
-        )
+    story.append(Spacer(1, 2 * mm))
+    pipeline_diagram = PipelinePdfFlowable(
+        report["training_pipeline"].get("diagram") or {},
+        width=112 * mm,
     )
-    story.append(Spacer(1, 5 * mm))
-    stage_rows = [
-        [stage.get("label"), stage.get("status"), stage.get("summary")]
-        for stage in report["training_pipeline"].get("stages", [])
-    ]
-    story.append(
-        _pdf_table(
-            stage_rows,
+    pipeline_diagram.hAlign = "CENTER"
+    story.append(pipeline_diagram)
+    story.append(Spacer(1, 3 * mm))
+    story.extend(
+        _pdf_training_record_section(
+            report["training_pipeline"],
+            training,
             styles,
-            headers=["Execution stage", "Status", "Recorded evidence"],
-            column_widths=[34 * mm, 23 * mm, 92 * mm],
-        )
-    )
-
-    story.append(Spacer(1, 7 * mm))
-    story.append(Paragraph("Training and tuning", styles["section_title"]))
-    story.append(
-        _pdf_table(
-            _flatten_rows(training),
-            styles,
-            headers=["Training field", "Recorded value"],
-            column_widths=[47 * mm, 102 * mm],
         )
     )
 
     story.append(PageBreak())
-    story.append(_section_heading("Model performance", "model-performance", styles))
+    story.append(_section_heading("5. Model performance", "model-performance", styles))
     story.append(
         Paragraph(
             "Every score and visual below comes from the selected candidate's persisted "
@@ -595,7 +561,7 @@ def _audit_pdf(report: dict[str, Any]) -> bytes:
             styles,
         )
     )
-    story.append(Spacer(1, 6 * mm))
+    story.append(Spacer(1, 5 * mm))
     story.extend(
         _pdf_diagnostic_visuals(
             str(identity.get("task_type") or ""),
@@ -603,11 +569,13 @@ def _audit_pdf(report: dict[str, Any]) -> bytes:
             styles,
         )
     )
+    story.append(Spacer(1, 1 * mm))
+    story.append(_pdf_provenance_strip(report, styles))
 
     story.append(PageBreak())
     story.append(
         _section_heading(
-            "Explainability and feature contributions",
+            "6. Explainability and feature contributions",
             "explainability",
             styles,
         )
@@ -621,44 +589,79 @@ def _audit_pdf(report: dict[str, Any]) -> bytes:
     )
     story.append(Spacer(1, 4 * mm))
     normalized = list(contributions.get("global_normalized_contributions") or [])
-    story.append(
-        AuditBarsFlowable(
-            [
-                (str(item.get("feature")), float(item.get("contribution_percent", 0) or 0))
-                for item in normalized[:30]
-            ],
-            value_suffix="%",
+    if normalized:
+        story.append(
+            AuditBarsFlowable(
+                [
+                    (
+                        str(item.get("feature")),
+                        float(item.get("contribution_percent", 0) or 0),
+                    )
+                    for item in normalized[:30]
+                ],
+                value_suffix="%",
+            )
         )
-    )
+    else:
+        story.append(
+            _pdf_notice(
+                "Global SHAP feature contributions were not available for this evidence snapshot.",
+                styles,
+                warning=False,
+            )
+        )
     story.append(Spacer(1, 7 * mm))
     story.append(Paragraph("Representative SHAP waterfall", styles["subheading"]))
-    waterfall = contributions["waterfall"]
-    story.append(
-        Paragraph(
-            "Directional contributions for the first persisted explanation sample. "
-            f"Base value: <b>{_escape(waterfall.get('base_value'))}</b> · "
-            f"prediction: <b>{_escape(waterfall.get('prediction_value'))}</b>.",
-            styles["body"],
+    waterfall = contributions.get("waterfall") or {}
+    if waterfall.get("status") == "available":
+        story.append(
+            Paragraph(
+                "Directional contributions for the first persisted explanation sample. "
+                f"Base value: <b>{_escape(waterfall.get('base_value'))}</b> · "
+                f"prediction: <b>{_escape(waterfall.get('prediction_value'))}</b>.",
+                styles["body"],
+            )
         )
-    )
-    story.append(Spacer(1, 4 * mm))
-    story.append(
-        AuditBarsFlowable(
-            [
-                (str(item.get("feature")), float(item.get("shap_value", 0) or 0))
-                for item in waterfall.get("features", [])[:30]
-            ],
-            signed=True,
+        story.append(Spacer(1, 4 * mm))
+        story.append(
+            AuditBarsFlowable(
+                [
+                    (str(item.get("feature")), float(item.get("shap_value", 0) or 0))
+                    for item in waterfall.get("features", [])[:30]
+                ],
+                signed=True,
+            )
         )
-    )
+    else:
+        reason = waterfall.get("reason") or (
+            "No trustworthy sample-level SHAP waterfall was persisted for this model."
+        )
+        story.append(
+            _pdf_notice(
+                f"Waterfall omitted: {reason} The remaining audit evidence is still valid.",
+                styles,
+                warning=False,
+            )
+        )
     story.append(PageBreak())
     story.append(
         _section_heading(
-            "Evidence provenance and audit boundary",
-            "evidence-provenance",
+            "7. Monitoring and thresholds",
+            "monitoring-thresholds",
             styles,
         )
     )
+    story.append(
+        _pdf_notice(
+            "This point-in-time training document does not invent live monitoring thresholds. "
+            "Deployment drift, service quality, and alert thresholds must be recorded by the "
+            "governance monitoring workflow after promotion.",
+            styles,
+            warning=False,
+        )
+    )
+    story.append(Spacer(1, 5 * mm))
+    story.append(Paragraph("Monitoring evidence and data lineage", styles["subheading"]))
     story.append(
         _pdf_table(
             _flatten_rows(report["evidence_provenance"]),
@@ -667,10 +670,54 @@ def _audit_pdf(report: dict[str, Any]) -> bytes:
             column_widths=[47 * mm, 102 * mm],
         )
     )
-    story.append(Spacer(1, 5 * mm))
+
+    story.append(PageBreak())
+    story.append(_section_heading("8. Risk assessment", "risk-assessment", styles))
+    story.append(
+        Paragraph(
+            "This section records the leakage, profile-quality, and evidence-completeness "
+            "signals available at the document cutoff. It does not infer risks that were not measured.",
+            styles["body"],
+        )
+    )
+    story.append(Spacer(1, 4 * mm))
+    story.append(
+        _pdf_risk_summary(
+            document,
+            processing,
+            dataset,
+            styles,
+        )
+    )
+
+    story.append(PageBreak())
+    story.append(_section_heading("9. Approval and sign-off", "approvals", styles))
+    story.append(
+        Paragraph(
+            "Training success does not constitute approval. The accountable team leader must "
+            "complete the fields below before production promotion; Sceptre leaves every "
+            "approval field intentionally blank.",
+            styles["body"],
+        )
+    )
+    story.append(Spacer(1, 6 * mm))
+    story.append(_pdf_signoff_form(styles))
+
+    story.append(PageBreak())
+    story.append(_section_heading("10. Change log", "change-log", styles))
+    story.append(
+        Paragraph(
+            "Add a new entry whenever data, preprocessing, training configuration, validation, "
+            "approval status, or deployment behavior materially changes.",
+            styles["body"],
+        )
+    )
+    story.append(Spacer(1, 4 * mm))
+    story.append(_pdf_changelog(document, styles))
+    story.append(Spacer(1, 6 * mm))
     story.append(_pdf_notice(document["regulatory_note"], styles, warning=False))
 
-    decoration = _page_decoration(identity)
+    decoration = _page_decoration(identity, document)
     pdf.build(story, onFirstPage=decoration, onLaterPages=decoration)
     return output.getvalue()
 
@@ -740,61 +787,131 @@ def _section_heading(
     return Paragraph(f'<a name="{anchor}"/>{_escape(title)}', styles["section_title"])
 
 
-def _pdf_contents(styles: dict[str, ParagraphStyle]) -> list[Any]:
-    sections = [
-        ("project-target", "Project and target"),
-        ("feature-preparation", "Feature preparation and recorded actions"),
-        ("training-pipeline", "Training pipeline"),
-        ("model-performance", "Model performance"),
-        ("explainability", "Explainability and feature contributions"),
-        ("evidence-provenance", "Evidence provenance and audit boundary"),
+def _pdf_overview_grid(
+    report: dict[str, Any],
+    styles: dict[str, ParagraphStyle],
+) -> Table:
+    identity = report.get("model_identity") or {}
+    dataset = report.get("dataset_and_target") or {}
+    document = report.get("document") or {}
+    cards = [
+        (
+            "Project",
+            identity.get("project_name") or "Unnamed project",
+            f"Project ID · {_fit_text(str(identity.get('project_id') or 'Not recorded'), 24)}",
+        ),
+        (
+            "Model",
+            identity.get("model_name") or "Not recorded",
+            f"Candidate status · {_humanize(identity.get('candidate_status'))}",
+        ),
+        (
+            "Dataset snapshot",
+            f"{_display_value(dataset.get('rows'))} rows · {_display_value(dataset.get('columns'))} columns",
+            f"Version · {_fit_text(str(dataset.get('dataset_version_id') or 'Not recorded'), 24)}",
+        ),
+        (
+            "Evidence package",
+            _humanize(document.get("evidence_status") or "complete"),
+            f"Generated · {str(document.get('generated_at') or 'Not recorded')[:19]}",
+        ),
     ]
-    rows = []
-    for index, (anchor, title) in enumerate(sections, 1):
-        rows.append(
+    cells = [
+        [
+            Paragraph(_escape(label), styles["cell_key"]),
+            Spacer(1, 1.5 * mm),
+            Paragraph(_escape(value), styles["card_title"]),
+            Spacer(1, 1 * mm),
+            Paragraph(_escape(detail), styles["cell"]),
+        ]
+        for label, value, detail in cards
+    ]
+    table = Table(
+        [[cells[0], cells[1]], [cells[2], cells[3]]],
+        colWidths=[72.5 * mm, 72.5 * mm],
+        rowHeights=[27 * mm, 27 * mm],
+        hAlign="LEFT",
+    )
+    table.setStyle(
+        TableStyle(
             [
-                Paragraph(f"{index:02d}", styles["cell_key"]),
-                Paragraph(
-                    f'<link href="#{anchor}" color="#2854C5">{_escape(title)}</link>',
-                    styles["toc"],
-                ),
-                Paragraph("Open section →", styles["cell_key"]),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("BACKGROUND", (0, 0), (-1, -1), PLOT),
+                ("GRID", (0, 0), (-1, -1), 0.45, LINE),
+                ("LEFTPADDING", (0, 0), (-1, -1), 9),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 9),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
             ]
         )
-    table = Table(rows, colWidths=[12 * mm, 108 * mm, 29 * mm])
+    )
+    return table
+
+
+def _pdf_contents_table(styles: dict[str, ParagraphStyle]) -> Table:
+    sections = [
+        ("overview", "Overview"),
+        ("task-and-target", "Task type and target visualization"),
+        ("feature-preparation", "Feature preparation and recorded actions"),
+        ("training-pipeline", "Training pipeline, record and tuning"),
+        ("model-performance", "Model performance"),
+        ("explainability", "Explainability and feature contributions"),
+        ("monitoring-thresholds", "Monitoring and thresholds"),
+        ("risk-assessment", "Risk assessment"),
+        ("approvals", "Approval and sign-off"),
+        ("change-log", "Change log"),
+    ]
+    rows = [
+        [
+            Paragraph(f"{index}.", styles["cell_key"]),
+            Paragraph(
+                f'<link href="#{anchor}" color="#2854C5">{_escape(title)}</link>',
+                styles["cell"],
+            ),
+            Paragraph(str(index), styles["cell_key"]),
+        ]
+        for index, (anchor, title) in enumerate(sections, 1)
+    ]
+    table = Table(rows, colWidths=[9 * mm, 122 * mm, 14 * mm], hAlign="LEFT")
     table.setStyle(
         TableStyle(
             [
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 ("LINEBELOW", (0, 0), (-1, -1), 0.35, LINE),
-                ("LEFTPADDING", (0, 0), (-1, -1), 5),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-                ("TOPPADDING", (0, 0), (-1, -1), 7),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-                ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 4.5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4.5),
             ]
         )
     )
-    return [Paragraph("Table of contents", styles["section_title"]), table]
+    return table
 
 
-def _pdf_project_target_intro(
+def _pdf_task_target_intro(
     identity: dict[str, Any],
     dataset: dict[str, Any],
     styles: dict[str, ParagraphStyle],
 ) -> list[Any]:
     target_name = str(identity.get("target_column") or "No target selected")
-    task = str(identity.get("task_type") or "").replace("_", " ")
+    task_key = str(identity.get("task_type") or "").lower()
+    task = _humanize(task_key or "unsupervised")
     target_profile = dataset.get("target_visualization") or {}
     semantic_type = str(target_profile.get("semantic_type") or "not recorded").replace("_", " ")
-    target_explanation = (
-        "The target is the outcome the model learned to predict. Sceptre removes it from "
-        "the input features before fitting so the model cannot learn directly from the answer."
+    task_explanations = {
+        "classification": "The model predicts one of the recorded target categories. Candidate ranking uses classification metrics and class-aware diagnostics.",
+        "regression": "The model predicts a continuous numerical outcome. Candidate ranking uses regression errors and goodness-of-fit diagnostics.",
+        "time_series": "The model predicts an ordered target through time. Validation preserves chronology so future observations cannot inform earlier predictions.",
+        "clustering": "The model groups similar rows without a selected target. Cluster quality and stability replace supervised prediction metrics.",
+    }
+    task_explanation = task_explanations.get(
+        task_key,
+        "The recorded task type determines candidate compatibility, validation design, and model diagnostics.",
     )
     if identity.get("target_column"):
         named_explanation = (
             f"{target_name} is the selected outcome column for this project. Its recorded "
-            f"semantic type is {semantic_type}; this run treats it as a {task} target and "
+            f"semantic type is {semantic_type}; this run treats it as a {task.lower()} target and "
             "compares predictions against its observed values."
         )
     else:
@@ -806,11 +923,15 @@ def _pdf_project_target_intro(
         [
             [
                 [
-                    Paragraph("Target", styles["card_title"]),
+                    Paragraph("Task type", styles["cell_key"]),
                     Spacer(1, 1.5 * mm),
-                    Paragraph(target_explanation, styles["body"]),
+                    Paragraph(_escape(task), styles["card_value"]),
+                    Spacer(1, 1.5 * mm),
+                    Paragraph(_escape(task_explanation), styles["body"]),
                 ],
                 [
+                    Paragraph("Target", styles["cell_key"]),
+                    Spacer(1, 1.5 * mm),
                     Paragraph(_escape(target_name), styles["card_title"]),
                     Spacer(1, 1.5 * mm),
                     Paragraph(_escape(named_explanation), styles["body"]),
@@ -837,8 +958,34 @@ def _pdf_project_target_intro(
     return [cards, Spacer(1, 5 * mm)]
 
 
-def _page_decoration(identity: dict[str, Any]):
-    project_name = str(identity.get("project_name") or "Unnamed project")
+def _explanation_card(
+    title: str,
+    copy: str,
+    styles: dict[str, ParagraphStyle],
+) -> Table:
+    card = Table(
+        [[Paragraph(_escape(title), styles["card_title"])], [Paragraph(_escape(copy), styles["body"])]],
+        colWidths=[71 * mm],
+    )
+    card.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), PLOT),
+                ("BOX", (0, 0), (-1, -1), 0.45, LINE),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, 0), 7),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 3),
+                ("TOPPADDING", (0, 1), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 1), (-1, -1), 8),
+            ]
+        )
+    )
+    return card
+
+
+def _page_decoration(identity: dict[str, Any], document: dict[str, Any]):
+    generated = str(document.get("generated_at") or "Not recorded")[:10]
 
     def draw(canvas: Any, doc: Any) -> None:
         canvas.saveState()
@@ -864,46 +1011,65 @@ def _page_decoration(identity: dict[str, Any]):
         canvas.setStrokeColor(LINE)
         canvas.line(5 * mm, page_height - 29 * mm, 36 * mm, page_height - 29 * mm)
 
-        canvas.setFillColor(MUTED)
-        canvas.setFont("Helvetica-Bold", 5.8)
-        canvas.drawString(6 * mm, page_height - 38 * mm, "CURRENT PROJECT")
-        canvas.setFillColor(INK)
-        canvas.setFont("Helvetica-Bold", 7.4)
-        canvas.drawString(6 * mm, page_height - 44 * mm, _fit_text(project_name, 24))
-        canvas.setFillColor(MUTED)
-        canvas.setFont("Helvetica-Bold", 5.8)
-        canvas.drawString(6 * mm, page_height - 55 * mm, "WORKSPACE")
+        active_by_page = {
+            1: "Overview",
+            2: "Task & target",
+            3: "Feature prep",
+            4: "Training",
+            5: "Performance",
+            6: "Explainability",
+            7: "Monitoring",
+            8: "Risk",
+            9: "Approval",
+            10: "Change log",
+        }
+        active = active_by_page.get(doc.page)
         nav_items = [
             "Overview",
-            "Data",
-            "Train",
-            "Results & validation",
-            "Deploy & monitor",
-            "Team",
+            "Task & target",
+            "Feature prep",
+            "Training",
+            "Performance",
+            "Explainability",
+            "Monitoring",
+            "Risk",
+            "Approval",
+            "Change log",
         ]
-        y = page_height - 62 * mm
-        canvas.setFont("Helvetica", 7)
+        y = page_height - 40 * mm
+        canvas.setFont("Helvetica", 6.6)
         for item in nav_items:
+            if item == active:
+                canvas.setFillColor(BLUE)
+                canvas.roundRect(4 * mm, y - 2.7 * mm, 33 * mm, 7 * mm, 1.5 * mm, stroke=0, fill=1)
+                canvas.setFillColor(colors.white)
+                canvas.setFont("Helvetica-Bold", 6.6)
+            else:
+                canvas.setFillColor(MUTED)
+                canvas.setFont("Helvetica", 6.6)
+            canvas.circle(8 * mm, y + 0.5 * mm, 0.8 * mm, stroke=1, fill=0)
+            canvas.drawString(11 * mm, y - 1 * mm, item)
+            y -= 8.5 * mm
+
+        canvas.setFillColor(MUTED)
+        canvas.setFont("Helvetica-Bold", 5.7)
+        canvas.drawString(6 * mm, 58 * mm, "DOCUMENT INFO")
+        canvas.setFont("Helvetica", 6.2)
+        info = [
+            ("Version", str(document.get("schema_version") or "2.0")),
+            ("Date", generated),
+            ("Prepared by", "Sceptre AI"),
+        ]
+        info_y = 52 * mm
+        for label, value in info:
             canvas.setFillColor(MUTED)
-            canvas.circle(8 * mm, y + 1.2 * mm, 0.8 * mm, stroke=1, fill=0)
-            canvas.drawString(11 * mm, y, item)
-            y -= 9 * mm
+            canvas.drawString(6 * mm, info_y, label)
+            canvas.setFillColor(INK)
+            canvas.drawString(6 * mm, info_y - 4 * mm, _fit_text(value, 24))
+            info_y -= 11 * mm
         canvas.setFillColor(MUTED)
-        canvas.setFont("Helvetica-Bold", 5.8)
-        canvas.drawString(6 * mm, y - 2 * mm, "MANAGEMENT")
-        y -= 11 * mm
-        canvas.setFont("Helvetica", 7)
-        canvas.drawString(11 * mm, y, "Project settings")
-        y -= 13 * mm
-        canvas.setFillColor(BLUE_SOFT)
-        canvas.roundRect(4 * mm, y - 2.5 * mm, 33 * mm, 8 * mm, 2 * mm, stroke=0, fill=1)
-        canvas.setFillColor(BLUE)
-        canvas.setFont("Helvetica-Bold", 6.8)
-        canvas.drawString(7 * mm, y, "Governance dashboard")
-        y -= 10 * mm
-        canvas.setFillColor(MUTED)
-        canvas.setFont("Helvetica", 6.8)
-        canvas.drawString(7 * mm, y, "Profile & security")
+        canvas.setFont("Helvetica-Bold", 6.2)
+        canvas.drawString(6 * mm, 12 * mm, "Confidential")
 
         canvas.setFillColor(MUTED)
         canvas.setFont("Helvetica-Bold", 6.4)
@@ -924,27 +1090,17 @@ def _page_decoration(identity: dict[str, Any]):
 
 
 def _pdf_brand_header(identity: dict[str, Any], styles: dict[str, ParagraphStyle]) -> list[Any]:
-    logo_path = _logo_path()
-    logo: Flowable
-    if logo_path:
-        logo = Image(str(logo_path), width=15 * mm, height=15 * mm)
-    else:
-        logo = SceptreMarkFlowable()
-    brand = Table(
-        [[logo, Paragraph("Sceptre <font color='#2854C5'>AI</font>", styles["brand"])]],
-        colWidths=[17 * mm, 132 * mm],
-    )
-    brand.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 0)]))
     return [
-        brand,
-        Spacer(1, 7 * mm),
-        Paragraph("MODEL GOVERNANCE DOCUMENT", styles["kicker"]),
-        Paragraph(_escape(identity["model_name"]), styles["title"]),
+        Paragraph("Model governance document", styles["title"]),
+        Paragraph("Transparent. Accountable. Trusted.", styles["project_description"]),
+        Spacer(1, 2 * mm),
         Paragraph(
-            f"Project · <b>{_escape(identity.get('project_name') or 'Unnamed project')}</b>",
+            f"Project · <b>{_escape(identity.get('project_name') or 'Unnamed project')}</b>"
+            f" &nbsp;&nbsp; Model · <b>{_escape(identity['model_name'])}</b>"
+            f" &nbsp;&nbsp; Task · <b>{_escape(_humanize(identity.get('task_type')))}</b>",
             styles["body"],
         ),
-        Spacer(1, 3 * mm),
+        Spacer(1, 1.5 * mm),
     ]
 
 
@@ -988,18 +1144,6 @@ def _pdf_target_section(
         title = "Unsupervised model"
         description = "Clustering does not use a target column, so no target distribution is required."
     result: list[Any] = [
-        _pdf_table(
-            [
-                ("Dataset version", dataset.get("dataset_version_id")),
-                ("Content hash", dataset.get("content_hash")),
-                ("Rows", dataset.get("rows")),
-                ("Columns", dataset.get("columns")),
-            ],
-            styles,
-            key_value=True,
-            column_widths=[37 * mm, 112 * mm],
-        ),
-        Spacer(1, 6 * mm),
         Paragraph(title, styles["subheading"]),
         Paragraph(description, styles["body"]),
         Spacer(1, 3 * mm),
@@ -1102,9 +1246,211 @@ def _feature_action_rows(processing: dict[str, Any]) -> list[list[str]]:
     return rows
 
 
+def _pdf_training_record_section(
+    pipeline: dict[str, Any],
+    training: dict[str, Any],
+    styles: dict[str, ParagraphStyle],
+) -> list[Any]:
+    stage_rows = [
+        [stage.get("label"), stage.get("status"), stage.get("summary")]
+        for stage in pipeline.get("stages", [])
+    ]
+    runtime = training.get("runtime") or {}
+    tuning_rows = [
+        ("Status", training.get("status"), "Primary metric", training.get("primary_metric")),
+        (
+            "Pipeline",
+            training.get("pipeline_name"),
+            "CV folds",
+            training.get("cross_validation_folds"),
+        ),
+        (
+            "Started",
+            training.get("started_at"),
+            "Search iterations",
+            training.get("optimization_iterations"),
+        ),
+        (
+            "Finished",
+            training.get("finished_at"),
+            "Duration (seconds)",
+            training.get("candidate_duration_seconds"),
+        ),
+        (
+            "Accelerator",
+            runtime.get("accelerator") or "CPU",
+            "Failure",
+            training.get("failure") or "None recorded",
+        ),
+    ]
+    tuning_data = [
+        [
+            Paragraph(_escape(label_a), styles["cell_key"]),
+            Paragraph(_escape(_display_value(value_a)), styles["cell"]),
+            Paragraph(_escape(label_b), styles["cell_key"]),
+            Paragraph(_escape(_display_value(value_b)), styles["cell"]),
+        ]
+        for label_a, value_a, label_b, value_b in tuning_rows
+    ]
+    tuning_table = Table(
+        tuning_data,
+        colWidths=[25 * mm, 49 * mm, 29 * mm, 46 * mm],
+        hAlign="LEFT",
+    )
+    tuning_table.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("GRID", (0, 0), (-1, -1), 0.35, LINE),
+                ("BACKGROUND", (0, 0), (-1, -1), PLOT),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+    return [
+        Paragraph("Training record", styles["subheading"]),
+        _pdf_table(
+            stage_rows,
+            styles,
+            headers=["Execution stage", "Status", "Recorded evidence"],
+            column_widths=[32 * mm, 22 * mm, 95 * mm],
+        ),
+        Spacer(1, 3 * mm),
+        Paragraph("Training and tuning", styles["subheading"]),
+        tuning_table,
+    ]
+
+
 def _humanize(value: Any) -> str:
     text = str(value or "Not recorded").replace("_", " ").strip()
     return text[:1].upper() + text[1:]
+
+
+def _pdf_provenance_strip(
+    report: dict[str, Any],
+    styles: dict[str, ParagraphStyle],
+) -> Table:
+    identity = report.get("model_identity") or {}
+    dataset = report.get("dataset_and_target") or {}
+    document = report.get("document") or {}
+    runtime = (report.get("model_training") or {}).get("runtime") or {}
+    items = [
+        ("Run ID", identity.get("training_run_id")),
+        ("Dataset snapshot", dataset.get("content_hash")),
+        ("Evidence hash", document.get("evidence_sha256")),
+        ("Environment", runtime.get("accelerator") or "CPU"),
+        ("Generated", document.get("generated_at")),
+    ]
+    cells = []
+    for label, value in items:
+        cells.append(
+            [
+                Paragraph(label, styles["cell_key"]),
+                Spacer(1, 1 * mm),
+                Paragraph(_escape(_fit_text(_display_value(value), 22)), styles["cell"]),
+            ]
+        )
+    table = Table([cells], colWidths=[29 * mm] * 5, hAlign="LEFT")
+    table.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("BACKGROUND", (0, 0), (-1, -1), PLOT),
+                ("BOX", (0, 0), (-1, -1), 0.4, LINE),
+                ("INNERGRID", (0, 0), (-1, -1), 0.4, LINE),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+            ]
+        )
+    )
+    return table
+
+
+def _pdf_risk_summary(
+    document: dict[str, Any],
+    processing: dict[str, Any],
+    dataset: dict[str, Any],
+    styles: dict[str, ParagraphStyle],
+) -> Table:
+    leakage = processing.get("leakage_analysis") or {}
+    excluded = leakage.get("excluded_columns") or processing.get(
+        "features_removed_before_training"
+    ) or []
+    warnings = dataset.get("profile_warnings") or []
+    missing = document.get("missing_evidence") or []
+    rows = [
+        ("Leakage status", leakage.get("status") or "Not recorded"),
+        ("Features excluded", len(excluded)),
+        ("Profile warnings", len(warnings)),
+        ("Missing evidence", len(missing)),
+    ]
+    return _pdf_table(
+        rows,
+        styles,
+        headers=["Risk signal", "Recorded result"],
+        column_widths=[49 * mm, 100 * mm],
+    )
+
+
+def _pdf_signoff_form(styles: dict[str, ParagraphStyle]) -> Table:
+    data = [
+        [Paragraph("Team leader name", styles["cell_key"]), ""],
+        [Paragraph("Review date", styles["cell_key"]), ""],
+        [
+            Paragraph("Approval decision", styles["cell_key"]),
+            Paragraph(
+                "[   ] Approved&nbsp;&nbsp;&nbsp;&nbsp;[   ] Approved with conditions"
+                "&nbsp;&nbsp;&nbsp;&nbsp;[   ] Not approved",
+                styles["cell"],
+            ),
+        ],
+        [Paragraph("Team leader signature", styles["cell_key"]), ""],
+        [Paragraph("Conditions or comments", styles["cell_key"]), ""],
+    ]
+    form = Table(
+        data,
+        colWidths=[39 * mm, 110 * mm],
+        rowHeights=[18 * mm, 18 * mm, 18 * mm, 42 * mm, 54 * mm],
+        hAlign="LEFT",
+    )
+    form.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("GRID", (0, 0), (-1, -1), 0.7, colors.HexColor("#AEB8C8")),
+                ("BACKGROUND", (0, 0), (0, -1), PLOT),
+                ("BACKGROUND", (1, 0), (1, -1), colors.white),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ]
+        )
+    )
+    return form
+
+
+def _pdf_changelog(
+    document: dict[str, Any],
+    styles: dict[str, ParagraphStyle],
+) -> Table:
+    return _pdf_table(
+        [
+            (
+                document.get("generated_at"),
+                document.get("schema_version") or "2.0",
+                "Governance document generated from the immutable training evidence snapshot.",
+            )
+        ],
+        styles,
+        headers=["Recorded at", "Version", "Change"],
+        column_widths=[45 * mm, 20 * mm, 84 * mm],
+    )
 
 
 def _pdf_notice(
@@ -1209,47 +1555,126 @@ def _pdf_metric_cards(
     primary_metric: str | None,
     styles: dict[str, ParagraphStyle],
 ) -> list[Any]:
-    ordered = sorted(
-        values.items(),
-        key=lambda item: (0 if item[0] == primary_metric else 1, str(item[0])),
-    )
-    if not ordered:
+    if not values:
         return [_pdf_notice("No successful candidate metrics were recorded.", styles)]
-    cards: list[list[Any]] = []
-    for name, value in ordered:
-        label = _humanize(name)
-        if name == primary_metric:
-            label += " · primary"
-        cards.append(
+    primary_name = primary_metric if primary_metric in values else next(iter(values))
+    primary_value = values[primary_name]
+    remaining = [(name, value) for name, value in values.items() if name != primary_name]
+    summary_cells = [_metric_card(name, value, styles) for name, value in remaining[:4]]
+    while len(summary_cells) < 4:
+        summary_cells.append([Paragraph("", styles["cell"])])
+    summary = Table([summary_cells], colWidths=[25.75 * mm] * 4)
+    summary.setStyle(
+        TableStyle(
             [
-                Paragraph(_escape(label), styles["cell_key"]),
-                Spacer(1, 1 * mm),
-                Paragraph(_escape(_display_value(value)), styles["card_value"]),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("INNERGRID", (0, 0), (-1, -1), 0.4, LINE),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
             ]
         )
-    rows = [cards[index : index + 3] for index in range(0, len(cards), 3)]
-    populated_cells: list[tuple[int, int]] = []
-    for row_index, row in enumerate(rows):
-        populated_cells.extend((column_index, row_index) for column_index in range(len(row)))
-        while len(row) < 3:
-            row.append([Paragraph("", styles["cell"]), Spacer(1, 5 * mm)])
-    table = Table(rows, colWidths=[48.3 * mm] * 3, hAlign="LEFT", splitByRow=1)
-    commands = [
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 8),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-        ("TOPPADDING", (0, 0), (-1, -1), 7),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    )
+    primary = [
+        Paragraph(f"{_escape(_metric_label(primary_name))} · PRIMARY", styles["cell_key"]),
+        Spacer(1, 1.5 * mm),
+        Paragraph(
+            f'<font size="19" color="#2854C5"><b>{_escape(_display_value(primary_value))}</b></font>',
+            styles["body"],
+        ),
+        Paragraph(_metric_direction(primary_name), styles["cell_key"]),
     ]
-    for column_index, row_index in populated_cells:
-        commands.extend(
+    top = Table([[primary, summary]], colWidths=[42 * mm, 103 * mm], hAlign="LEFT")
+    top.setStyle(
+        TableStyle(
             [
-                ("BACKGROUND", (column_index, row_index), (column_index, row_index), PLOT),
-                ("BOX", (column_index, row_index), (column_index, row_index), 0.4, LINE),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("BACKGROUND", (0, 0), (-1, -1), PLOT),
+                ("BOX", (0, 0), (-1, -1), 0.45, LINE),
+                ("LINEBEFORE", (1, 0), (1, 0), 0.45, LINE),
+                ("LEFTPADDING", (0, 0), (0, 0), 8),
+                ("RIGHTPADDING", (0, 0), (0, 0), 8),
+                ("TOPPADDING", (0, 0), (0, 0), 7),
+                ("BOTTOMPADDING", (0, 0), (0, 0), 7),
+                ("LEFTPADDING", (1, 0), (1, 0), 0),
+                ("RIGHTPADDING", (1, 0), (1, 0), 0),
+                ("TOPPADDING", (1, 0), (1, 0), 0),
+                ("BOTTOMPADDING", (1, 0), (1, 0), 0),
             ]
         )
-    table.setStyle(TableStyle(commands))
-    return [table]
+    )
+    result: list[Any] = [top]
+    overflow = remaining[4:]
+    if overflow:
+        rows = []
+        for index in range(0, len(overflow), 5):
+            cells = [_metric_card(name, value, styles) for name, value in overflow[index : index + 5]]
+            while len(cells) < 5:
+                cells.append([Paragraph("", styles["cell"])])
+            rows.append(cells)
+        more = Table(rows, colWidths=[29 * mm] * 5, hAlign="LEFT")
+        more.setStyle(
+            TableStyle(
+                [
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("BACKGROUND", (0, 0), (-1, -1), PLOT),
+                    ("BOX", (0, 0), (-1, -1), 0.4, LINE),
+                    ("INNERGRID", (0, 0), (-1, -1), 0.4, LINE),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ]
+            )
+        )
+        result.extend([Spacer(1, 2 * mm), more])
+    return result
+
+
+def _metric_card(
+    name: str,
+    value: Any,
+    styles: dict[str, ParagraphStyle],
+) -> list[Any]:
+    return [
+        Paragraph(_escape(_metric_label(name)), styles["cell_key"]),
+        Spacer(1, 1 * mm),
+        Paragraph(_escape(_display_value(value)), styles["card_title"]),
+    ]
+
+
+def _metric_label(name: str) -> str:
+    labels = {
+        "r2": "R²",
+        "mae": "MAE",
+        "mse": "MSE",
+        "rmse": "RMSE",
+        "rmsle": "RMSLE",
+        "mape": "MAPE",
+        "smape": "SMAPE",
+        "roc_auc": "ROC AUC",
+        "roc_auc_ovr_weighted": "ROC AUC OVR weighted",
+        "mcc": "MCC",
+    }
+    return labels.get(str(name), _humanize(name))
+
+
+def _metric_direction(name: str) -> str:
+    lower_is_better = {
+        "mae",
+        "mse",
+        "rmse",
+        "rmsle",
+        "mape",
+        "smape",
+        "log_loss",
+        "brier_score",
+        "median_absolute_error",
+        "max_error",
+        "davies_bouldin",
+    }
+    return "Lower is better" if name in lower_is_better else "Higher is better"
 
 
 def _pdf_diagnostic_visuals(
@@ -1430,14 +1855,22 @@ class EvidenceChartFlowable(Flowable):
         self.title = title
         self.kind = kind
         self.payload = payload
+        self.border_visible = False
         self.width = 72.5 * mm
         self.height = 62 * mm
 
     def draw(self) -> None:
         canvas = self.canv
         canvas.setFillColor(colors.white)
-        canvas.setStrokeColor(LINE)
-        canvas.roundRect(0, 0, self.width, self.height, 2.2 * mm, stroke=1, fill=1)
+        canvas.roundRect(
+            0,
+            0,
+            self.width,
+            self.height,
+            2.2 * mm,
+            stroke=int(self.border_visible),
+            fill=1,
+        )
         canvas.setFillColor(INK)
         canvas.setFont("Helvetica-Bold", 7.2)
         canvas.drawString(4 * mm, self.height - 7 * mm, _fit_text(self.title, 52))

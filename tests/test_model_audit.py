@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import copy
 import io
+import re
 
-import pytest
 from automl_api.api.routes.training import router
 from automl_api.models.enums import TaskType
 from automl_api.services.model_audit import (
@@ -12,7 +13,6 @@ from automl_api.services.model_audit import (
     _diagnostic_chart_specs,
     _feature_action_rows,
     _logo_path,
-    _require_audit_waterfall,
     _waterfall,
 )
 from automl_api.services.model_evidence import (
@@ -20,7 +20,6 @@ from automl_api.services.model_evidence import (
     feature_processing_contract,
     model_mathematics,
 )
-from fastapi import HTTPException
 from reportlab.pdfgen import canvas
 
 
@@ -79,16 +78,6 @@ def test_waterfall_preserves_direction_and_normalizes_magnitude() -> None:
     assert waterfall["features"][0]["direction"] == "increases_output"
     assert waterfall["features"][1]["direction"] == "decreases_output"
     assert sum(item["absolute_percent"] for item in waterfall["features"]) == 100.0
-
-
-def test_audit_pdf_is_blocked_until_representative_shap_is_available() -> None:
-    with pytest.raises(HTTPException) as exc_info:
-        _require_audit_waterfall(
-            {"waterfall": {"status": "not_available", "reason": "feature order missing"}}
-        )
-
-    assert exc_info.value.status_code == 409
-    assert exc_info.value.detail["code"] == "AUDIT_SHAP_REQUIRED"
 
 
 def test_governance_visuals_use_persisted_profile_and_model_diagnostics() -> None:
@@ -184,6 +173,7 @@ def test_classification_governance_visuals_match_leaderboard_evidence() -> None:
         output = io.BytesIO()
         pdf_canvas = canvas.Canvas(output)
         chart = EvidenceChartFlowable(title, kind, payload)
+        assert chart.border_visible is False
         chart.canv = pdf_canvas
         chart.draw()
         pdf_canvas.save()
@@ -305,3 +295,41 @@ def test_audit_pdf_is_branded_and_contains_complete_model_evidence() -> None:
     assert b"Model governance document" in rendered
     assert b"Actual vs predicted" in rendered
     assert b"0.91" in rendered
+    assert len(re.findall(rb"/Type\s*/Page\b", rendered)) == 10
+    assert b"Task type and target visualization" in rendered
+    assert b"Team leader name" in rendered
+    assert b"Team leader signature" in rendered
+    assert b"10. Change log" in rendered
+    assert b"Recorded diagnostics" not in rendered
+    ordered_sections = [
+        b"1. Overview",
+        b"2. Task type and target visualization",
+        b"3. Feature preparation and recorded actions",
+        b"4. Training pipeline, record and tuning",
+        b"5. Model performance",
+        b"6. Explainability and feature contributions",
+        b"7. Monitoring and thresholds",
+        b"8. Risk assessment",
+        b"9. Approval and sign-off",
+        b"10. Change log",
+    ]
+    positions = [rendered.index(section) for section in ordered_sections]
+    assert positions == sorted(positions)
+
+    without_shap = copy.deepcopy(report)
+    without_shap["feature_contributions"] = {
+        "status": "not_calculated",
+        "global_normalized_contributions": [],
+        "waterfall": {
+            "status": "not_available",
+            "reason": "No persisted sample-level SHAP values.",
+        },
+    }
+
+    partial = _audit_pdf(without_shap)
+
+    assert partial.startswith(b"%PDF-")
+    assert len(re.findall(rb"/Type\s*/Page\b", partial)) == 10
+    assert b"Global SHAP feature contributions were not available" in partial
+    assert b"Waterfall omitted" in partial
+    assert b"The remaining audit evidence is still valid" in partial
