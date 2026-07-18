@@ -64,6 +64,34 @@ class AuthResponse(BaseModel):
     tokens: TokenPair
 
 
+class RegistrationResponse(BaseModel):
+    user: UserRead
+    message: str = "Account created successfully. Sign in to continue."
+
+
+class UserUpdateRequest(BaseModel):
+    email: str
+    full_name: str | None = Field(default=None, max_length=200)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        return normalize_email(value)
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=8, max_length=256)
+
+
 class RefreshRequest(BaseModel):
     refresh_token: str = Field(min_length=16)
 

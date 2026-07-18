@@ -8,7 +8,7 @@ from kubernetes.client import ApiException
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
-from automl_api.models.datasets import DatasetVersion
+from automl_api.models.datasets import DatasetVersion, ProfilingJob
 from automl_api.models.enums import ProjectRole, RunKind, RunStatus, TaskType
 from automl_api.models.iam import User
 from automl_api.models.runs import ModelRun
@@ -25,9 +25,13 @@ from automl_api.schemas.training import (
     TrainingResourceUsageRead,
 )
 from automl_api.services.kubernetes_training import KubernetesTrainingClient
+from automl_api.services.model_evidence import build_model_pipeline
 from automl_api.services.projects import require_project_role
 from automl_api.storage.object_store import get_object_store
-from automl_api.training.evaluation import metric_direction
+from automl_api.training.evaluation import (
+    metric_direction,
+    resolve_primary_metric,
+)
 from automl_api.training.model_catalog import (
     candidate_catalog,
     estimator_catalog_payload,
@@ -55,6 +59,13 @@ def estimate_training_run(
     require_project_role(db, user, project_id, ProjectRole.EDITOR)
     version = _get_dataset_version(db, project_id, payload.dataset_version_id)
     _validate_target(version, payload.target_column)
+    try:
+        resolve_primary_metric(payload.task_type, payload.primary_metric)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
     _validate_evaluation_column(version, payload)
     _validate_candidate_models(payload)
     selected_candidate_count = (
@@ -104,6 +115,25 @@ def estimate_training_run(
             "dataset version before training.",
         ]
         estimate.can_launch = False
+    leakage_profile, leakage_analysis = _latest_leakage_analysis(
+        db,
+        version.id,
+        payload.target_column,
+    )
+    excluded_columns = list(leakage_analysis.get("excluded_columns") or [])
+    if excluded_columns:
+        estimate.warnings = [
+            *estimate.warnings,
+            "Profiling will exclude target-leakage features before training: "
+            + ", ".join(excluded_columns)
+            + ".",
+        ]
+    elif payload.target_column and leakage_profile is None:
+        estimate.warnings = [
+            *estimate.warnings,
+            "No completed leakage profile matches this target. Training will run the "
+            "same high-confidence leakage check before fitting as a safeguard.",
+        ]
     active_statuses = [
         RunStatus.QUEUED,
         RunStatus.PRECHECK_RUNNING,
@@ -171,13 +201,16 @@ def launch_training_run(
         payload.candidate_models or None,
         len(payload.candidate_models) if payload.candidate_models else payload.candidate_limit,
     )
-    primary_metric = (
-        "silhouette"
-        if payload.task_type == TaskType.CLUSTERING
-        else "balanced_accuracy"
-        if payload.task_type == TaskType.CLASSIFICATION
-        else "rmse"
+    primary_metric = resolve_primary_metric(
+        payload.task_type,
+        payload.primary_metric,
     )
+    leakage_profile, leakage_analysis = _latest_leakage_analysis(
+        db,
+        payload.dataset_version_id,
+        payload.target_column,
+    )
+    excluded_leakage_columns = list(leakage_analysis.get("excluded_columns") or [])
     pending_leaderboard = [
         {
             "rank": None,
@@ -224,6 +257,9 @@ def launch_training_run(
             "optimization_iterations": payload.optimization_iterations,
             "cv_folds": payload.cv_folds,
             "evaluation_column": payload.evaluation_column,
+            "primary_metric": primary_metric,
+            "excluded_leakage_columns": excluded_leakage_columns,
+            "leakage_profile_job_id": str(leakage_profile.id) if leakage_profile else None,
             "gpu_vendor": estimate.gpu_vendor,
             "gpu_resource": estimate.gpu_resource,
             "selected_node": estimate.selected_node,
@@ -423,6 +459,7 @@ def restart_training_run(
         target_column=source.target_column,
         evaluation_column=source_params.get("evaluation_column"),
         task_type=source.task_type,
+        primary_metric=source_params.get("primary_metric"),
         prefer_gpu=bool(source_params.get("prefer_gpu", source.gpu_requested)),
         expected_minutes=int(source_params.get("expected_minutes", 10)),
         candidate_limit=int(source_params.get("candidate_limit", 5)),
@@ -502,6 +539,7 @@ def add_models_to_training_run(
         target_column=parent.target_column,
         evaluation_column=source_params.get("evaluation_column"),
         task_type=parent.task_type,
+        primary_metric=source_params.get("primary_metric"),
         prefer_gpu=request.prefer_gpu,
         expected_minutes=request.expected_minutes,
         candidate_limit=len(requested_models),
@@ -710,6 +748,32 @@ def training_leaderboard(
         )["leaderboard"]
     if primary_metric:
         entries = _rank_combined_leaderboard(entries, primary_metric)
+    active_candidate = (
+        run.tags.get("current_candidate")
+        or leaderboard_run.tags.get("current_candidate")
+    )
+    active_phase = (
+        run.tags.get("candidate_phase")
+        or leaderboard_run.tags.get("candidate_phase")
+    )
+    excluded_columns = list(
+        leaderboard_run.params.get("excluded_leakage_columns")
+        or run.params.get("excluded_leakage_columns")
+        or []
+    )
+    for entry in entries:
+        entry["pipeline"] = build_model_pipeline(
+            str(entry["model"]),
+            leaderboard_run.task_type,
+            str(entry.get("status", "pending")),
+            parameters=dict(entry.get("best_params") or {}),
+            excluded_columns=excluded_columns,
+            current_phase=(
+                str(active_phase)
+                if entry.get("model") == active_candidate and active_phase
+                else None
+            ),
+        )
     successful = [entry for entry in entries if entry.get("status") == "succeeded"]
     metric_names = {name for entry in entries for name in entry.get("metrics", {})}
     return TrainingLeaderboardRead(
@@ -726,7 +790,16 @@ def _rank_combined_leaderboard(
     entries: list[dict],
     primary_metric: str,
 ) -> list[dict]:
-    successful = [entry for entry in entries if entry.get("status") == "succeeded"]
+    successful = [
+        entry
+        for entry in entries
+        if entry.get("status") == "succeeded" and primary_metric in entry.get("metrics", {})
+    ]
+    unranked = [
+        entry
+        for entry in entries
+        if entry.get("status") == "succeeded" and primary_metric not in entry.get("metrics", {})
+    ]
     remaining = [entry for entry in entries if entry.get("status") != "succeeded"]
     successful.sort(
         key=lambda entry: float(entry.get("metrics", {}).get(primary_metric, float("-inf"))),
@@ -738,7 +811,10 @@ def _rank_combined_leaderboard(
     for entry in remaining:
         entry["rank"] = None
         entry["primary_score"] = None
-    return [*successful, *remaining]
+    for entry in unranked:
+        entry["rank"] = None
+        entry["primary_score"] = None
+    return [*successful, *unranked, *remaining]
 
 
 def _leaderboard_parent(db: Session, run: ModelRun) -> ModelRun:
@@ -927,6 +1003,28 @@ def _get_dataset_version(
             detail="Dataset version not found.",
         )
     return version
+
+
+def _latest_leakage_analysis(
+    db: Session,
+    dataset_version_id: uuid.UUID,
+    target_column: str | None,
+) -> tuple[ProfilingJob | None, dict]:
+    if not target_column:
+        return None, {}
+    profile = db.scalar(
+        select(ProfilingJob)
+        .where(
+            ProfilingJob.dataset_version_id == dataset_version_id,
+            ProfilingJob.target_column == target_column,
+            ProfilingJob.status == "succeeded",
+        )
+        .order_by(ProfilingJob.created_at.desc())
+    )
+    if profile is None:
+        return None, {}
+    analysis = profile.overview_json.get("leakage_analysis")
+    return profile, dict(analysis) if isinstance(analysis, dict) else {}
 
 
 def _validate_target(version: DatasetVersion, target_column: str | None) -> None:

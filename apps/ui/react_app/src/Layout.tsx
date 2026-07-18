@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   Activity, BarChart3, Boxes, ChevronDown, Database, FolderKanban, Gauge,
-  LogOut, Menu, Settings, ShieldCheck, Users, X,
+  LogOut, Menu, Settings, ShieldCheck, UserRound, Users, X,
 } from "lucide-react";
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
@@ -35,6 +35,10 @@ export function Layout() {
         <NavLink to="/projects" className="brand"><i className="brand-mark"><img src="/sceptre-icon.png" alt="" /></i><span>Sceptre <b>AI</b></span></NavLink>
         <button className="icon-button sidebar__close" onClick={() => setOpen(false)} aria-label="Close menu"><X /></button>
       </div>
+      <nav className="sidebar__nav sidebar__nav--portfolio" aria-label="Portfolio navigation">
+        <span>Portfolio</span>
+        <NavLink to="/projects" end onClick={() => setOpen(false)}><FolderKanban size={18} /><span>Projects</span></NavLink>
+      </nav>
       {projectId && <>
         <div className="project-switcher">
           <span>Current project</span>
@@ -52,18 +56,22 @@ export function Layout() {
         </nav>
       </>}
       {!projectId && <div className="sidebar__pitch"><ShieldCheck /><b>Private by design</b><p>Project access and model lineage stay governed at every step.</p></div>}
+      <nav className="sidebar__account" aria-label="Account and governance">
+        <NavLink to="/monitoring" onClick={() => setOpen(false)}><ShieldCheck size={17} /><span>Governance dashboard</span></NavLink>
+        <NavLink to="/account" onClick={() => setOpen(false)}><UserRound size={17} /><span>Profile & security</span></NavLink>
+      </nav>
       <div className="sidebar__user"><div className="avatar">{initials(session.user.full_name, session.user.email)}</div>
         <div><b>{session.user.full_name || "Sceptre user"}</b><small>{session.user.email}</small></div>
         <button className="icon-button" onClick={logout} title="Sign out" aria-label="Sign out"><LogOut size={17} /></button>
       </div>
     </aside>
     {open && <button className="sidebar-scrim" onClick={() => setOpen(false)} aria-label="Close menu" />}
-    <div className="shell__main">
+    <main className="shell__main" id="main-content">
       <header className="topbar"><button className="icon-button topbar__menu" onClick={() => setOpen(true)} aria-label="Open menu"><Menu /></button>
         <div className="topbar__trail"><FolderKanban size={17} /><span>{current?.name || "Projects"}</span></div>
         <div className="topbar__status"><Badge status="ok">Platform online</Badge></div>
       </header>
       <div className="page"><Outlet /></div>
-    </div>
+    </main>
   </div>;
 }

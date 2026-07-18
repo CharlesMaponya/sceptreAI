@@ -30,7 +30,13 @@ from sklearn.model_selection import (
     train_test_split,
 )
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OrdinalEncoder, StandardScaler
+from sklearn.preprocessing import (
+    FunctionTransformer,
+    KBinsDiscretizer,
+    MinMaxScaler,
+    OrdinalEncoder,
+    StandardScaler,
+)
 from skopt import BayesSearchCV
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -41,6 +47,7 @@ from automl_api.db.session import get_session_factory
 from automl_api.models.datasets import DatasetVersion
 from automl_api.models.enums import MetricKind, MetricSplit, RunStatus, TaskType
 from automl_api.models.runs import Metric, ModelRun
+from automl_api.services.leakage import detect_target_leakage
 from automl_api.services.temporal import (
     normalize_temporal_features as _normalize_temporal_features,
 )
@@ -52,8 +59,10 @@ from automl_api.training.evaluation import (
     aggregate_fold_metrics,
     classification_evaluation,
     clustering_evaluation,
+    cross_validation_scoring,
     metric_direction,
     regression_evaluation,
+    resolve_primary_metric,
 )
 from automl_api.training.model_catalog import (
     CandidateSpec,
@@ -164,8 +173,27 @@ def _fit_model(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
     if not run.target_column or run.target_column not in dataframe.columns:
         raise ValueError("The configured target column is missing from the dataset.")
 
+    duplicate_row_count = int(dataframe.duplicated(keep="first").sum())
+    if duplicate_row_count:
+        dataframe = dataframe.drop_duplicates(keep="first")
+    leakage_analysis = detect_target_leakage(dataframe, run.target_column)
+    excluded_leakage_columns = sorted(
+        {
+            str(column)
+            for column in [
+                *list(run.params.get("excluded_leakage_columns") or []),
+                *leakage_analysis.excluded_columns,
+            ]
+            if column and str(column) != run.target_column
+        }
+    )
     target = dataframe[run.target_column]
-    features = dataframe.drop(columns=[run.target_column])
+    features = dataframe.drop(
+        columns=[run.target_column, *excluded_leakage_columns],
+        errors="ignore",
+    )
+    if features.shape[1] == 0:
+        raise ValueError("No training features remain after target-leakage removal.")
     valid_target = target.notna()
     features = features.loc[valid_target]
     target = target.loc[valid_target]
@@ -189,11 +217,14 @@ def _fit_model(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
     iterations = max(1, min(int(run.params.get("optimization_iterations", 5)), 25))
     cv_folds = max(2, min(int(run.params.get("cv_folds", 3)), 5))
     cv = _cross_validation_strategy(train_y, run.task_type, cv_folds)
-    primary_metric = "balanced_accuracy" if run.task_type == TaskType.CLASSIFICATION else "rmse"
-    scoring = (
-        "balanced_accuracy"
-        if run.task_type == TaskType.CLASSIFICATION
-        else "neg_root_mean_squared_error"
+    primary_metric = resolve_primary_metric(
+        run.task_type,
+        str(run.params.get("primary_metric")) if run.params.get("primary_metric") else None,
+    )
+    scoring = cross_validation_scoring(
+        run.task_type,
+        primary_metric,
+        target_classes=int(train_y.nunique()) if run.task_type == TaskType.CLASSIFICATION else None,
     )
     leaderboard: list[dict[str, Any]] = [_pending_candidate(candidate) for candidate in candidates]
     fitted: dict[str, tuple[Any, dict[str, Any], dict[str, float]]] = {}
@@ -233,7 +264,12 @@ def _fit_model(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
     return TournamentResult(
         metrics=best_metrics,
         model=best_model,
-        params={"winner": winner["model"], **best_params},
+        params={
+            "winner": winner["model"],
+            "excluded_leakage_columns": excluded_leakage_columns,
+            "deduplicated_rows": duplicate_row_count,
+            **best_params,
+        },
         leaderboard=leaderboard,
         primary_metric=primary_metric,
     )
@@ -247,6 +283,7 @@ def rebuild_candidate_model(
     model_name: str,
     best_params: dict[str, Any],
     evaluation_column: str | None = None,
+    excluded_columns: list[str] | None = None,
 ) -> Any:
     candidate = next(
         (item for item in candidate_catalog(task_type) if item.name == model_name),
@@ -281,7 +318,10 @@ def rebuild_candidate_model(
     if not target_column or target_column not in dataframe.columns:
         raise ValueError("The historical training target is unavailable.")
     target = dataframe[target_column]
-    features = dataframe.drop(columns=[target_column])
+    features = dataframe.drop(
+        columns=[target_column, *(excluded_columns or [])],
+        errors="ignore",
+    )
     valid_target = target.notna()
     features = _normalize_temporal_features(features.loc[valid_target])
     target = target.loc[valid_target]
@@ -297,7 +337,7 @@ def rebuild_candidate_model(
     )
     model = Pipeline(
         [
-            ("prepare", _preprocessor(train_x)),
+            ("prepare", _preprocessor_for_model(train_x, candidate.name)),
             (
                 "select",
                 SelectPercentile(
@@ -347,7 +387,7 @@ def _fit_candidate(
         )
         model = Pipeline(
             [
-                ("prepare", _preprocessor(train_x)),
+                ("prepare", _preprocessor_for_model(train_x, candidate.name)),
                 ("select", SelectPercentile(score_func=score_function, percentile=80)),
                 ("model", estimator),
             ]
@@ -529,6 +569,10 @@ def _fit_clustering(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
     folds = min(requested_folds, max(2, len(dataframe) // 10))
     splitter = KFold(n_splits=folds, shuffle=True, random_state=42)
 
+    primary_metric = resolve_primary_metric(
+        run.task_type,
+        str(run.params.get("primary_metric")) if run.params.get("primary_metric") else None,
+    )
     leaderboard: list[dict[str, Any]] = [_pending_candidate(candidate) for candidate in candidates]
     fitted: dict[str, tuple[Any, dict[str, Any], dict[str, float]]] = {}
     for index, candidate in enumerate(candidates):
@@ -548,9 +592,9 @@ def _fit_clustering(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
                 entry["best_params"],
                 entry["metrics"],
             )
-        _persist_partial_leaderboard(run.id, leaderboard, "silhouette")
+        _persist_partial_leaderboard(run.id, leaderboard, primary_metric)
 
-    leaderboard = rank_leaderboard(leaderboard, "silhouette")
+    leaderboard = rank_leaderboard(leaderboard, primary_metric)
     successful = [entry for entry in leaderboard if entry["status"] == "succeeded"]
     if not successful:
         failures = "; ".join(
@@ -568,7 +612,7 @@ def _fit_clustering(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
             **params,
         },
         leaderboard=leaderboard,
-        primary_metric="silhouette",
+        primary_metric=primary_metric,
     )
 
 
@@ -811,9 +855,21 @@ def rank_leaderboard(
     entries: list[dict[str, Any]],
     primary_metric: str,
 ) -> list[dict[str, Any]]:
-    successful = [entry for entry in entries if entry["status"] == "succeeded"]
+    successful = [
+        entry
+        for entry in entries
+        if entry["status"] == "succeeded" and primary_metric in entry.get("metrics", {})
+    ]
+    unranked = [
+        entry
+        for entry in entries
+        if entry["status"] == "succeeded" and primary_metric not in entry.get("metrics", {})
+    ]
     failed = [entry for entry in entries if entry["status"] != "succeeded"]
     for entry in failed:
+        entry["rank"] = None
+        entry["primary_score"] = None
+    for entry in unranked:
         entry["rank"] = None
         entry["primary_score"] = None
     reverse = metric_direction(primary_metric) == "maximize"
@@ -824,7 +880,7 @@ def rank_leaderboard(
     for rank, entry in enumerate(successful, start=1):
         entry["rank"] = rank
         entry["primary_score"] = entry["metrics"][primary_metric]
-    return [*successful, *failed]
+    return [*successful, *unranked, *failed]
 
 
 def _pending_candidate(candidate: CandidateSpec) -> dict[str, Any]:
@@ -1042,6 +1098,111 @@ def _preprocessor(features: pd.DataFrame) -> ColumnTransformer:
     return ColumnTransformer(transformers=transformers, remainder="drop")
 
 
+def _preprocessor_for_model(features: pd.DataFrame, model_name: str) -> ColumnTransformer:
+    if model_name == "CategoricalNB":
+        return _categorical_nb_preprocessor(features)
+    if model_name in {"ComplementNB", "MultinomialNB"}:
+        return _non_negative_preprocessor(features)
+    return _preprocessor(features)
+
+
+def _categorical_nb_preprocessor(features: pd.DataFrame) -> ColumnTransformer:
+    numeric_columns = list(features.select_dtypes(include="number").columns)
+    categorical_columns = [column for column in features.columns if column not in numeric_columns]
+    transformers = []
+    if numeric_columns:
+        transformers.append(
+            (
+                "numeric",
+                Pipeline(
+                    [
+                        ("impute", SimpleImputer(strategy="median")),
+                        (
+                            "discretize",
+                            KBinsDiscretizer(
+                                n_bins=10,
+                                encode="ordinal",
+                                strategy="quantile",
+                            ),
+                        ),
+                    ]
+                ),
+                numeric_columns,
+            )
+        )
+    if categorical_columns:
+        transformers.append(
+            (
+                "categorical",
+                Pipeline(
+                    [
+                        ("impute", SimpleImputer(strategy="most_frequent")),
+                        (
+                            "encode",
+                            OrdinalEncoder(
+                                handle_unknown="use_encoded_value",
+                                unknown_value=-1,
+                            ),
+                        ),
+                        (
+                            "non_negative",
+                            FunctionTransformer(_shift_nonnegative, feature_names_out="one-to-one"),
+                        ),
+                    ]
+                ),
+                categorical_columns,
+            )
+        )
+    return ColumnTransformer(transformers=transformers, remainder="drop")
+
+
+def _non_negative_preprocessor(features: pd.DataFrame) -> ColumnTransformer:
+    numeric_columns = list(features.select_dtypes(include="number").columns)
+    categorical_columns = [column for column in features.columns if column not in numeric_columns]
+    transformers = []
+    if numeric_columns:
+        transformers.append(
+            (
+                "numeric",
+                Pipeline(
+                    [
+                        ("impute", SimpleImputer(strategy="median")),
+                        ("scale", MinMaxScaler(clip=True)),
+                    ]
+                ),
+                numeric_columns,
+            )
+        )
+    if categorical_columns:
+        transformers.append(
+            (
+                "categorical",
+                Pipeline(
+                    [
+                        ("impute", SimpleImputer(strategy="most_frequent")),
+                        (
+                            "encode",
+                            OrdinalEncoder(
+                                handle_unknown="use_encoded_value",
+                                unknown_value=-1,
+                            ),
+                        ),
+                        (
+                            "non_negative",
+                            FunctionTransformer(_shift_nonnegative, feature_names_out="one-to-one"),
+                        ),
+                    ]
+                ),
+                categorical_columns,
+            )
+        )
+    return ColumnTransformer(transformers=transformers, remainder="drop")
+
+
+def _shift_nonnegative(values: Any) -> np.ndarray:
+    return np.asarray(values) + 1
+
+
 def _runtime_training_resources() -> tuple[int, str | None, bool]:
     raw_threads = os.getenv("AUTOML_CPU_THREADS", "1")
     try:
@@ -1152,6 +1313,14 @@ def _persist_training_success(
             "winner_mlflow_run_id": result.leaderboard[0].get("mlflow_run_id"),
             "leaderboard_primary_metric": result.primary_metric,
             "leaderboard": result.leaderboard,
+        }
+        persisted_run.params = {
+            **persisted_run.params,
+            "excluded_leakage_columns": result.params.get(
+                "excluded_leakage_columns",
+                persisted_run.params.get("excluded_leakage_columns", []),
+            ),
+            "deduplicated_rows": result.params.get("deduplicated_rows", 0),
         }
         for name, value in result.metrics.items():
             db.add(

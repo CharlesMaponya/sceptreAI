@@ -5,7 +5,13 @@ metadata:
   labels:
     {{- include "sceptre.labels" . | nindent 4 }}
 data:
-  ENVIRONMENT: kubernetes
+  ENVIRONMENT: {{ .Values.environment | quote }}
+  PUBLIC_APP_URL: {{ .Values.auth.publicAppUrl | quote }}
+  SMTP_HOST: {{ .Values.auth.passwordResetEmail.host | quote }}
+  SMTP_PORT: {{ .Values.auth.passwordResetEmail.port | quote }}
+  SMTP_FROM_EMAIL: {{ .Values.auth.passwordResetEmail.fromEmail | quote }}
+  SMTP_STARTTLS: {{ .Values.auth.passwordResetEmail.startTls | quote }}
+  SMTP_USE_SSL: {{ .Values.auth.passwordResetEmail.useSsl | quote }}
   OBJECT_STORE_TYPE: minio
   OBJECT_STORE_ENDPOINT: {{ include "sceptre.objectStoreEndpoint" . | quote }}
   OBJECT_STORE_BUCKET: {{ include "sceptre.objectStoreBucket" . | quote }}

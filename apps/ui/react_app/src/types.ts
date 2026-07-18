@@ -5,12 +5,14 @@ export type RunStatus =
 
 export interface User {
   id: ID; email: string; full_name: string | null; global_role: string;
-  is_active: boolean; is_verified: boolean; created_at: string;
+  auth_provider?: string; is_active: boolean; is_verified: boolean; created_at: string;
 }
 export interface Tokens {
   access_token: string; refresh_token: string; token_type: string; expires_in: number;
 }
 export interface AuthResponse { user: User; tokens: Tokens }
+export interface RegistrationResponse { user: User; message: string }
+export interface PasswordResetResponse { message: string; reset_token_for_dev?: string | null }
 export interface Project {
   id: ID; owner_id: ID; name: string; description: string | null;
   status: string; settings: Record<string, unknown>; created_at: string; updated_at: string;
@@ -44,8 +46,18 @@ export interface ProfileJob {
   total_columns?: number; row_count?: number; target_column?: string | null;
   progress?: number; overview_json?: {
     task_inference?: { task_type: TaskType; confidence: number; rationale: string };
+    leakage_analysis?: LeakageAnalysis;
   };
   warnings_json?: string[]; failure_message?: string | null;
+}
+export interface LeakageFinding {
+  column: string; kind: string; severity: string; confidence: number;
+  reason: string; evidence: Record<string, unknown>; auto_excluded: boolean;
+}
+export interface LeakageAnalysis {
+  status: string; target_column?: string | null; analyzed_rows: number;
+  duplicate_row_count: number; duplicate_row_ratio: number;
+  findings: LeakageFinding[]; excluded_columns: string[]; warnings: string[];
 }
 export type TaskType = "classification" | "regression" | "time_series" | "clustering";
 export interface Estimator {
@@ -54,7 +66,7 @@ export interface Estimator {
 }
 export interface TrainingPayload {
   dataset_version_id: ID; target_column: string | null; evaluation_column: string | null;
-  task_type: TaskType; prefer_gpu: boolean; expected_minutes: number;
+  task_type: TaskType; primary_metric: string; prefer_gpu: boolean; expected_minutes: number;
   candidate_limit: number; candidate_models: string[]; optimization_iterations: number;
   cv_folds: number;
 }
@@ -99,6 +111,17 @@ export interface LeaderboardEntry {
   primary_score: number | null; metrics: Record<string, number>;
   diagnostics: Record<string, unknown>; best_params: Record<string, unknown>;
   duration_seconds: number | null; error: string | null;
+  pipeline?: {
+    model_name: string; task_type: string; state: string; current_phase?: string | null;
+    stages: Array<{ key: string; label: string; status: string; summary: string }>;
+    feature_processing: Record<string, unknown>; parameters: Record<string, unknown>;
+    diagram?: {
+      input_gates?: string[];
+      transformer?: { name: string; type: string; branches: Array<{ key: string; label: string; steps: string[] }> };
+      selector?: { name: string; type: string; summary: string } | null;
+      estimator?: { name: string; type: string };
+    };
+  };
 }
 export interface Leaderboard {
   run_id: ID; status: RunStatus; primary_metric: string | null; winner: string | null;

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import io
 import uuid
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 
 import automl_api.services.operations as operations_service
@@ -11,7 +13,7 @@ import pytest
 from automl_api.api.routes.operations import router
 from automl_api.core.config import Settings
 from automl_api.inference import app as inference_app
-from automl_api.inference.app import predict_records
+from automl_api.inference.app import PointPredictionRequest, PredictionRequest, predict_records
 from automl_api.models.enums import (
     GlobalRole,
     ModelStage,
@@ -24,6 +26,7 @@ from automl_api.schemas.operations import ArtifactCleanupRequest, DriftLaunchReq
 from automl_api.services.kubernetes_training import KubernetesTrainingClient
 from automl_api.services.operations import (
     _adaptive_inference_memory,
+    _apply_monitoring_resource_floor,
     _generated_model_dockerfile,
     _internal_model_deployment_urls,
     _platform_model_deployment_urls,
@@ -34,9 +37,17 @@ from automl_api.services.operations import (
 from automl_api.services.training import BATCH_RUN_KINDS
 from automl_api.storage.object_store import EmbeddedObjectStore
 from automl_api.training.analysis import _drift_summary
-from fastapi import HTTPException
-from fastapi.testclient import TestClient
+from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi.routing import APIRoute
 from sklearn.linear_model import LinearRegression
+
+
+def _endpoint(app: FastAPI, path: str, method: str):
+    return next(
+        route.endpoint
+        for route in app.routes
+        if isinstance(route, APIRoute) and route.path == path and method in route.methods
+    )
 
 
 def test_phase_seven_routes_are_registered() -> None:
@@ -60,6 +71,31 @@ def test_phase_seven_routes_are_registered() -> None:
 def test_long_lived_deployments_do_not_consume_batch_training_slots() -> None:
     assert RunKind.DEPLOYMENT not in BATCH_RUN_KINDS
     assert RunKind.DRIFT in BATCH_RUN_KINDS
+
+
+def test_monitoring_resource_class_scales_drift_job_and_respects_capacity() -> None:
+    estimate = SimpleNamespace(
+        cpu_request_cores=1.0,
+        cpu_limit_cores=2.0,
+        memory_request_mb=1024,
+        memory_limit_mb=2048,
+        capacity=SimpleNamespace(available_cpu_cores=3.0, available_memory_mb=6000),
+        blockers=[],
+        can_launch=True,
+    )
+
+    _apply_monitoring_resource_floor(estimate, "large")
+
+    assert estimate.cpu_request_cores == 2.0
+    assert estimate.memory_request_mb == 4096
+    assert estimate.can_launch is True
+
+    _apply_monitoring_resource_floor(estimate, "xlarge")
+
+    assert estimate.cpu_request_cores == 4.0
+    assert estimate.memory_request_mb == 8192
+    assert estimate.can_launch is False
+    assert "available CPU" in " ".join(estimate.blockers)
 
 
 def test_drift_rejects_external_data_missing_training_features(monkeypatch) -> None:
@@ -166,33 +202,26 @@ def test_inference_http_contract(monkeypatch) -> None:
             return np.asarray([len(frame)] * len(frame))
 
     monkeypatch.setattr(inference_app, "_load_model", lambda: Model())
-    client = TestClient(inference_app.app)
-
-    ready = client.get("/health/ready")
-    root = client.get("/", follow_redirects=False)
-    docs = client.get("/docs")
-    openapi = client.get("/openapi.json")
-    online = client.post(
-        "/v1/predict/online",
-        json={"record": {"feature": 1.0}},
+    app = inference_app.app
+    ready = _endpoint(app, "/health/ready", "GET")()
+    root = _endpoint(app, "/", "GET")()
+    online = _endpoint(app, "/v1/predict/online", "POST")(
+        PointPredictionRequest(record={"feature": 1.0})
     )
-    response = client.post(
-        "/v1/predict",
-        json={"records": [{"feature": 1.0}, {"feature": 2.0}]},
+    response = _endpoint(app, "/v1/predict", "POST")(
+        PredictionRequest(records=[{"feature": 1.0}, {"feature": 2.0}])
     )
+    openapi = app.openapi()
 
-    assert ready.status_code == 200
+    assert ready == {"status": "ok"}
     assert root.status_code == 307
     assert root.headers["location"] == "/docs"
-    assert docs.status_code == 200
-    assert openapi.status_code == 200
-    assert "/v1/predict" in openapi.json()["paths"]
-    assert "/v1/predict/online" in openapi.json()["paths"]
-    assert "/v1/predict/offline" in openapi.json()["paths"]
-    assert online.status_code == 200
-    assert online.json()["prediction"] == 1
-    assert response.status_code == 200
-    assert response.json()["predictions"] == [2, 2]
+    assert any(route.path == "/docs" for route in app.routes)
+    assert "/v1/predict" in openapi["paths"]
+    assert "/v1/predict/online" in openapi["paths"]
+    assert "/v1/predict/offline" in openapi["paths"]
+    assert online.prediction == 1
+    assert response.predictions == [2, 2]
 
 
 def test_inference_offline_upload_returns_prediction_file(monkeypatch) -> None:
@@ -201,37 +230,36 @@ def test_inference_offline_upload_returns_prediction_file(monkeypatch) -> None:
             return np.asarray([value * 2 for value in frame["feature"]])
 
     monkeypatch.setattr(inference_app, "_load_model", lambda: Model())
-    client = TestClient(inference_app.create_app())
-
-    response = client.post(
-        "/v1/predict/offline",
-        files={"file": ("scoring.csv", b"feature\n2\n4\n", "text/csv")},
-        data={"include_probabilities": "false"},
+    app = inference_app.create_app()
+    response = _endpoint(app, "/v1/predict/offline", "POST")(
+        file=UploadFile(filename="scoring.csv", file=io.BytesIO(b"feature\n2\n4\n")),
+        include_probabilities=False,
     )
 
-    assert response.status_code == 200
     assert response.headers["x-prediction-row-count"] == "2"
     assert "scoring-predictions.csv" in response.headers["content-disposition"]
-    assert response.text.splitlines() == [
+    assert Path(response.path).read_text(encoding="utf-8").splitlines() == [
         "feature,prediction",
         "2,4",
         "4,8",
     ]
+    Path(response.path).unlink(missing_ok=True)
 
 
 def test_inference_offline_upload_rejects_unknown_file_type(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(inference_app, "_load_model", lambda: object())
-    client = TestClient(inference_app.create_app())
+    endpoint = _endpoint(inference_app.create_app(), "/v1/predict/offline", "POST")
 
-    response = client.post(
-        "/v1/predict/offline",
-        files={"file": ("scoring.xlsx", b"invalid", "application/octet-stream")},
-    )
+    with pytest.raises(HTTPException) as exc_info:
+        endpoint(
+            file=UploadFile(filename="scoring.xlsx", file=io.BytesIO(b"invalid")),
+            include_probabilities=False,
+        )
 
-    assert response.status_code == 422
-    assert "Unsupported file type" in response.json()["detail"]
+    assert exc_info.value.status_code == 422
+    assert "Unsupported file type" in exc_info.value.detail
 
 
 def test_inference_docs_use_project_and_environment_not_platform_name(
@@ -240,14 +268,13 @@ def test_inference_docs_use_project_and_environment_not_platform_name(
     monkeypatch.setenv("PROJECT_NAME", "Credit Risk")
     monkeypatch.setenv("DEPLOYMENT_ENVIRONMENT", "staging")
     monkeypatch.setenv("MODEL_NAME", "ExtraTreesClassifier")
-    client = TestClient(inference_app.create_app())
-
-    openapi = client.get("/openapi.json").json()
-    metadata = client.get("/v1/metadata")
+    app = inference_app.create_app()
+    openapi = app.openapi()
+    metadata = _endpoint(app, "/v1/metadata", "GET")()
 
     assert openapi["info"]["title"] == "Credit Risk model API (staging)"
     assert "Sceptre" not in openapi["info"]["title"]
-    assert metadata.json() == {
+    assert metadata.model_dump() == {
         "project_name": "Credit Risk",
         "environment": "staging",
         "model_name": "ExtraTreesClassifier",

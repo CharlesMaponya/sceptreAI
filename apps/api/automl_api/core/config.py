@@ -64,6 +64,14 @@ class Settings:
     jwt_access_token_minutes: int = 24 * 60
     jwt_refresh_rotation_hours: int = 7 * 24
     simple_auth_enabled: bool = True
+    public_app_url: str = "http://localhost:8080"
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    smtp_starttls: bool = True
+    smtp_use_ssl: bool = False
 
     object_store_type: str = "minio"
     object_store_endpoint: str | None = None
@@ -135,6 +143,14 @@ def get_settings() -> Settings:
             dotenv,
         ),
         simple_auth_enabled=_get_bool("SIMPLE_AUTH_ENABLED", Settings.simple_auth_enabled, dotenv),
+        public_app_url=str(_get_env("PUBLIC_APP_URL", Settings.public_app_url, dotenv)),
+        smtp_host=_get_env("SMTP_HOST", Settings.smtp_host, dotenv),
+        smtp_port=_get_int("SMTP_PORT", Settings.smtp_port, dotenv),
+        smtp_username=_get_env("SMTP_USERNAME", Settings.smtp_username, dotenv),
+        smtp_password=_get_env("SMTP_PASSWORD", Settings.smtp_password, dotenv),
+        smtp_from_email=_get_env("SMTP_FROM_EMAIL", Settings.smtp_from_email, dotenv),
+        smtp_starttls=_get_bool("SMTP_STARTTLS", Settings.smtp_starttls, dotenv),
+        smtp_use_ssl=_get_bool("SMTP_USE_SSL", Settings.smtp_use_ssl, dotenv),
         object_store_type=str(_get_env("OBJECT_STORE_TYPE", Settings.object_store_type, dotenv)),
         object_store_endpoint=_get_env(
             "OBJECT_STORE_ENDPOINT",

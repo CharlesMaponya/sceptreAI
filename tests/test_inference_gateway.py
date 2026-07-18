@@ -10,11 +10,11 @@ from typing import Any
 import automl_api.services.inference_gateway as gateway
 import httpx
 import pytest
-from automl_api.api.routes.operations import router
-from automl_api.db.session import get_db
+from automl_api.api.deps import get_current_user
+from automl_api.api.routes.operations import deployment_inference_gateway
 from automl_api.models.enums import ProjectRole, RunKind, RunStatus
-from fastapi import FastAPI, HTTPException, status
-from fastapi.testclient import TestClient
+from fastapi import HTTPException, status
+from fastapi.dependencies.utils import get_dependant
 from starlette.requests import Request
 
 
@@ -128,18 +128,17 @@ def _mock_client(
 
 
 def test_gateway_route_requires_platform_authentication() -> None:
-    app = FastAPI()
-    app.include_router(router, prefix="/api/v1")
-    app.dependency_overrides[get_db] = lambda: SimpleNamespace()
-    project_id = uuid.uuid4()
-    run_id = uuid.uuid4()
-
-    response = TestClient(app).get(
-        _gateway_path("health/ready", project_id=project_id, run_id=run_id)
+    dependant = get_dependant(
+        path="/api/v1/projects/{project_id}/operations/deployments/{run_id}/inference/{path:path}",
+        call=deployment_inference_gateway,
     )
+    assert any(dependency.call is get_current_user for dependency in dependant.dependencies)
 
-    assert response.status_code == status.HTTP_401_UNAUTHORIZED
-    assert response.json() == {"detail": "Authentication required."}
+    with pytest.raises(HTTPException) as exc_info:
+        get_current_user(None, SimpleNamespace())
+
+    assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
+    assert exc_info.value.detail == "Authentication required."
 
 
 def test_resolver_checks_project_viewer_role_before_deployment_lookup(

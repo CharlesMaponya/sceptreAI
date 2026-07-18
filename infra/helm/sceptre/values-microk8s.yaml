@@ -11,3 +11,4 @@ training:
   imagePullPolicy: Always
 inference:
   image: {pullPolicy: Always}
+environment: local

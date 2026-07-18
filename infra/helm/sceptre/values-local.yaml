@@ -14,3 +14,4 @@ training:
 inference:
   image:
     pullPolicy: Never
+environment: local

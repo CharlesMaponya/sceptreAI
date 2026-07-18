@@ -1,15 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity, BarChart3, BrainCircuit, ChevronDown, ChevronRight, CircleStop, Cpu,
-  FileCheck2, FileSpreadsheet, FileText, Gauge, MemoryStick, Play, Plus, RefreshCw,
-  Rocket, TerminalSquare, Trophy, Upload,
+  Download, FileCheck2, FileSpreadsheet, FileText, Gauge, GitBranch, MemoryStick, Play,
+  Plus, RefreshCw, Rocket, TerminalSquare, Trophy, Upload,
 } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
-import { api, json, uploadFormData } from "../api";
+import { api, getSession, json, uploadFormData } from "../api";
 import {
-  Badge, Button, Card, EmptyState, ErrorState, Loading, Metric, Modal, Notice, PageHeader,
+  Badge, Button, Card, EmptyState, ErrorState, Loading, Modal, Notice, PageHeader,
 } from "../components/ui";
 import { formatBytes, formatDate, titleCase } from "../lib";
 import type {
@@ -88,6 +88,7 @@ function RunDetail({ projectId, run, invalidate }: {
   const logs = useQuery({
     queryKey: ["logs", run.id],
     queryFn: () => api<Logs>(`/projects/${projectId}/training/runs/${run.id}/logs`),
+    enabled: tab === "logs",
     refetchInterval: ["queued", "precheck_running", "running"].includes(run.status) ? 2000 : false,
   });
   const refreshRunEvidence = () => {
@@ -116,12 +117,12 @@ function RunDetail({ projectId, run, invalidate }: {
       </div>
       {run.plain_english_failure && <Notice tone="danger">{run.plain_english_failure}</Notice>}
       {run.failure_message && <details className="run-failure"><summary>Technical failure details</summary><pre>{run.failure_message}</pre></details>}
-      <div className="metrics-grid metrics-grid--compact">
-        <Metric label="Candidates" value={leaderboard.data?.entries.length || "—"} />
-        <Metric label="Winner" value={leaderboard.data?.winner || "Pending"} />
-        <Metric label="Primary metric" value={titleCase(leaderboard.data?.primary_metric || "Pending")} />
-        <Metric label="Finished" value={formatDate(run.finished_at)} />
-      </div>
+      <dl className="run-evidence-strip">
+        <div><dt>Candidates</dt><dd>{leaderboard.data?.entries.length || "—"}</dd></div>
+        <div><dt>Winner</dt><dd>{leaderboard.data?.winner || "Pending"}</dd></div>
+        <div><dt>Primary metric</dt><dd>{titleCase(leaderboard.data?.primary_metric || "Pending")}</dd></div>
+        <div><dt>Finished</dt><dd>{formatDate(run.finished_at)}</dd></div>
+      </dl>
       <div className="button-row run-actions">
         {run.status === "succeeded" && <Button variant="secondary" onClick={() => setShowAdd(true)}>
           <Plus size={16} />Add models</Button>}
@@ -142,7 +143,7 @@ function RunDetail({ projectId, run, invalidate }: {
         onClick={() => setTab("logs")}>Logs</button>
     </div>
     {tab === "leaderboard" && <LeaderboardPanel projectId={projectId} leaderboard={leaderboard} winner={winner}
-      task={run.task_type} resources={resources} logs={logs} />}
+      task={run.task_type} resources={resources} />}
     {tab === "analysis" && <AnalysisPanel projectId={projectId} run={run}
       successfulModels={leaderboard.data?.entries.filter((entry) => entry.status === "succeeded").map((entry) => entry.model) || []} />}
     {tab === "logs" && <LogsPanel logs={logs} />}
@@ -152,13 +153,12 @@ function RunDetail({ projectId, run, invalidate }: {
   </div>;
 }
 
-function LeaderboardPanel({ projectId, leaderboard, winner, task, resources, logs }: {
+function LeaderboardPanel({ projectId, leaderboard, winner, task, resources }: {
   projectId: string;
   leaderboard: ReturnType<typeof useQuery<Leaderboard>>;
   winner: Leaderboard["entries"][number] | undefined;
   task: TaskType;
   resources: ReturnType<typeof useQuery<TrainingResourceUsage>>;
-  logs: ReturnType<typeof useQuery<Logs>>;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   return <Card className="section-card">
@@ -187,8 +187,9 @@ function LeaderboardPanel({ projectId, leaderboard, winner, task, resources, log
                 <span>{entry.duration_seconds ? `${entry.duration_seconds.toFixed(1)}s` : "—"}</span><ChevronDown size={17} />
               </button>
               {entry.error && <small className="cell-error leaderboard-model__error">{entry.error}</small>}
-              {open && <ModelEvidence entry={entry} task={task}
-                metricDirections={leaderboard.data.metric_directions} resources={resources} logs={logs} />}
+              {open && <ModelEvidence projectId={projectId} runId={leaderboard.data.run_id}
+                entry={entry} task={task} metricDirections={leaderboard.data.metric_directions}
+                resources={resources} />}
             </article>;
           })}
         </div>
@@ -201,17 +202,18 @@ type LeaderboardEntry = Leaderboard["entries"][number];
 type Curve = { label: string; points: Array<Record<string, number | null>> };
 type PredictionSample = { order: number; actual: number; predicted: number; residual: number };
 
-function ModelEvidence({ entry, task, metricDirections, resources, logs }: {
+function ModelEvidence({ projectId, runId, entry, task, metricDirections, resources }: {
+  projectId: string;
+  runId: string;
   entry: LeaderboardEntry;
   task: TaskType;
   metricDirections: Record<string, string>;
   resources: ReturnType<typeof useQuery<TrainingResourceUsage>>;
-  logs: ReturnType<typeof useQuery<Logs>>;
 }) {
-  const [tab, setTab] = useState<"metrics" | "diagnostics" | "resources" | "parameters" | "logs">("metrics");
+  const [tab, setTab] = useState<"metrics" | "diagnostics" | "resources" | "parameters" | "pipeline">("metrics");
   return <div className="leaderboard-model__body">
     <div className="model-tabs" role="tablist" aria-label={`${entry.model} evidence`}>
-      {(["metrics", "diagnostics", "resources", "parameters", "logs"] as const).map((name) =>
+      {(["metrics", "diagnostics", "resources", "parameters", "pipeline"] as const).map((name) =>
         <button key={name} role="tab" aria-selected={tab === name} className={tab === name ? "active" : ""}
           onClick={() => setTab(name)}>{titleCase(name)}</button>)}
     </div>
@@ -221,10 +223,155 @@ function ModelEvidence({ entry, task, metricDirections, resources, logs }: {
     {tab === "diagnostics" && <ModelDiagnosticCharts diagnostics={entry.diagnostics} task={task} />}
     {tab === "resources" && <ResourcePanel resources={resources} />}
     {tab === "parameters" && <pre className="model-parameters-json">{JSON.stringify(entry.best_params, null, 2)}</pre>}
-    {tab === "logs" && (logs.isLoading ? <Loading /> : logs.error
-      ? <ErrorState error={logs.error} retry={() => logs.refetch()} />
-      : <pre className="log-viewer" aria-label="Training logs">{logs.data?.lines.join("\n") || "No log output yet."}</pre>)}
+    {tab === "pipeline" && <ModelPipeline projectId={projectId} runId={runId} entry={entry} task={task} />}
   </div>;
+}
+
+function ModelPipeline({ projectId, runId, entry, task }: {
+  projectId: string; runId: string; entry: LeaderboardEntry; task: TaskType;
+}) {
+  const [downloadError, setDownloadError] = useState("");
+  const [downloadStatus, setDownloadStatus] = useState("");
+  const diagram = entry.pipeline?.diagram || fallbackPipelineDiagram(entry, task);
+  const stages = entry.pipeline?.stages || fallbackPipeline(entry, task);
+  const download = async () => {
+    setDownloadStatus("Preparing audit evidence…"); setDownloadError("");
+    try {
+      await downloadModelAudit(projectId, runId, entry.model, setDownloadStatus);
+    } catch (error) {
+      setDownloadError(error instanceof Error ? error.message : "The audit document could not be downloaded.");
+    } finally {
+      setDownloadStatus("");
+    }
+  };
+  return <section className="model-pipeline-evidence">
+    <header><div><span className="eyebrow">Fitted estimator graph</span><h3>Training pipeline</h3>
+      <p>The preprocessing branches that transform each feature family before they converge into this estimator.</p></div>
+      <div className="model-audit-actions">
+        <Button variant="secondary" loading={Boolean(downloadStatus)} onClick={download}>
+          <Download size={14} />Download PDF audit</Button>
+      </div></header>
+    {downloadError && <Notice tone="danger">{downloadError}</Notice>}
+    {downloadStatus && <Notice>{downloadStatus}</Notice>}
+    <PipelineDiagram diagram={diagram} modelName={entry.model} />
+    <details className="pipeline-lifecycle"><summary>Execution evidence</summary><ol>
+      {stages.map((stage) => <li key={stage.key} data-status={stage.status}>
+        <i className={`timeline-dot timeline-dot--${stage.status}`} /><span><b>{stage.label}</b><small>{stage.summary}</small></span>
+        <Badge status={stage.status} /></li>)}</ol></details>
+    <div className="pipeline-footnote"><FileCheck2 size={15} /><p><b>Audit scope</b>
+      The PDF includes project context, UI-consistent target evidence, every recorded preparation step,
+      all model metrics, tabular diagnostics, and a required model-specific SHAP waterfall.</p></div>
+  </section>;
+}
+
+function PipelineDiagram({ diagram, modelName }: {
+  diagram: NonNullable<NonNullable<Leaderboard["entries"][number]["pipeline"]>["diagram"]>;
+  modelName: string;
+}) {
+  const transformer = diagram.transformer;
+  const branches = transformer?.branches || [];
+  return <div className="pipeline-diagram" aria-label={`${modelName} fitted pipeline`}>
+    <div className="pipeline-gates">{(diagram.input_gates || []).map((gate) => <span key={gate}>{gate}</span>)}</div>
+    <div className="pipeline-node pipeline-node--root"><GitBranch /><span><small>Pipeline step</small><b>Feature preprocessing</b></span></div>
+    <i className="pipeline-connector pipeline-connector--down" />
+    <section className="pipeline-transformer">
+      <header><ChevronDown /><span><small>{transformer?.name || "preprocessor"}</small><b>{transformer?.type || "ColumnTransformer"}</b></span></header>
+      <div className="pipeline-branches">{branches.map((branch) => <article key={branch.key}>
+        <h4><GitBranch />{branch.label}</h4><ol>{branch.steps.map((step, index) =>
+          <li key={`${step}-${index}`}><span>{index + 1}</span><b>{step}</b></li>)}</ol>
+      </article>)}</div>
+      <div className="pipeline-convergence" aria-hidden><i /><i /><b /></div>
+    </section>
+    {diagram.selector && <><i className="pipeline-connector pipeline-connector--down" />
+      <div className="pipeline-node pipeline-node--selector"><span><small>{diagram.selector.name}</small>
+        <b>{diagram.selector.type}</b><em>{diagram.selector.summary}</em></span></div></>}
+    <i className="pipeline-connector pipeline-connector--down" />
+    <div className="pipeline-node pipeline-node--estimator"><Gauge /><span><small>{diagram.estimator?.name || "estimator"}</small>
+      <b>{diagram.estimator?.type || modelName}</b></span></div>
+  </div>;
+}
+
+function fallbackPipeline(entry: LeaderboardEntry, task: TaskType) {
+  const completed = entry.status === "succeeded";
+  const planned = completed ? "completed" : entry.status === "running" ? "running" : "planned";
+  return [
+    { key: "data", label: "Immutable data", status: completed ? "completed" : "ready", summary: "Load the selected dataset version." },
+    { key: "leakage", label: "Leakage gate", status: planned, summary: "Remove profiling-confirmed leakage features." },
+    { key: "split", label: "Validation design", status: planned, summary: task === "time_series" ? "Ordered holdout and time-series folds." : "Task-aware holdout and cross-validation." },
+    { key: "processing", label: "Feature processing", status: planned, summary: "Impute and encode the fitted feature contract." },
+    { key: "selection", label: "Feature selection", status: planned, summary: task === "clustering" ? "Retain the transformed feature space." : "Keep the top 80% by mutual information." },
+    { key: "fit", label: "Tune & fit", status: planned, summary: `Fit ${entry.model} with recorded parameters.` },
+    { key: "evaluate", label: "Evaluate", status: planned, summary: "Calculate task-aware metrics and diagnostics." },
+    { key: "persist", label: "Persist evidence", status: planned, summary: "Store the fitted pipeline and MLflow evidence." },
+  ];
+}
+
+function fallbackPipelineDiagram(entry: LeaderboardEntry, task: TaskType) {
+  return {
+    input_gates: ["Immutable dataset version", "Leakage gate", "Temporal normalization"],
+    transformer: { name: "preprocessor", type: "ColumnTransformer", branches: [
+      { key: "numeric", label: "Numeric", steps: ["Median imputation", "Standard scaling"] },
+      { key: "categorical", label: "Categorical & text", steps: ["Most-frequent imputation", "Ordinal encoding"] },
+    ] },
+    selector: task === "clustering" ? null : {
+      name: "Feature selection", type: "SelectPercentile", summary: "Keep the top 80% by mutual information.",
+    },
+    estimator: { name: "estimator", type: entry.model },
+  };
+}
+
+async function downloadModelAudit(
+  projectId: string,
+  runId: string,
+  modelName: string,
+  updateStatus: (status: string) => void,
+) {
+  const path = `/api/v1/projects/${projectId}/training/runs/${runId}/models/${encodeURIComponent(modelName)}/audit-document`;
+  const fetchAudit = () => {
+    const token = getSession()?.tokens.access_token;
+    return fetch(path, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  };
+  let response = await fetchAudit();
+  if (response.status === 409) {
+    const body = await response.json().catch(() => null) as { detail?: { code?: string; message?: string } } | null;
+    if (body?.detail?.code !== "AUDIT_SHAP_REQUIRED") {
+      throw new Error(body?.detail?.message || `Audit preparation failed (${response.status}).`);
+    }
+    updateStatus("Calculating the required representative SHAP waterfall…");
+    const launched = await api<{ run: Analysis }>(`/projects/${projectId}/training/runs/${runId}/explanations`,
+      json("POST", { model_name: modelName, max_rows: 200, expected_minutes: 10, force: true }));
+    await waitForAuditExplanation(projectId, runId, launched.run.id, updateStatus);
+    updateStatus("Rendering the verified PDF evidence package…");
+    response = await fetchAudit();
+  }
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(detail || `Audit download failed (${response.status}).`);
+  }
+  const url = URL.createObjectURL(await response.blob());
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${modelName.replace(/[^A-Za-z0-9_.-]+/g, "-")}-audit.pdf`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+async function waitForAuditExplanation(
+  projectId: string, runId: string, analysisRunId: string,
+  updateStatus: (status: string) => void,
+) {
+  for (let attempt = 0; attempt < 300; attempt += 1) {
+    const result = await api<AnalysisResult>(
+      `/projects/${projectId}/training/runs/${runId}/analyses/${analysisRunId}`,
+    );
+    if (result.status === "succeeded") return;
+    if (["failed", "cancelled", "preempted"].includes(result.status)) {
+      throw new Error("SHAP preparation did not complete, so the audit PDF was not generated.");
+    }
+    updateStatus(`Calculating SHAP evidence · ${titleCase(result.status)}`);
+    await new Promise((resolve) => window.setTimeout(resolve, 2000));
+  }
+  throw new Error("SHAP preparation timed out before the audit PDF could be generated.");
 }
 
 function LiveTrainingSummary({ resources }: {

@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setSession } from "../api";
 import { DataPage } from "./DataPage";
 import { OperationsPage } from "./OperationsPage";
+import { MonitoringPage } from "./MonitoringPage";
 import { ProjectOverview } from "./ProjectOverview";
 import { RunsPage } from "./RunsPage";
 import { TrainingPage } from "./TrainingPage";
@@ -41,6 +42,48 @@ describe("core workflow integrations", () => {
   beforeEach(() => {
     setSession(null);
     vi.restoreAllMocks();
+  });
+
+  it("shows centralized deployment evidence and governance actions", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.endsWith("/monitoring/dashboard")) return response({
+        scope: "portfolio", generated_at: "2026-07-18T12:00:00Z",
+        deployment_count: 1, healthy_count: 0, attention_count: 1,
+        unmonitored_count: 0, open_alert_count: 1,
+        deployments: [{
+          project_id: "project-1", project_name: "Fraud controls",
+          deployment_run_id: "deploy-1", model_version_id: "model-v1",
+          registry_entry_id: "model-v1", model_name: "ExtraTreesClassifier",
+          model_version: 3, environment: "production", task_type: "classification",
+          deployment_status: "succeeded", health_status: "warning",
+          deployed_at: "2026-07-12T09:00:00Z", last_observation_at: "2026-07-18T11:00:00Z",
+          monitoring: { enabled: true, schedule: "daily", resource_class: "large",
+            metrics: ["accuracy"], thresholds: {}, retraining_enabled: true,
+            approval_required: true, revision: 2, updated_at: "2026-07-17T10:00:00Z",
+            updated_by_id: "user-1" },
+          baseline_metric_name: "accuracy", baseline_metric_value: 0.94,
+          metric_series: [{ name: "accuracy", kind: "performance", higher_is_better: true,
+            points: [{ id: "metric-1", name: "accuracy", kind: "performance", value: 0.81,
+              recorded_at: "2026-07-18T11:00:00Z", sample_count: 1200,
+              higher_is_better: true, status: "warning", metadata: {} }] }],
+          drift_history: [], retraining_events: 1, open_alerts: 1,
+          governance_reports: 0, timeline: [{ kind: "deployment", label: "Deploy fraud model",
+            status: "succeeded", occurred_at: "2026-07-12T09:00:00Z", details: {} }],
+        }],
+      });
+      if (url.endsWith("/governance/reports")) return response([]);
+      return response([]);
+    });
+
+    renderRoute(<MonitoringPage />, "/projects/project-1/monitoring");
+
+    expect(await screen.findByText("ExtraTreesClassifier v3")).toBeInTheDocument();
+    expect(screen.getByText("Review recent degradation")).toBeInTheDocument();
+    expect(screen.getByText("Accuracy 0.9400")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Governance & audit/i }));
+    expect(await screen.findByText("No report snapshots")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Generate snapshot/i })).toBeInTheDocument();
   });
 
   it("shows estimator catalog failures and recovers on retry", async () => {
@@ -136,6 +179,14 @@ describe("core workflow integrations", () => {
     await userEvent.click(screen.getByRole("tab", { name: "Resources" }));
     expect(screen.getByText("0.80 cores")).toBeInTheDocument();
     expect(screen.getByText("Nvidia × 1")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "Pipeline" }));
+    expect(screen.getByRole("heading", { name: "Training pipeline" })).toBeInTheDocument();
+    expect(screen.getByText("ColumnTransformer")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Numeric" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Categorical & text" })).toBeInTheDocument();
+    expect(screen.getAllByText("Feature selection").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /Download PDF audit/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /JSON evidence/i })).not.toBeInTheDocument();
     const logTabs = screen.getAllByRole("tab", { name: "Logs" });
     await userEvent.click(logTabs[logTabs.length - 1]);
     expect(await screen.findByLabelText("Training logs")).toHaveTextContent("candidate completed");
@@ -198,7 +249,7 @@ describe("core workflow integrations", () => {
     expect(screen.getByText("21% completed before cancellation")).toBeInTheDocument();
     expect(leaderboardRequests).toBeGreaterThan(1);
     expect(resourceRequests).toBeGreaterThan(1);
-    expect(logRequests).toBeGreaterThan(1);
+    expect(logRequests).toBe(0);
   });
 
   it("renders SHAP features automatically when explainability completes", async () => {

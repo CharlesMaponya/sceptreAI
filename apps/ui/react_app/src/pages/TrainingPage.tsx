@@ -7,6 +7,32 @@ import { Button, Card, ErrorState, Loading, Metric, Notice, PageHeader } from ".
 import { titleCase } from "../lib";
 import type { Dataset, DatasetVersion, Estimator, ProfileJob, TaskType, TrainingEstimate, TrainingPayload } from "../types";
 
+const PRIMARY_METRICS: Record<TaskType, Array<{ value: string; label: string }>> = {
+  classification: [
+    { value: "balanced_accuracy", label: "Balanced accuracy" },
+    { value: "accuracy", label: "Accuracy" },
+    { value: "f1_macro", label: "F1 macro" },
+    { value: "f1_weighted", label: "F1 weighted" },
+    { value: "roc_auc", label: "ROC AUC" },
+    { value: "log_loss", label: "Log loss" },
+  ],
+  regression: [
+    { value: "rmse", label: "RMSE" }, { value: "mae", label: "MAE" },
+    { value: "mse", label: "MSE" }, { value: "r2", label: "R²" },
+    { value: "explained_variance", label: "Explained variance" },
+  ],
+  time_series: [
+    { value: "rmse", label: "RMSE" }, { value: "mae", label: "MAE" },
+    { value: "mse", label: "MSE" }, { value: "r2", label: "R²" },
+    { value: "explained_variance", label: "Explained variance" },
+  ],
+  clustering: [
+    { value: "silhouette", label: "Silhouette" },
+    { value: "davies_bouldin", label: "Davies–Bouldin" },
+    { value: "calinski_harabasz", label: "Calinski–Harabasz" },
+  ],
+};
+
 export function TrainingPage() {
   const { projectId = "" } = useParams();
   const navigate = useNavigate();
@@ -15,6 +41,7 @@ export function TrainingPage() {
   const [versionId, setVersionId] = useState("");
   const [task, setTask] = useState<TaskType>("classification");
   const [target, setTarget] = useState("");
+  const [primaryMetric, setPrimaryMetric] = useState("balanced_accuracy");
   const [models, setModels] = useState<string[]>([]);
   const [minutes, setMinutes] = useState(10);
   const [folds, setFolds] = useState(3);
@@ -46,14 +73,20 @@ export function TrainingPage() {
     }
     if (inferred) setTask(inferred);
   }, [latestProfile.data?.id, latestProfile.data?.target_column, latestProfile.data?.overview_json?.task_inference?.task_type, columns]);
+  useEffect(() => {
+    if (!PRIMARY_METRICS[task].some((metric) => metric.value === primaryMetric)) {
+      setPrimaryMetric(PRIMARY_METRICS[task][0].value);
+    }
+  }, [task, primaryMetric]);
 
   const estimators = useQuery({ queryKey: ["estimators", projectId, task], enabled: Boolean(projectId), queryFn: () => api<Estimator[]>(`/projects/${projectId}/training/estimators?task_type=${task}`) });
   useEffect(() => { if (estimators.data) setModels(estimators.data.filter((item) => item.default_selected).map((item) => item.name)); }, [estimators.data]);
   const payload = useMemo<TrainingPayload>(() => ({
     dataset_version_id: versionId, target_column: task === "clustering" ? null : target,
-    evaluation_column: null, task_type: task, prefer_gpu: gpu, expected_minutes: minutes,
+    evaluation_column: null, task_type: task, primary_metric: primaryMetric,
+    prefer_gpu: gpu, expected_minutes: minutes,
     candidate_limit: models.length, candidate_models: models, optimization_iterations: iterations, cv_folds: folds,
-  }), [versionId, target, task, gpu, minutes, models, iterations, folds]);
+  }), [versionId, target, task, primaryMetric, gpu, minutes, models, iterations, folds]);
   const estimate = useMutation({ mutationFn: () => api<TrainingEstimate>(`/projects/${projectId}/training/estimate`, json("POST", payload)) });
   const launch = useMutation({
     mutationFn: () => api(`/projects/${projectId}/training/runs`, json("POST", { ...payload, run_name: runName, params: {} })),
@@ -75,6 +108,8 @@ export function TrainingPage() {
         <div className="task-grid">{(["classification", "regression", "time_series", "clustering"] as TaskType[]).map((value) =>
           <button key={value} className={task === value ? "active" : ""} onClick={() => { setTask(value); estimate.reset(); }}><i>{task === value && <Check size={13} />}</i><b>{titleCase(value)}</b></button>)}</div>
         {task !== "clustering" && <label>Target column<select value={target} onChange={(e) => { setTarget(e.target.value); estimate.reset(); }}>{columns.map((column) => <option key={column}>{column}</option>)}</select><small>The outcome the model will predict.</small></label>}
+        <label>Primary leaderboard metric<select value={primaryMetric} onChange={(e) => { setPrimaryMetric(e.target.value); estimate.reset(); }}>
+          {PRIMARY_METRICS[task].map((metric) => <option value={metric.value} key={metric.value}>{metric.label}</option>)}</select><small>Models will be ranked by this metric.</small></label>
       </div></Card>
       <Card className="form-section"><span className="step-number">3</span><div className="form-section__body"><h2>Select candidate models</h2><p>Start broad; Sceptre will rank compatible candidates with the right metrics.</p>
         {estimators.data?.length ? <div className="selection-actions"><Button variant="secondary" type="button"
@@ -97,7 +132,7 @@ export function TrainingPage() {
       </div></Card>
     </div>
     <aside className="launch-card"><Card><span className="eyebrow">Launch summary</span><h2>{runName || "New training run"}</h2>
-      <dl><div><dt>Dataset</dt><dd>{selectedDataset?.name} · v{version?.version_number}</dd></div><div><dt>Task</dt><dd>{titleCase(task)}</dd></div><div><dt>Target</dt><dd>{task === "clustering" ? "Unsupervised" : target || "—"}</dd></div><div><dt>Models</dt><dd>{models.length} candidates</dd></div></dl>
+      <dl><div><dt>Dataset</dt><dd>{selectedDataset?.name} · v{version?.version_number}</dd></div><div><dt>Task</dt><dd>{titleCase(task)}</dd></div><div><dt>Target</dt><dd>{task === "clustering" ? "Unsupervised" : target || "—"}</dd></div><div><dt>Ranking metric</dt><dd>{PRIMARY_METRICS[task].find((metric) => metric.value === primaryMetric)?.label}</dd></div><div><dt>Models</dt><dd>{models.length} candidates</dd></div></dl>
       {!estimate.data ? <><Notice><Info size={16} /> Review compute requirements before launch.</Notice><Button className="full" disabled={!versionId || !models.length || (task !== "clustering" && !target)} loading={estimate.isPending} onClick={() => estimate.mutate()}><Cpu size={16} />Estimate resources</Button></>
         : <div className="estimate"><div className="estimate__metrics"><Metric label="CPU" value={`${estimate.data.cpu_request_cores} cores`} /><Metric label="Memory" value={`${estimate.data.memory_request_mb} MiB`} /></div><div className="estimate__metrics"><Metric label="Accelerator" value={estimate.data.gpu_requested ? titleCase(estimate.data.gpu_vendor || "GPU") : "CPU"} /><Metric label="Node" value={estimate.data.selected_node || "Pending"} /></div><div className="estimate__metrics"><Metric label="Core-hours" value={estimate.data.estimated_core_hours} /><Metric label="Free CPU" value={estimate.data.capacity.available_cpu_cores.toFixed(1)} /></div>
           {estimate.data.warnings.length > 0 && <Notice>{estimate.data.warnings.join(" ")}</Notice>}{estimate.data.blockers.length > 0 && <Notice tone="danger">{estimate.data.blockers.join(" ")}</Notice>}

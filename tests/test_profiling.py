@@ -7,6 +7,7 @@ import pandas as pd
 from automl_api.models.enums import DatasetFormat, TaskType
 from automl_api.schemas.profiling import ColumnProfileRead
 from automl_api.services.dask_profiling import _profile_column as _profile_dask_column
+from automl_api.services.leakage import detect_target_leakage
 from automl_api.services.profiling import (
     _build_preparation_plan,
     _distribution_for_values,
@@ -184,6 +185,45 @@ def test_relationships_compute_numeric_pearson() -> None:
     assert relationships[0].value == 1.0
 
 
+def test_leakage_detection_excludes_exact_and_encoded_target_proxies() -> None:
+    dataframe = pd.DataFrame(
+        {
+            "safe_feature": list(range(20)),
+            "target": ["yes", "no"] * 10,
+            "target_copy": ["yes", "no"] * 10,
+            "decision_label": [1, 0] * 10,
+        }
+    )
+
+    analysis = detect_target_leakage(dataframe, "target")
+
+    assert analysis.status == "leakage_detected"
+    assert set(analysis.excluded_columns) == {"target_copy", "decision_label"}
+    assert {finding.kind for finding in analysis.findings} == {
+        "exact_target_copy",
+        "encoded_target_proxy",
+    }
+    assert "safe_feature" not in analysis.excluded_columns
+
+
+def test_leakage_detection_excludes_numeric_transform_and_reports_duplicates() -> None:
+    base = pd.DataFrame(
+        {
+            "feature": [index % 3 for index in range(20)],
+            "target": [float(index) for index in range(20)],
+            "future_result": [float(index) * 10 + 7 for index in range(20)],
+        }
+    )
+    dataframe = pd.concat([base, base.iloc[[0]]], ignore_index=True)
+
+    analysis = detect_target_leakage(dataframe, "target")
+
+    assert analysis.excluded_columns == ["future_result"]
+    assert analysis.findings[0].kind == "deterministic_numeric_proxy"
+    assert analysis.duplicate_row_count == 1
+    assert analysis.duplicate_row_ratio > 0
+
+
 def test_numeric_statistics_include_five_number_summary_and_shape() -> None:
     result = _statistics_for_values("numerical_continuous", [1, 2, 3, 4, 5])
 
@@ -194,6 +234,23 @@ def test_numeric_statistics_include_five_number_summary_and_shape() -> None:
     assert result["max"] == 5
     assert "skewness" in result
     assert "kurtosis" in result
+
+
+def test_text_statistics_include_meaningful_word_frequencies() -> None:
+    result = _statistics_for_values(
+        "text",
+        [
+            "The graphics update makes Borderlands gameplay smoother",
+            "Borderlands gameplay and graphics look excellent",
+            "Excellent gameplay makes this update worth playing",
+        ],
+    )
+
+    frequencies = {item["word"]: item["count"] for item in result["word_frequencies"]}
+    assert frequencies["gameplay"] == 3
+    assert frequencies["borderlands"] == 2
+    assert "the" not in frequencies
+    assert "and" not in frequencies
 
 
 def test_unix_nanoseconds_are_profiled_as_temporal_dates() -> None:
@@ -300,3 +357,30 @@ def test_dask_profile_detects_unix_seconds() -> None:
     assert profile.semantic_type == "temporal"
     assert profile.statistics["timestamp_unit"] == "s"
     assert profile.statistics["min"].startswith("2024-01-01")
+
+
+def test_dask_text_profile_includes_word_cloud_frequencies() -> None:
+    dataframe = dd.from_pandas(
+        pd.DataFrame(
+            {
+                "tweet": [
+                    "Players love the smooth Borderlands gameplay update today",
+                    "Borderlands gameplay remains smooth after this excellent update",
+                    "Excellent gameplay and smooth graphics make players happy",
+                ]
+                * 4
+            }
+        ),
+        npartitions=3,
+    )
+
+    profile = _profile_dask_column(dataframe["tweet"], "tweet", 12)
+
+    frequencies = {
+        item["word"]: item["count"]
+        for item in profile.statistics["word_frequencies"]
+    }
+    assert profile.semantic_type == "text"
+    assert frequencies["gameplay"] == 12
+    assert frequencies["smooth"] == 12
+    assert "the" not in frequencies

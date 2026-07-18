@@ -107,3 +107,7 @@ npm-debug.log
 
 # Package build artifacts
 smme_tabular_automl.egg-info/
+
+# Local agent skills
+.agents/
+skills-lock.json

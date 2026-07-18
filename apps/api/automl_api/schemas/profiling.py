@@ -47,6 +47,27 @@ class PreparationStepRead(BaseModel):
     reason: str
 
 
+class LeakageFindingRead(BaseModel):
+    column: str
+    kind: str
+    severity: str
+    confidence: float
+    reason: str
+    evidence: dict[str, Any] = Field(default_factory=dict)
+    auto_excluded: bool = False
+
+
+class LeakageAnalysisRead(BaseModel):
+    status: str
+    target_column: str | None = None
+    analyzed_rows: int = 0
+    duplicate_row_count: int = 0
+    duplicate_row_ratio: float = 0.0
+    findings: list[LeakageFindingRead] = Field(default_factory=list)
+    excluded_columns: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
 class DatasetProfileRead(BaseModel):
     project_id: uuid.UUID
     dataset_id: uuid.UUID
@@ -58,4 +79,5 @@ class DatasetProfileRead(BaseModel):
     columns: list[ColumnProfileRead]
     relationships: list[FeatureRelationshipRead]
     preparation_plan: list[PreparationStepRead]
+    leakage_analysis: LeakageAnalysisRead
     warnings: list[str]

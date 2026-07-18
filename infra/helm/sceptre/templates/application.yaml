@@ -73,6 +73,18 @@ spec:
                 secretKeyRef:
                   name: {{ include "sceptre.authSecretName" . }}
                   key: {{ .Values.auth.jwtSecretKey }}
+            - name: SMTP_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sceptre.authSecretName" . }}
+                  key: {{ .Values.auth.passwordResetEmail.usernameKey }}
+                  optional: true
+            - name: SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sceptre.authSecretName" . }}
+                  key: {{ .Values.auth.passwordResetEmail.passwordKey }}
+                  optional: true
             - {name: SIMPLE_AUTH_ENABLED, value: {{ .Values.auth.simpleAuthEnabled | quote }}}
             - name: OBJECT_STORE_ACCESS_KEY
               valueFrom:

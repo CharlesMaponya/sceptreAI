@@ -106,6 +106,17 @@ The current compatibility baseline includes:
   deployment status, stopping, and cleanup.
 - Model endpoint URLs that remain hidden until the configured exposure mechanism
   reports a usable endpoint.
+- An evaluation-stage centralized model-metrics view that aggregates authorized
+  deployments, deployment-linked production metrics, drift history, retraining
+  lineage, revisioned monitoring policy, and versioned JSON/HTML governance
+  snapshots. Monitoring Job resource floors and optional API HPA configuration
+  provide bounded scale controls.
+
+The current drift workflow remains analyst initiated. When its registered model
+has been deployed, new drift runs attach to that deployment and appear in the
+centralized history. Sceptre does not yet supply a scheduled durable monitoring
+worker, automatic privacy-controlled inference/ground-truth collection, a
+dedicated time-series store, alert delivery, or automatic retraining execution.
 
 ### Runtime images and responsibilities
 
@@ -144,8 +155,7 @@ The following are code or operational gaps, not configuration suggestions.
 
 | Area | Current baseline | Production implication |
 | --- | --- | --- |
-| Environment mode | The Helm ConfigMap hard-codes `ENVIRONMENT: kubernetes` | API docs remain enabled and password-reset responses can expose a development reset token; production launch is blocked |
-| Identity | Local email/password authentication and self-registration are enabled by default; tokens are stored in browser `localStorage` | Disabling registration is not OIDC/SSO. Identity, account lifecycle, secure token handling, and CSRF/session policy require an approved design |
+| Identity | Local email/password authentication includes registration, login, rotating refresh tokens, profile updates, password change, and SMTP-backed reset; self-registration remains enabled by default and browser tokens use `localStorage` | Production still requires configured SMTP, an approved registration policy, hardened browser token/session handling, and a reviewed CSRF/XSS threat model |
 | Dataset ingestion | The browser reports multipart progress, but FastAPI calls `file.file.read()` and buffers the complete upload before object-store persistence | The former 5 GB or 10 GB goal is not a supported current limit; memory-safe resumable or direct-to-object-store upload is required |
 | Training memory | Training reads complete dataset objects before creating in-memory pandas structures | Raw file size is not a memory requirement; large-data claims require a bounded or distributed implementation and load evidence |
 | Profiling durability | Profiling runs in a FastAPI-owned thread pool and incomplete jobs are resumed at API startup | API restarts and multiple API replicas do not provide safe exactly-once or leased execution |
@@ -156,7 +166,7 @@ The following are code or operational gaps, not configuration suggestions.
 | Secrets | Defaults contain local JWT, PostgreSQL, and MinIO credentials | Default values are unsafe anywhere shared; static object-store root credentials also exceed least privilege |
 | Serving security | Generic inference endpoints have no built-in authentication, authorization, rate limit, or request quota | An external gateway alone must not expose them until protection and tenant isolation are verified |
 | Model delivery | A Dockerfile is generated as evidence, but no model builder scans, signs, pushes, resolves, or deploys a model-specific immutable image | Current one-click deployment is a functional baseline, not a governed supply-chain boundary |
-| Observability | Health probes, run status, logs, and optional resource telemetry exist | Central logs, metrics, traces, dashboards, alerts, audit export, SLOs, and on-call runbooks are not supplied |
+| Observability | Health probes, run status, logs, optional resource telemetry, deployment-linked metric/drift history, a governance dashboard, and versioned audit evidence exist | Operator alert delivery, durable telemetry retention policy, platform SLOs, and on-call runbooks still require deployment-specific integration and validation |
 | Recovery | Retained PVCs and migrations exist; backup/restore automation does not | Restore time, restore point, credential continuity, and rollback are unproven |
 | Release safety | Unit/frontend/migration/render CI exists | Live cluster upgrade, rollback, disaster recovery, security, performance, and multi-cluster qualification are incomplete |
 
@@ -472,7 +482,8 @@ evidence; a test result is.
 | Data protection | Encryption, least privilege, automated backups, successful clean restore, and RPO/RTO evidence | **Blocked** |
 | Kubernetes security | Restricted workload posture, service-account isolation, NetworkPolicies, admission policy, and RBAC review | **Blocked** |
 | Serving security | Authenticated and authorized inference, rate/request limits, tenant isolation, and safe endpoint lifecycle | **Blocked** |
-| Observability | Central logs/metrics/traces, dashboards, alerts, SLOs, audit export, and actionable runbooks | **Blocked** |
+| Platform observability | Central logs/metrics/traces, platform dashboards, alerts, SLOs, audit export, and actionable runbooks | **Blocked** |
+| Model observability and governance | Deployment-anchored performance/drift timelines, governed retraining, versioned governance reports, monitoring-scale tests, scoped roles, and audit evidence defined in Section 15 | **Blocked** |
 | Capacity | Representative 10 GB and concurrency tests with CPU, memory, disk, object-store, DB, and queue measurements | Unqualified |
 | Upgrade/recovery | Backward-compatible migration rehearsal, rollback decision test, dependency failure test, and DR exercise | Partial |
 | Model governance | Immutable lineage, approval, external validation, explainability, scan/sign/deploy evidence, monitoring, and rollback policy | Partial |
@@ -505,6 +516,10 @@ At minimum, a release candidate must prove:
    reveals no endpoint before readiness and exposure succeed.
 10. Backup, restore, upgrade, workload retry, cleanup, and failure diagnostics
     preserve or remove state exactly as policy specifies.
+11. A deployed model records operational and model-monitoring evidence against
+    its deployment and immutable model version, raises a test drift alert,
+    creates a governed retraining proposal, and produces a reproducible
+    governance report without crossing project authorization boundaries.
 
 ### Reliability and failure tests
 
@@ -522,6 +537,12 @@ Test at least:
 - migration failure before API rollout;
 - restore into an empty namespace/cluster; and
 - model endpoint failure with rollback or safe traffic removal.
+- monitoring-store latency or outage, stale/missing inference telemetry, delayed
+  labels, duplicate monitoring windows, failed alert delivery, and safe backfill;
+- drift-job retry and scheduler overlap without duplicate metrics, alerts, or
+  retraining proposals; and
+- governance-report regeneration, evidence cutoff, integrity verification, and
+  denial of cross-project or unauthorized export.
 
 ## 11. Validation Commands and Evidence
 
@@ -593,6 +614,9 @@ Retain at least:
 - Qualify external HA data services, backup/restore, encryption, and least
   privilege.
 - Add central telemetry, alerts, audit export, SLOs, and runbooks.
+- Establish the deployment-anchored monitoring event schema, privacy and
+  retention controls, versioned thresholds, audit events, and governance-report
+  integrity contract in Section 15.
 
 ### P1: scale and governed delivery
 
@@ -600,6 +624,8 @@ Retain at least:
 - Build, scan, sign, push, and deploy immutable model-specific artifacts.
 - Add canary/traffic policy, automated health rollback, endpoint quotas, and
   prediction monitoring.
+- Add the centralized model dashboard, scheduled drift Jobs, governed retraining
+  proposals, auditor views, and versioned JSON/HTML/PDF governance reports.
 - Measure the target dataset/concurrency envelope and define resource classes,
   queue fairness, and cost limits.
 - Add live install/upgrade/restore/security/performance qualification to release
@@ -628,6 +654,8 @@ Sceptre is production ready for a named environment only when:
 - operations, security, data, and model-risk owners approve the release;
 - monitoring, alerts, escalation, rollback, and disaster-recovery runbooks are
   active; and
+- the model observability and governance gate in Section 15 passes for every
+  environment in which that capability is claimed; and
 - no local-only image, credential, port-forward, bundled single-replica data
   service, or unprotected model endpoint remains in the production path.
 
@@ -635,7 +663,501 @@ None of the current local Helm profiles satisfies this definition. Local Sceptre
 is ready for development and evaluation; production readiness remains a measured
 environment-specific promotion decision.
 
-## 14. External References
+## 14. Production Capability Modes
+
+A production capability mode is an environment-scoped contract, not a UI toggle
+or an application-wide marketing label. Each mode must publish one of these
+states for the exact release and environment:
+
+| State | Meaning |
+| --- | --- |
+| `unavailable` | Required implementation or controls are absent; the UI must not imply that the capability is production ready |
+| `evaluation` | The workflow can be tested with approved non-production data, but its production gate has not passed |
+| `qualified` | The capability gate passed with owners, dated evidence, limits, runbooks, and an exception record |
+| `suspended` | A previously qualified mode was withdrawn because evidence expired, a control failed, or an incident requires review |
+
+Capability state must be visible to operators and must fail closed. Enabling a
+feature flag, installing a metrics backend, or naming an environment
+`production` cannot move a mode to `qualified`. Evidence has an expiry date and
+must be renewed after material architecture, dependency, data-contract, or risk
+changes.
+
+The centralized model observability and governance mode defined below is in
+`evaluation` in Sceptre 0.1.0. The dashboard, deployment metric ingestion,
+revisioned configuration, drift linkage, and governance snapshots form a usable
+vertical slice, but the production gate and durable scheduled execution remain
+open.
+
+## 15. Centralized Model Observability and Governance Mode
+
+### 15.1 Objective, scope, and personas
+
+This mode provides a production-capable, centralized view of deployed-model
+health, performance, drift, retraining, and lifecycle evidence across projects.
+It is subject to the same availability, security, privacy, recovery, and audit
+standards as the rest of the platform.
+
+The intended personas are:
+
+- **Analysts and project viewers:** see authorized project/deployment metrics,
+  explanations, alerts, validation, and governance reports. Analysts may propose
+  retraining but cannot approve their own production promotion.
+- **Project owners:** configure deployment monitoring within operator-defined
+  bounds, acknowledge alerts, and approve project-scoped workflow decisions.
+- **Platform administrators:** see authorized cross-project summaries, manage
+  resource envelopes and global policies, and approve sensitive production
+  actions according to separation-of-duty policy.
+- **Audit/compliance readers:** have read-only access to approved reports,
+  lineage, audit events, and exports without access to raw inference payloads by
+  default.
+
+The dashboard must support an administrator-scoped global view and
+project-scoped views. A global view is never implemented by bypassing project
+authorization; it uses an explicit privileged role and records access/export
+events.
+
+### 15.2 Deployment-anchored identity and lineage
+
+For every deployed model, Sceptre must treat the deployment attempt as the
+operational anchor and the immutable model version as the lineage anchor. Every
+monitoring or governance record carries, at minimum:
+
+- `project_id`;
+- `deployment_run_id`, unique for one deployment attempt;
+- `model_version_id`, resolving to an immutable registry/model artifact;
+- `environment` and endpoint or traffic-policy identity; and
+- creation time plus the creating service/user identity.
+
+The following must attach to both `deployment_run_id` and `model_version_id`:
+
+- performance and prediction metrics over time;
+- operational metrics correlated to the serving workload;
+- drift Jobs, windows, baselines, outputs, and alerts;
+- monitoring configuration and every configuration revision;
+- retraining triggers, work items, runs, comparisons, approvals, promotions,
+  rollbacks, and rejections;
+- explainability, external-validation, fairness, and leakage evidence included
+  in governance decisions; and
+- governance report records, exports, and evidence manifests.
+
+IDs must never be silently reused. A redeployment, promotion to another
+environment, canary, or rollback creates a distinct deployment record and a
+timeline relationship to its predecessor. Stopping a deployment freezes its
+history; it does not delete or re-parent evidence. Aggregation by model version
+is allowed only after deployment-specific records remain recoverable.
+
+Required attachment invariants:
+
+1. Every monitoring write is authorized against the record's `project_id` and
+   verifies that the deployment and model version agree.
+2. A metric, artifact, alert, or report without a resolvable deployment is
+   rejected or quarantined; there are no floating monitoring records.
+3. Idempotency keys prevent scheduler overlap, retries, or at-least-once message
+   delivery from duplicating a monitoring window, alert, retraining proposal, or
+   report generation.
+4. Database records point to immutable object/MLflow artifacts by digest or
+   version, not only by a mutable path or display name.
+5. Deletion and retention preserve referential and audit integrity while meeting
+   approved privacy and legal-erasure policy.
+
+### 15.3 Monitoring configuration contract
+
+Monitoring configuration is versioned per deployment and contains:
+
+- enabled operational, data-quality, performance, prediction, and drift metrics;
+- schedule, event or label source, baseline dataset/model version, analysis
+  window, minimum sample size, and segment definitions;
+- warning/critical thresholds, directionality, consecutive-window rule,
+  hysteresis, cooldown, and missing-data behavior;
+- alert destination, severity, owner, acknowledgement deadline, and escalation
+  policy;
+- retraining proposal conditions and approval policy;
+- data capture, sampling, redaction, retention, residency, and access policy;
+- monitoring Job resource class, deadline, retry policy, and priority; and
+- configuration author, approval, effective time, expiry, and reason for change.
+
+Threshold changes are prospective and auditable. Historical charts and reports
+must resolve the threshold revision effective for each window rather than
+rewriting history with the newest value. Configuration must be validated against
+operator-defined bounds so one project cannot request unsafe frequency,
+retention, cardinality, or compute.
+
+### 15.4 Metrics and monitoring-data contract
+
+The platform must distinguish three evidence classes:
+
+| Evidence | Examples | Preferred source |
+| --- | --- | --- |
+| Operational | request count, latency distribution, errors, saturation, CPU/RAM/GPU, pod restarts | OpenTelemetry/Prometheus-compatible service telemetry |
+| Model behavior | prediction distribution, abstention, confidence, class balance, feature/schema quality | privacy-controlled inference event pipeline and monitoring store |
+| Measured performance | accuracy, F1, ROC-AUC, calibration, RMSE, MAE, business outcome | predictions joined to trustworthy delayed ground truth |
+
+Training metrics in MLflow are not production performance metrics. MLflow
+remains the source for experiment parameters, training/evaluation metrics, and
+artifacts; it must not be the only store for high-volume deployment telemetry.
+A production design normally uses a metrics system for operational series and a
+time-series/analytical monitoring store for model windows and evidence, with
+PostgreSQL retaining authoritative configuration and lifecycle state.
+
+Every aggregated model metric records:
+
+- project, deployment, model version, metric name and metric schema version;
+- window start/end, event time and computation time, timezone, sample count,
+  missing/late count, and optional approved segment;
+- value, unit, aggregation/statistical method, threshold revision, and status;
+- baseline/reference identity where applicable; and
+- computation Job, code/image version, input snapshot, and artifact lineage.
+
+Metric labels must have bounded cardinality. User IDs, raw feature values,
+request IDs, and unrestricted model/project names must not become Prometheus
+labels. Detailed evidence belongs in access-controlled storage with retention
+limits.
+
+Performance is `unknown`, not healthy, until sufficient trusted ground truth is
+available. The UI must show label coverage, label delay, window completeness,
+last successful computation, and telemetry freshness so missing data cannot look
+like good model health.
+
+### 15.5 Privacy, security, and inference evidence
+
+Monitoring does not grant permission to retain every inference request. Before
+collection, the data owner must approve:
+
+- whether raw features, transformed features, predictions, labels, or only
+  aggregates may be stored;
+- purpose, lawful/approved use, data classification, residency, sampling,
+  minimization, redaction/tokenization, retention, and deletion behavior;
+- field-level access and whether auditors can see only aggregates;
+- encryption and key ownership in transit, at rest, and in backups; and
+- controls preventing secrets, free-text PII, or protected attributes from
+  appearing in logs, traces, metrics labels, alerts, or exported reports.
+
+Inference events need an opaque join key and event time so delayed outcomes can
+be attached without exposing identity in monitoring metrics. The collection path
+must validate schema fingerprints, tolerate late/out-of-order events, quarantine
+malformed data, deduplicate retries, and measure its own loss and lag. Reported
+monitoring results must state when sampling or redaction changes their meaning.
+
+### 15.6 Centralized dashboard behavior
+
+The React UI, backed by RBAC-enforcing FastAPI aggregation endpoints, must offer:
+
+- a privileged cross-project summary and authorized project/deployment views;
+- filters for environment, project, deployment status, model/version, task,
+  owner, alert severity, and time range;
+- time series for appropriate task performance metrics, operational latency,
+  throughput/errors/resources, prediction behavior, and feature/global drift;
+- visible thresholds, configuration revisions, data completeness, stale-data
+  warnings, degradation events, and uncertainty/sample size;
+- a single event timeline for retraining, model/version deployment, canary or
+  champion-challenger decisions, approval, rollback, threshold changes, drift
+  alerts, acknowledgement, and incident response; and
+- drill-down into the exact run, model version, external validation, SHAP or
+  other explanation, drift artifact, alert, and governance report.
+
+Charts must not compare incompatible metric definitions, task types, segments,
+baselines, or time windows. Expensive cross-project queries require bounded time
+ranges, pagination/downsampling, query limits, caching where safe, and tests that
+authorization is applied before aggregation. Exported dashboard data carries the
+same classification, authorization, and audit requirements as the UI.
+
+### 15.7 Drift Jobs and alert lifecycle
+
+Scheduled drift work is a first-class durable workflow. A drift execution record
+contains `drift_job_id`, project/deployment/model IDs, monitoring-config revision,
+baseline ID, current window, schedule and actual start/end, resource class,
+status, retry/attempt, code/image version, metrics, artifacts, and failure
+diagnostics.
+
+Each drift definition must document:
+
+- reference dataset/window and why it is appropriate;
+- feature/schema and prediction drift methods, bins/categories, distance or
+  statistical tests, and task-specific interpretation;
+- minimum sample and missing/new-category behavior;
+- warning/critical thresholds, consecutive windows, multiple-comparison control,
+  seasonal/segment expectations, and false-positive review; and
+- limitations: drift does not by itself prove performance degradation or
+  causality.
+
+External comparison uploads must pass column, semantic-type, target-presence,
+schema fingerprint, privacy, and supported-size validation before computation.
+Scheduled production checks must use an approved data source rather than depend
+on an analyst uploading a file.
+
+Alert state follows a recorded lifecycle such as `open`, `acknowledged`,
+`investigating`, `resolved`, or `suppressed`. Deduplication, suppression windows,
+ownership, escalation, delivery attempts, acknowledgement, resolution evidence,
+and threshold changes are auditable. Alert delivery failure is itself monitored.
+
+### 15.8 Governed retraining
+
+A threshold breach creates a retraining proposal or work item; it must not
+silently promote a replacement model. The proposal references the triggering
+deployment, windows, alerts, configuration revision, intended dataset cutoff,
+and approval policy.
+
+The retraining workflow must enforce:
+
+- cooldown, deduplication, budget, per-project/global concurrency, and loop
+  prevention so repeated windows cannot create a retraining storm;
+- immutable data/code/configuration/dependency lineage and the same leakage,
+  validation, fairness, explainability, and security checks required for a new
+  model;
+- champion-challenger comparison against the deployed model using approved
+  metrics, segments, holdouts, and business constraints;
+- explicit authorized approval before production promotion, with
+  separation-of-duty where policy requires it; and
+- canary/traffic decision, rollback criteria, rejection reason, and outcome
+  attached to both the source deployment and replacement deployment.
+
+An organization may approve narrowly defined automatic rollback or traffic
+removal for safety, but automatic training is never equivalent to automatic
+production approval.
+
+### 15.9 Scalable and fair execution
+
+Scaling must preserve deployment attachment, authorization, idempotency, quota,
+and audit guarantees:
+
+- Kubernetes Jobs/CronJobs or durable orchestrator work items execute bounded
+  drift/report computations. Jobs scale through queue depth, controlled
+  parallelism, resource classes, and, if adopted, a Job-aware controller such as
+  KEDA—not through an HPA attached directly to a completed Job.
+- HPA may scale long-running API, event-collector, scheduler, or monitoring-worker
+  Deployments using suitable CPU/memory or custom queue/latency metrics.
+- Larger CPU/memory/GPU resource classes are operator-defined and exposed through
+  Helm values. GPU is used only when the selected algorithm/runtime supports it;
+  resource choice must not change metric semantics or reproducibility silently.
+- Namespace and project quotas, priority classes, maximum concurrency, deadlines,
+  retries, backoff, and preemption policy prevent monitoring or retraining from
+  starving inference and control-plane workloads.
+- Backpressure must degrade safely: queued or stale monitoring is clearly shown,
+  ingestion is bounded, and unavailable capacity never causes evidence to be
+  attached to the wrong deployment or dropped without a signal.
+
+Capacity evidence includes sustained and burst inference telemetry, scheduler
+overlap, queue backlog, Job fan-out, cross-project fairness, data-store query
+load, report generation, HPA/worker scale-up and scale-down, cost/resource
+envelopes, and recovery after worker/node/store failure.
+
+### 15.10 Governance report contract
+
+Governance reports are generated per deployment while retaining the immutable
+model-version lineage. A report is a versioned evidence snapshot with an
+`evidence_cutoff_at`; new monitoring evidence creates a new report version and
+never mutates an already approved/exported report.
+
+Each report includes, where applicable:
+
+- report/project/deployment/model IDs, environment, endpoint, owners, approvers,
+  dates, intended use, prohibited uses, limitations, risk classification, and
+  current lifecycle state;
+- source/code revision, dependency and image digests, model artifact digest,
+  registry history, approval, deployment, canary, promotion, rollback, and
+  retirement history;
+- immutable training/validation dataset versions, provenance, collection/time
+  windows, classification, consent/approved purpose, quality and sampling;
+- preprocessing, imputation, encoding, scaling, text handling, feature
+  engineering/selection, feature catalog, and excluded columns with reasons;
+- algorithms, search/tuning strategy, parameters, resource/runtime details,
+  split/holdout method, task-appropriate metrics, uncertainty, and external
+  validation;
+- global and approved representative local explanations, explanation method and
+  limitations, plus bias/fairness evaluations and protected-group policy where
+  lawful and applicable;
+- data, feature, target, temporal, split, and duplicate leakage checks, results,
+  mitigations, residual risks, and approval of accepted exceptions;
+- monitoring configuration revisions, data/label coverage, metric and drift
+  methods, thresholds, alert/response history, retraining decisions, incidents,
+  and evidence through the report cutoff; and
+- open risks, exceptions with owner/expiry, monitoring/SLO status, rollback and
+  retirement plan, and final approvals.
+
+Delivery formats are machine-readable versioned JSON (and optionally YAML) plus
+accessible human-readable HTML and PDF. The canonical JSON schema is versioned.
+Every format records generator version, generation time, evidence cutoff,
+content/evidence-manifest digests, and signature/attestation where policy
+requires it. PDF/HTML is rendered from the same canonical snapshot and verified
+against its digest; it is not an independently edited source of truth.
+
+Generating a report does not certify legal or regulatory compliance. The report
+states missing/not-applicable evidence explicitly and requires the named model
+risk, security, data, operations, and compliance owners appropriate to the
+environment.
+
+The Operations UI provides **Governance & audit** actions to generate a report,
+view current and historical versions, verify integrity, and download authorized
+formats. Generation and export are audit events.
+
+The Results UI also provides a candidate-scoped evaluation artifact for every
+leaderboard model. Its printable HTML and canonical JSON include target-profile
+evidence, the executable feature-processing branch, leakage exclusions,
+training-pipeline state, algorithm mathematics, metrics/diagnostics, normalized
+global SHAP magnitude, and a directional sample waterfall when model-specific
+SHAP evidence exists. Missing evidence is explicit and never borrowed from a
+different model. This point-in-time download is useful for review, but it is not
+yet a signed, retained, versioned governance snapshot and therefore does not
+satisfy the production gate by itself.
+
+### 15.11 Access control and auditability
+
+Add an explicit read-only audit/compliance role rather than overloading platform
+admin. Effective permissions must cover global summary, project/deployment
+details, raw monitoring evidence, configuration changes, alert actions,
+retraining proposal/approval, governance generation, integrity verification, and
+export. Sensitive actions require recent authentication or equivalent controls
+where organizational policy demands it.
+
+At minimum, immutable or tamper-evident audit events capture:
+
+- actor/service identity, effective role, project/deployment/model IDs, action,
+  object ID/version, event and receipt time, request/correlation ID, source, and
+  outcome;
+- before/after digest or safe structured change for monitoring configuration,
+  threshold, suppression, approval, promotion, rollback, and retention changes;
+- alert acknowledgement/resolution, retraining trigger/decision, report
+  generation/integrity verification/export, and privileged dashboard/export
+  access; and
+- denied attempts and policy failures without logging tokens, secrets, or raw
+  protected data.
+
+Audit storage has independent retention, access, backup, clock-synchronization,
+integrity, and export controls. Application administrators must not be able to
+silently alter audit history. Audit queries and exports are themselves audited.
+
+### 15.12 API and persistence boundary
+
+The target API keeps every deployment-specific route under the existing project
+and deployment URL boundary:
+
+```text
+GET   /projects/{project_id}/operations/deployments/{deployment_run_id}/monitoring/metrics
+GET   /projects/{project_id}/operations/deployments/{deployment_run_id}/monitoring/drift
+GET   /projects/{project_id}/operations/deployments/{deployment_run_id}/monitoring/config
+PUT   /projects/{project_id}/operations/deployments/{deployment_run_id}/monitoring/config
+GET   /projects/{project_id}/operations/deployments/{deployment_run_id}/monitoring/alerts
+POST  /projects/{project_id}/operations/deployments/{deployment_run_id}/retraining/proposals
+GET   /projects/{project_id}/operations/deployments/{deployment_run_id}/governance/reports
+POST  /projects/{project_id}/operations/deployments/{deployment_run_id}/governance/reports
+GET   /projects/{project_id}/operations/deployments/{deployment_run_id}/governance/reports/{report_id}
+```
+
+The public contract uses opaque IDs, pagination, bounded time ranges, explicit
+timezone/window semantics, consistent problem responses, and idempotency keys on
+write/generation operations. An administrator-only aggregate endpoint may power
+the global dashboard, but returned records retain their deployment identity and
+are filtered before aggregation.
+
+The conceptual persistence model separates:
+
+- deployment and immutable model-version lineage;
+- versioned monitoring configuration;
+- inference/label evidence or privacy-preserving aggregates;
+- metric windows and drift executions;
+- alerts and alert events;
+- retraining proposals, runs, approvals, and deployment outcomes;
+- governance report snapshots and evidence manifests; and
+- append-only audit events.
+
+PostgreSQL remains authoritative for configuration and workflow state. A
+time-series/analytical backend stores monitoring windows at the required scale;
+object storage holds large immutable evidence/report artifacts; MLflow retains
+training/model artifacts. Cross-store references require reconciliation,
+backup/restore ordering, orphan detection, and consistency tests.
+
+### 15.13 Availability and operational runbooks
+
+Define SLOs and alerts for the monitoring system itself: collection acceptance,
+event loss/duplication, ground-truth join coverage, processing lag, schedule
+lateness, Job success, query latency, dashboard freshness, alert delivery, report
+generation, and audit-write success. If audit persistence required for a
+critical action is unavailable, that action fails closed unless an approved
+break-glass procedure records equivalent evidence.
+
+Required runbooks cover:
+
+- triaging performance, drift, stale-data, collection, and alert-delivery alarms;
+- acknowledging/suppressing alerts and changing thresholds with approval;
+- investigating data quality, schema, late-label, seasonal, or segment changes;
+- backfilling idempotently after store/worker outage;
+- proposing, approving, rejecting, promoting, canarying, and rolling back
+  retraining outcomes;
+- restoring and reconciling database, monitoring series, MLflow, object, report,
+  and audit evidence;
+- rotating monitoring credentials/keys and responding to monitoring-data
+  exposure; and
+- generating, verifying, exporting, revoking/superseding, and delivering a
+  governance report to an authorized auditor or regulator.
+
+Every runbook has an owner, prerequisite access, last exercise date, expected
+time, escalation path, and evidence output.
+
+### 15.14 Production readiness gate: observability and governance
+
+This mode is `qualified` only when all of the following evidence exists for the
+named environment and exact release:
+
+- a centralized dashboard displays operational health, task-appropriate model
+  performance, data/label coverage, drift, alerts, retraining, deployment, and
+  rollback timelines for representative production-like deployments;
+- every dashboard metric, drift execution, alert, retraining record, and report
+  resolves to the correct project, deployment run, model version, configuration
+  revision, and evidence window;
+- delayed/missing labels, stale/lost telemetry, incompatible metric definitions,
+  and insufficient samples are shown as unknown/incomplete rather than healthy;
+- drift thresholds, baseline choice, statistical method, alert lifecycle,
+  acknowledgement, response, suppression, and retraining proposal are tested;
+- monitoring Jobs, queue/backpressure, quotas, and long-running worker/API HPA
+  behavior are load-tested without starvation, cross-project leakage, duplicate
+  work, or lost attachment;
+- at least one production-like deployment has a versioned JSON and HTML/PDF
+  governance report covering data, preprocessing, training/tuning, validation,
+  explainability, fairness where applicable, drift, alerts, leakage, approvals,
+  incidents, limitations, and monitoring evidence through a declared cutoff;
+- report schema, evidence/artifact digests, signature/attestation if required,
+  regeneration, history, authorization, retention, and integrity verification
+  are tested;
+- analyst, owner, administrator, and audit/compliance permissions are verified,
+  including negative cross-project, raw-evidence, configuration, approval, and
+  export tests;
+- critical actions and denied attempts appear in tamper-evident, queryable,
+  exportable audit records with tested retention and recovery;
+- privacy, minimization, sampling, redaction, label-join, retention, deletion,
+  residency, encryption, and high-cardinality controls pass data/security review;
+- monitoring-store failure, worker/node failure, scheduler overlap, duplicate
+  requests, delayed/out-of-order events, alert-delivery failure, backup, clean
+  restore, and cross-store reconciliation exercises pass approved objectives;
+  and
+- the alert, threshold, retraining, monitoring outage/backfill, governance export,
+  incident, rollback, and audit-delivery runbooks have owners and dated exercise
+  evidence.
+
+Record the gate owner, application/chart/image versions, Kubernetes and
+dependency versions, environment, test date, evidence links, result, capacity
+limits, residual risks, approved exceptions and expiries, and next review date.
+Only then may Sceptre claim centralized model observability and governance
+readiness for that environment.
+
+### 15.15 Incremental delivery without premature claims
+
+Implement the mode in evidence-producing increments:
+
+1. **Foundation:** deployment/model lineage invariants, versioned monitoring
+   configuration, privacy-controlled event/label contract, monitoring store,
+   operational metrics, RBAC, and audit events.
+2. **Model monitoring:** project/deployment dashboard, scheduled idempotent drift
+   Jobs, data/label coverage, alerts, resource classes, quotas, backpressure, and
+   load/recovery tests.
+3. **Governed response:** retraining proposals and approvals,
+   champion-challenger/canary/rollback timeline, centralized administrator view,
+   auditor role, signed/versioned governance reports, exports, and full gate
+   exercise.
+
+Earlier increments may be labelled `evaluation`; they do not reduce the gate or
+permit a `qualified` claim.
+
+## 16. External References
 
 - [Kubernetes production environment guidance](https://kubernetes.io/docs/setup/production-environment/)
 - [Kubernetes application security checklist](https://kubernetes.io/docs/concepts/security/application-security-checklist/)

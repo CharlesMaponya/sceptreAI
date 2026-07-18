@@ -4,7 +4,7 @@ import { lazy, Suspense, DragEvent, FormEvent, useEffect, useMemo, useState } fr
 import { api, json, uploadFormData } from "../api";
 import { Badge, Button, Card, EmptyState, ErrorState, Loading, Metric, Modal, Notice, PageHeader } from "../components/ui";
 import { formatBytes, titleCase } from "../lib";
-import type { Dataset, DatasetVersion, ProfileJob } from "../types";
+import type { Dataset, DatasetVersion, LeakageAnalysis, LeakageFinding, ProfileJob } from "../types";
 import { useNavigate, useParams } from "react-router-dom";
 
 type ProfileResult = ProfileJob & {
@@ -148,12 +148,19 @@ function DatasetDetail({
         <div className="progress-panel"><div><b>{titleCase(profile.data.current_stage || "Preparing")}</b><span>{Math.round((profile.data.progress || 0) * 100)}%</span></div><progress value={profile.data.progress || 0} max={1} /><p>Profiling {profile.data.completed_columns || 0} of {profile.data.total_columns || 0} columns. You can leave this page safely.</p></div>
         : result.data ? <><div className="profile-summary"><div><span>Inferred task</span><strong>{titleCase(result.data.overview_json?.task_inference?.task_type || "Pending")}</strong></div>
           <div><span>Confidence</span><strong>{Math.round((result.data.overview_json?.task_inference?.confidence || 0) * 100)}%</strong></div><p>{result.data.overview_json?.task_inference?.rationale}</p></div>
-          <FeatureAccordions columns={columns} target={result.data.target_column} relationships={result.data.relationships_json} preparation={result.data.preparation_json} />
+          <LeakageSummary analysis={result.data.overview_json?.leakage_analysis} />
+          <FeatureAccordions columns={columns} target={result.data.target_column} relationships={result.data.relationships_json} preparation={result.data.preparation_json} leakageFindings={result.data.overview_json?.leakage_analysis?.findings || []} />
           <div className="profile-training-action"><Button className="full" onClick={() => navigate(`/projects/${projectId}/training`)}>
             <Play size={15} />Start training</Button></div></>
           : <div className="inline-empty"><Database /><span><b>No completed profile</b><small>Profile this version before configuring a training run.</small></span></div>}
     </Card>
   </div>;
+}
+
+function LeakageSummary({ analysis }: { analysis?: LeakageAnalysis }) {
+  if (!analysis || analysis.status === "not_applicable") return null;
+  if (analysis.excluded_columns.length) return <Notice tone="danger"><span><b>Target leakage removed before training</b><br />{analysis.excluded_columns.join(", ")} {analysis.excluded_columns.length === 1 ? "is" : "are"} a high-confidence target proxy.</span></Notice>;
+  return <Notice tone="success">No high-confidence target leakage was detected in {analysis.analyzed_rows.toLocaleString()} profiled rows.</Notice>;
 }
 
 type FeatureColumn = NonNullable<ProfileResult["feature_profiles_json"]>[string];
@@ -163,11 +170,13 @@ function FeatureAccordions({
   target,
   relationships,
   preparation,
+  leakageFindings,
 }: {
   columns: FeatureColumn[];
   target: string | null | undefined;
   relationships: ProfileResult["relationships_json"];
   preparation: ProfileResult["preparation_json"];
+  leakageFindings: LeakageFinding[];
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const entries = columns.slice(0, 50);
@@ -177,15 +186,17 @@ function FeatureAccordions({
       const open = expanded === name;
       const relationship = relationships.find((item) => item.source_column === name);
       const steps = preparation.filter((step) => step.column === name);
-      return <article className={`feature-accordion${open ? " feature-accordion--open" : ""}`} key={name}>
+      const leakage = leakageFindings.find((finding) => finding.column === name);
+      return <article className={`feature-accordion${open ? " feature-accordion--open" : ""}${leakage?.auto_excluded ? " feature-accordion--excluded" : ""}`} key={name}>
         <button type="button" className="feature-accordion__trigger" aria-expanded={open} onClick={() => setExpanded(open ? null : name)}>
-          <span><b>{name}</b><small>{titleCase(column.semantic_type || "unknown")}{name === target ? " · Target" : ""}</small></span>
+          <span><b>{name}</b><small>{titleCase(column.semantic_type || "unknown")}{name === target ? " · Target" : ""}{leakage?.auto_excluded ? " · Excluded for leakage" : ""}</small></span>
           <i>{open ? "−" : "+"}</i>
         </button>
         {open && <div className="feature-accordion__body">
           <div className="feature-metrics"><Metric label="Distinct" value={column.distinct_count?.toLocaleString() || "—"} /><Metric label="Missing" value={column.missing_count?.toLocaleString() || "0"} /><Metric label="Missing rate" value={column.missing_ratio == null ? "—" : `${(column.missing_ratio * 100).toFixed(1)}%`} /></div>
           <div className="feature-detail-grid"><div><h3>{column.semantic_type === "text" ? "Word cloud" : column.semantic_type === "categorical" ? "Category distribution" : "Histogram"}</h3><FeatureDistribution column={column} /></div><div><h3>Five-number summary & statistics</h3><StatisticsTable statistics={column.statistics || {}} /></div></div>
           {relationship && <p className="feature-association"><b>{relationship.method === "cramers_v" ? "Cramér's V" : titleCase(relationship.method)}</b> with target: {relationship.value.toFixed(4)}</p>}
+          {leakage && <Notice tone={leakage.auto_excluded ? "danger" : "info"}>{leakage.reason} Confidence: {Math.round(leakage.confidence * 100)}%.</Notice>}
           <div className="feature-preprocessing"><h3>Preprocessing mechanism</h3>{steps.length ? <ul>{steps.map((step, index) => <li key={`${step.action}-${index}`}><b>{titleCase(step.action || "Step")}</b> — {titleCase(step.strategy || "Recommended")}<small>{step.reason}</small></li>)}</ul> : <p>{name === target ? "Selected target; feature preprocessing is not applied." : "No preprocessing step is currently required."}</p>}</div>
         </div>}
       </article>;
@@ -197,11 +208,79 @@ function FeatureDistribution({ column }: { column: FeatureColumn }) {
   const isText = column.semantic_type === "text";
   const words = Array.isArray(column.statistics?.word_frequencies) ? column.statistics!.word_frequencies as Array<{ word: string; count: number }> : [];
   const distribution = column.distribution || [];
-  const chart = isText && words.length
-    ? [{ type: "scatter" as const, mode: "text+markers" as const, x: words.map((_, index) => index % 6), y: words.map((_, index) => Math.floor(index / 6)), text: words.map((item) => item.word), marker: { size: words.map((item) => Math.max(12, Math.min(48, item.count * 3))), color: "#3159e8", opacity: .18 }, textfont: { color: "#3159e8" }, hovertext: words.map((item) => `${item.word}: ${item.count}`), hoverinfo: "text" as const }]
+  if (isText && !words.length) return <Notice>Word frequencies are unavailable for this profile. Run profiling again to generate the word cloud.</Notice>;
+  if (!isText && !distribution.length) return <Notice>A distribution is not available.</Notice>;
+  const chart = isText
+    ? [buildWordCloudTrace(words)]
     : [{ type: "bar" as const, x: distribution.map((item) => item.label), y: distribution.map((item) => item.count), marker: { color: "#3159e8" }, hovertemplate: "%{x}<br>Count: %{y}<extra></extra>" }];
-  if (!distribution.length && !words.length) return <Notice>A distribution is not available.</Notice>;
-  return <Suspense fallback={<Loading label="Loading visualization…" />}><PlotlyChart className="feature-plot" data={chart} layout={{ autosize: true, height: 260, margin: { l: 45, r: 10, t: 10, b: isText ? 15 : 65 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "#f8f9fc", showlegend: false, xaxis: { visible: !isText, automargin: true }, yaxis: { visible: !isText, automargin: true }, font: { family: "Inter, system-ui, sans-serif", size: 10, color: "#4e5870" } }} config={{ displayModeBar: false, responsive: true }} useResizeHandler style={{ width: "100%" }} /></Suspense>;
+  const cloudAxis = { visible: false, fixedrange: true, range: [-340, 340] };
+  return <Suspense fallback={<Loading label="Loading visualization…" />}><PlotlyChart className={`feature-plot${isText ? " feature-word-cloud" : ""}`} data={chart} layout={{ autosize: true, height: 260, margin: isText ? { l: 8, r: 8, t: 8, b: 8 } : { l: 45, r: 10, t: 10, b: 65 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: isText ? "rgba(0,0,0,0)" : "#f8f9fc", showlegend: false, hovermode: "closest", xaxis: isText ? cloudAxis : { visible: true, automargin: true }, yaxis: isText ? { ...cloudAxis, range: [-120, 120] } : { visible: true, automargin: true }, font: { family: "Inter, system-ui, sans-serif", size: 10, color: "#4e5870" } }} config={{ displayModeBar: false, responsive: true }} useResizeHandler style={{ width: "100%" }} /></Suspense>;
+}
+
+type CloudWord = { word: string; count: number };
+type PlacedCloudWord = CloudWord & { x: number; y: number; size: number; color: string };
+
+function buildWordCloudTrace(words: CloudWord[]) {
+  const palette = ["#173b82", "#3159e8", "#5f78d8", "#176b78", "#7048a8", "#2360a8"];
+  const candidates = words
+    .filter((item) => item.word?.trim() && Number.isFinite(item.count) && item.count > 0)
+    .sort((left, right) => right.count - left.count)
+    .slice(0, 40);
+  const logarithms = candidates.map((item) => Math.log1p(item.count));
+  const minimum = Math.min(...logarithms);
+  const maximum = Math.max(...logarithms);
+  const boxes: Array<{ left: number; right: number; top: number; bottom: number }> = [];
+  const placed: PlacedCloudWord[] = [];
+
+  candidates.forEach((item, index) => {
+    const scale = maximum === minimum ? 0.5 : (Math.log1p(item.count) - minimum) / (maximum - minimum);
+    const requestedSize = 14 + scale * 34;
+    const size = Math.max(13, Math.min(requestedSize, 570 / Math.max(1, item.word.length * 0.56)));
+    const width = Math.max(size * 1.4, item.word.length * size * 0.56);
+    const height = size * 1.12;
+    const seed = wordHash(item.word);
+
+    for (let attempt = 0; attempt < 700; attempt += 1) {
+      const angle = attempt * 0.53 + (seed % 360) * (Math.PI / 180);
+      const radius = attempt === 0 ? 0 : 7 * Math.sqrt(attempt);
+      const x = Math.cos(angle) * radius * 1.65;
+      const y = Math.sin(angle) * radius * 0.62;
+      const box = {
+        left: x - width / 2 - 3,
+        right: x + width / 2 + 3,
+        top: y + height / 2 + 2,
+        bottom: y - height / 2 - 2,
+      };
+      const inBounds = box.left >= -330 && box.right <= 330 && box.bottom >= -112 && box.top <= 112;
+      const overlaps = boxes.some((existing) => !(box.right < existing.left || box.left > existing.right || box.top < existing.bottom || box.bottom > existing.top));
+      if (!inBounds || overlaps) continue;
+      boxes.push(box);
+      placed.push({ ...item, x, y, size, color: palette[(index + seed) % palette.length] });
+      break;
+    }
+  });
+
+  return {
+    type: "scatter" as const,
+    mode: "text" as const,
+    x: placed.map((item) => item.x),
+    y: placed.map((item) => item.y),
+    text: placed.map((item) => item.word),
+    customdata: placed.map((item) => item.count),
+    textfont: {
+      family: "Manrope Variable, Inter, system-ui, sans-serif",
+      size: placed.map((item) => item.size),
+      color: placed.map((item) => item.color),
+    },
+    hovertemplate: "<b>%{text}</b><br>Frequency: %{customdata:,}<extra></extra>",
+    cliponaxis: false,
+  };
+}
+
+function wordHash(value: string) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
+  return Math.abs(hash);
 }
 
 function StatisticsTable({ statistics }: { statistics: Record<string, unknown> }) {

@@ -1,4 +1,4 @@
-import { useEffect, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from "react";
+import { useEffect, useRef, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from "react";
 import { AlertCircle, CheckCircle2, LoaderCircle, Plus } from "lucide-react";
 import { cx, titleCase } from "../lib";
 
@@ -45,7 +45,10 @@ export function EmptyState({ icon, title, description, action }: {
 }
 
 export function Loading({ label = "Loading workspace…" }: { label?: string }) {
-  return <div className="loading"><LoaderCircle className="spin" aria-hidden /><span>{label}</span></div>;
+  return <div className="loading" role="status" aria-live="polite">
+    <div className="loading__skeleton" aria-hidden><i /><i /><i /></div>
+    <span className="loading__label">{label}</span>
+  </div>;
 }
 
 export function Notice({ tone = "info", children }: {
@@ -64,17 +67,27 @@ export function Metric({ label, value, hint }: { label: string; value: ReactNode
 export function Modal({ title, description, children, onClose }: {
   title: string; description?: string; children: ReactNode; onClose: () => void;
 }) {
+  const closeButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     document.addEventListener("keydown", closeOnEscape);
-    return () => document.removeEventListener("keydown", closeOnEscape);
+    closeButton.current?.focus();
+    return () => {
+      document.removeEventListener("keydown", closeOnEscape);
+      document.body.style.overflow = previousOverflow;
+      previousFocus?.focus();
+    };
   }, [onClose]);
   return <div className="modal-backdrop" onMouseDown={onClose}>
-    <section className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" onMouseDown={(e) => e.stopPropagation()}>
-      <button type="button" className="modal__close" onClick={onClose} aria-label="Close">×</button>
-      <h2 id="modal-title">{title}</h2>{description && <p className="muted">{description}</p>}{children}
+    <section className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"
+      aria-describedby={description ? "modal-description" : undefined} onMouseDown={(e) => e.stopPropagation()}>
+      <button ref={closeButton} type="button" className="modal__close" onClick={onClose} aria-label="Close">×</button>
+      <h2 id="modal-title">{title}</h2>{description && <p id="modal-description" className="muted">{description}</p>}{children}
     </section>
   </div>;
 }

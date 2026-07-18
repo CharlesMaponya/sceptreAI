@@ -1,4 +1,4 @@
-import type { AuthResponse, Tokens } from "./types";
+import type { AuthResponse, PasswordResetResponse, RegistrationResponse, Tokens } from "./types";
 
 const API_ROOT = (import.meta.env.VITE_API_URL as string | undefined) || "/api/v1";
 const STORAGE_KEY = "sceptre.session";
@@ -131,8 +131,29 @@ export const json = (method: string, body?: unknown): RequestInit => ({
 });
 
 export async function authenticate(mode: "login" | "register", values: Record<string, string>) {
-  const result = await raw<AuthResponse>(`/auth/${mode}`, json("POST", values));
-  if (mode === "login") setSession(result);
+  if (mode === "register") {
+    return raw<RegistrationResponse>("/auth/register", json("POST", values));
+  }
+  const result = await raw<AuthResponse>("/auth/login", json("POST", values));
+  setSession(result);
+  return result;
+}
+
+export const requestPasswordReset = (email: string) =>
+  raw<PasswordResetResponse>("/auth/password-reset/request", json("POST", { email }));
+
+export const confirmPasswordReset = (token: string, newPassword: string) =>
+  raw<void>("/auth/password-reset/confirm", json("POST", { token, new_password: newPassword }));
+
+export async function updateAccount(values: { full_name: string; email: string }) {
+  const result = await api<AuthResponse>("/auth/me", json("PATCH", values));
+  setSession(result);
+  return result;
+}
+
+export async function changePassword(values: { current_password: string; new_password: string }) {
+  const result = await api<AuthResponse>("/auth/password/change", json("POST", values));
+  setSession(result);
   return result;
 }
 

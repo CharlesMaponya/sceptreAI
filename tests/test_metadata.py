@@ -63,7 +63,19 @@ def test_database_migrations_have_exactly_one_head() -> None:
     config = Config(str(ROOT / "alembic.ini"))
     config.set_main_option("script_location", str(ROOT / "alembic"))
 
-    assert ScriptDirectory.from_config(config).get_heads() == ["0001_initial"]
+    assert ScriptDirectory.from_config(config).get_heads() == [
+        "0002_expand_artifact_kind"
+    ]
+
+
+def test_artifact_kind_growth_has_a_forward_migration() -> None:
+    migration = (
+        ROOT / "alembic" / "versions" / "0002_expand_artifact_kind.py"
+    ).read_text()
+
+    assert 'down_revision = "0001_initial"' in migration
+    assert '"GOVERNANCE_REPORT"' in migration
+    assert 'sa.String(length=16)' in migration
 
 
 def test_project_id_is_present_on_isolated_tables() -> None:
