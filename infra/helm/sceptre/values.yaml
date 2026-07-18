@@ -7,6 +7,13 @@ global:
 
 api:
   replicaCount: 1
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 75
+    scaleDownStabilizationSeconds: 300
   image:
     repository: sceptre-api
     tag: "0.1.0"

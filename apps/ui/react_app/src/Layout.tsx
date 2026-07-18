@@ -35,6 +35,11 @@ export function Layout() {
         <NavLink to="/projects" className="brand"><i className="brand-mark"><img src="/sceptre-icon.png" alt="" /></i><span>Sceptre <b>AI</b></span></NavLink>
         <button className="icon-button sidebar__close" onClick={() => setOpen(false)} aria-label="Close menu"><X /></button>
       </div>
+      <nav className="sidebar__nav sidebar__nav--portfolio" aria-label="Portfolio navigation">
+        <span>Portfolio</span>
+        <NavLink to="/projects" end onClick={() => setOpen(false)}><FolderKanban size={18} /><span>Projects</span></NavLink>
+        <NavLink to="/monitoring" onClick={() => setOpen(false)}><Activity size={18} /><span>Model metrics</span></NavLink>
+      </nav>
       {projectId && <>
         <div className="project-switcher">
           <span>Current project</span>
@@ -58,12 +63,12 @@ export function Layout() {
       </div>
     </aside>
     {open && <button className="sidebar-scrim" onClick={() => setOpen(false)} aria-label="Close menu" />}
-    <div className="shell__main">
+    <main className="shell__main" id="main-content">
       <header className="topbar"><button className="icon-button topbar__menu" onClick={() => setOpen(true)} aria-label="Open menu"><Menu /></button>
         <div className="topbar__trail"><FolderKanban size={17} /><span>{current?.name || "Projects"}</span></div>
         <div className="topbar__status"><Badge status="ok">Platform online</Badge></div>
       </header>
       <div className="page"><Outlet /></div>
-    </div>
+    </main>
   </div>;
 }

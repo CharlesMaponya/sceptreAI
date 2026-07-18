@@ -2,9 +2,18 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 from sqlalchemy.orm import Session
 
 from automl_api.api.deps import get_current_user
@@ -25,6 +34,7 @@ from automl_api.schemas.training import (
     TrainingResourceUsageRead,
 )
 from automl_api.security.tokens import TokenError, decode_token
+from automl_api.services.model_audit import model_audit_document
 from automl_api.services.training import (
     add_models_to_training_run,
     cancel_training_run,
@@ -177,6 +187,33 @@ def leaderboard(
     result = training_leaderboard(db, current_user, project_id, run_id)
     db.commit()
     return result
+
+
+@router.get("/runs/{run_id}/models/{model_name}/audit-document")
+def audit_document(
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    model_name: str,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    output_format: Annotated[Literal["html", "json"], Query(alias="format")] = "html",
+) -> Response:
+    content, media_type, filename, evidence_hash = model_audit_document(
+        db,
+        current_user,
+        project_id,
+        run_id,
+        model_name,
+        output_format,
+    )
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "ETag": f'"{evidence_hash}"',
+        },
+    )
 
 
 @router.get("/runs/{run_id}/resources", response_model=TrainingResourceUsageRead)

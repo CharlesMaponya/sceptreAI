@@ -4,13 +4,13 @@ import csv
 import io
 import json
 import math
-import re
 import statistics
 import uuid
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 import psutil
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -23,15 +23,18 @@ from automl_api.schemas.profiling import (
     ColumnProfileRead,
     DatasetProfileRead,
     FeatureRelationshipRead,
+    LeakageAnalysisRead,
     PreparationStepRead,
     ProfileRequest,
     TaskInferenceRead,
 )
+from automl_api.services.leakage import detect_target_leakage
 from automl_api.services.projects import require_project_role
 from automl_api.services.temporal import (
     infer_unix_timestamp_unit,
     unix_timestamp_iso,
 )
+from automl_api.services.text_profiling import word_frequencies
 from automl_api.storage.object_store import get_object_store
 
 
@@ -51,10 +54,13 @@ def build_dataset_profile(
     if _should_use_dask(version):
         from automl_api.services.dask_profiling import profile_dataset_with_dask
 
-        row_count, column_profiles, relationships, warnings = profile_dataset_with_dask(
-            version,
-            target_column,
-        )
+        (
+            row_count,
+            column_profiles,
+            relationships,
+            leakage_analysis,
+            warnings,
+        ) = profile_dataset_with_dask(version, target_column)
         columns = [profile.name for profile in column_profiles]
     else:
         rows, warnings = _load_rows(version)
@@ -62,6 +68,10 @@ def build_dataset_profile(
         row_count = len(rows)
         column_profiles = [_profile_column(column, rows, row_count, version) for column in columns]
         relationships = []
+        leakage_analysis = detect_target_leakage(
+            pd.DataFrame(rows),
+            target_column,
+        )
     profile_by_name = {profile.name: profile for profile in column_profiles}
 
     if target_column and target_column not in profile_by_name:
@@ -77,7 +87,9 @@ def build_dataset_profile(
         column_profiles,
         target_column,
         task_inference.task_type,
+        leakage_analysis,
     )
+    warnings = list(dict.fromkeys([*warnings, *leakage_analysis.warnings]))
 
     return DatasetProfileRead(
         project_id=project_id,
@@ -90,6 +102,7 @@ def build_dataset_profile(
         columns=column_profiles,
         relationships=relationships,
         preparation_plan=preparation_plan,
+        leakage_analysis=leakage_analysis,
         warnings=warnings,
     )
 
@@ -318,18 +331,10 @@ def _statistics_for_values(semantic_type: str, values: list[Any]) -> dict[str, A
         }
     if semantic_type == "text":
         lengths = [len(str(value)) for value in values]
-        word_counts = Counter(
-            word.lower()
-            for value in values
-            for word in re.findall(r"[A-Za-z0-9']{2,}", str(value))
-        )
         return {
             "avg_length": round(statistics.fmean(lengths), 2),
             "max_length": max(lengths),
-            "word_frequencies": [
-                {"word": word, "count": count}
-                for word, count in word_counts.most_common(30)
-            ],
+            "word_frequencies": word_frequencies(values),
         }
     counter = Counter(str(value) for value in values)
     return {"top_values": counter.most_common(10)}
@@ -551,10 +556,22 @@ def _build_preparation_plan(
     columns: list[ColumnProfileRead],
     target_column: str | None,
     task_type: TaskType,
+    leakage_analysis: LeakageAnalysisRead | None = None,
 ) -> list[PreparationStepRead]:
     steps: list[PreparationStepRead] = []
+    excluded_columns = set(leakage_analysis.excluded_columns if leakage_analysis else [])
+    for finding in leakage_analysis.findings if leakage_analysis else []:
+        if finding.auto_excluded:
+            steps.append(
+                PreparationStepRead(
+                    column=finding.column,
+                    action="exclude_target_leakage",
+                    strategy=finding.kind,
+                    reason=finding.reason,
+                )
+            )
     for column in columns:
-        if column.name == target_column:
+        if column.name == target_column or column.name in excluded_columns:
             continue
         if column.missing_count:
             strategy = (

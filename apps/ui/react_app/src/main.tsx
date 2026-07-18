@@ -7,12 +7,15 @@ import { Layout } from "./Layout";
 import { Landing } from "./Landing";
 import { DataPage } from "./pages/DataPage";
 import { MembersPage } from "./pages/MembersPage";
+import { MonitoringPage } from "./pages/MonitoringPage";
 import { OperationsPage } from "./pages/OperationsPage";
 import { ProjectOverview } from "./pages/ProjectOverview";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { RunsPage } from "./pages/RunsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TrainingPage } from "./pages/TrainingPage";
+import { NotFound } from "./NotFound";
+import "@fontsource-variable/manrope/wght.css";
 import "./styles.css";
 import { useAuthState } from "./useAuthState";
 
@@ -37,6 +40,7 @@ const router = createBrowserRouter([
   { path: "/auth", element: <AuthRoute /> },
   { element: <Protected />, children: [
     { path: "/projects", element: <ProjectsPage /> },
+    { path: "/monitoring", element: <MonitoringPage /> },
     { path: "/projects/:projectId", children: [
       { index: true, element: <ProjectOverview /> },
       { path: "data", element: <DataPage /> },
@@ -47,9 +51,10 @@ const router = createBrowserRouter([
       { path: "settings", element: <SettingsPage /> },
     ]},
   ]},
-  { path: "*", element: <Navigate to="/" replace /> },
+  { path: "*", element: <NotFound /> },
 ]);
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode><QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider></React.StrictMode>,
+  <React.StrictMode><a className="skip-link" href="#main-content">Skip to main content</a>
+    <QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider></React.StrictMode>,
 );

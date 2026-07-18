@@ -24,6 +24,7 @@ from automl_api.schemas.operations import ArtifactCleanupRequest, DriftLaunchReq
 from automl_api.services.kubernetes_training import KubernetesTrainingClient
 from automl_api.services.operations import (
     _adaptive_inference_memory,
+    _apply_monitoring_resource_floor,
     _generated_model_dockerfile,
     _internal_model_deployment_urls,
     _platform_model_deployment_urls,
@@ -60,6 +61,31 @@ def test_phase_seven_routes_are_registered() -> None:
 def test_long_lived_deployments_do_not_consume_batch_training_slots() -> None:
     assert RunKind.DEPLOYMENT not in BATCH_RUN_KINDS
     assert RunKind.DRIFT in BATCH_RUN_KINDS
+
+
+def test_monitoring_resource_class_scales_drift_job_and_respects_capacity() -> None:
+    estimate = SimpleNamespace(
+        cpu_request_cores=1.0,
+        cpu_limit_cores=2.0,
+        memory_request_mb=1024,
+        memory_limit_mb=2048,
+        capacity=SimpleNamespace(available_cpu_cores=3.0, available_memory_mb=6000),
+        blockers=[],
+        can_launch=True,
+    )
+
+    _apply_monitoring_resource_floor(estimate, "large")
+
+    assert estimate.cpu_request_cores == 2.0
+    assert estimate.memory_request_mb == 4096
+    assert estimate.can_launch is True
+
+    _apply_monitoring_resource_floor(estimate, "xlarge")
+
+    assert estimate.cpu_request_cores == 4.0
+    assert estimate.memory_request_mb == 8192
+    assert estimate.can_launch is False
+    assert "available CPU" in " ".join(estimate.blockers)
 
 
 def test_drift_rejects_external_data_missing_training_features(monkeypatch) -> None:

@@ -58,6 +58,13 @@ _STAGE_TRANSITIONS = {
     ModelStage.ARCHIVED: {ModelStage.CANDIDATE},
 }
 
+_MONITORING_RESOURCE_FLOORS = {
+    "small": (0.5, 1024),
+    "standard": (1.0, 2048),
+    "large": (2.0, 4096),
+    "xlarge": (4.0, 8192),
+}
+
 
 def register_model(
     db: Session,
@@ -295,6 +302,7 @@ def launch_drift_check(
         for value in (source.target_column, source.params.get("evaluation_column"))
         if value
     }
+    excluded_columns.update(source.params.get("excluded_leakage_columns") or [])
     required_columns = {
         str(item.get("name"))
         for item in source.dataset_version.schema_json.get("columns", [])
@@ -314,6 +322,29 @@ def launch_drift_check(
                 f"Missing columns: {', '.join(missing_columns)}."
             ),
         )
+    linked_deployment = next(
+        (
+            deployment
+            for deployment in db.scalars(
+                select(ModelRun)
+                .where(
+                    ModelRun.project_id == project_id,
+                    ModelRun.run_kind == RunKind.DEPLOYMENT,
+                )
+                .order_by(ModelRun.created_at.desc())
+            ).all()
+            if deployment.tags.get("registry_entry_id") == str(entry.id)
+        ),
+        None,
+    )
+    monitoring_resource_class = str(
+        (linked_deployment.params.get("monitoring") or {}).get(
+            "resource_class",
+            "standard",
+        )
+        if linked_deployment
+        else "standard"
+    )
     k8s = client or KubernetesTrainingClient()
     estimate = estimate_training_run(
         db,
@@ -330,6 +361,7 @@ def launch_drift_check(
         ),
         k8s,
     )
+    _apply_monitoring_resource_floor(estimate, monitoring_resource_class)
     if not estimate.can_launch:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -356,11 +388,20 @@ def launch_drift_check(
         memory_limit_mb=estimate.memory_limit_mb,
         params={
             "registry_entry_id": str(entry.id),
+            "deployment_run_id": str(linked_deployment.id) if linked_deployment else None,
             "reference_dataset_version_id": str(source.dataset_version_id),
             "evaluation_column": source.params.get("evaluation_column"),
             "max_rows": request.max_rows,
+            "monitoring_resource_class": monitoring_resource_class,
         },
-        tags={"registry_entry_id": str(entry.id)},
+        tags={
+            "registry_entry_id": str(entry.id),
+            **(
+                {"deployment_run_id": str(linked_deployment.id)}
+                if linked_deployment
+                else {}
+            ),
+        },
         queued_at=datetime.now(UTC),
     )
     db.add(run)
@@ -389,6 +430,33 @@ def launch_drift_check(
         estimate=estimate,
         manifest=manifest,
     )
+
+
+def _apply_monitoring_resource_floor(
+    estimate: Any,
+    resource_class: str,
+) -> None:
+    cpu_floor, memory_floor = _MONITORING_RESOURCE_FLOORS.get(
+        resource_class,
+        _MONITORING_RESOURCE_FLOORS["standard"],
+    )
+    estimate.cpu_request_cores = max(estimate.cpu_request_cores, cpu_floor)
+    estimate.cpu_limit_cores = max(estimate.cpu_limit_cores, cpu_floor)
+    estimate.memory_request_mb = max(estimate.memory_request_mb, memory_floor)
+    estimate.memory_limit_mb = max(estimate.memory_limit_mb, memory_floor)
+    blockers = list(estimate.blockers)
+    if estimate.cpu_request_cores > estimate.capacity.available_cpu_cores:
+        blockers.append(
+            f"The {resource_class} monitoring class needs "
+            f"{estimate.cpu_request_cores:g} available CPU cores."
+        )
+    if estimate.memory_request_mb > estimate.capacity.available_memory_mb:
+        blockers.append(
+            f"The {resource_class} monitoring class needs "
+            f"{estimate.memory_request_mb} MiB available memory."
+        )
+    estimate.blockers = list(dict.fromkeys(blockers))
+    estimate.can_launch = estimate.can_launch and not estimate.blockers
 
 
 def _adaptive_inference_memory(
@@ -896,6 +964,7 @@ def registry_entry_read(entry: ModelRegistryEntry) -> RegistryEntryRead:
             not in {
                 entry.model_run.target_column,
                 entry.model_run.params.get("evaluation_column"),
+                *list(entry.model_run.params.get("excluded_leakage_columns") or []),
             }
         ],
     )

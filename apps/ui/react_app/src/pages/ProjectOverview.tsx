@@ -162,6 +162,7 @@ export function ProjectOverview() {
             <progress value={profile.data?.progress || 0} max={1} /><p>Profiling is running in the background. You can continue using the project.</p></div>}
           {profileMatchesSelection && inferredTask && <>
             <p className="muted">Profile confidence: {Math.round(inferredTask.confidence * 100)}%.</p>
+            {targetProfileResult.data?.overview_json?.leakage_analysis?.excluded_columns.length ? <Notice tone="danger">Training will exclude target-leakage features: {targetProfileResult.data.overview_json.leakage_analysis.excluded_columns.join(", ")}.</Notice> : <Notice tone="success">No high-confidence target leakage was detected.</Notice>}
             <p><b>Suggested next step:</b> Review the training configuration when you are ready. Nothing will launch until you explicitly confirm it.</p>
             <div className="button-row"><Link className="button button--primary" to="training">Configure training<ArrowRight size={16} /></Link>
               <Link className="button button--secondary" to="data">Review profile</Link></div></>}

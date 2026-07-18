@@ -19,6 +19,22 @@ Metrics Server, storage provisioners, ingress controllers, GPU device plugins,
 and cluster creation remain cluster-owner responsibilities. Their absence does
 not block CPU training or normal UI/API operation.
 
+The centralized model-metrics API can scale independently when Metrics Server is
+available:
+
+```yaml
+api:
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+```
+
+Deployment monitoring policies also select `small`, `standard`, `large`, or
+`xlarge` resource floors for drift Jobs. The admission check rejects a selected
+class when the cluster cannot satisfy its CPU or memory request. HPA applies to
+the long-running API; bounded drift computations remain Kubernetes Jobs.
+
 ## Prerequisites
 
 - Kubernetes 1.27+ API compatibility; use a currently supported upstream minor

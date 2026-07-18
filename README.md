@@ -639,6 +639,23 @@ There is no preconfigured application login.
 The UI will show the Kubernetes job, current phase, model progress, resource
 telemetry when available, and progressive leaderboard results.
 
+Each leaderboard model includes a **Pipeline** evidence tab. It shows the
+candidate's immutable-data input, leakage gate, validation design, executable
+feature processing, mutual-information selection, tuning and fit, evaluation,
+and persistence state. The operational run-level **Logs** tab remains available
+for troubleshooting, while model-level logs are replaced by this pipeline view.
+
+Use **Audit document** on any model pipeline to download a printable HTML
+evidence package, or **JSON evidence** for automated review. The package includes
+the target distribution, profiling recommendations, the preprocessing branch
+actually used by training, removed leakage features, hyperparameters, model
+mathematics, metrics and diagnostics, normalized global SHAP contributions, and
+a directional sample waterfall. If SHAP or another source was not calculated
+for that specific model, the document marks the evidence as partial; it never
+substitutes evidence from a different candidate. Historical SHAP artifacts that
+predate persisted feature ordering require a SHAP recalculation before Sceptre
+will render a trustworthy waterfall.
+
 ### Starting Sceptre again later
 
 On Windows, start Docker Desktop, wait for its Kubernetes status to turn green,
@@ -763,6 +780,41 @@ Direct per-model Ingress, LoadBalancer, or NodePort exposure remains optional.
 When enabled, the Operations view reports those external addresses separately.
 They bypass Sceptre's project-authenticated gateway, so the cluster operator
 must provide appropriate TLS, authentication, and network policy at the edge.
+
+### Record and review deployment monitoring evidence
+
+Open **Model metrics** in the portfolio navigation to review authorized
+deployments across projects. Production metric points are attached to the
+deployment run and may be written by an approved collector or administrator:
+
+```bash
+curl --fail-with-body \
+  --request POST \
+  --header "Authorization: Bearer $SCEPTRE_TOKEN" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "name": "accuracy",
+    "kind": "performance",
+    "value": 0.873,
+    "sample_count": 1842,
+    "higher_is_better": true,
+    "status": "healthy",
+    "idempotency_key": "accuracy-2026-07-18",
+    "metadata": {"window": "2026-07-18", "label_coverage": 0.91}
+  }' \
+  "$SCEPTRE_ORIGIN/api/v1/projects/$PROJECT_ID/operations/deployments/$DEPLOYMENT_RUN_ID/monitoring/metrics"
+```
+
+In **Governance & audit**, generate an immutable evidence snapshot for a
+deployment. Sceptre assembles model and dataset lineage, preprocessing, training,
+tuning, validation/explainability, leakage, production metrics, drift, and
+retraining evidence. Authorized users can inspect the report in the UI and
+download its hashed JSON or HTML representation.
+
+This is an evaluation-stage monitoring surface. A production installation must
+still provide the approved inference/ground-truth collector, scheduled durable
+monitoring workers, alert delivery, monitoring data store, privacy controls, and
+qualification evidence defined in the production-readiness guide.
 
 For cluster troubleshooting only, an operator can bypass the gateway temporarily:
 

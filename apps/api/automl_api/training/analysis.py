@@ -189,6 +189,7 @@ def _execute_explainability(
         encoded_sample.to_numpy(dtype=float),
         max_evals=max(2 * len(columns) + 1, 10),
     )
+    prediction_values = np.asarray(predict(encoded_sample.to_numpy(dtype=float)))
     values = np.asarray(explanation.values, dtype=float)
     if values.ndim == 1:
         values = values.reshape(-1, 1)
@@ -232,6 +233,15 @@ def _execute_explainability(
             },
         },
         "feature_importance": feature_importance,
+        "feature_names": columns,
+        "sample_feature_values": sample.iloc[: min(100, len(sample))].to_dict(
+            orient="records"
+        ),
+        "base_values": np.asarray(
+            getattr(explanation, "base_values", []),
+            dtype=float,
+        ).tolist(),
+        "prediction_values": prediction_values[: min(100, len(prediction_values))].tolist(),
         "shap_values": sample_values.tolist(),
         "shap_contribution_percent": _percentage_contributions(
             sample_values,
@@ -534,6 +544,7 @@ def _rebuild_historical_model(
             model_name=model_name,
             best_params=dict(entry.get("best_params") or {}),
             evaluation_column=source.params.get("evaluation_column"),
+            excluded_columns=list(source.params.get("excluded_leakage_columns") or []),
         )
         artifact_uri = _persist_candidate_model(
             source,

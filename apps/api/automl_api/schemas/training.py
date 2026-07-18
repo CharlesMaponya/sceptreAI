@@ -14,6 +14,7 @@ class TrainingEstimateRequest(BaseModel):
     target_column: str | None = Field(default=None, max_length=255)
     evaluation_column: str | None = Field(default=None, max_length=255)
     task_type: TaskType
+    primary_metric: str | None = Field(default=None, max_length=64)
     prefer_gpu: bool = True
     expected_minutes: int = Field(default=10, ge=1, le=120)
     candidate_limit: int = Field(default=5, ge=1, le=20)
@@ -156,6 +157,23 @@ class TrainingResourceUsageRead(BaseModel):
     sampled_at: datetime
 
 
+class ModelPipelineStageRead(BaseModel):
+    key: str
+    label: str
+    status: str
+    summary: str
+
+
+class ModelPipelineRead(BaseModel):
+    model_name: str
+    task_type: str
+    state: str
+    current_phase: str | None = None
+    stages: list[ModelPipelineStageRead] = Field(default_factory=list)
+    feature_processing: dict[str, Any] = Field(default_factory=dict)
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+
 class LeaderboardEntryRead(BaseModel):
     rank: int | None
     model: str
@@ -169,6 +187,7 @@ class LeaderboardEntryRead(BaseModel):
     error: str | None
     mlflow_run_id: str | None = None
     extension_run_id: uuid.UUID | None = None
+    pipeline: ModelPipelineRead | None = None
 
 
 class TrainingLeaderboardRead(BaseModel):

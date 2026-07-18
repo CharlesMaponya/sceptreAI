@@ -12,7 +12,12 @@ import pandas as pd
 
 from automl_api.models.datasets import DatasetVersion
 from automl_api.models.enums import DatasetFormat
-from automl_api.schemas.profiling import ColumnProfileRead, FeatureRelationshipRead
+from automl_api.schemas.profiling import (
+    ColumnProfileRead,
+    FeatureRelationshipRead,
+    LeakageAnalysisRead,
+)
+from automl_api.services.leakage import LEAKAGE_SAMPLE_ROWS, detect_target_leakage
 from automl_api.services.temporal import (
     MAX_UNIX_SECONDS,
     MIN_UNIX_SECONDS,
@@ -20,6 +25,7 @@ from automl_api.services.temporal import (
     infer_unix_timestamp_unit,
     unix_timestamp_iso,
 )
+from automl_api.services.text_profiling import text_word_counter
 from automl_api.storage.object_store import get_object_store
 
 MISSING_MARKERS = ["", "na", "n/a", "null", "none"]
@@ -30,7 +36,13 @@ MAX_CRAMERS_V_CELLS = 1_000_000
 def profile_dataset_with_dask(
     version: DatasetVersion,
     target_column: str | None,
-) -> tuple[int, list[ColumnProfileRead], list[FeatureRelationshipRead], list[str]]:
+) -> tuple[
+    int,
+    list[ColumnProfileRead],
+    list[FeatureRelationshipRead],
+    LeakageAnalysisRead,
+    list[str],
+]:
     dataframe = _load_dataframe(version)
     row_count = int(dataframe.shape[0].compute())
     profiles = [
@@ -42,14 +54,19 @@ def profile_dataset_with_dask(
         profile_by_name,
         target_column,
     )
+    leakage_analysis = detect_target_leakage(
+        dataframe.head(LEAKAGE_SAMPLE_ROWS, npartitions=-1),
+        target_column,
+    )
     warnings = [
         (
             f"Processed all {row_count} rows with partitioned Dask execution. "
             "Quartiles use Dask's whole-dataset approximate quantile algorithm."
         ),
         *relationship_warnings,
+        *leakage_analysis.warnings,
     ]
-    return row_count, profiles, relationships, warnings
+    return row_count, profiles, relationships, leakage_analysis, warnings
 
 
 def _load_dataframe(version: DatasetVersion) -> dd.DataFrame:
@@ -133,6 +150,7 @@ def _profile_column(
     elif semantic_type == "text":
         lengths = present.str.len().astype("float64")
         statistics_json, distribution, _ = _numeric_profile(lengths, text_lengths=True)
+        statistics_json["word_frequencies"] = _distributed_word_frequencies(present)
         distribution_type = "histogram"
         has_outliers = False
     else:
@@ -166,6 +184,26 @@ def _profile_column(
         distribution=distribution,
         quality_flags=quality_flags,
     )
+
+
+def _distributed_word_frequencies(
+    values: dd.Series,
+    *,
+    limit: int = 40,
+) -> list[dict[str, int | str]]:
+    # Bound each partition's vocabulary before merging so profiling a very large
+    # free-text column cannot create one enormous in-memory Counter.
+    delayed_counts = [
+        dask.delayed(text_word_counter)(partition, maximum_terms=5_000)
+        for partition in values.to_delayed()
+    ]
+    combined: Counter[str] = Counter()
+    for partition_counts in dask.compute(*delayed_counts):
+        combined.update(partition_counts)
+    return [
+        {"word": word, "count": count}
+        for word, count in combined.most_common(limit)
+    ]
 
 
 def _infer_semantic_type(

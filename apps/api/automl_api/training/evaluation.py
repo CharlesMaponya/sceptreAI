@@ -52,6 +52,56 @@ LOWER_IS_BETTER_METRICS = {
     "smape",
 }
 
+PRIMARY_METRICS_BY_TASK: dict[TaskType, tuple[str, ...]] = {
+    TaskType.CLASSIFICATION: (
+        "balanced_accuracy",
+        "accuracy",
+        "f1_macro",
+        "f1_weighted",
+        "roc_auc",
+        "log_loss",
+    ),
+    TaskType.REGRESSION: ("rmse", "mae", "mse", "r2", "explained_variance"),
+    TaskType.TIME_SERIES: ("rmse", "mae", "mse", "r2", "explained_variance"),
+    TaskType.CLUSTERING: ("silhouette", "davies_bouldin", "calinski_harabasz"),
+}
+
+DEFAULT_PRIMARY_METRIC: dict[TaskType, str] = {
+    TaskType.CLASSIFICATION: "balanced_accuracy",
+    TaskType.REGRESSION: "rmse",
+    TaskType.TIME_SERIES: "rmse",
+    TaskType.CLUSTERING: "silhouette",
+}
+
+
+def resolve_primary_metric(task_type: TaskType, requested: str | None) -> str:
+    metric = requested or DEFAULT_PRIMARY_METRIC[task_type]
+    if metric not in PRIMARY_METRICS_BY_TASK[task_type]:
+        supported = ", ".join(PRIMARY_METRICS_BY_TASK[task_type])
+        raise ValueError(
+            f"Metric '{metric}' is not supported for {task_type.value}. Use: {supported}."
+        )
+    return metric
+
+
+def cross_validation_scoring(
+    task_type: TaskType,
+    primary_metric: str,
+    *,
+    target_classes: int | None = None,
+) -> str:
+    if task_type == TaskType.CLASSIFICATION:
+        if primary_metric == "roc_auc":
+            return "roc_auc" if target_classes == 2 else "roc_auc_ovr_weighted"
+        if primary_metric == "log_loss":
+            return "neg_log_loss"
+        return primary_metric
+    return {
+        "rmse": "neg_root_mean_squared_error",
+        "mae": "neg_mean_absolute_error",
+        "mse": "neg_mean_squared_error",
+    }.get(primary_metric, primary_metric)
+
 
 def classification_evaluation(
     fitted: Any,
@@ -126,6 +176,7 @@ def classification_evaluation(
                         average="weighted",
                     )
                 )
+                metrics["roc_auc"] = metrics["roc_auc_ovr_weighted"]
                 encoded = label_binarize(test_y, classes=labels)
                 metrics["average_precision_weighted"] = float(
                     average_precision_score(

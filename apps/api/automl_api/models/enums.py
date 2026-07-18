@@ -97,6 +97,7 @@ class ArtifactKind(StrEnum):
     DRIFT_REPORT = "drift_report"
     LOG_BUNDLE = "log_bundle"
     DEPLOYMENT_IMAGE = "deployment_image"
+    GOVERNANCE_REPORT = "governance_report"
 
 
 class ModelStage(StrEnum):

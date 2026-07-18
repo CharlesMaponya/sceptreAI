@@ -9,6 +9,10 @@ import pandas as pd
 import pytest
 from automl_api.models.enums import TaskType
 from automl_api.services.training import _rank_combined_leaderboard
+from automl_api.training.evaluation import (
+    cross_validation_scoring,
+    resolve_primary_metric,
+)
 from automl_api.training.model_catalog import (
     CandidateSpec,
     _external_estimators,
@@ -21,6 +25,7 @@ from automl_api.training.pipeline import (
     _log_metrics_synchronously,
     _normalize_temporal_features,
     _pending_candidate,
+    _preprocessor_for_model,
     _registered_model_name,
     _supervised_split,
     merge_leaderboard_entries,
@@ -28,6 +33,8 @@ from automl_api.training.pipeline import (
     rebuild_candidate_model,
 )
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.naive_bayes import CategoricalNB
+from sklearn.pipeline import Pipeline
 
 
 def test_supervised_tasks_have_bounded_candidate_catalogs() -> None:
@@ -176,6 +183,59 @@ def test_pending_candidate_is_visible_without_metrics_or_rank() -> None:
     assert entry["metrics"] == {}
     assert entry["primary_score"] is None
     assert entry["rank"] is None
+
+
+def test_successful_model_without_selected_metric_remains_unranked() -> None:
+    entries = rank_leaderboard(
+        [
+            {"model": "A", "status": "succeeded", "metrics": {"accuracy": 0.9}},
+            {
+                "model": "B",
+                "status": "succeeded",
+                "metrics": {"balanced_accuracy": 0.8},
+            },
+        ],
+        "balanced_accuracy",
+    )
+
+    assert [entry["model"] for entry in entries] == ["B", "A"]
+    assert entries[0]["rank"] == 1
+    assert entries[1]["rank"] is None
+
+
+def test_primary_metric_resolution_is_task_specific() -> None:
+    assert resolve_primary_metric(TaskType.REGRESSION, None) == "rmse"
+    assert cross_validation_scoring(TaskType.REGRESSION, "mae") == "neg_mean_absolute_error"
+    assert (
+        cross_validation_scoring(TaskType.CLASSIFICATION, "roc_auc", target_classes=3)
+        == "roc_auc_ovr_weighted"
+    )
+    with pytest.raises(ValueError, match="not supported"):
+        resolve_primary_metric(TaskType.REGRESSION, "accuracy")
+
+
+def test_categorical_nb_preprocessing_never_produces_negative_values() -> None:
+    features = pd.DataFrame(
+        {
+            "amount": [-20.5, -3.0, 0.0, 4.5, 8.0, 12.0, 30.0, 45.0],
+            "segment": ["a", "b", "a", "c", "b", "a", "c", "b"],
+        }
+    )
+    target = pd.Series([0, 1, 0, 1, 1, 0, 1, 1])
+    model = Pipeline(
+        [
+            ("prepare", _preprocessor_for_model(features, "CategoricalNB")),
+            ("model", CategoricalNB()),
+        ]
+    )
+
+    model.fit(features, target)
+    transformed = model.named_steps["prepare"].transform(
+        pd.DataFrame({"amount": [-100.0], "segment": ["unseen"]})
+    )
+
+    assert transformed.min() >= 0
+    assert model.predict(features).shape == (len(features),)
 
 
 def test_rapids_accelerator_is_selected_for_supported_sklearn_models() -> None:

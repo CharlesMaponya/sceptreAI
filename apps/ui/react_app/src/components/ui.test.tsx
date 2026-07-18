@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { axe } from "jest-axe";
 import { describe, expect, it, vi } from "vitest";
-import { Badge, Modal, Notice } from "./ui";
+import { Badge, Loading, Modal, Notice } from "./ui";
 
 describe("shared UI primitives", () => {
   it("renders semantic status and notice content without accessibility violations", async () => {
@@ -15,7 +15,13 @@ describe("shared UI primitives", () => {
     const close = vi.fn();
     render(<Modal title="Confirm deletion" onClose={close}><p>Content</p></Modal>);
     expect(screen.getByRole("dialog")).toHaveAttribute("aria-modal", "true");
+    expect(screen.getByRole("button", { name: "Close" })).toHaveFocus();
     fireEvent.keyDown(document, { key: "Escape" });
     expect(close).toHaveBeenCalledOnce();
+  });
+
+  it("announces skeleton loading states", () => {
+    render(<Loading label="Preparing project evidence…" />);
+    expect(screen.getByRole("status")).toHaveTextContent("Preparing project evidence…");
   });
 });

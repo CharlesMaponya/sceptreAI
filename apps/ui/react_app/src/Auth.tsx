@@ -31,7 +31,7 @@ export function Auth() {
     finally { setLoading(false); }
   }
 
-  return <main className="auth">
+  return <main className="auth" id="main-content">
     <section className="auth__story">
       <div className="brand brand--light"><i className="brand-mark"><img src="/sceptre-icon-white.png" alt="" /></i><span>Sceptre <b>AI</b></span></div>
       <div className="auth__copy">

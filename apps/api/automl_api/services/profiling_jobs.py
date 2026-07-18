@@ -7,6 +7,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import UTC, datetime
 from typing import Any
 
+import pandas as pd
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -16,8 +17,14 @@ from automl_api.db.session import get_session_factory
 from automl_api.models.datasets import DatasetVersion, ProfilingJob
 from automl_api.models.enums import DatasetFormat, DatasetStatus, ProjectRole
 from automl_api.models.iam import User
-from automl_api.schemas.profiling import ColumnProfileRead, DatasetProfileRead, ProfileRequest
+from automl_api.schemas.profiling import (
+    ColumnProfileRead,
+    DatasetProfileRead,
+    LeakageAnalysisRead,
+    ProfileRequest,
+)
 from automl_api.schemas.profiling_jobs import ProfilingJobCreate
+from automl_api.services.leakage import LEAKAGE_SAMPLE_ROWS, detect_target_leakage
 from automl_api.services.profiling import (
     _build_preparation_plan,
     _infer_task,
@@ -29,7 +36,7 @@ from automl_api.services.projects import require_project_role
 from automl_api.storage.object_store import get_object_store
 
 FEATURE_BATCH_SIZE = 5
-PROFILE_ALGORITHM_VERSION = 2
+PROFILE_ALGORITHM_VERSION = 3
 TERMINAL_STATUSES = {"succeeded", "failed", "cancelled"}
 
 _executor = ThreadPoolExecutor(
@@ -384,6 +391,10 @@ def _run_partitioned_stages(job_id: uuid.UUID) -> None:
         profiles,
         job.target_column,
     )
+    leakage_analysis = detect_target_leakage(
+        dataframe.head(LEAKAGE_SAMPLE_ROWS, npartitions=-1),
+        job.target_column,
+    )
     with session_factory() as db:
         job = db.get(ProfilingJob, job_id)
         assert job is not None
@@ -393,7 +404,15 @@ def _run_partitioned_stages(job_id: uuid.UUID) -> None:
             relationship.model_dump(mode="json") for relationship in relationships
         ]
         job.relationships_json = relationship_payload
-        job.warnings_json = list(dict.fromkeys([*job.warnings_json, *relationship_warnings]))
+        job.warnings_json = list(
+            dict.fromkeys(
+                [*job.warnings_json, *relationship_warnings, *leakage_analysis.warnings]
+            )
+        )
+        job.overview_json = {
+            **job.overview_json,
+            "leakage_analysis": leakage_analysis.model_dump(mode="json"),
+        }
         job.artifact_uris_json = _store_stage_artifact(
             job,
             "relationships",
@@ -423,10 +442,14 @@ def _finish_preparation(job_id: uuid.UUID) -> None:
         ]
         profile_by_name = {profile.name: profile for profile in profiles}
         task_inference = _infer_task(job.target_column, profile_by_name)
+        leakage_analysis = LeakageAnalysisRead.model_validate(
+            job.overview_json.get("leakage_analysis", {"status": "not_applicable"})
+        )
         preparation = _build_preparation_plan(
             profiles,
             job.target_column,
             task_inference.task_type,
+            leakage_analysis,
         )
         preparation_payload = [step.model_dump(mode="json") for step in preparation]
         job.preparation_json = preparation_payload
@@ -452,6 +475,7 @@ def _finish_preparation(job_id: uuid.UUID) -> None:
             columns=profiles,
             relationships=job.relationships_json,
             preparation_plan=preparation,
+            leakage_analysis=leakage_analysis,
             warnings=job.warnings_json,
         )
         final_uris = _store_stage_artifact(
@@ -493,6 +517,10 @@ def _run_monolithic_fallback(job_id: uuid.UUID) -> None:
             profile_by_name = {column.name: column for column in profiles}
             rows, warnings = _load_rows(version)
             task_inference = _infer_task(job.target_column, profile_by_name)
+            leakage_analysis = detect_target_leakage(
+                pd.DataFrame(rows),
+                job.target_column,
+            )
             relationships = _relationships_against_target(
                 rows,
                 profile_by_name,
@@ -502,6 +530,7 @@ def _run_monolithic_fallback(job_id: uuid.UUID) -> None:
                 profiles,
                 job.target_column,
                 task_inference.task_type,
+                leakage_analysis,
             )
             profile = DatasetProfileRead(
                 project_id=job.project_id,
@@ -514,7 +543,8 @@ def _run_monolithic_fallback(job_id: uuid.UUID) -> None:
                 columns=profiles,
                 relationships=relationships,
                 preparation_plan=preparation,
-                warnings=warnings,
+                leakage_analysis=leakage_analysis,
+                warnings=list(dict.fromkeys([*warnings, *leakage_analysis.warnings])),
             )
         else:
             profile = build_dataset_profile(
@@ -544,6 +574,7 @@ def _run_monolithic_fallback(job_id: uuid.UUID) -> None:
             "row_count": profile.row_count_analyzed,
             "column_count": profile.column_count,
             "task_inference": profile.task_inference.model_dump(mode="json"),
+            "leakage_analysis": profile.leakage_analysis.model_dump(mode="json"),
         }
         for stage, payload in (
             ("features", job.feature_profiles_json),

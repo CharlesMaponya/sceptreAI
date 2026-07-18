@@ -67,7 +67,7 @@ export function Landing() {
       </div>
     </header>
 
-    <main>
+    <main id="main-content">
       <section className="marketing-hero">
         <div className="marketing-hero__copy">
           <span className="marketing-kicker"><i />Governed AutoML for teams that mean business</span>
@@ -113,8 +113,18 @@ export function Landing() {
         <div className="marketing-heading"><span>Business value</span>
           <h2>Production discipline without the platform tax.</h2>
           <p>Sceptre removes the glue work between experimentation and operation, so your team can focus on decisions—not infrastructure assembly.</p></div>
-        <div className="outcome-grid">{outcomes.map(({ icon: Icon, title, text }) =>
-          <article key={title}><Icon /><h3>{title}</h3><p>{text}</p></article>)}</div>
+        <div className="outcome-grid">{outcomes.map(({ icon: Icon, title, text }, index) =>
+          <article key={title}>
+            {index === 0 && <div className="outcome-pattern" aria-hidden="true">
+              {Array.from({ length: 9 }, (_, patternIndex) => <i key={patternIndex} />)}
+            </div>}
+            <div className="outcome-card__copy"><Icon /><h3>{title}</h3><p>{text}</p></div>
+            {index === 0 && <div className="outcome-flow" role="img" aria-label="Raw data becomes trained models and then a deployed model">
+              <span><Database /><b>Raw data</b><small>Prepared</small></span><i />
+              <span><BarChart3 /><b>Trained models</b><small>Evaluated</small></span><i />
+              <span><CloudCog /><b>Deployed model</b><small>Serving</small></span>
+            </div>}
+          </article>)}</div>
       </section>
 
       <section className="marketing-section capability-section" id="platform">
