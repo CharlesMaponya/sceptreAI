@@ -15,7 +15,7 @@ spec:
     spec:
       initContainers:
         - name: migrate-database
-          image: docker.io/maponyacharles/sceptreai:mlflow-0.1.3
+          image: docker.io/maponyacharles/sceptreai:mlflow-0.1.4
           imagePullPolicy: IfNotPresent
           args:
             - python
@@ -38,7 +38,7 @@ spec:
               mountPath: /mlflow
       containers:
         - name: mlflow
-          image: docker.io/maponyacharles/sceptreai:mlflow-0.1.3
+          image: docker.io/maponyacharles/sceptreai:mlflow-0.1.4
           imagePullPolicy: IfNotPresent
           args:
             - mlflow

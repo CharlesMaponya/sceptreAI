@@ -49,13 +49,13 @@ provisionable storage before training workloads are considered.
 
 The chart pulls seven pinned `linux/amd64` images from one public repository:
 
-- `maponyacharles/sceptreai:api-0.1.3`
-- `maponyacharles/sceptreai:ui-0.1.3`
-- `maponyacharles/sceptreai:mlflow-0.1.3`
-- `maponyacharles/sceptreai:training-cpu-0.1.3`
-- `maponyacharles/sceptreai:training-nvidia-0.1.3`
-- `maponyacharles/sceptreai:training-intel-0.1.3`
-- `maponyacharles/sceptreai:inference-0.1.3`
+- `maponyacharles/sceptreai:api-0.1.4`
+- `maponyacharles/sceptreai:ui-0.1.4`
+- `maponyacharles/sceptreai:mlflow-0.1.4`
+- `maponyacharles/sceptreai:training-cpu-0.1.4`
+- `maponyacharles/sceptreai:training-nvidia-0.1.4`
+- `maponyacharles/sceptreai:training-intel-0.1.4`
+- `maponyacharles/sceptreai:inference-0.1.4`
 
 No local image build, import, or registry is needed. Override
 `global.imageRegistry`, component repositories, tags, digests, or

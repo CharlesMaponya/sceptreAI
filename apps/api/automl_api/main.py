@@ -31,7 +31,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
         title="SMME Tabular AutoML API",
-        version="0.1.3",
+        version="0.1.4",
         docs_url="/docs" if settings.environment != "production" else None,
         redoc_url="/redoc" if settings.environment != "production" else None,
         lifespan=lifespan,

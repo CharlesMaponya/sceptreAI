@@ -1,29 +1,53 @@
-name: CI Tests & Linting
+name: CI and Docker release
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, dev]
   pull_request:
-    branches: [main, develop]
+    branches: [main, dev]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: docker.io/maponyacharles/sceptreai
 
 jobs:
+  branch-policy:
+    name: Branch Policy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require production changes to come from dev
+        env:
+          BASE_BRANCH: ${{ github.base_ref }}
+          SOURCE_BRANCH: ${{ github.head_ref }}
+        run: |
+          if [ "$BASE_BRANCH" = main ] \
+            && [ "$SOURCE_BRANCH" != dev ] \
+            && [[ "$SOURCE_BRANCH" != hotfix/* ]]; then
+            echo "Pull requests to main must come from dev or hotfix/*."
+            exit 1
+          fi
+
   lint:
     name: Lint & Format Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
-          cache: 'pip'
-      
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install ruff
-      
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install ruff
+        run: python -m pip install ruff
+
       - name: Lint with ruff
         run: ruff check apps packages alembic scripts tests
 
@@ -44,21 +68,19 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
-    
+
     steps:
       - uses: actions/checkout@v6
-      
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
-          cache: 'pip'
-      
+          python-version: "3.11"
+          cache: pip
+
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev,ml,k8s]"
-      
+        run: pip install -e ".[dev,ml,k8s]"
+
       - name: Verify database migrations
         env:
           DATABASE_URL: postgresql+psycopg://automl:automl@localhost:5432/automl_test
@@ -120,14 +142,42 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
-      
+          python-version: "3.11"
+
       - name: Check syntax with compileall
         run: python -m compileall apps packages alembic scripts tests
+
+      - name: Require one version across every release surface
+        run: |
+          python - <<'PY'
+          import json
+          import re
+          import tomllib
+          from pathlib import Path
+
+          root = Path(".")
+          version = tomllib.loads((root / "pyproject.toml").read_text())["project"]["version"]
+          package = json.loads((root / "apps/ui/react_app/package.json").read_text())
+          package_lock = json.loads((root / "apps/ui/react_app/package-lock.json").read_text())
+          api = (root / "apps/api/automl_api/__init__.py").read_text()
+          chart = (root / "infra/helm/sceptre/Chart.yaml").read_text()
+          versions = {
+              "React package": package["version"],
+              "React lockfile": package_lock["version"],
+              "React lockfile root": package_lock["packages"][""]["version"],
+              "API": re.search(r'__version__ = "([^"]+)"', api).group(1),
+              "Helm chart": re.search(r'^version: (.+)$', chart, re.MULTILINE).group(1),
+              "Helm app": re.search(r'^appVersion: "(.+)"$', chart, re.MULTILINE).group(1),
+          }
+          mismatches = {name: found for name, found in versions.items() if found != version}
+          if mismatches:
+              raise SystemExit(f"Expected version {version} everywhere; found {mismatches}")
+          print(f"All release surfaces use {version}")
+          PY
 
   helm-chart:
     name: Helm Chart Regression
@@ -181,13 +231,244 @@ jobs:
         run: |
           rendered=/tmp/sceptre-values-k3d.yaml
           image=docker.io/maponyacharles/sceptreai
-          grep -Fq "image: \"${image}:api-0.1.3\"" "$rendered"
-          grep -Fq "image: \"${image}:ui-0.1.3\"" "$rendered"
-          grep -Fq "image: \"${image}:mlflow-0.1.3\"" "$rendered"
-          grep -Fq "TRAINING_IMAGE: \"${image}:training-cpu-0.1.3\"" "$rendered"
-          grep -Fq "TRAINING_IMAGE_NVIDIA: \"${image}:training-nvidia-0.1.3\"" "$rendered"
-          grep -Fq "TRAINING_IMAGE_INTEL: \"${image}:training-intel-0.1.3\"" "$rendered"
-          grep -Fq "INFERENCE_IMAGE: \"${image}:inference-0.1.3\"" "$rendered"
+          version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml)"
+          grep -Fq "image: \"${image}:api-${version}\"" "$rendered"
+          grep -Fq "image: \"${image}:ui-${version}\"" "$rendered"
+          grep -Fq "image: \"${image}:mlflow-${version}\"" "$rendered"
+          grep -Fq "TRAINING_IMAGE: \"${image}:training-cpu-${version}\"" "$rendered"
+          grep -Fq "TRAINING_IMAGE_NVIDIA: \"${image}:training-nvidia-${version}\"" "$rendered"
+          grep -Fq "TRAINING_IMAGE_INTEL: \"${image}:training-intel-${version}\"" "$rendered"
+          grep -Fq "INFERENCE_IMAGE: \"${image}:inference-${version}\"" "$rendered"
           grep -Fq 'TRAINING_IMAGE_PULL_POLICY: "IfNotPresent"' "$rendered"
           grep -Fq 'INFERENCE_IMAGE_PULL_POLICY: "IfNotPresent"' "$rendered"
           ! grep -q 'imagePullPolicy: Never' "$rendered"
+
+  release-preflight:
+    name: Release Preflight
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    needs: [branch-policy, lint, test, frontend, syntax-check, helm-chart]
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Read and validate the release version
+        id: version
+        run: |
+          version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml)"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Refuse to overwrite an existing release
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          for component in api ui mlflow training-cpu training-nvidia training-intel inference
+          do
+            tag="${IMAGE}:${component}-${VERSION}"
+            if docker buildx imagetools inspect "$tag" >/dev/null 2>&1; then
+              echo "::error::${tag} already exists. Bump the project version before merging."
+              exit 1
+            fi
+          done
+
+  build-images:
+    name: Build ${{ matrix.component }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    needs: release-preflight
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: api
+            context: .
+            file: Dockerfile.api
+          - component: ui
+            context: apps/ui/react_app
+            file: apps/ui/react_app/Dockerfile
+          - component: mlflow
+            context: .
+            file: Dockerfile.mlflow
+          - component: training-cpu
+            context: .
+            file: Dockerfile.training.cpu
+          - component: training-nvidia
+            context: .
+            file: Dockerfile.training
+          - component: inference
+            context: .
+            file: Dockerfile.inference
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: docker/login-action@v4
+        with:
+          username: maponyacharles
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build and push an untagged release candidate
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: linux/amd64
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}
+          provenance: mode=max
+          sbom: true
+
+      - name: Smoke-test the candidate by digest
+        env:
+          COMPONENT: ${{ matrix.component }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          VERSION: ${{ needs.release-preflight.outputs.version }}
+        run: |
+          candidate="${IMAGE}@${DIGEST}"
+          case "$COMPONENT" in
+            api)
+              docker run --rm --entrypoint python "$candidate" -c \
+                "import automl_api; assert automl_api.__version__ == '${VERSION}'"
+              ;;
+            ui)
+              docker run --rm --entrypoint nginx "$candidate" -t
+              ;;
+            mlflow)
+              docker run --rm --entrypoint python "$candidate" -m py_compile \
+                /opt/automl/mlflow_migrate_if_initialized.py
+              ;;
+            training-cpu)
+              docker run --rm --entrypoint python "$candidate" -c \
+                "import automl_api, catboost, lightgbm, sklearn, xgboost; assert automl_api.__version__ == '${VERSION}'"
+              ;;
+            training-nvidia)
+              docker run --rm --entrypoint python "$candidate" -c \
+                "import automl_api; from cuml import accel; assert automl_api.__version__ == '${VERSION}'"
+              ;;
+            inference)
+              docker run --rm --entrypoint python "$candidate" -c \
+                "import automl_api; assert automl_api.__version__ == '${VERSION}'"
+              ;;
+          esac
+
+      - name: Save the candidate digest
+        env:
+          COMPONENT: ${{ matrix.component }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          printf '%s' "$DIGEST" > "$RUNNER_TEMP/digests/$COMPONENT"
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: digest-${{ matrix.component }}
+          path: ${{ runner.temp }}/digests/${{ matrix.component }}
+          if-no-files-found: error
+          retention-days: 1
+
+  build-intel-image:
+    name: Build training-intel
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    needs: [release-preflight, build-images]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: digest-training-cpu
+          path: ${{ runner.temp }}/cpu
+
+      - uses: docker/login-action@v4
+        with:
+          username: maponyacharles
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Read the CPU candidate digest
+        id: cpu
+        run: echo "digest=$(cat "$RUNNER_TEMP/cpu/training-cpu")" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push an untagged release candidate
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.training.intel
+          platforms: linux/amd64
+          build-args: CPU_BASE_IMAGE=${{ env.IMAGE }}@${{ steps.cpu.outputs.digest }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=training-intel
+          cache-to: type=gha,mode=max,scope=training-intel
+          provenance: mode=max
+          sbom: true
+
+      - name: Smoke-test the candidate by digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          VERSION: ${{ needs.release-preflight.outputs.version }}
+        run: |
+          docker run --rm --entrypoint python "${IMAGE}@${DIGEST}" -c \
+            "import automl_api; assert automl_api.__version__ == '${VERSION}'"
+
+      - name: Save the candidate digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          printf '%s' "$DIGEST" > "$RUNNER_TEMP/digests/training-intel"
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: digest-training-intel
+          path: ${{ runner.temp }}/digests/training-intel
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-release:
+    name: Publish Docker Hub Release
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    needs: [release-preflight, build-images, build-intel-image]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: digest-*
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
+
+      - uses: docker/login-action@v4
+        with:
+          username: maponyacharles
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Publish clean version tags
+        env:
+          VERSION: ${{ needs.release-preflight.outputs.version }}
+        run: |
+          for component in api ui mlflow training-cpu training-nvidia training-intel inference
+          do
+            digest="$(cat "$RUNNER_TEMP/digests/$component")"
+            docker buildx imagetools create \
+              --tag "${IMAGE}:${component}-${VERSION}" \
+              "${IMAGE}@${digest}"
+          done
+
+      - name: Verify every published tag
+        env:
+          VERSION: ${{ needs.release-preflight.outputs.version }}
+        run: |
+          for component in api ui mlflow training-cpu training-nvidia training-intel inference
+          do
+            docker buildx imagetools inspect "${IMAGE}:${component}-${VERSION}" >/dev/null
+          done
