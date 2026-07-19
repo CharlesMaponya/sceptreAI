@@ -11,7 +11,7 @@ RUN apt-get update \
     && apt-get install --no-install-recommends --yes libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY apps ./apps
+COPY apps/api ./apps/api
 COPY packages ./packages
 
 ENV PYTHONPATH=/app/apps/api:/app/packages

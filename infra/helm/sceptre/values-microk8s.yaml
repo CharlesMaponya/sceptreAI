@@ -1,14 +1,12 @@
-# Push the versioned images to the MicroK8s local registry first.
-global:
-  imageRegistry: localhost:32000
+# MicroK8s pulls the public Sceptre images from Docker Hub.
 api:
-  image: {pullPolicy: Always}
+  image: {pullPolicy: IfNotPresent}
 ui:
-  image: {pullPolicy: Always}
+  image: {pullPolicy: IfNotPresent}
 mlflow:
-  image: {pullPolicy: Always}
+  image: {pullPolicy: IfNotPresent}
 training:
-  imagePullPolicy: Always
+  imagePullPolicy: IfNotPresent
 inference:
-  image: {pullPolicy: Always}
+  image: {pullPolicy: IfNotPresent}
 environment: local

@@ -1,4 +1,5 @@
 .git
+.env*
 .automl_object_store
 apps/api/automl_api/.automl_object_store
 __pycache__
@@ -6,6 +7,11 @@ __pycache__
 .pytest_cache
 .ruff_cache
 .venv
+node_modules
+dist
+*.tsbuildinfo
+*.egg-info
+output
 tests
 docs
 infra

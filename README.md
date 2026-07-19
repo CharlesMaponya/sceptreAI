@@ -207,8 +207,8 @@ Kubernetes ResourceQuota and the scheduler remain the final resource guardrails.
 This section is written for a data analyst who has not operated Kubernetes
 before. Follow either the Windows path or the Linux path from top to bottom. You
 do **not** need to install Python, Node.js, PostgreSQL, MinIO, or MLflow on your
-computer. Docker builds them into images and one Helm command installs the
-complete application.
+computer. Kubernetes pulls the published Sceptre images and one Helm command
+installs the complete application.
 
 ### What you are installing
 
@@ -270,10 +270,10 @@ left out of the first installation.
 | CPU | 6 or more logical cores; 4 is the practical minimum |
 | Memory | 16 GiB host RAM, with 10–12 GiB available to the cluster |
 | Disk | At least 50 GiB free; defaults reserve 20 GiB of PVCs plus image and training-cache space |
-| Network | Internet access for base images and Python/npm dependencies during the first build |
+| Network | Internet access to Docker Hub and upstream container registries during installation |
 
-The first build downloads several large machine-learning dependencies and can
-take a while. Closing memory-heavy programs before building and training helps.
+The first installation downloads several large machine-learning images and can
+take a while. Closing memory-heavy programs before installation and training helps.
 
 ### Windows 10 or 11: Docker Desktop path
 
@@ -312,14 +312,13 @@ Open Docker Desktop and make these selections:
    store enabled.
 2. Open **Kubernetes → Create cluster**.
 3. Choose the single-node **kubeadm** provisioner. It is the simplest option for
-   locally built images and Docker Desktop manages its Kubernetes patch.
+   this published-image setup, and Docker Desktop manages its Kubernetes patch.
 4. Create the cluster and wait until Docker Desktop reports it as running.
 
 The newer `kind` provisioner is also supported, but it uses a separate
 containerd-based image path. Use it only when you specifically need its version
-selector or multiple nodes; the chart's `values-kind.yaml` profile and explicit
-image loading/registry workflow are documented in the
-[Helm chart guide](infra/helm/sceptre/README.md).
+selector or multiple nodes; select the chart's `values-kind.yaml` profile in
+that case.
 
 Close and reopen PowerShell after installing command-line tools, then verify the
 host and cluster:
@@ -339,25 +338,20 @@ StorageClass is marked as the default. If Kubernetes is older than the supported
 range described above, update Docker Desktop and reset/recreate its local
 cluster before installing Sceptre.
 
-#### Windows 2: Download Sceptre and build its images
+#### Windows 2: Download Sceptre
 
 Choose a folder with plenty of free disk space:
 
 ```powershell
 git clone https://github.com/CharlesMaponya/sceptreAI.git
 Set-Location .\sceptreAI
-
-docker build --tag sceptre-api:0.1.0 --file Dockerfile.api .
-docker build --tag sceptre-ui:0.1.0 .\apps\ui\react_app
-docker build --tag sceptre-mlflow:0.1.0 --file Dockerfile.mlflow .
-docker build --tag sceptre-training-cpu:0.1.0 --file Dockerfile.training.cpu .
-docker build --tag sceptre-inference:0.1.0 --file Dockerfile.inference .
-
-docker image ls --format '{{.Repository}}:{{.Tag}}' | Select-String '^sceptre-'
 ```
 
-The final command must show all five `0.1.0` images. Run every remaining command
-from the repository root—the directory containing `README.md`.
+Sceptre's versioned `linux/amd64` images are public in
+`maponyacharles/sceptreai` on Docker Hub and are pulled automatically by Docker
+Desktop's Linux-container backend. The same immutable images are used on x86-64
+Linux and Windows hosts. Run every remaining command from the repository
+root—the directory containing `README.md`.
 
 #### Windows 3: Generate local-only secrets
 
@@ -514,9 +508,7 @@ k3d cluster create sceptre-local \
   --image rancher/k3s:v1.35.6-k3s1 \
   --servers 1 --agents 1 \
   --servers-memory 4g --agents-memory 8g \
-  --registry-create sceptre-registry.localhost:127.0.0.1:5111 \
-  --enforce-registry-port-match \
-  --wait --timeout 5m
+    --wait --timeout 5m
 
 kubectl config current-context
 kubectl get nodes
@@ -525,57 +517,20 @@ kubectl get storageclass
 ```
 
 The context should be `k3d-sceptre-local`, both nodes should become `Ready`, and
-the `local-path` StorageClass should be the default. The registry is exposed to
-the host as `localhost:5111` and to cluster nodes as
-`sceptre-registry.localhost:5111`. With `--registry-create`, k3d uses the exact
-registry name passed in the command; do not add another `k3d-` prefix.
+the `local-path` StorageClass should be the default.
 
-#### Linux 4: Download Sceptre, build, and publish its images
+#### Linux 4: Download Sceptre
 
 ```bash
 set -euo pipefail
 
 git clone https://github.com/CharlesMaponya/sceptreAI.git
 cd sceptreAI
-
-docker build --tag sceptre-api:0.1.0 --file Dockerfile.api .
-docker build --tag sceptre-ui:0.1.0 apps/ui/react_app
-docker build --tag sceptre-mlflow:0.1.0 --file Dockerfile.mlflow .
-docker build --tag sceptre-training-cpu:0.1.0 --file Dockerfile.training.cpu .
-docker build --tag sceptre-inference:0.1.0 --file Dockerfile.inference .
-
-for image in \
-  sceptre-api:0.1.0 \
-  sceptre-ui:0.1.0 \
-  sceptre-mlflow:0.1.0 \
-  sceptre-training-cpu:0.1.0 \
-  sceptre-inference:0.1.0
-do
-  docker tag "$image" "localhost:5111/$image"
-  docker push "localhost:5111/$image"
-done
-
-for repository in sceptre-api sceptre-ui sceptre-mlflow sceptre-training-cpu sceptre-inference
-do
-  curl --fail --silent "http://127.0.0.1:5111/v2/${repository}/tags/list" \
-    | grep -Fq '"0.1.0"'
-done
 ```
 
-The k3d profile pulls from this local registry with `IfNotPresent`. This is
-important for the training image: it is used only when a run starts and can be
-garbage-collected from a node if it was merely imported. The registry lets the
-node fetch it again automatically.
-
-If `sceptre-local` was created earlier without `--registry-create`, do not apply
-the new k3d profile to it. For an immediate, one-run recovery, rebuild and run
-`k3d image import sceptre-training-cpu:0.1.0 --cluster sceptre-local`; the pending
-pod will retry. Continue using `values-local.yaml`, rather than
-`values-k3d.yaml`, if you need to upgrade that legacy import-based cluster
-without recreating it. For the durable fix, preserve any data you need first,
-then delete and recreate the cluster with the command in Linux step 3. Deleting
-the cluster permanently deletes its cluster-local PostgreSQL, MinIO, and MLflow
-volumes.
+The chart pulls the pinned `0.1.3` application images from the public
+`maponyacharles/sceptreai` Docker Hub repository. No local build, image import,
+or private registry is required.
 
 #### Linux 5: Generate local-only secrets and install everything
 
@@ -687,9 +642,10 @@ kubectl --namespace sceptre logs deployment/sceptre-api --tail=200
 
 | Symptom | What it usually means | What to do |
 | --- | --- | --- |
+| `helm` is not recognized after `winget install` | PowerShell has not loaded WinGet's updated user `PATH` | Reopen PowerShell; if it still fails, ensure `%LOCALAPPDATA%\Microsoft\WinGet\Links` is in the user `PATH`, then run `helm version` |
+| Kubernetes is unreachable at `127.0.0.1:<port>` | `kubectl` points to a stopped or stale local-cluster context | Run `kubectl config get-contexts`, start Docker Desktop Kubernetes or k3d, select `docker-desktop` or `k3d-sceptre-local`, and require `kubectl get nodes` to show `Ready` before Helm |
 | `kubectl` cannot connect | The local cluster is stopped or the wrong context is selected | Start Docker Desktop or k3d, then select `docker-desktop` or `k3d-sceptre-local` |
-| `ErrImageNeverPull` | A legacy local profile expects an image that is absent from a node | On an existing k3d cluster, use the one-time training-image import described above; on Windows confirm Linux containers and rebuild in the active Docker Desktop image store |
-| `ImagePullBackOff` for `sceptre-registry.localhost:5111/*` | The k3d cluster was created without its managed registry, or an image was not pushed | Recreate the cluster with Linux step 3 if necessary, then tag and push all five images with Linux step 4 |
+| `ImagePullBackOff` for `maponyacharles/sceptreai` | Docker Hub is unreachable, rate-limited, or the release tag is unavailable | Confirm internet access and retry `docker pull maponyacharles/sceptreai:api-0.1.3` before reinstalling |
 | PVC stays `Pending` | No default dynamic StorageClass is available | Do not continue until `kubectl get storageclass` shows a default; recreate the recommended cluster or configure storage |
 | Helm times out | A dependency, migration, image pull, or volume did not become ready | Inspect pods, Jobs, PVCs, and events with the commands above |
 | UI stays on `Checking session…` | The API is not ready or the port-forward points at an old/stopped cluster | Check `http://127.0.0.1:8080/health/ready` and API logs |
@@ -851,7 +807,7 @@ The most important operational settings are:
 | `OBJECT_STORE_BUCKET` | `automl` | Shared bucket used by the API and Kubernetes Jobs |
 | `OBJECT_STORE_ACCESS_KEY` | Environment-specific | MinIO access key |
 | `OBJECT_STORE_SECRET_KEY` | Environment-specific | MinIO secret key |
-| `INFERENCE_IMAGE` | `sceptre-inference:0.1.0` | Kubernetes model-serving runtime |
+| `INFERENCE_IMAGE` | `docker.io/maponyacharles/sceptreai:inference-0.1.3` | Kubernetes model-serving runtime |
 | `INFERENCE_SERVICE_ACCOUNT` | Chart-generated | Service account assigned to model deployments |
 | `INFERENCE_SERVICE_TYPE` | `ClusterIP` | Internal Service type used for model APIs |
 

@@ -75,7 +75,13 @@ spec:
           imagePullPolicy: {{ .Values.api.image.pullPolicy }}
           command: ["/bin/sh", "-ec"]
           args:
-            - alembic upgrade head && python scripts/verify_database_schema.py
+            - |
+              until python -c 'from automl_api.db.session import get_engine; get_engine().connect().close()' >/dev/null 2>&1; do
+                echo 'waiting for database readiness'
+                sleep 2
+              done
+              alembic upgrade head
+              python scripts/verify_database_schema.py
           env:
             - name: DATABASE_URL
               valueFrom:

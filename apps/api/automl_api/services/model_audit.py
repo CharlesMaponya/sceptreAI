@@ -48,15 +48,14 @@ from automl_api.training.model_catalog import select_candidates
 AuditFormat = Literal["pdf"]
 
 
-def model_audit_document(
+def model_audit_report(
     db: Session,
     user: User,
     project_id: uuid.UUID,
     run_id: uuid.UUID,
     model_name: str,
-    output_format: AuditFormat,
-) -> tuple[bytes, str, str, str]:
-    """Build a point-in-time audit document for any leaderboard candidate."""
+) -> tuple[dict[str, Any], str]:
+    """Build the canonical point-in-time evidence for any leaderboard candidate."""
     require_project_role(db, user, project_id, ProjectRole.VIEWER)
     requested = _training_run(db, project_id, run_id)
     source = _leaderboard_parent(db, requested)
@@ -180,6 +179,25 @@ def model_audit_document(
     ).encode("utf-8")
     evidence_hash = hashlib.sha256(evidence_bytes).hexdigest()
     report["document"]["evidence_sha256"] = evidence_hash
+    return report, evidence_hash
+
+
+def model_audit_document(
+    db: Session,
+    user: User,
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    model_name: str,
+    output_format: AuditFormat,
+) -> tuple[bytes, str, str, str]:
+    """Render the canonical model evidence as the requested audit document."""
+    report, evidence_hash = model_audit_report(
+        db,
+        user,
+        project_id,
+        run_id,
+        model_name,
+    )
     safe_model = re.sub(r"[^A-Za-z0-9_.-]+", "-", model_name).strip("-") or "model"
     content = _audit_pdf(report)
     return content, "application/pdf", f"{safe_model}-audit.pdf", evidence_hash

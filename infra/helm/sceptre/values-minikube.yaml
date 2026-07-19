@@ -1,12 +1,12 @@
-# Minikube changes only image distribution; application behavior is generic.
+# Minikube pulls the public Sceptre images from Docker Hub.
 api:
-  image: {pullPolicy: Never}
+  image: {pullPolicy: IfNotPresent}
 ui:
-  image: {pullPolicy: Never}
+  image: {pullPolicy: IfNotPresent}
 mlflow:
-  image: {pullPolicy: Never}
+  image: {pullPolicy: IfNotPresent}
 training:
-  imagePullPolicy: Never
+  imagePullPolicy: IfNotPresent
 inference:
-  image: {pullPolicy: Never}
+  image: {pullPolicy: IfNotPresent}
 environment: local

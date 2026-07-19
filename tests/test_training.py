@@ -155,9 +155,9 @@ def test_training_manifest_has_optional_priority_ephemeral_cache_and_timeout() -
 @pytest.mark.parametrize(
     ("vendor", "resource", "expected_image"),
     [
-        ("nvidia", "nvidia.com/gpu", "sceptre-training-nvidia:0.1.0"),
-        ("intel", "gpu.intel.com/xe", "sceptre-training-intel:0.1.0"),
-        ("intel", "gpu.intel.com/i915", "sceptre-training-intel:0.1.0"),
+        ("nvidia", "nvidia.com/gpu", "docker.io/maponyacharles/sceptreai:training-nvidia-0.1.3"),
+        ("intel", "gpu.intel.com/xe", "docker.io/maponyacharles/sceptreai:training-intel-0.1.3"),
+        ("intel", "gpu.intel.com/i915", "docker.io/maponyacharles/sceptreai:training-intel-0.1.3"),
     ],
 )
 def test_gpu_vendor_and_resource_are_propagated_to_training_job(
@@ -381,7 +381,7 @@ def test_active_job_classifies_container_waiting_states(
     waiting = SimpleNamespace(reason=reason, message="test pull failure")
     container_status = SimpleNamespace(
         name="trainer",
-        image="sceptre-training-cpu:0.1.0",
+        image="docker.io/maponyacharles/sceptreai:training-cpu-0.1.3",
         state=SimpleNamespace(waiting=waiting),
     )
     pod = SimpleNamespace(
@@ -422,7 +422,7 @@ def test_image_waiting_failure_details_are_actionable(
     waiting = SimpleNamespace(reason=reason, message="registry unavailable")
     container_status = SimpleNamespace(
         name="trainer",
-        image="sceptre-training-cpu:0.1.0",
+        image="docker.io/maponyacharles/sceptreai:training-cpu-0.1.3",
         state=SimpleNamespace(waiting=waiting, terminated=None),
     )
     pod = SimpleNamespace(
@@ -444,7 +444,7 @@ def test_image_waiting_failure_details_are_actionable(
 
     assert code == expected_code
     assert message_fragment in message
-    assert "sceptre-training-cpu:0.1.0" in message
+    assert "docker.io/maponyacharles/sceptreai:training-cpu-0.1.3" in message
 
 
 def test_byte_literal_pod_logs_are_split_into_lines() -> None:
