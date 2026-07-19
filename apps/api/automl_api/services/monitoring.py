@@ -1,18 +1,15 @@
 from __future__ import annotations
 
 import hashlib
-import html
 import json
 import uuid
 from collections import defaultdict
 from datetime import UTC, datetime
-from typing import Any
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from automl_api.models.datasets import ProfilingJob
 from automl_api.models.enums import (
     ArtifactKind,
     MetricKind,
@@ -36,6 +33,7 @@ from automl_api.schemas.monitoring import (
     MonitoringMetricSeriesRead,
     MonitoringTimelineEventRead,
 )
+from automl_api.services.model_audit import _audit_html, model_audit_report
 from automl_api.services.projects import list_visible_projects, require_project_role
 from automl_api.storage.object_store import get_object_store
 
@@ -363,7 +361,11 @@ def monitoring_dashboard(
             .order_by(ModelRun.created_at.desc())
         ).all()
     )
-    deployments = [run for run in runs if run.run_kind == RunKind.DEPLOYMENT]
+    deployments = [
+        run
+        for run in runs
+        if run.run_kind == RunKind.DEPLOYMENT and run.status != RunStatus.CANCELLED
+    ]
     all_metrics = list(
         db.scalars(
             select(Metric)
@@ -556,196 +558,26 @@ def generate_governance_report(
             detail="The deployment is not linked to a registered model version.",
         )
     source = entry.model_run
-    project = db.get(Project, project_id)
-    profile = db.scalar(
-        select(ProfilingJob)
-        .where(
-            ProfilingJob.project_id == project_id,
-            ProfilingJob.dataset_version_id == source.dataset_version_id,
-            ProfilingJob.status == "succeeded",
-        )
-        .order_by(ProfilingJob.created_at.desc())
-    )
-    related_runs = list(
-        db.scalars(
-            select(ModelRun)
-            .where(ModelRun.project_id == project_id)
-            .order_by(ModelRun.created_at.asc())
-        ).all()
-    )
-    analyses = [
-        run
-        for run in related_runs
-        if run.tags.get("source_training_run_id") == str(source.id)
-    ]
-    drift_runs, retraining_runs = _linked_runs(related_runs, deployment, str(entry.id))
-    source_metrics = list(
-        db.scalars(
-            select(Metric)
-            .where(Metric.project_id == project_id, Metric.model_run_id == source.id)
-            .order_by(Metric.recorded_at.asc())
-        ).all()
-    )
-    production_metrics = list(
-        db.scalars(
-            select(Metric)
-            .where(
-                Metric.project_id == project_id,
-                Metric.model_run_id == deployment.id,
-                Metric.split == MetricSplit.PRODUCTION,
-            )
-            .order_by(Metric.recorded_at.asc())
-        ).all()
-    )
     evidence_cutoff = _now()
     reports = _governance_artifacts(db, project_id, deployment.id)
     version = max(
         (int(item.artifact_metadata.get("version", 0)) for item in reports),
         default=0,
     ) + 1
-    report: dict[str, Any] = {
-        "schema_version": "1.0",
-        "report": {
-            "version": version,
-            "generated_at": evidence_cutoff.isoformat(),
-            "evidence_cutoff_at": evidence_cutoff.isoformat(),
-            "generated_by_id": str(user.id),
-        },
-        "model_development": {
-            "project_id": str(project_id),
-            "project_name": project.name if project else None,
-            "deployment_run_id": str(deployment.id),
-            "model_version_id": str(entry.id),
-            "model_name": entry.model_name,
-            "model_version": entry.version,
-            "registry_stage": entry.stage.value,
-            "training_run_id": str(source.id),
-            "mlflow_run_id": source.mlflow_run_id,
-            "model_artifact_id": str(entry.model_artifact_id),
-            "model_artifact_hash": entry.model_artifact.content_hash,
-            "environment": deployment.tags.get("environment", "kubernetes"),
-            "deployment_status": deployment.status.value,
-            "owners": {"project_owner_id": str(project.owner_id) if project else None},
-        },
-        "data_and_preprocessing": {
-            "dataset_id": str(source.dataset_version.dataset_id),
-            "dataset_version_id": str(source.dataset_version_id),
-            "dataset_content_hash": source.dataset_version.content_hash,
-            "rows": source.dataset_version.row_count,
-            "columns": source.dataset_version.column_count,
-            "target_column": source.target_column,
-            "schema": source.dataset_version.schema_json,
-            "preparation_steps": profile.preparation_json if profile else [],
-            "profile_warnings": (
-                profile.warnings_json
-                if profile
-                else ["No completed profile was found."]
-            ),
-        },
-        "model_training": {
-            "task_type": source.task_type.value,
-            "pipeline": source.pipeline_name,
-            "status": source.status.value,
-            "started_at": source.started_at.isoformat() if source.started_at else None,
-            "finished_at": source.finished_at.isoformat() if source.finished_at else None,
-            "resource_request": {
-                "cpu_cores": source.cpu_request_cores,
-                "memory_mb": source.memory_request_mb,
-                "gpu_requested": source.gpu_requested,
-            },
-            "metrics": [
-                {
-                    "name": metric.name,
-                    "kind": metric.kind.value,
-                    "split": metric.split.value,
-                    "value": metric.value,
-                    "recorded_at": metric.recorded_at.isoformat(),
-                }
-                for metric in source_metrics
-            ],
-        },
-        "model_tuning": {
-            "primary_metric": source.params.get("primary_metric"),
-            "candidate_models": source.params.get("candidate_models", []),
-            "optimization_iterations": source.params.get("optimization_iterations"),
-            "cross_validation_folds": source.params.get("cv_folds"),
-            "selected_model": entry.model_name,
-            "champion_metric": {
-                "name": entry.champion_metric_name,
-                "value": entry.champion_metric_value,
-            },
-        },
-        "explainability_and_validation": [
-            {
-                "run_id": str(run.id),
-                "kind": run.run_kind.value,
-                "status": run.status.value,
-                "model_name": run.params.get("model_name"),
-                "created_at": run.created_at.isoformat(),
-                "artifacts": [
-                    {
-                        "id": str(artifact.id),
-                        "kind": artifact.kind.value,
-                        "name": artifact.name,
-                        "content_hash": artifact.content_hash,
-                    }
-                    for artifact in run.artifacts
-                ],
-            }
-            for run in analyses
-            if run.run_kind in {RunKind.EXPLAINABILITY, RunKind.VALIDATION}
-        ],
-        "leakage": (
-            profile.overview_json.get("leakage_analysis")
-            if profile
-            else {
-                "status": "unknown",
-                "warnings": ["No completed profile leakage analysis was found."],
-            }
-        ),
-        "monitoring_and_drift": {
-            "configuration": _configuration(deployment).model_dump(mode="json"),
-            "production_metrics": [
-                _metric_point(metric).model_dump(mode="json")
-                for metric in production_metrics
-            ],
-            "drift_runs": [
-                {
-                    "run_id": str(run.id),
-                    "status": run.status.value,
-                    "created_at": run.created_at.isoformat(),
-                    "diagnostics": run.tags.get("diagnostics") or {},
-                }
-                for run in drift_runs
-            ],
-            "retraining_runs": [
-                {
-                    "run_id": str(run.id),
-                    "status": run.status.value,
-                    "created_at": run.created_at.isoformat(),
-                }
-                for run in retraining_runs
-            ],
-        },
-        "audit_and_compliance": {
-            "evidence_is_deployment_anchored": True,
-            "generated_by_id": str(user.id),
-            "known_limitations": [
-                "A generated report is evidence, not automatic regulatory certification.",
-                (
-                    "Production performance remains unknown until trusted ground "
-                    "truth metrics are recorded."
-                ),
-            ],
-        },
-    }
+    report, _ = model_audit_report(
+        db,
+        user,
+        project_id,
+        source.id,
+        entry.model_name,
+    )
     json_bytes = json.dumps(report, indent=2, sort_keys=True, default=str).encode("utf-8")
     content_hash = hashlib.sha256(json_bytes).hexdigest()
     json_object = get_object_store().put_bytes(
         f"projects/{project_id}/deployments/{deployment.id}/governance/report-v{version}.json",
         json_bytes,
     )
-    html_bytes = _governance_html(report, content_hash).encode("utf-8")
+    html_bytes = _audit_html(report).encode("utf-8")
     html_hash = hashlib.sha256(html_bytes).hexdigest()
     html_object = get_object_store().put_bytes(
         f"projects/{project_id}/deployments/{deployment.id}/governance/report-v{version}.html",
@@ -837,53 +669,3 @@ def _governance_report_artifact(
             detail="Governance report not found.",
         )
     return artifact
-
-
-def _governance_html(report: dict[str, Any], content_hash: str) -> str:
-    def render(value: Any) -> str:
-        if isinstance(value, dict):
-            return "<dl>" + "".join(
-                (
-                    f"<div><dt>{html.escape(str(key).replace('_', ' ').title())}"
-                    f"</dt><dd>{render(item)}</dd></div>"
-                )
-                for key, item in value.items()
-            ) + "</dl>"
-        if isinstance(value, list):
-            if not value:
-                return "<span class='muted'>No evidence recorded</span>"
-            return "<ol>" + "".join(f"<li>{render(item)}</li>" for item in value) + "</ol>"
-        if value is None:
-            return "<span class='muted'>Not recorded</span>"
-        return html.escape(str(value))
-
-    sections = "".join(
-        f"<section><h2>{html.escape(name.replace('_', ' ').title())}</h2>{render(value)}</section>"
-        for name, value in report.items()
-        if name != "schema_version"
-    )
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sceptre model governance report</title>
-<style>
-body {{ font: 15px/1.55 system-ui,sans-serif; color: #17233d;
-  background: #f4f6fa; margin: 0; }}
-main {{ max-width: 1040px; margin: auto; padding: 48px 28px; }}
-header, section {{ background: white; border: 1px solid #dfe5ef;
-  border-radius: 12px; padding: 24px; margin: 0 0 18px; }}
-h1 {{ margin: 0 0 8px; }} h2 {{ font-size: 20px; }}
-dl {{ display: grid; gap: 8px; }}
-dl div {{ border-top: 1px solid #edf0f5; padding-top: 8px; }}
-dt {{ font-weight: 700; }} dd {{ margin: 3px 0 0; overflow-wrap: anywhere; }}
-ol {{ padding-left: 20px; }} .muted, small {{ color: #657089; }}
-code {{ font-family: ui-monospace,monospace; }}
-</style>
-</head>
-<body><main><header><small>Sceptre governance evidence</small>
-<h1>Model governance report</h1>
-<p>Schema {html.escape(str(report.get('schema_version')))} · SHA-256
-<code>{content_hash}</code></p></header>{sections}</main></body>
-</html>"""

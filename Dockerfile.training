@@ -1,4 +1,4 @@
-FROM nvcr.io/nvidia/rapidsai/base:26.06-cuda12-py3.12
+FROM docker.io/rapidsai/base:26.06-cuda12-py3.12
 
 USER root
 
@@ -13,7 +13,7 @@ RUN apt-get update \
     && apt-get install --no-install-recommends --yes libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY apps ./apps
+COPY apps/api ./apps/api
 COPY packages ./packages
 
 ENV PYTHONPATH=/app/apps/api:/app/packages

@@ -1,9 +1,9 @@
-ARG CPU_BASE_IMAGE=sceptre-training-cpu:0.1.0
+ARG CPU_BASE_IMAGE=docker.io/maponyacharles/sceptreai:training-cpu-0.1.3
 FROM ${CPU_BASE_IMAGE}
 
 USER root
 RUN apt-get update \
-    && apt-get install --no-install-recommends --yes intel-opencl-icd ocl-icd-libopencl1 \
+    && apt-get install --no-install-recommends --yes mesa-opencl-icd ocl-icd-libopencl1 \
     && rm -rf /var/lib/apt/lists/*
 USER 10001
 

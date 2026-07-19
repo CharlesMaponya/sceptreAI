@@ -15,8 +15,9 @@ COPY scripts/verify_database_schema.py ./scripts/verify_database_schema.py
 RUN apt-get update \
     && apt-get install --no-install-recommends --yes libgomp1 \
     && rm -rf /var/lib/apt/lists/* \
-    && python -m pip install --no-cache-dir ".[k8s,ml]" \
     && useradd --create-home --uid 10001 sceptre
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install ".[k8s,ml]"
 
 USER 10001
 EXPOSE 8000

@@ -12,7 +12,7 @@ RUN apt-get update \
     && python -m pip install --no-cache-dir -r requirements-training.txt \
     && python -m pip install --no-cache-dir -r requirements-zenml-local.txt
 
-COPY apps ./apps
+COPY apps/api ./apps/api
 COPY packages ./packages
 RUN useradd --create-home --uid 10001 sceptre
 USER 10001

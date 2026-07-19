@@ -495,7 +495,7 @@ def test_model_ingress_url_is_reported_only_after_admission() -> None:
         environment="local",
         model_name="RandomForestClassifier",
         model_uri="minio://automl/model.joblib",
-        image="sceptre-inference:0.1.0",
+        image="docker.io/maponyacharles/sceptreai:inference-0.1.3",
         replicas=1,
         cpu_request="500m",
         memory_request="1Gi",

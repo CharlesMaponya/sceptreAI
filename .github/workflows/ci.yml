@@ -169,23 +169,25 @@ jobs:
           ! grep -qi 'minikube' "$rendered"
           grep -q 'INFERENCE_SERVICE_TYPE: "ClusterIP"' "$rendered"
           grep -q 'DATASET_CACHE_PVC_NAME: ""' "$rendered"
+          grep -q 'waiting for database readiness' "$rendered"
+          grep -q 'waiting for database readiness' /tmp/sceptre-values-external.yaml
           grep -q 'alembic upgrade head' "$rendered"
           grep -q 'python scripts/verify_database_schema.py' "$rendered"
           grep -q 'waiting for complete API database schema' "$rendered"
           grep -Fq 'resources: ["jobs/status"]' "$rendered"
           grep -Fq 'resources: ["deployments/status"]' "$rendered"
 
-      - name: Assert durable k3d image distribution
+      - name: Assert public Docker Hub image distribution
         run: |
           rendered=/tmp/sceptre-values-k3d.yaml
-          registry=sceptre-registry.localhost:5111
-          grep -Fq "image: \"${registry}/sceptre-api:0.1.0\"" "$rendered"
-          grep -Fq "image: \"${registry}/sceptre-ui:0.1.0\"" "$rendered"
-          grep -Fq "image: \"${registry}/sceptre-mlflow:0.1.0\"" "$rendered"
-          grep -Fq "TRAINING_IMAGE: \"${registry}/sceptre-training-cpu:0.1.0\"" "$rendered"
-          grep -Fq "TRAINING_IMAGE_NVIDIA: \"${registry}/sceptre-training-nvidia:0.1.0\"" "$rendered"
-          grep -Fq "TRAINING_IMAGE_INTEL: \"${registry}/sceptre-training-intel:0.1.0\"" "$rendered"
-          grep -Fq "INFERENCE_IMAGE: \"${registry}/sceptre-inference:0.1.0\"" "$rendered"
+          image=docker.io/maponyacharles/sceptreai
+          grep -Fq "image: \"${image}:api-0.1.3\"" "$rendered"
+          grep -Fq "image: \"${image}:ui-0.1.3\"" "$rendered"
+          grep -Fq "image: \"${image}:mlflow-0.1.3\"" "$rendered"
+          grep -Fq "TRAINING_IMAGE: \"${image}:training-cpu-0.1.3\"" "$rendered"
+          grep -Fq "TRAINING_IMAGE_NVIDIA: \"${image}:training-nvidia-0.1.3\"" "$rendered"
+          grep -Fq "TRAINING_IMAGE_INTEL: \"${image}:training-intel-0.1.3\"" "$rendered"
+          grep -Fq "INFERENCE_IMAGE: \"${image}:inference-0.1.3\"" "$rendered"
           grep -Fq 'TRAINING_IMAGE_PULL_POLICY: "IfNotPresent"' "$rendered"
           grep -Fq 'INFERENCE_IMAGE_PULL_POLICY: "IfNotPresent"' "$rendered"
           ! grep -q 'imagePullPolicy: Never' "$rendered"

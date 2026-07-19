@@ -1,17 +1,16 @@
-# Generic local profile. Build/import the versioned Sceptre images into your
-# cluster before installing; dependency images still use their normal policies.
+# Generic local profile. Public Sceptre images are pulled from Docker Hub.
 api:
   image:
-    pullPolicy: Never
+    pullPolicy: IfNotPresent
 ui:
   image:
-    pullPolicy: Never
+    pullPolicy: IfNotPresent
 mlflow:
   image:
-    pullPolicy: Never
+    pullPolicy: IfNotPresent
 training:
-  imagePullPolicy: Never
+  imagePullPolicy: IfNotPresent
 inference:
   image:
-    pullPolicy: Never
+    pullPolicy: IfNotPresent
 environment: local
