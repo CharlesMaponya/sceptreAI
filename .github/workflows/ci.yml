@@ -1,6 +1,7 @@
 name: CI and Docker release
 
 on:
+  workflow_dispatch:
   push:
     branches: [main, dev]
   pull_request:
@@ -245,7 +246,7 @@ jobs:
 
   release-preflight:
     name: Release Preflight
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     needs: [branch-policy, lint, test, frontend, syntax-check, helm-chart]
     runs-on: ubuntu-latest
     outputs:
@@ -277,7 +278,7 @@ jobs:
 
   build-images:
     name: Build ${{ matrix.component }}
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     needs: release-preflight
     runs-on: ubuntu-latest
     strategy:
@@ -375,7 +376,7 @@ jobs:
 
   build-intel-image:
     name: Build training-intel
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     needs: [release-preflight, build-images]
     runs-on: ubuntu-latest
     steps:
@@ -435,7 +436,7 @@ jobs:
 
   publish-release:
     name: Publish Docker Hub Release
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     needs: [release-preflight, build-images, build-intel-image]
     runs-on: ubuntu-latest
     steps:
