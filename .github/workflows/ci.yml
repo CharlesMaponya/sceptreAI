@@ -237,7 +237,6 @@ jobs:
           grep -Fq "image: \"${image}:ui-${version}\"" "$rendered"
           grep -Fq "image: \"${image}:mlflow-${version}\"" "$rendered"
           grep -Fq "TRAINING_IMAGE: \"${image}:training-cpu-${version}\"" "$rendered"
-          grep -Fq "TRAINING_IMAGE_NVIDIA: \"${image}:training-nvidia-${version}\"" "$rendered"
           grep -Fq "TRAINING_IMAGE_INTEL: \"${image}:training-intel-${version}\"" "$rendered"
           grep -Fq "INFERENCE_IMAGE: \"${image}:inference-${version}\"" "$rendered"
           grep -Fq 'TRAINING_IMAGE_PULL_POLICY: "IfNotPresent"' "$rendered"
@@ -267,7 +266,7 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          for component in api ui mlflow training-cpu training-nvidia training-intel inference
+          for component in api ui mlflow training-cpu training-intel inference
           do
             tag="${IMAGE}:${component}-${VERSION}"
             if docker buildx imagetools inspect "$tag" >/dev/null 2>&1; then
@@ -297,9 +296,6 @@ jobs:
           - component: training-cpu
             context: .
             file: Dockerfile.training.cpu
-          - component: training-nvidia
-            context: .
-            file: Dockerfile.training
           - component: inference
             context: .
             file: Dockerfile.inference
@@ -348,10 +344,6 @@ jobs:
             training-cpu)
               docker run --rm --entrypoint python "$candidate" -c \
                 "import automl_api, catboost, lightgbm, sklearn, xgboost; assert automl_api.__version__ == '${VERSION}'"
-              ;;
-            training-nvidia)
-              docker run --rm --entrypoint python "$candidate" -c \
-                "import automl_api; from cuml import accel; assert automl_api.__version__ == '${VERSION}'"
               ;;
             inference)
               docker run --rm --entrypoint python "$candidate" -c \
@@ -457,7 +449,7 @@ jobs:
         env:
           VERSION: ${{ needs.release-preflight.outputs.version }}
         run: |
-          for component in api ui mlflow training-cpu training-nvidia training-intel inference
+          for component in api ui mlflow training-cpu training-intel inference
           do
             digest="$(cat "$RUNNER_TEMP/digests/$component")"
             docker buildx imagetools create \
@@ -469,7 +461,7 @@ jobs:
         env:
           VERSION: ${{ needs.release-preflight.outputs.version }}
         run: |
-          for component in api ui mlflow training-cpu training-nvidia training-intel inference
+          for component in api ui mlflow training-cpu training-intel inference
           do
             docker buildx imagetools inspect "${IMAGE}:${component}-${VERSION}" >/dev/null
           done
