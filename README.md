@@ -894,7 +894,7 @@ docs/                  Architecture, schema, and decision records
 Create a feature branch, keep changes scoped, add tests for behavioral changes,
 and open a pull request against `dev`. Promote a tested release with a pull
 request from `dev` to protected `main`; use `hotfix/*` only for emergencies.
-Every merge to `main` publishes the seven Docker images to
+Every merge to `main` publishes the six supported Docker images to
 `maponyacharles/sceptreai` using component-and-version tags such as
 `api-0.1.4`. Existing tags are never overwritten, and no `latest`, environment,
 or commit-SHA tags are created. Add a GitHub Actions repository secret named
