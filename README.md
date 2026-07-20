@@ -528,7 +528,7 @@ git clone https://github.com/CharlesMaponya/sceptreAI.git
 cd sceptreAI
 ```
 
-The chart pulls the pinned `0.1.3` application images from the public
+The chart pulls the pinned `0.1.4` application images from the public
 `maponyacharles/sceptreai` Docker Hub repository. No local build, image import,
 or private registry is required.
 
@@ -645,7 +645,7 @@ kubectl --namespace sceptre logs deployment/sceptre-api --tail=200
 | `helm` is not recognized after `winget install` | PowerShell has not loaded WinGet's updated user `PATH` | Reopen PowerShell; if it still fails, ensure `%LOCALAPPDATA%\Microsoft\WinGet\Links` is in the user `PATH`, then run `helm version` |
 | Kubernetes is unreachable at `127.0.0.1:<port>` | `kubectl` points to a stopped or stale local-cluster context | Run `kubectl config get-contexts`, start Docker Desktop Kubernetes or k3d, select `docker-desktop` or `k3d-sceptre-local`, and require `kubectl get nodes` to show `Ready` before Helm |
 | `kubectl` cannot connect | The local cluster is stopped or the wrong context is selected | Start Docker Desktop or k3d, then select `docker-desktop` or `k3d-sceptre-local` |
-| `ImagePullBackOff` for `maponyacharles/sceptreai` | Docker Hub is unreachable, rate-limited, or the release tag is unavailable | Confirm internet access and retry `docker pull maponyacharles/sceptreai:api-0.1.3` before reinstalling |
+| `ImagePullBackOff` for `maponyacharles/sceptreai` | Docker Hub is unreachable, rate-limited, or the release tag is unavailable | Confirm internet access and retry `docker pull maponyacharles/sceptreai:api-0.1.4` before reinstalling |
 | PVC stays `Pending` | No default dynamic StorageClass is available | Do not continue until `kubectl get storageclass` shows a default; recreate the recommended cluster or configure storage |
 | Helm times out | A dependency, migration, image pull, or volume did not become ready | Inspect pods, Jobs, PVCs, and events with the commands above |
 | UI stays on `Checking session…` | The API is not ready or the port-forward points at an old/stopped cluster | Check `http://127.0.0.1:8080/health/ready` and API logs |
@@ -807,7 +807,7 @@ The most important operational settings are:
 | `OBJECT_STORE_BUCKET` | `automl` | Shared bucket used by the API and Kubernetes Jobs |
 | `OBJECT_STORE_ACCESS_KEY` | Environment-specific | MinIO access key |
 | `OBJECT_STORE_SECRET_KEY` | Environment-specific | MinIO secret key |
-| `INFERENCE_IMAGE` | `docker.io/maponyacharles/sceptreai:inference-0.1.3` | Kubernetes model-serving runtime |
+| `INFERENCE_IMAGE` | `docker.io/maponyacharles/sceptreai:inference-0.1.4` | Kubernetes model-serving runtime |
 | `INFERENCE_SERVICE_ACCOUNT` | Chart-generated | Service account assigned to model deployments |
 | `INFERENCE_SERVICE_TYPE` | `ClusterIP` | Internal Service type used for model APIs |
 
@@ -816,7 +816,7 @@ credentials or reuse the development secrets in `infra/k8s/base`.
 
 ## Quality Engineering
 
-Pull requests and pushes to `main` or `develop` must pass all CI gates:
+Pull requests and pushes to `main` or `dev` must pass all CI gates:
 
 | Gate | Command | Purpose |
 | --- | --- | --- |
@@ -892,4 +892,10 @@ docs/                  Architecture, schema, and decision records
 ## Contributing
 
 Create a feature branch, keep changes scoped, add tests for behavioral changes,
-and open a pull request against `develop` or `main`. CI must pass before merge.
+and open a pull request against `dev`. Promote a tested release with a pull
+request from `dev` to protected `main`; use `hotfix/*` only for emergencies.
+Every merge to `main` publishes the seven Docker images to
+`maponyacharles/sceptreai` using component-and-version tags such as
+`api-0.1.4`. Existing tags are never overwritten, and no `latest`, environment,
+or commit-SHA tags are created. Add a GitHub Actions repository secret named
+`DOCKERHUB_TOKEN` containing a Docker Hub access token before the first release.
