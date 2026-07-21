@@ -1,4 +1,4 @@
-name: CI and Docker release
+name: CI and release
 
 on:
   workflow_dispatch:
@@ -16,6 +16,7 @@ permissions:
 
 env:
   IMAGE: docker.io/maponyacharles/sceptreai
+  CHART: oci://registry-1.docker.io/maponyacharles/sceptre
 
 jobs:
   branch-policy:
@@ -152,34 +153,6 @@ jobs:
       - name: Check syntax with compileall
         run: python -m compileall apps packages alembic scripts tests
 
-      - name: Require one version across every release surface
-        run: |
-          python - <<'PY'
-          import json
-          import re
-          import tomllib
-          from pathlib import Path
-
-          root = Path(".")
-          version = tomllib.loads((root / "pyproject.toml").read_text())["project"]["version"]
-          package = json.loads((root / "apps/ui/react_app/package.json").read_text())
-          package_lock = json.loads((root / "apps/ui/react_app/package-lock.json").read_text())
-          api = (root / "apps/api/automl_api/__init__.py").read_text()
-          chart = (root / "infra/helm/sceptre/Chart.yaml").read_text()
-          versions = {
-              "React package": package["version"],
-              "React lockfile": package_lock["version"],
-              "React lockfile root": package_lock["packages"][""]["version"],
-              "API": re.search(r'__version__ = "([^"]+)"', api).group(1),
-              "Helm chart": re.search(r'^version: (.+)$', chart, re.MULTILINE).group(1),
-              "Helm app": re.search(r'^appVersion: "(.+)"$', chart, re.MULTILINE).group(1),
-          }
-          mismatches = {name: found for name, found in versions.items() if found != version}
-          if mismatches:
-              raise SystemExit(f"Expected version {version} everywhere; found {mismatches}")
-          print(f"All release surfaces use {version}")
-          PY
-
   helm-chart:
     name: Helm Chart Regression
     runs-on: ubuntu-latest
@@ -193,21 +166,25 @@ jobs:
 
       - name: Lint and render every supported profile
         run: |
-          helm lint infra/helm/sceptre
+          version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml)"
+          helm package infra/helm/sceptre --destination /tmp \
+            --version "$version" --app-version "$version"
+          chart="/tmp/sceptre-${version}.tgz"
+          helm lint "$chart"
           for profile in \
             values.yaml values-local.yaml values-minikube.yaml values-kind.yaml \
             values-k3d.yaml values-microk8s.yaml values-nvidia.yaml values-intel.yaml
           do
-            helm template sceptre infra/helm/sceptre \
+            helm template sceptre "$chart" \
               --namespace sceptre \
               --values "infra/helm/sceptre/${profile}" \
               > "/tmp/sceptre-${profile}"
           done
-          helm template sceptre infra/helm/sceptre \
+          helm template sceptre "$chart" \
             --namespace sceptre \
             --values infra/helm/sceptre/examples/values-external.yaml \
             > /tmp/sceptre-values-external.yaml
-          helm template sceptre infra/helm/sceptre \
+          helm template sceptre "$chart" \
             --namespace sceptre \
             --values infra/helm/sceptre/examples/values-capabilities.yaml \
             > /tmp/sceptre-values-capabilities.yaml
@@ -255,6 +232,11 @@ jobs:
 
       - uses: docker/setup-buildx-action@v4
 
+      - name: Set up Helm
+        uses: azure/setup-helm@v5
+        with:
+          version: v4.2.2
+
       - name: Read and validate the release version
         id: version
         run: |
@@ -274,6 +256,10 @@ jobs:
               exit 1
             fi
           done
+          if helm show chart "$CHART" --version "$VERSION" >/dev/null 2>&1; then
+            echo "::error::${CHART}:${VERSION} already exists. Bump the project version before merging."
+            exit 1
+          fi
 
   build-images:
     name: Build ${{ matrix.component }}
@@ -321,6 +307,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.component }}
           provenance: mode=max
           sbom: true
+          build-args: SCEPTRE_VERSION=${{ needs.release-preflight.outputs.version }}
 
       - name: Smoke-test the candidate by digest
         env:
@@ -432,6 +419,8 @@ jobs:
     needs: [release-preflight, build-images, build-intel-image]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v6
+
       - uses: actions/download-artifact@v8
         with:
           pattern: digest-*
@@ -444,6 +433,11 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - uses: docker/setup-buildx-action@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v5
+        with:
+          version: v4.2.2
 
       - name: Publish clean version tags
         env:
@@ -465,3 +459,16 @@ jobs:
           do
             docker buildx imagetools inspect "${IMAGE}:${component}-${VERSION}" >/dev/null
           done
+
+      - name: Publish and verify the Helm chart
+        env:
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          VERSION: ${{ needs.release-preflight.outputs.version }}
+        run: |
+          printf '%s' "$DOCKERHUB_TOKEN" | helm registry login registry-1.docker.io \
+            --username maponyacharles --password-stdin
+          helm package infra/helm/sceptre --destination "$RUNNER_TEMP" \
+            --version "$VERSION" --app-version "$VERSION"
+          helm push "$RUNNER_TEMP/sceptre-${VERSION}.tgz" \
+            oci://registry-1.docker.io/maponyacharles
+          helm show chart "$CHART" --version "$VERSION" >/dev/null

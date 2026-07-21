@@ -1,5 +1,6 @@
 FROM python:3.12-slim
 
+ARG SCEPTRE_VERSION=0.0.0
 WORKDIR /app
 COPY requirements-inference.txt ./
 RUN pip install --no-cache-dir -r requirements-inference.txt
@@ -16,6 +17,7 @@ COPY packages ./packages
 
 ENV PYTHONPATH=/app/apps/api:/app/packages
 ENV PYTHONUNBUFFERED=1
+ENV SCEPTRE_VERSION=${SCEPTRE_VERSION}
 
 RUN useradd --create-home --uid 10001 sceptre
 USER 10001

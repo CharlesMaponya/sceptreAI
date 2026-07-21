@@ -41,7 +41,11 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- if $image.digest -}}
 {{- printf "%s@%s" $repository $image.digest -}}
 {{- else -}}
-{{- printf "%s:%s" $repository (default $root.Chart.AppVersion $image.tag) -}}
+{{- $tag := $image.tag -}}
+{{- if and (not $tag) $image.tagPrefix -}}
+{{- $tag = printf "%s-%s" $image.tagPrefix $root.Chart.AppVersion -}}
+{{- end -}}
+{{- printf "%s:%s" $repository (default $root.Chart.AppVersion $tag) -}}
 {{- end -}}
 {{- end -}}
 
