@@ -49,12 +49,12 @@ provisionable storage before training workloads are considered.
 
 The chart pulls six pinned `linux/amd64` images from one public repository:
 
-- `maponyacharles/sceptreai:api-0.1.4`
-- `maponyacharles/sceptreai:ui-0.1.4`
-- `maponyacharles/sceptreai:mlflow-0.1.4`
-- `maponyacharles/sceptreai:training-cpu-0.1.4`
-- `maponyacharles/sceptreai:training-intel-0.1.4`
-- `maponyacharles/sceptreai:inference-0.1.4`
+- `maponyacharles/sceptreai:api-<version>`
+- `maponyacharles/sceptreai:ui-<version>`
+- `maponyacharles/sceptreai:mlflow-<version>`
+- `maponyacharles/sceptreai:training-cpu-<version>`
+- `maponyacharles/sceptreai:training-intel-<version>`
+- `maponyacharles/sceptreai:inference-<version>`
 
 NVIDIA training remains an optional bring-your-own image profile; override
 `training.nvidia.image.repository` and `training.nvidia.image.tag` before enabling it.
@@ -67,18 +67,21 @@ Complete Windows and Linux beginner walkthroughs are in the repository's
 
 ## Install
 
+Install the published chart without cloning the source repository:
+
 ```bash
-helm upgrade --install sceptre infra/helm/sceptre \
+helm upgrade --install sceptre oci://registry-1.docker.io/maponyacharles/sceptre \
+  --version <version> \
   --namespace sceptre \
   --create-namespace \
-  --values infra/helm/sceptre/values-local.yaml \
+  --set environment=local \
   --wait --wait-for-jobs --timeout 15m
 ```
 
-Use `values-kind.yaml`, `values-k3d.yaml`, `values-minikube.yaml`, or
-`values-microk8s.yaml` in place of the generic local profile when appropriate.
-These profiles alter image distribution only; they do not fork application
-behavior.
+Provide secure credentials through a private values file or existing Secrets;
+the defaults are only suitable for a local evaluation. Contributors can replace
+the OCI URL with `infra/helm/sceptre` and use the included cluster profiles when
+testing chart changes from a source checkout.
 
 Check the installation:
 
@@ -197,8 +200,12 @@ kubectl -n sceptre delete pvc \
 ## Chart regression checks
 
 ```bash
-helm lint infra/helm/sceptre
+version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml)"
+helm package infra/helm/sceptre --destination /tmp \
+  --version "$version" --app-version "$version"
+chart="/tmp/sceptre-${version}.tgz"
+helm lint "$chart"
 for profile in infra/helm/sceptre/values*.yaml; do
-  helm template sceptre infra/helm/sceptre -n sceptre -f "$profile" >/dev/null
+  helm template sceptre "$chart" -n sceptre -f "$profile" >/dev/null
 done
 ```

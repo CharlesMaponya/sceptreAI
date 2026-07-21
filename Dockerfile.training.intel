@@ -1,4 +1,4 @@
-ARG CPU_BASE_IMAGE=docker.io/maponyacharles/sceptreai:training-cpu-0.1.4
+ARG CPU_BASE_IMAGE
 FROM ${CPU_BASE_IMAGE}
 
 USER root

@@ -1,6 +1,6 @@
 # Sceptre Local Development and Production Readiness
 
-> **Current status (Sceptre 0.1.4):** the provider-neutral Helm chart is the
+> **Current status:** the provider-neutral Helm chart is the
 > supported local Kubernetes and compatibility-test distribution. It is not yet
 > a production-certified deployment. Shared non-production use is possible when
 > the controls in this guide are supplied by the cluster owner. Internet-facing,
@@ -472,7 +472,7 @@ Each gate needs a named owner, evidence location, test date, application/chart
 version, environment, result, and accepted exception expiry. “Configured” is not
 evidence; a test result is.
 
-| Gate | Required evidence | Current 0.1.4 status |
+| Gate | Required evidence | Current status |
 | --- | --- | --- |
 | Packaging | Reproducible images, Helm render/install, digest manifest, SBOM, scan, and signature verification | Partial |
 | Identity | Approved identity, account lifecycle, disabled dev reset behavior, secure browser tokens/sessions, and authorization tests | **Blocked** |
@@ -683,7 +683,7 @@ must be renewed after material architecture, dependency, data-contract, or risk
 changes.
 
 The centralized model observability and governance mode defined below is in
-`evaluation` in Sceptre 0.1.4. The dashboard, deployment metric ingestion,
+`evaluation` in the current release. The dashboard, deployment metric ingestion,
 revisioned configuration, drift linkage, and governance snapshots form a usable
 vertical slice, but the production gate and durable scheduled execution remain
 open.

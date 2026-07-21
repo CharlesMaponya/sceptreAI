@@ -17,7 +17,8 @@ api:
     scaleDownStabilizationSeconds: 300
   image:
     repository: sceptreai
-    tag: api-0.1.4
+    tagPrefix: api
+    tag: ""
     digest: ""
     pullPolicy: IfNotPresent
   resources:
@@ -28,7 +29,8 @@ ui:
   replicaCount: 1
   image:
     repository: sceptreai
-    tag: ui-0.1.4
+    tagPrefix: ui
+    tag: ""
     digest: ""
     pullPolicy: IfNotPresent
   service:
@@ -127,7 +129,8 @@ mlflow:
   enabled: true
   image:
     repository: sceptreai
-    tag: mlflow-0.1.4
+    tagPrefix: mlflow
+    tag: ""
     digest: ""
     pullPolicy: IfNotPresent
   externalTrackingUri: ""
@@ -151,7 +154,8 @@ training:
   cpu:
     image:
       repository: sceptreai
-      tag: training-cpu-0.1.4
+      tagPrefix: training-cpu
+      tag: ""
       digest: ""
     requestCores: 1
     limitCores: 2
@@ -162,14 +166,16 @@ training:
     resourceKey: nvidia.com/gpu
     image:
       repository: sceptreai
-      tag: training-nvidia-0.1.4
+      tagPrefix: training-nvidia
+      tag: ""
       digest: ""
   intel:
     enabled: false
     resourceKey: gpu.intel.com/xe
     image:
       repository: sceptreai
-      tag: training-intel-0.1.4
+      tagPrefix: training-intel
+      tag: ""
       digest: ""
   cache:
     mode: ephemeral
@@ -187,7 +193,8 @@ training:
 inference:
   image:
     repository: sceptreai
-    tag: inference-0.1.4
+    tagPrefix: inference
+    tag: ""
     digest: ""
     pullPolicy: IfNotPresent
   serviceType: ClusterIP

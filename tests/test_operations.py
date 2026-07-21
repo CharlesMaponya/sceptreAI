@@ -10,6 +10,7 @@ import automl_api.services.operations as operations_service
 import numpy as np
 import pandas as pd
 import pytest
+from automl_api import __version__
 from automl_api.api.routes.operations import router
 from automl_api.core.config import Settings
 from automl_api.inference import app as inference_app
@@ -495,7 +496,7 @@ def test_model_ingress_url_is_reported_only_after_admission() -> None:
         environment="local",
         model_name="RandomForestClassifier",
         model_uri="minio://automl/model.joblib",
-        image="docker.io/maponyacharles/sceptreai:inference-0.1.4",
+        image=f"docker.io/maponyacharles/sceptreai:inference-{__version__}",
         replicas=1,
         cpu_request="500m",
         memory_request="1Gi",
