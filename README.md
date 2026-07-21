@@ -281,7 +281,7 @@ Use current Windows with WSL 2 and hardware virtualization enabled in BIOS/UEFI.
 This guide uses ordinary PowerShell; commands marked **Administrator** require an
 elevated PowerShell window.
 
-#### Windows 1: Install WSL, Git, Docker Desktop, and Helm
+#### Windows 1: Install WSL, Docker Desktop, and Helm
 
 In **Administrator PowerShell**, install or update WSL and then restart Windows
 if requested:
@@ -292,10 +292,9 @@ wsl --update
 wsl --version
 ```
 
-In PowerShell, install Git and Helm:
+In PowerShell, install Helm:
 
 ```powershell
-winget install --exact --id Git.Git
 winget install --exact --id Helm.Helm
 ```
 
@@ -317,8 +316,7 @@ Open Docker Desktop and make these selections:
 
 The newer `kind` provisioner is also supported, but it uses a separate
 containerd-based image path. Use it only when you specifically need its version
-selector or multiple nodes; select the chart's `values-kind.yaml` profile in
-that case.
+selector or multiple nodes.
 
 Close and reopen PowerShell after installing command-line tools, then verify the
 host and cluster:
@@ -338,26 +336,25 @@ StorageClass is marked as the default. If Kubernetes is older than the supported
 range described above, update Docker Desktop and reset/recreate its local
 cluster before installing Sceptre.
 
-#### Windows 2: Download Sceptre
+#### Windows 2: Select the Sceptre release
 
-Choose a folder with plenty of free disk space:
+Set the immutable chart version and confirm that Docker Hub can serve it:
 
 ```powershell
-git clone https://github.com/CharlesMaponya/sceptreAI.git
-Set-Location .\sceptreAI
+$ChartVersion = "<version shown in Artifact Hub>"
+helm show chart oci://registry-1.docker.io/maponyacharles/sceptre --version $ChartVersion
 ```
 
 Sceptre's versioned `linux/amd64` images are public in
 `maponyacharles/sceptreai` on Docker Hub and are pulled automatically by Docker
 Desktop's Linux-container backend. The same immutable images are used on x86-64
-Linux and Windows hosts. Run every remaining command from the repository
-root—the directory containing `README.md`.
+Linux and Windows hosts. The chart is public too, so installation needs neither
+a Docker Hub login nor a source-code checkout.
 
 #### Windows 3: Generate local-only secrets
 
 The following creates a small Helm values file with random local credentials.
-Its `.env.*` name is ignored by Git. Keep the same file for later upgrades; do
-not share or commit it.
+Keep the same file for later upgrades; do not share it.
 
 ```powershell
 function New-SceptreSecret {
@@ -383,10 +380,11 @@ minio:
 #### Windows 4: Install the entire application
 
 ```powershell
-helm upgrade --install sceptre .\infra\helm\sceptre `
+helm upgrade --install sceptre oci://registry-1.docker.io/maponyacharles/sceptre `
+  --version $ChartVersion `
   --namespace sceptre `
   --create-namespace `
-  --values .\infra\helm\sceptre\values-local.yaml `
+  --set environment=local `
   --values .\.env.sceptre-local.yaml `
   --wait --wait-for-jobs --timeout 30m
 
@@ -421,13 +419,13 @@ On Ubuntu or Debian:
 
 ```bash
 sudo apt-get update
-sudo apt-get install --yes ca-certificates curl git openssl
+sudo apt-get install --yes ca-certificates curl openssl
 ```
 
 On Fedora, Rocky Linux, or AlmaLinux:
 
 ```bash
-sudo dnf install --assumeyes ca-certificates curl git openssl
+sudo dnf install --assumeyes ca-certificates curl openssl
 ```
 
 For those distributions, the official Docker convenience installer is suitable
@@ -447,7 +445,7 @@ sudo usermod --append --groups docker "$USER"
 On Arch Linux or Manjaro, use distribution packages instead:
 
 ```bash
-sudo pacman -Syu --needed ca-certificates curl git openssl docker docker-buildx
+sudo pacman -Syu --needed ca-certificates curl openssl docker docker-buildx
 sudo systemctl enable --now docker
 sudo usermod --append --groups docker "$USER"
 ```
@@ -519,18 +517,17 @@ kubectl get storageclass
 The context should be `k3d-sceptre-local`, both nodes should become `Ready`, and
 the `local-path` StorageClass should be the default.
 
-#### Linux 4: Download Sceptre
+#### Linux 4: Select the Sceptre release
 
 ```bash
-set -euo pipefail
-
-git clone https://github.com/CharlesMaponya/sceptreAI.git
-cd sceptreAI
+CHART_VERSION="<version shown in Artifact Hub>"
+helm show chart oci://registry-1.docker.io/maponyacharles/sceptre \
+  --version "$CHART_VERSION"
 ```
 
-The chart pulls the pinned `0.1.4` application images from the public
+The selected chart pulls its matching application images from the public
 `maponyacharles/sceptreai` Docker Hub repository. No local build, image import,
-or private registry is required.
+private registry, or source-code checkout is required.
 
 #### Linux 5: Generate local-only secrets and install everything
 
@@ -553,10 +550,11 @@ EOF
 
 unset JWT_SECRET DATABASE_PASSWORD MINIO_PASSWORD
 
-helm upgrade --install sceptre infra/helm/sceptre \
+helm upgrade --install sceptre oci://registry-1.docker.io/maponyacharles/sceptre \
+  --version "$CHART_VERSION" \
   --namespace sceptre \
   --create-namespace \
-  --values infra/helm/sceptre/values-k3d.yaml \
+  --set environment=local \
   --values .env.sceptre-local.yaml \
   --wait --wait-for-jobs --timeout 30m
 
@@ -645,7 +643,7 @@ kubectl --namespace sceptre logs deployment/sceptre-api --tail=200
 | `helm` is not recognized after `winget install` | PowerShell has not loaded WinGet's updated user `PATH` | Reopen PowerShell; if it still fails, ensure `%LOCALAPPDATA%\Microsoft\WinGet\Links` is in the user `PATH`, then run `helm version` |
 | Kubernetes is unreachable at `127.0.0.1:<port>` | `kubectl` points to a stopped or stale local-cluster context | Run `kubectl config get-contexts`, start Docker Desktop Kubernetes or k3d, select `docker-desktop` or `k3d-sceptre-local`, and require `kubectl get nodes` to show `Ready` before Helm |
 | `kubectl` cannot connect | The local cluster is stopped or the wrong context is selected | Start Docker Desktop or k3d, then select `docker-desktop` or `k3d-sceptre-local` |
-| `ImagePullBackOff` for `maponyacharles/sceptreai` | Docker Hub is unreachable, rate-limited, or the release tag is unavailable | Confirm internet access and retry `docker pull maponyacharles/sceptreai:api-0.1.4` before reinstalling |
+| `ImagePullBackOff` for `maponyacharles/sceptreai` | Docker Hub is unreachable, rate-limited, or the release tag is unavailable | Confirm internet access and that the selected release tag exists on Docker Hub |
 | PVC stays `Pending` | No default dynamic StorageClass is available | Do not continue until `kubectl get storageclass` shows a default; recreate the recommended cluster or configure storage |
 | Helm times out | A dependency, migration, image pull, or volume did not become ready | Inspect pods, Jobs, PVCs, and events with the commands above |
 | UI stays on `Checking session…` | The API is not ready or the port-forward points at an old/stopped cluster | Check `http://127.0.0.1:8080/health/ready` and API logs |
@@ -807,7 +805,7 @@ The most important operational settings are:
 | `OBJECT_STORE_BUCKET` | `automl` | Shared bucket used by the API and Kubernetes Jobs |
 | `OBJECT_STORE_ACCESS_KEY` | Environment-specific | MinIO access key |
 | `OBJECT_STORE_SECRET_KEY` | Environment-specific | MinIO secret key |
-| `INFERENCE_IMAGE` | `docker.io/maponyacharles/sceptreai:inference-0.1.4` | Kubernetes model-serving runtime |
+| `INFERENCE_IMAGE` | Derived from the installed Sceptre version | Kubernetes model-serving runtime |
 | `INFERENCE_SERVICE_ACCOUNT` | Chart-generated | Service account assigned to model deployments |
 | `INFERENCE_SERVICE_TYPE` | `ClusterIP` | Internal Service type used for model APIs |
 
@@ -825,13 +823,6 @@ Pull requests and pushes to `main` or `dev` must pass all CI gates:
 | Syntax | `python -m compileall apps packages alembic scripts tests` | Python 3.11 syntax and import compilation |
 | React | `npm test -- --run && npm run lint && npm run build` | UI workflows, types, lint, and production bundle |
 | Helm | `helm lint` plus all profile renders | Portable packaging and manifest regressions |
-
-Current quality baseline:
-
-- **133 passing backend tests and 25 passing React tests**
-- **2 explicitly disabled compatibility tests**
-- **40% enforced coverage floor**
-- XML and HTML coverage reports retained by CI for 14 days
 
 The suite covers ingestion, temporal inference, exact and Dask profiling,
 authentication, route contracts, React workflows, Kubernetes resource
@@ -895,7 +886,18 @@ Create a feature branch, keep changes scoped, add tests for behavioral changes,
 and open a pull request against `dev`. Promote a tested release with a pull
 request from `dev` to protected `main`; use `hotfix/*` only for emergencies.
 Every merge to `main` publishes the six supported Docker images to
-`maponyacharles/sceptreai` using component-and-version tags such as
-`api-0.1.4`. Existing tags are never overwritten, and no `latest`, environment,
-or commit-SHA tags are created. Add a GitHub Actions repository secret named
-`DOCKERHUB_TOKEN` containing a Docker Hub access token before the first release.
+`maponyacharles/sceptreai`, verifies them, and then publishes the matching Helm
+chart to `maponyacharles/sceptre`. Images use component-and-version tags such as
+`api-<version>`; the chart uses the same semantic version. Change releases only
+through `project.version` in `pyproject.toml`; CI injects it into the images and
+packaged chart. Existing releases are never overwritten, and no `latest`,
+environment, or commit-SHA tags are created. Add a GitHub Actions repository
+secret named `DOCKERHUB_TOKEN` containing a Docker Hub access token with write
+access to both repositories before the first release.
+
+After the first chart release, confirm that `maponyacharles/sceptre` is public
+on Docker Hub, then add one Helm OCI repository in the
+[Artifact Hub control panel](https://artifacthub.io/control-panel/repositories):
+`oci://registry-1.docker.io/maponyacharles/sceptre`. Artifact Hub then indexes
+new semantic versions automatically; it does not receive a credential or store
+the chart.

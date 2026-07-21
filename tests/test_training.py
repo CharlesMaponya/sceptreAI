@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
+from automl_api import __version__
 from automl_api.core.config import Settings
 from automl_api.models.enums import TaskType
 from automl_api.schemas.training import (
@@ -22,6 +23,9 @@ from automl_api.services.kubernetes_training import (
 )
 from kubernetes.client import ApiException
 from pydantic import ValidationError
+
+NVIDIA_IMAGE = f"docker.io/maponyacharles/sceptreai:training-nvidia-{__version__}"
+INTEL_IMAGE = f"docker.io/maponyacharles/sceptreai:training-intel-{__version__}"
 
 
 class FakeTrainingClient(KubernetesTrainingClient):
@@ -155,9 +159,9 @@ def test_training_manifest_has_optional_priority_ephemeral_cache_and_timeout() -
 @pytest.mark.parametrize(
     ("vendor", "resource", "expected_image"),
     [
-        ("nvidia", "nvidia.com/gpu", "docker.io/maponyacharles/sceptreai:training-nvidia-0.1.4"),
-        ("intel", "gpu.intel.com/xe", "docker.io/maponyacharles/sceptreai:training-intel-0.1.4"),
-        ("intel", "gpu.intel.com/i915", "docker.io/maponyacharles/sceptreai:training-intel-0.1.4"),
+        ("nvidia", "nvidia.com/gpu", NVIDIA_IMAGE),
+        ("intel", "gpu.intel.com/xe", INTEL_IMAGE),
+        ("intel", "gpu.intel.com/i915", INTEL_IMAGE),
     ],
 )
 def test_gpu_vendor_and_resource_are_propagated_to_training_job(
@@ -381,7 +385,7 @@ def test_active_job_classifies_container_waiting_states(
     waiting = SimpleNamespace(reason=reason, message="test pull failure")
     container_status = SimpleNamespace(
         name="trainer",
-        image="docker.io/maponyacharles/sceptreai:training-cpu-0.1.4",
+        image=f"docker.io/maponyacharles/sceptreai:training-cpu-{__version__}",
         state=SimpleNamespace(waiting=waiting),
     )
     pod = SimpleNamespace(
@@ -422,7 +426,7 @@ def test_image_waiting_failure_details_are_actionable(
     waiting = SimpleNamespace(reason=reason, message="registry unavailable")
     container_status = SimpleNamespace(
         name="trainer",
-        image="docker.io/maponyacharles/sceptreai:training-cpu-0.1.4",
+        image=f"docker.io/maponyacharles/sceptreai:training-cpu-{__version__}",
         state=SimpleNamespace(waiting=waiting, terminated=None),
     )
     pod = SimpleNamespace(
@@ -444,7 +448,7 @@ def test_image_waiting_failure_details_are_actionable(
 
     assert code == expected_code
     assert message_fragment in message
-    assert "docker.io/maponyacharles/sceptreai:training-cpu-0.1.4" in message
+    assert f"docker.io/maponyacharles/sceptreai:training-cpu-{__version__}" in message
 
 
 def test_byte_literal_pod_logs_are_split_into_lines() -> None:

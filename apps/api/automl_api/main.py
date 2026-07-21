@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response, status
 from sqlalchemy import text
 
+from automl_api import __version__
 from automl_api.api.routes import (
     auth,
     datasets,
@@ -31,7 +32,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
         title="SMME Tabular AutoML API",
-        version="0.1.4",
+        version=__version__,
         docs_url="/docs" if settings.environment != "production" else None,
         redoc_url="/redoc" if settings.environment != "production" else None,
         lifespan=lifespan,

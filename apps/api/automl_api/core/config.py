@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+from automl_api import __version__
+
 
 def _read_dotenv(path: Path = Path(".env")) -> dict[str, str]:
     if not path.exists():
@@ -89,9 +91,9 @@ class Settings:
     max_concurrent_jobs: int = 2
     mlflow_tracking_uri: str = "http://mlflow:5000"
     training_namespace: str = "automl"
-    training_image: str = "docker.io/maponyacharles/sceptreai:training-cpu-0.1.4"
-    training_image_nvidia: str = "docker.io/maponyacharles/sceptreai:training-nvidia-0.1.4"
-    training_image_intel: str = "docker.io/maponyacharles/sceptreai:training-intel-0.1.4"
+    training_image: str = f"docker.io/maponyacharles/sceptreai:training-cpu-{__version__}"
+    training_image_nvidia: str = f"docker.io/maponyacharles/sceptreai:training-nvidia-{__version__}"
+    training_image_intel: str = f"docker.io/maponyacharles/sceptreai:training-intel-{__version__}"
     training_image_pull_policy: str = "IfNotPresent"
     workload_image_pull_secrets: tuple[str, ...] = ()
     training_service_account: str = "default"
@@ -106,7 +108,7 @@ class Settings:
     object_store_secret_name: str = "automl-minio-credentials"
     object_store_access_key_secret_key: str = "MINIO_ROOT_USER"
     object_store_secret_key_secret_key: str = "MINIO_ROOT_PASSWORD"
-    inference_image: str = "docker.io/maponyacharles/sceptreai:inference-0.1.4"
+    inference_image: str = f"docker.io/maponyacharles/sceptreai:inference-{__version__}"
     inference_image_pull_policy: str = "IfNotPresent"
     inference_service_account: str = "default"
     inference_service_type: str = "ClusterIP"

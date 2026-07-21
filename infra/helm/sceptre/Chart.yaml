@@ -2,6 +2,21 @@ apiVersion: v2
 name: sceptre
 description: Portable local-Kubernetes distribution of the Sceptre tabular AutoML platform
 type: application
-version: 0.1.4
-appVersion: "0.1.4"
+# CI replaces these development placeholders with project.version from pyproject.toml.
+version: 0.0.0
+appVersion: "0.0.0"
 kubeVersion: ">=1.27.0-0"
+home: https://github.com/CharlesMaponya/sceptreAI
+icon: https://raw.githubusercontent.com/CharlesMaponya/sceptreAI/main/docs/architecture/images/sceptre-logo.png
+sources:
+  - https://github.com/CharlesMaponya/sceptreAI
+keywords:
+  - automl
+  - machine-learning
+  - mlops
+  - kubernetes
+maintainers:
+  - name: Charles Maponya
+    url: https://github.com/CharlesMaponya
+annotations:
+  artifacthub.io/category: ai-machine-learning

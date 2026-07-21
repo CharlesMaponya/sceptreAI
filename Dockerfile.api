@@ -1,8 +1,10 @@
 FROM python:3.12-slim
 
+ARG SCEPTRE_VERSION=0.0.0
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONPATH=/app/apps/api:/app/packages
+    PYTHONPATH=/app/apps/api:/app/packages \
+    SCEPTRE_VERSION=${SCEPTRE_VERSION}
 
 WORKDIR /app
 COPY pyproject.toml README.md alembic.ini ./
