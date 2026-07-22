@@ -45,6 +45,7 @@ def test_pipeline_records_naive_bayes_processing_and_completed_stages() -> None:
     ).lower()
     assert "1 detected leakage" in pipeline["stages"][1]["summary"]
     assert pipeline["diagram"]["transformer"]["type"] == "ColumnTransformer"
+    assert pipeline["diagram"]["correlation_filter"]["type"] == "CorrelatedFeatureFilter"
     assert [branch["key"] for branch in pipeline["diagram"]["transformer"]["branches"]] == [
         "numeric",
         "categorical",

@@ -278,6 +278,15 @@ tbody tr:last-child td { border-bottom: 0; }
 .pipeline-footnote { display: flex; align-items: flex-start; gap: 9px; margin-top: 10px; padding: 10px 12px; color: var(--muted); background: #edf1fb; }
 .pipeline-footnote svg { flex: none; margin-top: 2px; color: var(--blue); }
 .pipeline-footnote p { margin: 0; font-size: .65rem; line-height: 1.45; }.pipeline-footnote b { color: var(--ink); }
+.correlation-evidence { margin-top: 14px; padding: 15px; border: 1px solid var(--line); background: #f7f8fa; }
+.correlation-evidence > header { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.correlation-evidence > header h3 { margin: 2px 0 3px; font-size: .82rem; }
+.correlation-evidence > header p { margin: 0; color: var(--muted); font-size: .65rem; }
+.correlation-evidence .table-scroll { margin-top: 12px; }
+.correlation-evidence table { width: 100%; border-collapse: collapse; background: white; font-size: .66rem; }
+.correlation-evidence th, .correlation-evidence td { padding: 8px 10px; border: 1px solid var(--line); text-align: left; }
+.correlation-evidence th { color: var(--muted); background: #f3f5f9; }
+.correlation-evidence .notice { margin-top: 12px; }
 .selection-actions { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
 .resource-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 11px; }.resource-meter { display: grid; gap: 10px; padding: 13px; border: 1px solid var(--line); border-radius: 9px; background: white; }.resource-meter > div { display: flex; gap: 9px; align-items: center; }.resource-meter svg { color: var(--blue); }.resource-meter span { display: grid; }.resource-meter small { color: var(--muted); font-size: .62rem; }.resource-meter b { font-size: .82rem; }.resource-meta { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 12px 2px; color: var(--muted); font-size: .66rem; }.resource-meta b { color: var(--ink); }.resource-panel .notice { margin-top: 8px; }
 .analysis-card { margin-top: 17px; padding: 22px; }.analysis-card > div:first-child { display: flex; gap: 13px; margin-bottom: 17px; }.analysis-card > div:first-child > svg { color: var(--blue); }.analysis-card p { margin: 4px 0; color: var(--muted); font-size: .78rem; }.analysis-card > label { max-width: 420px; margin-bottom: 12px; }.analysis-card > h3 { margin-top: 25px; }

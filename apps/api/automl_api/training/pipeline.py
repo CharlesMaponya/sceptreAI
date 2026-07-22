@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 from mlflow import MlflowClient
 from sklearn.base import clone
-from sklearn.compose import ColumnTransformer
+from sklearn.compose import ColumnTransformer, make_column_selector
 from sklearn.feature_selection import (
     SelectPercentile,
     mutual_info_classif,
@@ -55,6 +55,7 @@ from automl_api.services.temporal import (
     series_unix_timestamp_unit as _series_unix_timestamp_unit,
 )
 from automl_api.storage.object_store import get_object_store
+from automl_api.training.correlation import CorrelatedFeatureFilter
 from automl_api.training.evaluation import (
     aggregate_fold_metrics,
     classification_evaluation,
@@ -297,23 +298,17 @@ def rebuild_candidate_model(
             errors="ignore",
         )
         features = _normalize_temporal_features(features)
-        preprocessor = _preprocessor(features)
-        transformed = np.asarray(preprocessor.fit_transform(features))
         estimator = clone(candidate.estimator)
-        estimator.set_params(
-            **{
-                name.removeprefix("model__"): value
-                for name, value in best_params.items()
-                if name.startswith("model__")
-            }
-        )
-        estimator.fit(transformed)
-        return Pipeline(
+        model = Pipeline(
             [
-                ("prepare", preprocessor),
+                ("correlation", CorrelatedFeatureFilter(task_type=task_type.value)),
+                ("prepare", _preprocessor()),
                 ("model", estimator),
             ]
         )
+        model.set_params(**best_params)
+        model.fit(features)
+        return model
 
     if not target_column or target_column not in dataframe.columns:
         raise ValueError("The historical training target is unavailable.")
@@ -332,21 +327,10 @@ def rebuild_candidate_model(
         target,
         task_type,
     )
-    score_function = (
-        mutual_info_classif if task_type == TaskType.CLASSIFICATION else mutual_info_regression
-    )
-    model = Pipeline(
-        [
-            ("prepare", _preprocessor_for_model(train_x, candidate.name)),
-            (
-                "select",
-                SelectPercentile(
-                    score_func=score_function,
-                    percentile=80,
-                ),
-            ),
-            ("model", clone(candidate.estimator)),
-        ]
+    model = _supervised_model_pipeline(
+        candidate.name,
+        clone(candidate.estimator),
+        task_type,
     )
     model.set_params(**best_params)
     model.fit(train_x, train_y)
@@ -382,16 +366,7 @@ def _fit_candidate(
             f"cpu_threads={cpu_threads}",
             flush=True,
         )
-        score_function = (
-            mutual_info_classif if task_type == TaskType.CLASSIFICATION else mutual_info_regression
-        )
-        model = Pipeline(
-            [
-                ("prepare", _preprocessor_for_model(train_x, candidate.name)),
-                ("select", SelectPercentile(score_func=score_function, percentile=80)),
-                ("model", estimator),
-            ]
-        )
+        model = _supervised_model_pipeline(candidate.name, estimator, task_type)
         if candidate.search_space:
             _persist_candidate_phase(run.id, candidate.name, "hyperparameter_search")
             search = BayesSearchCV(
@@ -443,6 +418,7 @@ def _fit_candidate(
                 predictions,
                 task_type,
             )
+        diagnostics["correlated_features"] = fitted.named_steps["correlation"].evidence_
         diagnostics["cross_validation"] = {
             "folds": int(cv.n_splits) if hasattr(cv, "n_splits") else int(cv),
             "scoring": scoring,
@@ -553,8 +529,6 @@ def _fit_clustering(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
         reference_labels = dataframe.loc[valid_reference, evaluation_column].to_numpy()
         dataframe = dataframe.loc[valid_reference].drop(columns=[evaluation_column])
     dataframe = _normalize_temporal_features(dataframe)
-    preprocessor = _preprocessor(dataframe)
-    transformed = np.asarray(preprocessor.fit_transform(dataframe))
 
     candidate_limit = max(1, min(int(run.params.get("candidate_limit", 5)), 20))
     requested_names = run.params.get("candidate_models")
@@ -579,10 +553,9 @@ def _fit_clustering(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
         _persist_candidate_phase(run.id, candidate.name, "preparing_data")
         entry = _fit_clustering_candidate(
             candidate,
-            transformed,
+            dataframe,
             reference_labels,
             splitter,
-            preprocessor,
             run,
         )
         leaderboard[index] = entry
@@ -618,10 +591,9 @@ def _fit_clustering(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
 
 def _fit_clustering_candidate(
     candidate: CandidateSpec,
-    transformed: np.ndarray,
+    features: pd.DataFrame,
     reference_labels: np.ndarray | None,
     splitter: KFold,
-    preprocessor: ColumnTransformer,
     run: ModelRun,
 ) -> dict[str, Any]:
     started = time.monotonic()
@@ -637,10 +609,23 @@ def _fit_clustering_candidate(
         parameter_options: list[dict[str, Any]] = [{}]
         available_parameters = base_estimator.get_params(deep=False)
         if "n_clusters" in available_parameters:
-            maximum_clusters = min(8, max(2, len(transformed) - 1))
+            maximum_clusters = min(8, max(2, len(features) - 1))
             parameter_options = [
                 {"n_clusters": cluster_count} for cluster_count in range(2, maximum_clusters + 1)
             ]
+        prepared_folds = []
+        for train_index, test_index in splitter.split(features):
+            correlation_filter = CorrelatedFeatureFilter(task_type=TaskType.CLUSTERING.value)
+            train_features = correlation_filter.fit_transform(features.iloc[train_index])
+            test_features = correlation_filter.transform(features.iloc[test_index])
+            preprocessor = _preprocessor()
+            prepared_folds.append(
+                (
+                    np.asarray(preprocessor.fit_transform(train_features)),
+                    np.asarray(preprocessor.transform(test_features)),
+                    test_index,
+                )
+            )
         best_metrics = None
         best_standard_deviations = None
         best_fold_metrics = None
@@ -648,11 +633,10 @@ def _fit_clustering_candidate(
         _persist_candidate_phase(run.id, candidate.name, "cross_validating")
         for parameters in parameter_options:
             fold_results = []
-            for train_index, test_index in splitter.split(transformed):
+            for train_features, test_features, test_index in prepared_folds:
                 estimator = clone(base_estimator).set_params(**parameters)
-                test_features = transformed[test_index]
                 if hasattr(estimator, "predict"):
-                    estimator.fit(transformed[train_index])
+                    estimator.fit(train_features)
                     labels = estimator.predict(test_features)
                 else:
                     labels = estimator.fit_predict(test_features)
@@ -672,6 +656,10 @@ def _fit_clustering_candidate(
             raise ValueError("No cross-validation fold produced valid clusters.")
 
         _persist_candidate_phase(run.id, candidate.name, "fitting_final_model")
+        correlation_filter = CorrelatedFeatureFilter(task_type=TaskType.CLUSTERING.value)
+        filtered = correlation_filter.fit_transform(features)
+        preprocessor = _preprocessor()
+        transformed = np.asarray(preprocessor.fit_transform(filtered))
         final_estimator = clone(base_estimator).set_params(**best_params)
         full_labels = final_estimator.fit_predict(transformed)
         unique_labels, counts = np.unique(full_labels, return_counts=True)
@@ -687,6 +675,7 @@ def _fit_clustering_candidate(
             "cluster_count": int(len(unique_labels[unique_labels != -1])),
             "noise_rows": int(np.sum(full_labels == -1)),
             "external_evaluation": reference_labels is not None,
+            "correlated_features": correlation_filter.evidence_,
             "runtime": {
                 "accelerator": accelerator,
                 "detected_gpu_vendor": gpu_vendor,
@@ -696,6 +685,7 @@ def _fit_clustering_candidate(
         }
         pipeline_model = Pipeline(
             [
+                ("correlation", correlation_filter),
                 ("prepare", preprocessor),
                 ("model", final_estimator),
             ]
@@ -1059,12 +1049,23 @@ def _time_order_column(features: pd.DataFrame) -> str | None:
     return temporal_names[0] if temporal_names else None
 
 
-def _preprocessor(features: pd.DataFrame) -> ColumnTransformer:
-    numeric_columns = list(features.select_dtypes(include="number").columns)
-    categorical_columns = [column for column in features.columns if column not in numeric_columns]
-    transformers = []
-    if numeric_columns:
-        transformers.append(
+def _supervised_model_pipeline(model_name: str, estimator: Any, task_type: TaskType) -> Pipeline:
+    score_function = (
+        mutual_info_classif if task_type == TaskType.CLASSIFICATION else mutual_info_regression
+    )
+    return Pipeline(
+        [
+            ("correlation", CorrelatedFeatureFilter(task_type=task_type.value)),
+            ("prepare", _preprocessor_for_model(model_name)),
+            ("select", SelectPercentile(score_func=score_function, percentile=80)),
+            ("model", estimator),
+        ]
+    )
+
+
+def _preprocessor() -> ColumnTransformer:
+    return ColumnTransformer(
+        transformers=[
             (
                 "numeric",
                 Pipeline(
@@ -1073,11 +1074,8 @@ def _preprocessor(features: pd.DataFrame) -> ColumnTransformer:
                         ("scale", StandardScaler()),
                     ]
                 ),
-                numeric_columns,
-            )
-        )
-    if categorical_columns:
-        transformers.append(
+                make_column_selector(dtype_include="number"),
+            ),
             (
                 "categorical",
                 Pipeline(
@@ -1092,26 +1090,24 @@ def _preprocessor(features: pd.DataFrame) -> ColumnTransformer:
                         ),
                     ]
                 ),
-                categorical_columns,
-            )
-        )
-    return ColumnTransformer(transformers=transformers, remainder="drop")
+                make_column_selector(dtype_exclude="number"),
+            ),
+        ],
+        remainder="drop",
+    )
 
 
-def _preprocessor_for_model(features: pd.DataFrame, model_name: str) -> ColumnTransformer:
+def _preprocessor_for_model(model_name: str) -> ColumnTransformer:
     if model_name == "CategoricalNB":
-        return _categorical_nb_preprocessor(features)
+        return _categorical_nb_preprocessor()
     if model_name in {"ComplementNB", "MultinomialNB"}:
-        return _non_negative_preprocessor(features)
-    return _preprocessor(features)
+        return _non_negative_preprocessor()
+    return _preprocessor()
 
 
-def _categorical_nb_preprocessor(features: pd.DataFrame) -> ColumnTransformer:
-    numeric_columns = list(features.select_dtypes(include="number").columns)
-    categorical_columns = [column for column in features.columns if column not in numeric_columns]
-    transformers = []
-    if numeric_columns:
-        transformers.append(
+def _categorical_nb_preprocessor() -> ColumnTransformer:
+    return ColumnTransformer(
+        transformers=[
             (
                 "numeric",
                 Pipeline(
@@ -1127,11 +1123,8 @@ def _categorical_nb_preprocessor(features: pd.DataFrame) -> ColumnTransformer:
                         ),
                     ]
                 ),
-                numeric_columns,
-            )
-        )
-    if categorical_columns:
-        transformers.append(
+                make_column_selector(dtype_include="number"),
+            ),
             (
                 "categorical",
                 Pipeline(
@@ -1150,18 +1143,16 @@ def _categorical_nb_preprocessor(features: pd.DataFrame) -> ColumnTransformer:
                         ),
                     ]
                 ),
-                categorical_columns,
-            )
-        )
-    return ColumnTransformer(transformers=transformers, remainder="drop")
+                make_column_selector(dtype_exclude="number"),
+            ),
+        ],
+        remainder="drop",
+    )
 
 
-def _non_negative_preprocessor(features: pd.DataFrame) -> ColumnTransformer:
-    numeric_columns = list(features.select_dtypes(include="number").columns)
-    categorical_columns = [column for column in features.columns if column not in numeric_columns]
-    transformers = []
-    if numeric_columns:
-        transformers.append(
+def _non_negative_preprocessor() -> ColumnTransformer:
+    return ColumnTransformer(
+        transformers=[
             (
                 "numeric",
                 Pipeline(
@@ -1170,11 +1161,8 @@ def _non_negative_preprocessor(features: pd.DataFrame) -> ColumnTransformer:
                         ("scale", MinMaxScaler(clip=True)),
                     ]
                 ),
-                numeric_columns,
-            )
-        )
-    if categorical_columns:
-        transformers.append(
+                make_column_selector(dtype_include="number"),
+            ),
             (
                 "categorical",
                 Pipeline(
@@ -1193,10 +1181,11 @@ def _non_negative_preprocessor(features: pd.DataFrame) -> ColumnTransformer:
                         ),
                     ]
                 ),
-                categorical_columns,
-            )
-        )
-    return ColumnTransformer(transformers=transformers, remainder="drop")
+                make_column_selector(dtype_exclude="number"),
+            ),
+        ],
+        remainder="drop",
+    )
 
 
 def _shift_nonnegative(values: Any) -> np.ndarray:

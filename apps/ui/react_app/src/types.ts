@@ -117,6 +117,7 @@ export interface LeaderboardEntry {
     feature_processing: Record<string, unknown>; parameters: Record<string, unknown>;
     diagram?: {
       input_gates?: string[];
+      correlation_filter?: { name: string; type: string; summary: string };
       transformer?: { name: string; type: string; branches: Array<{ key: string; label: string; steps: string[] }> };
       selector?: { name: string; type: string; summary: string } | null;
       estimator?: { name: string; type: string };
