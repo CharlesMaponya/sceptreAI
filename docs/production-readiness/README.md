@@ -155,27 +155,40 @@ The following are code or operational gaps, not configuration suggestions.
 
 | Area | Current baseline | Production implication |
 | --- | --- | --- |
-| Identity | Local email/password authentication includes registration, login, rotating refresh tokens, profile updates, password change, and SMTP-backed reset; self-registration remains enabled by default and browser tokens use `localStorage` | Production still requires configured SMTP, an approved registration policy, hardened browser token/session handling, and a reviewed CSRF/XSS threat model |
-| Dataset ingestion | The browser reports multipart progress, but FastAPI calls `file.file.read()` and buffers the complete upload before object-store persistence | The former 5 GB or 10 GB goal is not a supported current limit; memory-safe resumable or direct-to-object-store upload is required |
+| Identity | Local email/password authentication includes registration, login, rotating refresh tokens, profile updates, password change, and SMTP-backed reset; self-registration creates verified users, browser tokens use `localStorage`, access tokens default to 24 hours, the log WebSocket accepts a bearer token in its URL, and authentication/reset endpoints have no abuse throttling | Production requires configured SMTP, an approved registration and verification policy, secure browser sessions with no bearer tokens in URLs, shorter access-token exposure, rate limits, and reviewed CSRF/XSS and credential-stuffing controls |
+| Password reset — **critical** | For any `ENVIRONMENT` value other than the exact string `production`, the unauthenticated reset-request endpoint returns a valid reset token for the supplied existing email address; the UI offers that requester a direct continuation into password confirmation | Any user who can reach a local, staging, or misconfigured deployment can reset another user’s password and revoke their sessions; environment-name gating is not an acceptable control and the token must never be returned by the API |
+| Authorization semantics | Project role checks are centralized, but an administrator can create an `OWNER` share link and stored membership `permissions` are not evaluated by authorization decisions | Define and enforce delegation ceilings, ownership-transfer rules, and any claimed fine-grained permissions; test concurrent share-link use limits |
+| Dataset ingestion | The browser reports multipart progress, but Nginx permits 5 GB on upload routes, FastAPI calls `file.file.read()`, and CSV inspection retains unbounded distinct values and row fingerprints | The former 5 GB or 10 GB goal is not a supported current limit; enforce a small bounded limit until memory-safe resumable or direct-to-object-store upload and bounded inspection are implemented |
 | Training memory | Training reads complete dataset objects before creating in-memory pandas structures | Raw file size is not a memory requirement; large-data claims require a bounded or distributed implementation and load evidence |
 | Profiling durability | Profiling runs in a FastAPI-owned thread pool and incomplete jobs are resumed at API startup | API restarts and multiple API replicas do not provide safe exactly-once or leased execution |
 | Scheduling | FastAPI performs admission and creates Kubernetes resources directly; capacity exhaustion is rejected instead of queued | There is no durable fair queue or separately scalable orchestrator |
 | Failure domain | All selected candidates run in one training Job and process | One candidate or process failure can affect the complete tournament |
 | Availability | API and UI default to one replica; bundled PostgreSQL, MinIO, and MLflow are single replica; there are no PDBs or topology rules | A node or voluntary disruption can interrupt the control plane or data services |
-| Network security | No NetworkPolicy is installed and not all workloads meet a restricted Pod security posture | Namespace RBAC alone does not isolate network traffic or fully harden Pods |
-| Secrets | Defaults contain local JWT, PostgreSQL, and MinIO credentials | Default values are unsafe anywhere shared; static object-store root credentials also exceed least privilege |
-| Serving security | Generic inference endpoints have no built-in authentication, authorization, rate limit, or request quota | An external gateway alone must not expose them until protection and tenant isolation are verified |
+| Network and workload security | No NetworkPolicy is installed; training Jobs do not set a restricted container security context, the GPU image remains root, and training receives platform database and shared object-store credentials | Namespace RBAC alone does not isolate traffic; a parser, dependency, or image compromise can cross tenant and data-service boundaries |
+| Secrets | Defaults contain known JWT, PostgreSQL, and MinIO credentials, and production mode does not reject them at startup or chart render | Default values are unsafe anywhere shared; production must fail closed on weak/default secrets and use workload-specific, least-privilege credentials |
+| Serving security | Generic inference endpoints have no built-in authentication, authorization, rate limit, or request quota; enabling per-model ingress exposes those endpoints directly and bypasses the authenticated platform gateway | Keep model Services internal until every direct path has authentication, authorization, quotas, TLS, logging, abuse controls, and tenant isolation |
+| Model artifact integrity | Inference downloads a model object and passes it directly to `joblib.load()` without checking the registered digest | Object-store tampering can become code execution; verify an expected immutable digest before deserialization and use read-only, prefix-scoped serving credentials |
+| Application hardening | Readiness and inference handlers return raw exception text, while the UI proxy does not set a reviewed CSP, HSTS, clickjacking, MIME-sniffing, or referrer policy | Public responses can disclose internal details, and browser compromise has greater impact while tokens remain script-readable |
 | Model delivery | A Dockerfile is generated as evidence, but no model builder scans, signs, pushes, resolves, or deploys a model-specific immutable image | Current one-click deployment is a functional baseline, not a governed supply-chain boundary |
 | Observability | Health probes, run status, logs, optional resource telemetry, deployment-linked metric/drift history, a governance dashboard, and versioned audit evidence exist | Operator alert delivery, durable telemetry retention policy, platform SLOs, and on-call runbooks still require deployment-specific integration and validation |
 | Recovery | Retained PVCs and migrations exist; backup/restore automation does not | Restore time, restore point, credential continuity, and rollback are unproven |
-| Release safety | Unit/frontend/migration/render CI exists | Live cluster upgrade, rollback, disaster recovery, security, performance, and multi-cluster qualification are incomplete |
+| Release safety | Unit/frontend/migration/render CI and image SBOM/provenance generation exist, but CI has no dependency, secret, SAST, or container vulnerability gate and third-party Actions are not commit-pinned | Live cluster upgrade, rollback, disaster recovery, security, performance, supply-chain, and multi-cluster qualification are incomplete |
 
 Relevant implementation evidence:
 
 - [Complete API upload buffering](../../apps/api/automl_api/api/routes/datasets.py)
+- [Unbounded upload inspection](../../apps/api/automl_api/services/dataset_inspection.py)
+- [Current authentication lifecycle](../../apps/api/automl_api/api/routes/auth.py)
+- [Password-reset response schema](../../apps/api/automl_api/schemas/auth.py)
+- [Password-reset browser flow](../../apps/ui/react_app/src/Auth.tsx)
+- [Training log WebSocket authentication](../../apps/api/automl_api/api/routes/training.py)
+- [Project role and share-link authorization](../../apps/api/automl_api/services/projects.py)
+- [Browser session storage](../../apps/ui/react_app/src/api.ts)
+- [Generic inference application](../../apps/api/automl_api/inference/app.py)
 - [API-owned profiling lifecycle](../../apps/api/automl_api/services/profiling_jobs.py)
 - [API startup profiling resumption](../../apps/api/automl_api/main.py)
 - [Direct Kubernetes training control](../../apps/api/automl_api/services/kubernetes_training.py)
+- [GPU training image](../../Dockerfile.training)
 - [Current Helm defaults](../../infra/helm/sceptre/values.yaml)
 - [Current RBAC boundary](../../infra/helm/sceptre/templates/rbac.yaml)
 - [Current chart CI](../../.github/workflows/ci.yml)
@@ -235,7 +248,9 @@ This proves local functionality only. It does not satisfy a production gate.
 Retained PVCs survive a normal Helm uninstall, but deleting the cluster, resetting
 Docker Desktop Kubernetes, or deleting PVCs destroys local data. Preserve the
 same generated secret override when reconnecting to retained PostgreSQL and
-MinIO claims. Use only disposable or separately backed-up data locally.
+MinIO claims. Keep local `.env` and secret override files readable only by their
+owner, for example mode `0600` on Linux. Use only disposable or separately
+backed-up data locally.
 
 ## 6. Shared Non-Production
 
@@ -338,8 +353,8 @@ closed.
 | PostgreSQL | `postgresql.enabled=false`, external connection Secret, TLS, HA, backup, restore, and migration privileges |
 | Object storage | `minio.enabled=false`, pre-provisioned bucket, TLS endpoint, existing Secret or future workload identity, retention, versioning, and recovery |
 | MLflow | `mlflow.enabled=false` with an external protected tracking service and durable artifact store |
-| Authentication | Open registration policy, approved account provisioning, token/session policy, and identity integration |
-| Exposure | UI ingress/gateway class, trusted certificate, DNS, proxy limits/timeouts, and request protection |
+| Authentication | Open registration and verification policy, approved account provisioning, secure token/session policy, identity integration, and login/registration/reset throttling |
+| Exposure | UI ingress/gateway class, trusted certificate, DNS, proxy limits/timeouts, security headers, error redaction, and request protection |
 | Model serving | Internal-only ClusterIP unless an authenticated gateway and endpoint policy are ready |
 | Resources | API/UI requests, training resource classes, namespace quotas, node pools, and bounded concurrency |
 | Storage | Explicit StorageClass only for any remaining PVC-backed component; encryption and recovery validated |
@@ -361,6 +376,11 @@ does not yet provide native Azure Blob/GCS adapters, cloud workload identity,
 session-token handling, or chart-managed custom CA mounts. Do not claim those
 capabilities until their implementation and tests exist.
 
+Production startup and Helm validation must reject missing, known-default, or
+insufficiently strong JWT and configured database, object-store, and SMTP
+credentials. Merely placing a default value in a Kubernetes Secret does not make
+it secret.
+
 Pre-create the production bucket and grant only the required object operations.
 The current health check attempts to create the bucket when it is absent, so
 bucket existence and least-privilege behavior must be verified with the exact
@@ -369,14 +389,24 @@ credentials used by Sceptre.
 ### Identity and environment mode
 
 `auth.simpleAuthEnabled=false` disables self-registration; it does not configure
-OIDC, SSO, MFA, user provisioning, or a secure browser session mechanism.
-Production identity therefore remains an implementation and security-review
-gate.
+OIDC, SSO, MFA, user provisioning, rate limiting, or a secure browser session
+mechanism. The chart now defaults `ENVIRONMENT` to `production`, which suppresses
+development API documentation and reset-token responses. That string comparison
+is too fragile to protect an account-recovery credential: the current
+`reset_token_for_dev` response permits cross-user account takeover in every
+non-production environment and in production if the environment is misspelled.
 
-The chart currently renders `ENVIRONMENT: kubernetes` with no values override.
-FastAPI treats only the exact value `production` as production mode. Until this
-is corrected and regression-tested, Helm installations can expose development
-API documentation and password-reset tokens and must not be internet facing.
+Remove `reset_token_for_dev` from the response schema and browser flow in every
+runtime mode. A reset token may leave the server only through the account
+owner’s verified recovery channel. If that channel is unavailable, return the
+same generic response without exposing a token or reset continuation. Disable
+local-password reset for identities that are not allowed to authenticate with a
+local password. Reset requests must remain indistinguishable for existing and
+unknown accounts, be rate-limited, and avoid placing reusable credentials in
+proxy logs, referrers, or browser history.
+
+Production mode also does not validate secrets or harden sessions. Production
+identity therefore remains an implementation and security-review gate.
 
 ### Exposure
 
@@ -384,11 +414,17 @@ API documentation and password-reset tokens and must not be internet facing.
 - Port-forwarding is a local diagnostic method, not production ingress.
 - Terminate trusted TLS at an approved ingress or gateway and encrypt upstream
   database, object-store, and MLflow connections.
+- Apply reviewed CSP, HSTS, clickjacking, MIME-sniffing, and referrer policies,
+  and return stable public errors without raw dependency or infrastructure text.
+- Rate-limit login, registration, password reset, uploads, and prediction paths
+  at the edge, with application-level quotas where tenant identity matters.
 - Configure upload size, streaming, timeout, and body-buffering behavior at every
   proxy only after the API ingestion path is memory safe.
 - Do not expose a generated inference Service until endpoint authentication,
   authorization, request limits, tenant isolation, logging, and abuse controls
   pass.
+- Verify the registered SHA-256 digest before deserializing every model artifact;
+  serving identities must have read-only access only to their approved prefix.
 - Continue to hide endpoint links until Kubernetes and the configured exposure
   mechanism report a usable endpoint.
 
@@ -474,14 +510,14 @@ evidence; a test result is.
 
 | Gate | Required evidence | Current status |
 | --- | --- | --- |
-| Packaging | Reproducible images, Helm render/install, digest manifest, SBOM, scan, and signature verification | Partial |
-| Identity | Approved identity, account lifecycle, disabled dev reset behavior, secure browser tokens/sessions, and authorization tests | **Blocked** |
+| Packaging | Reproducible images, commit-pinned CI Actions, Helm render/install, digest manifest, SBOM, dependency/secret/SAST/container scans, and signature verification | **Blocked** |
+| Identity | Approved identity, account lifecycle, no reset token in any API response or log in any runtime mode, verified recovery-channel delivery, cross-user reset denial, rejection of default secrets, secure browser sessions, abuse throttling, role-delegation constraints, and authorization tests | **Blocked** |
 | Ingestion | Resumable or direct memory-bounded upload through all proxies with interruption/retry tests | **Blocked** |
 | Durable work | Leased persistent queue/orchestrator, idempotency, restart recovery, and multi-replica correctness | **Blocked** |
 | Availability | Multi-node placement, safe replicas, PDBs, dependency HA, and node/disruption tests | **Blocked** |
 | Data protection | Encryption, least privilege, automated backups, successful clean restore, and RPO/RTO evidence | **Blocked** |
-| Kubernetes security | Restricted workload posture, service-account isolation, NetworkPolicies, admission policy, and RBAC review | **Blocked** |
-| Serving security | Authenticated and authorized inference, rate/request limits, tenant isolation, and safe endpoint lifecycle | **Blocked** |
+| Kubernetes security | Restricted non-root workload posture, service-account and data-credential isolation, NetworkPolicies, admission policy, and RBAC review | **Blocked** |
+| Serving security | Authenticated and authorized inference, rate/request limits, tenant isolation, model-digest verification before deserialization, and safe endpoint lifecycle | **Blocked** |
 | Platform observability | Central logs/metrics/traces, platform dashboards, alerts, SLOs, audit export, and actionable runbooks | **Blocked** |
 | Model observability and governance | Deployment-anchored performance/drift timelines, governed retraining, versioned governance reports, monitoring-scale tests, scoped roles, and audit evidence defined in Section 15 | **Blocked** |
 | Capacity | Representative 10 GB and concurrency tests with CPU, memory, disk, object-store, DB, and queue measurements | Unqualified |
@@ -496,8 +532,9 @@ and data-owner decision; renaming it “production” does not remove the gaps.
 
 At minimum, a release candidate must prove:
 
-1. Registration policy, login, refresh, logout, authorization, and project
-   isolation behave as configured.
+1. Registration policy, login, refresh, logout, authorization, project
+   isolation, and recovery-channel-only password reset behave as configured;
+   requesting another user’s reset never reveals a token or permits takeover.
 2. Upload shows real transfer progress, persists the exact object, and returns to
    project overview without starting profiling.
 3. Selecting a target immediately shows the inferred task and appropriate target
@@ -531,16 +568,24 @@ Test at least:
 - PostgreSQL failover/unavailability and recovery;
 - object-store and MLflow latency, denial, and outage;
 - ingress/gateway and certificate failure;
+- login/reset/upload/prediction abuse at configured rate and size limits;
+- reset requests for existing and unknown accounts produce indistinguishable
+  public responses, and a requester cannot reset another user’s password;
+- reset tokens never appear in API responses, application/proxy logs, referrers,
+  or browser history in local, shared, or production modes;
 - Metrics Server and GPU telemetry absence;
 - GPU resource unavailable with expected CPU fallback or explicit rejection;
 - stale Kubernetes resources versus database state;
 - migration failure before API rollout;
-- restore into an empty namespace/cluster; and
-- model endpoint failure with rollback or safe traffic removal.
+- restore into an empty namespace/cluster;
+- model endpoint failure with rollback or safe traffic removal;
+- tampered model artifact rejection before deserialization;
+- compromised training or inference workload containment without cross-project
+  database or object-store access;
 - monitoring-store latency or outage, stale/missing inference telemetry, delayed
   labels, duplicate monitoring windows, failed alert delivery, and safe backfill;
 - drift-job retry and scheduler overlap without duplicate metrics, alerts, or
-  retraining proposals; and
+  retraining proposals;
 - governance-report regeneration, evidence cutoff, integrity verification, and
   denial of cross-project or unauthorized export.
 
@@ -585,7 +630,8 @@ used in production.
 Retain at least:
 
 - chart package and rendered manifest;
-- immutable image digest manifest, SBOM, scan, and signature results;
+- immutable image digest manifest, SBOM, dependency/secret/SAST/container scan,
+  and signature results;
 - values commit with Secret names but no secret values;
 - database migration and schema verification results;
 - functional and authorization reports;
@@ -602,17 +648,25 @@ Retain at least:
 ### P0: production launch blockers
 
 - Make runtime environment explicit in Helm and suppress every development-only
-  response in production.
-- Implement approved identity and browser-session security; protect inference
-  endpoints.
-- Replace API-buffered uploads with resumable or direct object-store ingestion.
+  response in production; reject default or weak secrets before startup.
+- Remove `reset_token_for_dev` from the API and UI in every environment; deliver
+  single-use reset tokens only through the verified recovery channel and leave
+  reset unavailable when that channel is not configured.
+- Implement approved identity and secure browser sessions; rate-limit identity,
+  upload, and prediction paths.
+- Replace API-buffered uploads with bounded inspection and resumable or direct
+  object-store ingestion.
 - Move profiling and workload reconciliation into durable leased execution and
   prove multiple API replicas safe.
 - Separate API, orchestrator, training, and inference identities and credentials.
 - Add production Pod security, NetworkPolicies, PDBs, topology placement, and
   safe replica controls.
+- Keep model Services internal, verify model digests before deserialization, and
+  expose inference only through an authenticated, authorized gateway.
 - Qualify external HA data services, backup/restore, encryption, and least
   privilege.
+- Add dependency, secret, SAST, and container scanning; pin third-party CI
+  Actions and verify release signatures.
 - Add central telemetry, alerts, audit export, SLOs, and runbooks.
 - Establish the deployment-anchored monitoring event schema, privacy and
   retention controls, versioned thresholds, audit events, and governance-report

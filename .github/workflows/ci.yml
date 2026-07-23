@@ -237,29 +237,40 @@ jobs:
         with:
           version: v4.2.2
 
-      - name: Read and validate the release version
+      - name: Select the next available release version
         id: version
         run: |
           version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml)"
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+          IFS=. read -r major minor patch <<< "$version"
+          requested_version="$version"
 
-      - name: Refuse to overwrite an existing release
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          for component in api ui mlflow training-cpu training-intel inference
+          while true
           do
-            tag="${IMAGE}:${component}-${VERSION}"
-            if docker buildx imagetools inspect "$tag" >/dev/null 2>&1; then
-              echo "::error::${tag} already exists. Bump the project version before merging."
-              exit 1
+            available=true
+            for component in api ui mlflow training-cpu training-intel inference
+            do
+              if docker buildx imagetools inspect \
+                "${IMAGE}:${component}-${version}" >/dev/null 2>&1; then
+                available=false
+                break
+              fi
+            done
+            if helm show chart "$CHART" --version "$version" >/dev/null 2>&1; then
+              available=false
             fi
+            if "$available"; then
+              break
+            fi
+
+            patch=$((patch + 1))
+            version="${major}.${minor}.${patch}"
           done
-          if helm show chart "$CHART" --version "$VERSION" >/dev/null 2>&1; then
-            echo "::error::${CHART}:${VERSION} already exists. Bump the project version before merging."
-            exit 1
+
+          if [ "$version" != "$requested_version" ]; then
+            echo "::notice::Release ${requested_version} already exists; using ${version}."
           fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
   build-images:
     name: Build ${{ matrix.component }}
