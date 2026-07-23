@@ -97,7 +97,17 @@ describe("core workflow integrations", () => {
         id: "version-1", dataset_id: "dataset-1", version_number: 1, status: "ready",
         schema_json: { columns: [{ name: "attendance" }, { name: "performance_index" }] },
       }]);
-      if (url.endsWith("/profile-jobs/latest")) return response(null);
+      if (url.endsWith("/profile-jobs/latest")) return response({
+        id: "profile-1", status: "succeeded", target_column: "performance_index",
+        overview_json: { task_inference: {
+          task_type: "classification", confidence: .9, rationale: "Target selected.",
+        } },
+      });
+      if (url.endsWith("/profile-jobs/profile-1/result")) return response({
+        feature_profiles_json: { performance_index: { distribution: [
+          { label: "At risk", count: 12 }, { label: "On track", count: 88 },
+        ] } },
+      });
       if (url.includes("/training/estimators")) {
         estimatorRequests += 1;
         if (estimatorRequests === 1) {
@@ -121,6 +131,68 @@ describe("core workflow integrations", () => {
 
     expect(await screen.findByText("RandomForestClassifier")).toBeInTheDocument();
     expect(await screen.findByText("1 of 1 models selected")).toBeInTheDocument();
+    expect(await screen.findByRole("combobox", { name: /Positive class/i })).toHaveValue("At risk");
+  });
+
+  it("blocks training until the selected dataset version has a completed profile", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.endsWith("/projects/project-1/datasets")) return response([{
+        id: "dataset-1", name: "Student performance", latest_version_number: 1,
+      }]);
+      if (url.endsWith("/datasets/dataset-1/versions")) return response([{
+        id: "version-1", dataset_id: "dataset-1", version_number: 1, status: "ready",
+        schema_json: { columns: [{ name: "attendance" }, { name: "performance_index" }] },
+      }]);
+      if (url.endsWith("/profile-jobs/latest")) return response(null);
+      return response([]);
+    });
+
+    renderRoute(<TrainingPage />, "/projects/project-1/training");
+
+    expect(await screen.findByRole("heading", { name: "Profile data before training" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Go to profile setup/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Estimate resources/i })).not.toBeInTheDocument();
+  });
+
+  it("requires an explicit positive class when a binary target is balanced", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.endsWith("/projects/project-1/datasets")) return response([{
+        id: "dataset-1", name: "Customer status", latest_version_number: 1,
+      }]);
+      if (url.endsWith("/datasets/dataset-1/versions")) return response([{
+        id: "version-1", dataset_id: "dataset-1", version_number: 1, status: "ready",
+        schema_json: { columns: [{ name: "tenure" }, { name: "status" }] },
+      }]);
+      if (url.endsWith("/profile-jobs/latest")) return response({
+        id: "profile-1", status: "succeeded", target_column: "status",
+        overview_json: { task_inference: {
+          task_type: "classification", confidence: .95, rationale: "Two target classes.",
+        } },
+      });
+      if (url.endsWith("/profile-jobs/profile-1/result")) return response({
+        feature_profiles_json: { status: { distribution: [
+          { label: "Attrited Customer", count: 50 }, { label: "Existing Customer", count: 50 },
+        ] } },
+      });
+      if (url.includes("/training/estimators")) return response([{
+        name: "RandomForestClassifier", task_type: "classification",
+        mixin: "ClassifierMixin", tunable: true, cost_tier: "medium",
+        default_selected: true,
+      }]);
+      return response([]);
+    });
+
+    renderRoute(<TrainingPage />, "/projects/project-1/training");
+
+    const positiveClass = await screen.findByRole("combobox", { name: /Positive class/i });
+    const estimate = await screen.findByRole("button", { name: /Estimate resources/i });
+    expect(positiveClass).toHaveValue("");
+    expect(estimate).toBeDisabled();
+    await userEvent.selectOptions(positiveClass, "Attrited Customer");
+    expect(positiveClass).toHaveValue("Attrited Customer");
+    expect(estimate).toBeEnabled();
   });
 
   it("renders progressive run evidence and fetches logs on demand", async () => {
@@ -174,12 +246,19 @@ describe("core workflow integrations", () => {
     await userEvent.click(screen.getByRole("button", { name: /RandomForestClassifier/i }));
     await userEvent.click(screen.getByRole("tab", { name: "Diagnostics" }));
     expect(await screen.findByRole("heading", { name: "Confusion matrix" })).toBeInTheDocument();
+    expect(screen.getByText(/Positive:/)).toHaveTextContent("Positive: yes · legacy default");
+    const counts = screen.getByRole("button", { name: "Counts" });
+    const percentages = screen.getByRole("button", { name: "Percentages by actual class" });
+    expect(counts).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(percentages);
+    expect(percentages).toHaveAttribute("aria-pressed", "true");
+    expect(counts).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByRole("heading", { name: "ROC curve" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /Learning curve/i })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: "Resources" }));
     expect(screen.getByText("0.80 cores")).toBeInTheDocument();
     expect(screen.getByText("Nvidia × 1")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("tab", { name: "Pipeline" }));
+    await userEvent.click(screen.getByRole("tab", { name: "Pipeline & features" }));
     expect(screen.getByRole("heading", { name: "Training pipeline" })).toBeInTheDocument();
     expect(screen.getByText("ColumnTransformer")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Numeric" })).toBeInTheDocument();
@@ -360,6 +439,35 @@ describe("core workflow integrations", () => {
     act(() => finishUpload?.());
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/profile-jobs"))).toBe(false);
+  });
+
+  it("preserves the selected target when retrying a failed profile", async () => {
+    let profileBody: unknown = null;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
+      const url = String(input);
+      if (url.endsWith("/projects/project-1/datasets")) return response([{
+        id: "dataset-1", name: "Customers", description: null, latest_version_number: 1,
+      }]);
+      if (url.endsWith("/datasets/dataset-1/versions")) return response([{
+        id: "version-1", dataset_id: "dataset-1", version_number: 1, status: "ready",
+        format: "csv", byte_size: 120, row_count: 2, column_count: 2,
+        schema_json: { columns: [{ name: "age" }, { name: "churned" }] },
+      }]);
+      if (url.endsWith("/profile-jobs/latest")) return response({
+        id: "profile-1", status: "failed", target_column: "churned",
+        failure_message: "Worker interrupted.",
+      });
+      if (url.endsWith("/profile-jobs") && options?.method === "POST") {
+        profileBody = JSON.parse(String(options.body));
+        return response({ id: "profile-2", status: "queued", target_column: "churned" }, 202);
+      }
+      return response([]);
+    });
+
+    renderRoute(<DataPage />, "/projects/project-1/data");
+    await userEvent.click(await screen.findByRole("button", { name: "Retry profile" }));
+
+    await waitFor(() => expect(profileBody).toEqual({ target_column: "churned", force: true }));
   });
 
   it("profiles only on request and shows regression target guidance", async () => {

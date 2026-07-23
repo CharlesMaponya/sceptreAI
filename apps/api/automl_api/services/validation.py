@@ -254,6 +254,7 @@ def _launch_analysis_run(
             ),
             "model_artifact_uri": model_entry.get("model_artifact_uri"),
             "expected_minutes": expected_minutes,
+            "positive_label": source.params.get("positive_label"),
             **extra_params,
         },
         tags={

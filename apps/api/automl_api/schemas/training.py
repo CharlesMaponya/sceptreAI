@@ -12,6 +12,7 @@ from automl_api.models.enums import RunKind, RunStatus, TaskType
 class TrainingEstimateRequest(BaseModel):
     dataset_version_id: uuid.UUID
     target_column: str | None = Field(default=None, max_length=255)
+    positive_label: str | None = Field(default=None, max_length=255)
     evaluation_column: str | None = Field(default=None, max_length=255)
     task_type: TaskType
     primary_metric: str | None = Field(default=None, max_length=64)

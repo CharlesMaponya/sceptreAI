@@ -52,7 +52,8 @@ export function RunsPage() {
       description="Compare candidates, inspect diagnostics, and challenge a model before promotion." />
     {!runs.data?.length
       ? <Card><EmptyState icon={<BarChart3 />} title="No experiment results yet"
-          description="Launch a training run to compare model candidates and build an evidence trail." /></Card>
+          description="Launch a training run to compare model candidates and build an evidence trail."
+          action={<Link className="button button--primary" to={`/projects/${projectId}/training`}><Play size={15} />Configure training</Link>} /></Card>
       : <div className="runs-layout">
           <Card className="run-list">
             <div className="run-list__head"><b>Training runs</b><span>{runs.data.length}</span></div>
@@ -215,7 +216,7 @@ function ModelEvidence({ projectId, runId, entry, task, metricDirections, resour
     <div className="model-tabs" role="tablist" aria-label={`${entry.model} evidence`}>
       {(["metrics", "diagnostics", "resources", "parameters", "pipeline"] as const).map((name) =>
         <button key={name} role="tab" aria-selected={tab === name} className={tab === name ? "active" : ""}
-          onClick={() => setTab(name)}>{titleCase(name)}</button>)}
+          onClick={() => setTab(name)}>{name === "pipeline" ? "Pipeline & features" : titleCase(name)}</button>)}
     </div>
     {tab === "metrics" && <section><h3>Metrics</h3><div className="metric-pills">
       {Object.entries(entry.metrics).map(([name, value]) => <span key={name}>
@@ -254,6 +255,7 @@ function ModelPipeline({ projectId, runId, entry, task }: {
     {downloadError && <Notice tone="danger">{downloadError}</Notice>}
     {downloadStatus && <Notice>{downloadStatus}</Notice>}
     <PipelineDiagram diagram={diagram} modelName={entry.model} />
+    <CorrelationEvidence diagnostics={entry.diagnostics} />
     <details className="pipeline-lifecycle"><summary>Execution evidence</summary><ol>
       {stages.map((stage) => <li key={stage.key} data-status={stage.status}>
         <i className={`timeline-dot timeline-dot--${stage.status}`} /><span><b>{stage.label}</b><small>{stage.summary}</small></span>
@@ -272,6 +274,10 @@ function PipelineDiagram({ diagram, modelName }: {
   const branches = transformer?.branches || [];
   return <div className="pipeline-diagram" aria-label={`${modelName} fitted pipeline`}>
     <div className="pipeline-gates">{(diagram.input_gates || []).map((gate) => <span key={gate}>{gate}</span>)}</div>
+    {diagram.correlation_filter && <><div className="pipeline-node pipeline-node--selector"><span>
+      <small>{diagram.correlation_filter.name}</small><b>{diagram.correlation_filter.type}</b>
+      <em>{diagram.correlation_filter.summary}</em></span></div>
+      <i className="pipeline-connector pipeline-connector--down" /></>}
     <div className="pipeline-node pipeline-node--root"><GitBranch /><span><small>Pipeline step</small><b>Feature preprocessing</b></span></div>
     <i className="pipeline-connector pipeline-connector--down" />
     <section className="pipeline-transformer">
@@ -299,7 +305,7 @@ function fallbackPipeline(entry: LeaderboardEntry, task: TaskType) {
     { key: "leakage", label: "Leakage gate", status: planned, summary: "Remove profiling-confirmed leakage features." },
     { key: "split", label: "Validation design", status: planned, summary: task === "time_series" ? "Ordered holdout and time-series folds." : "Task-aware holdout and cross-validation." },
     { key: "processing", label: "Feature processing", status: planned, summary: "Impute and encode the fitted feature contract." },
-    { key: "selection", label: "Feature selection", status: planned, summary: task === "clustering" ? "Retain the transformed feature space." : "Keep the top 80% by mutual information." },
+    { key: "selection", label: "Feature selection", status: planned, summary: task === "clustering" ? "Remove correlated numeric features using completeness." : "Remove correlated numeric features, then keep the top 80% by mutual information." },
     { key: "fit", label: "Tune & fit", status: planned, summary: `Fit ${entry.model} with recorded parameters.` },
     { key: "evaluate", label: "Evaluate", status: planned, summary: "Calculate task-aware metrics and diagnostics." },
     { key: "persist", label: "Persist evidence", status: planned, summary: "Store the fitted pipeline and MLflow evidence." },
@@ -309,6 +315,10 @@ function fallbackPipeline(entry: LeaderboardEntry, task: TaskType) {
 function fallbackPipelineDiagram(entry: LeaderboardEntry, task: TaskType) {
   return {
     input_gates: ["Immutable dataset version", "Leakage gate", "Temporal normalization"],
+    correlation_filter: {
+      name: "Correlation filter", type: "CorrelatedFeatureFilter",
+      summary: "Remove numeric pairs at |r| ≥ 0.90 using task-aware training evidence.",
+    },
     transformer: { name: "preprocessor", type: "ColumnTransformer", branches: [
       { key: "numeric", label: "Numeric", steps: ["Median imputation", "Standard scaling"] },
       { key: "categorical", label: "Categorical & text", steps: ["Most-frequent imputation", "Ordinal encoding"] },
@@ -318,6 +328,48 @@ function fallbackPipelineDiagram(entry: LeaderboardEntry, task: TaskType) {
     },
     estimator: { name: "estimator", type: entry.model },
   };
+}
+
+type CorrelationMatrix = { columns?: string[]; values?: number[][] };
+type CorrelationRemoval = {
+  feature: string; kept_feature: string; correlation: number; score: number; kept_score: number;
+};
+type CorrelationDiagnostics = {
+  threshold?: number; score_method?: string; heatmap_truncated?: boolean;
+  removed_features?: CorrelationRemoval[]; before?: CorrelationMatrix; after?: CorrelationMatrix;
+};
+
+function CorrelationEvidence({ diagnostics }: { diagnostics: Record<string, unknown> }) {
+  const evidence = diagnostics.correlated_features as CorrelationDiagnostics | undefined;
+  const before = evidence?.before;
+  const after = evidence?.after;
+  if (!before?.columns?.length || !before.values?.length) {
+    return <Notice>Correlation heatmaps are unavailable for this model. Retrain it to capture feature-selection evidence.</Notice>;
+  }
+  const removals = evidence?.removed_features || [];
+  const heatmap = (matrix: CorrelationMatrix) => [{
+    type: "heatmap", z: matrix.values, x: matrix.columns, y: matrix.columns,
+    zmin: -1, zmax: 1, colorscale: "RdBu", reversescale: true,
+    hovertemplate: "%{y} × %{x}<br>r = %{z:.3f}<extra></extra>",
+  }];
+  return <section className="correlation-evidence">
+    <header><div><span className="eyebrow">Feature selection evidence</span>
+      <h3>Correlated-feature removal</h3>
+      <p>Threshold |r| ≥ {Number(evidence?.threshold || .9).toFixed(2)} · {titleCase(evidence?.score_method || "task aware score")}</p>
+    </div>{evidence?.heatmap_truncated && <Badge status="truncated" />}</header>
+    <div className="model-evidence-grid">
+      <EvidenceChart title="Before removal" data={heatmap(before)} />
+      {after?.columns?.length && after.values?.length
+        ? <EvidenceChart title="After removal" data={heatmap(after)} /> : null}
+    </div>
+    {removals.length ? <div className="table-scroll"><table><thead><tr>
+      <th>Removed</th><th>Retained</th><th>Correlation</th><th>Removed score</th><th>Retained score</th>
+    </tr></thead><tbody>{removals.map((item) => <tr key={item.feature}>
+      <td>{item.feature}</td><td>{item.kept_feature}</td><td>{item.correlation.toFixed(4)}</td>
+      <td>{item.score.toFixed(4)}</td><td>{item.kept_score.toFixed(4)}</td>
+    </tr>)}</tbody></table></div>
+      : <Notice>No numeric feature pairs crossed the configured threshold.</Notice>}
+  </section>;
 }
 
 async function downloadModelAudit(
@@ -469,14 +521,33 @@ function ModelDiagnosticCharts({ diagnostics, task }: {
 }
 
 function ClassificationCharts({ diagnostics }: { diagnostics: Record<string, unknown> }) {
+  const [showPercentages, setShowPercentages] = useState(false);
   const labels = Array.isArray(diagnostics.labels) ? diagnostics.labels.map(String) : [];
   const matrix = Array.isArray(diagnostics.confusion_matrix) ? diagnostics.confusion_matrix as number[][] : [];
+  const percentages = matrix.map((row) => {
+    const total = row.reduce((sum, value) => sum + value, 0);
+    return row.map((value) => total ? (value / total) * 100 : 0);
+  });
   const rocCurves = Array.isArray(diagnostics.roc_curves) ? diagnostics.roc_curves as Curve[] : [];
   const precisionRecall = Array.isArray(diagnostics.precision_recall_curves) ? diagnostics.precision_recall_curves as Curve[] : [];
+  const positiveLabel = typeof diagnostics.positive_label === "string"
+    ? diagnostics.positive_label
+    : rocCurves.length === 1 ? rocCurves[0].label : "";
+  const positiveLabelSource = typeof diagnostics.positive_label_source === "string"
+    ? diagnostics.positive_label_source
+    : positiveLabel ? "legacy_class_order" : "";
   const report = diagnostics.classification_report as Record<string, Record<string, number>> | undefined;
   const reportLabels = report ? Object.keys(report).filter((label) => typeof report[label] === "object" && "precision" in report[label]) : [];
   return <>
-    {matrix.length ? <EvidenceChart title="Confusion matrix" data={[{ type: "heatmap", z: matrix, x: labels, y: labels, colorscale: "Blues", text: matrix.map((row) => row.map(String)), texttemplate: "%{text}", hovertemplate: "Actual %{y}<br>Predicted %{x}<br>Count %{z}<extra></extra>" }]} xTitle="Predicted" yTitle="Actual" /> : null}
+    {matrix.length ? <EvidenceChart title="Confusion matrix" action={<div className="confusion-controls">
+      {positiveLabel && <span>Positive: <b>{positiveLabel}</b>{positiveLabelSource === "legacy_class_order" ? " · legacy default" : ""}</span>}
+      <div className="chart-toggle" role="group" aria-label="Confusion matrix values">
+        <button type="button" aria-pressed={!showPercentages} onClick={() => setShowPercentages(false)}>Counts</button>
+        <button type="button" aria-pressed={showPercentages} onClick={() => setShowPercentages(true)}>Percentages by actual class</button>
+      </div>
+    </div>} data={[showPercentages
+      ? { type: "heatmap", z: percentages, x: labels, y: labels, zmin: 0, zmax: 100, colorscale: "Blues", text: percentages.map((row) => row.map((value) => `${value.toFixed(1)}%`)), texttemplate: "%{text}", hovertemplate: "Actual %{y}<br>Predicted %{x}<br>Share %{z:.1f}%<extra></extra>" }
+      : { type: "heatmap", z: matrix, x: labels, y: labels, colorscale: "Blues", text: matrix.map((row) => row.map(String)), texttemplate: "%{text}", hovertemplate: "Actual %{y}<br>Predicted %{x}<br>Count %{z}<extra></extra>" }]} xTitle="Predicted" yTitle="Actual" /> : null}
     {rocCurves.length ? <EvidenceChart title="ROC curve" data={[
       ...rocCurves.map((curve) => ({ type: "scatter", mode: "lines", name: curve.label, x: curve.points.map((point) => point.false_positive_rate), y: curve.points.map((point) => point.true_positive_rate) })),
       { type: "scatter", mode: "lines", name: "Random", x: [0, 1], y: [0, 1], line: { dash: "dash", color: "#9aa1b2" } },
@@ -515,13 +586,14 @@ function ClusteringCharts({ diagnostics }: { diagnostics: Record<string, unknown
   </>;
 }
 
-function EvidenceChart({ title, data, xTitle, yTitle }: {
+function EvidenceChart({ title, data, xTitle, yTitle, action }: {
   title: string;
   data: Array<Record<string, unknown>>;
   xTitle?: string;
   yTitle?: string;
+  action?: ReactNode;
 }) {
-  return <section className="model-evidence-chart"><h3>{title}</h3><Suspense fallback={<Loading label="Loading visualization…" />}>
+  return <section className="model-evidence-chart"><header className="model-evidence-chart__header"><h3>{title}</h3>{action}</header><Suspense fallback={<Loading label="Loading visualization…" />}>
     <PlotlyChart data={data} layout={{ autosize: true, height: 310, margin: { l: 55, r: 15, t: 15, b: 55 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "#f8f9fc", barmode: "group", xaxis: { title: { text: xTitle }, automargin: true }, yaxis: { title: { text: yTitle }, automargin: true }, legend: { orientation: "h", y: 1.12 }, font: { family: "Inter, system-ui, sans-serif", size: 10, color: "#4e5870" } }} config={{ displayModeBar: false, responsive: true }} useResizeHandler style={{ width: "100%" }} />
   </Suspense></section>;
 }

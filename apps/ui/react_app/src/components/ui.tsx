@@ -68,10 +68,23 @@ export function Modal({ title, description, children, onClose }: {
   title: string; description?: string; children: ReactNode; onClose: () => void;
 }) {
   const closeButton = useRef<HTMLButtonElement>(null);
+  const dialog = useRef<HTMLElement>(null);
   useEffect(() => {
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
+      if (event.key !== "Tab" || !dialog.current) return;
+      const focusable = Array.from(dialog.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ));
+      if (!focusable.length) return event.preventDefault();
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); first.focus();
+      }
     };
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -84,7 +97,7 @@ export function Modal({ title, description, children, onClose }: {
     };
   }, [onClose]);
   return <div className="modal-backdrop" onMouseDown={onClose}>
-    <section className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"
+    <section ref={dialog} className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"
       aria-describedby={description ? "modal-description" : undefined} onMouseDown={(e) => e.stopPropagation()}>
       <button ref={closeButton} type="button" className="modal__close" onClick={onClose} aria-label="Close">×</button>
       <h2 id="modal-title">{title}</h2>{description && <p id="modal-description" className="muted">{description}</p>}{children}

@@ -75,7 +75,7 @@ The implemented local-cluster boundary is documented in the
 | --- | --- |
 | Upload scripts, notebooks, and shared folders | Project-scoped datasets, immutable versions, hashes, access roles, and durable object storage |
 | Manual profiling and preparation guesses | Full-dataset statistics, quality flags, temporal inference, relationships, and preparation recommendations |
-| One opaque “best model” score | Progressive leaderboards with task-specific metrics, diagnostics, parameters, and experiment history |
+| One opaque “best model” score | Progressive leaderboards with task-specific metrics, diagnostics, correlation-removal heatmaps, parameters, and experiment history |
 | Cluster requests based on intuition | Preflight CPU, memory, and duration estimates with admission limits and adaptive deadlines |
 | Validation and explainability as follow-up work | External validation and on-demand SHAP for current or historical candidates |
 | Model files passed between people | A project registry with staged promotion, explicit fallback, drift checks, and artifact protection |
@@ -594,9 +594,10 @@ telemetry when available, and progressive leaderboard results.
 
 Each leaderboard model includes a **Pipeline** evidence tab. It shows the
 candidate's immutable-data input, leakage gate, validation design, executable
-feature processing, mutual-information selection, tuning and fit, evaluation,
-and persistence state. The operational run-level **Logs** tab remains available
-for troubleshooting, while model-level logs are replaced by this pipeline view.
+feature processing, task-aware correlated-feature removal with before/after
+heatmaps, mutual-information selection, tuning and fit, evaluation, and
+persistence state. The operational run-level **Logs** tab remains available for
+troubleshooting, while model-level logs are replaced by this pipeline view.
 
 Use **Audit document** on any model pipeline to download a printable HTML
 evidence package, or **JSON evidence** for automated review. The package includes
