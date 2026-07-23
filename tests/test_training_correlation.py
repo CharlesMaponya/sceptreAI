@@ -25,8 +25,12 @@ def test_binary_classification_removes_the_correlated_feature_with_lower_iv() ->
     assert fitted.scores_["strong"] > fitted.scores_["weak"]
     assert fitted.removed_features_[0]["feature"] == "weak"
     assert fitted.transform(features).columns.tolist() == ["strong", "other", "segment"]
-    assert fitted.evidence_["before"]["columns"]
-    assert fitted.evidence_["after"]["columns"]
+    assert fitted.evidence_["before"]["columns"] == ["strong", "weak", "other"]
+    assert fitted.evidence_["after"]["columns"] == ["strong", "other"]
+    assert fitted.evidence_["after"]["values"] == [
+        [fitted.evidence_["before"]["values"][0][0], fitted.evidence_["before"]["values"][0][2]],
+        [fitted.evidence_["before"]["values"][2][0], fitted.evidence_["before"]["values"][2][2]],
+    ]
 
 
 @pytest.mark.parametrize(

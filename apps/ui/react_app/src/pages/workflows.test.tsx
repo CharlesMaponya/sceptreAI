@@ -218,6 +218,18 @@ describe("core workflow integrations", () => {
               { training_rows: 20, training_mean: .96, validation_mean: .82 },
               { training_rows: 80, training_mean: .92, validation_mean: .9 },
             ] },
+            correlated_features: {
+              threshold: .9, score_method: "information_value", numeric_feature_count: 3,
+              retained_features: ["tenure", "age"], removed_features: [{
+                feature: "monthly_spend", kept_feature: "tenure", correlation: .96,
+                score: .12, kept_score: .34,
+              }],
+              before: {
+                columns: ["tenure", "monthly_spend", "age"],
+                values: [[1, .96, .2], [.96, 1, .18], [.2, .18, 1]],
+              },
+              after: { columns: ["tenure", "age"], values: [[1, .2], [.2, 1]] },
+            },
           },
           best_params: { n_estimators: 100 }, duration_seconds: 34, error: null,
         }],
@@ -243,16 +255,24 @@ describe("core workflow integrations", () => {
     expect((await screen.findAllByText("RandomForestClassifier")).length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: "Deploy model" }))
       .toHaveAttribute("href", "/projects/project-1/operations?trainingRunId=run-1&model=RandomForestClassifier");
+    await userEvent.click(screen.getByRole("tab", { name: "Feature selection" }));
+    expect(await screen.findByRole("heading", { name: "Correlated-feature removal" })).toBeInTheDocument();
+    expect(screen.getByText("Before filtering · 3 features")).toBeInTheDocument();
+    expect(screen.getByText("Retained features · 2 of 3 kept")).toBeInTheDocument();
+    expect(screen.getByText(/Blank rows and columns marked/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "Leaderboard" }));
     await userEvent.click(screen.getByRole("button", { name: /RandomForestClassifier/i }));
     await userEvent.click(screen.getByRole("tab", { name: "Diagnostics" }));
     expect(await screen.findByRole("heading", { name: "Confusion matrix" })).toBeInTheDocument();
-    expect(screen.getByText(/Positive:/)).toHaveTextContent("Positive: yes · legacy default");
+    expect(screen.getByText(/Positive class:/)).toHaveTextContent("Positive class: yes · legacy default");
     const counts = screen.getByRole("button", { name: "Counts" });
-    const percentages = screen.getByRole("button", { name: "Percentages by actual class" });
+    const percentages = screen.getByRole("button", { name: "Row %" });
     expect(counts).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText(/Counts show cases/)).toBeInTheDocument();
     await userEvent.click(percentages);
     expect(percentages).toHaveAttribute("aria-pressed", "true");
     expect(counts).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByText(/each actual class totals 100%/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "ROC curve" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /Learning curve/i })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: "Resources" }));
@@ -264,8 +284,12 @@ describe("core workflow integrations", () => {
     expect(screen.getByRole("heading", { name: "Numeric" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Categorical & text" })).toBeInTheDocument();
     expect(screen.getAllByText("Feature selection").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("heading", { name: "Correlated-feature removal" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Download PDF audit/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /JSON evidence/i })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "View feature selection" }));
+    expect(screen.getByRole("tab", { name: "Feature selection" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("heading", { name: "Correlated-feature removal" })).toBeInTheDocument();
     const logTabs = screen.getAllByRole("tab", { name: "Logs" });
     await userEvent.click(logTabs[logTabs.length - 1]);
     expect(await screen.findByLabelText("Training logs")).toHaveTextContent("candidate completed");

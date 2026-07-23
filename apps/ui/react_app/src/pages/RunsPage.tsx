@@ -74,7 +74,7 @@ function RunDetail({ projectId, run, invalidate }: {
   projectId: string; run: ModelRun; invalidate: () => void;
 }) {
   const client = useQueryClient();
-  const [tab, setTab] = useState<"leaderboard" | "analysis" | "logs">("leaderboard");
+  const [tab, setTab] = useState<"leaderboard" | "features" | "analysis" | "logs">("leaderboard");
   const [showAdd, setShowAdd] = useState(false);
   const leaderboard = useQuery({
     queryKey: ["leaderboard", projectId, run.id],
@@ -138,13 +138,16 @@ function RunDetail({ projectId, run, invalidate }: {
     <div className="tabs" role="tablist" aria-label="Run detail">
       <button role="tab" aria-selected={tab === "leaderboard"} className={tab === "leaderboard" ? "active" : ""}
         onClick={() => setTab("leaderboard")}>Leaderboard</button>
+      <button role="tab" aria-selected={tab === "features"} className={tab === "features" ? "active" : ""}
+        onClick={() => setTab("features")}>Feature selection</button>
       <button role="tab" aria-selected={tab === "analysis"} className={tab === "analysis" ? "active" : ""}
         onClick={() => setTab("analysis")}>Validate & explain</button>
       <button role="tab" aria-selected={tab === "logs"} className={tab === "logs" ? "active" : ""}
         onClick={() => setTab("logs")}>Logs</button>
     </div>
     {tab === "leaderboard" && <LeaderboardPanel projectId={projectId} leaderboard={leaderboard} winner={winner}
-      task={run.task_type} resources={resources} />}
+      task={run.task_type} resources={resources} openFeatureSelection={() => setTab("features")} />}
+    {tab === "features" && <FeatureSelectionPanel leaderboard={leaderboard} winner={winner} />}
     {tab === "analysis" && <AnalysisPanel projectId={projectId} run={run}
       successfulModels={leaderboard.data?.entries.filter((entry) => entry.status === "succeeded").map((entry) => entry.model) || []} />}
     {tab === "logs" && <LogsPanel logs={logs} />}
@@ -154,12 +157,13 @@ function RunDetail({ projectId, run, invalidate }: {
   </div>;
 }
 
-function LeaderboardPanel({ projectId, leaderboard, winner, task, resources }: {
+function LeaderboardPanel({ projectId, leaderboard, winner, task, resources, openFeatureSelection }: {
   projectId: string;
   leaderboard: ReturnType<typeof useQuery<Leaderboard>>;
   winner: Leaderboard["entries"][number] | undefined;
   task: TaskType;
   resources: ReturnType<typeof useQuery<TrainingResourceUsage>>;
+  openFeatureSelection: () => void;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   return <Card className="section-card">
@@ -190,7 +194,7 @@ function LeaderboardPanel({ projectId, leaderboard, winner, task, resources }: {
               {entry.error && <small className="cell-error leaderboard-model__error">{entry.error}</small>}
               {open && <ModelEvidence projectId={projectId} runId={leaderboard.data.run_id}
                 entry={entry} task={task} metricDirections={leaderboard.data.metric_directions}
-                resources={resources} />}
+                resources={resources} openFeatureSelection={openFeatureSelection} />}
             </article>;
           })}
         </div>
@@ -203,13 +207,14 @@ type LeaderboardEntry = Leaderboard["entries"][number];
 type Curve = { label: string; points: Array<Record<string, number | null>> };
 type PredictionSample = { order: number; actual: number; predicted: number; residual: number };
 
-function ModelEvidence({ projectId, runId, entry, task, metricDirections, resources }: {
+function ModelEvidence({ projectId, runId, entry, task, metricDirections, resources, openFeatureSelection }: {
   projectId: string;
   runId: string;
   entry: LeaderboardEntry;
   task: TaskType;
   metricDirections: Record<string, string>;
   resources: ReturnType<typeof useQuery<TrainingResourceUsage>>;
+  openFeatureSelection: () => void;
 }) {
   const [tab, setTab] = useState<"metrics" | "diagnostics" | "resources" | "parameters" | "pipeline">("metrics");
   return <div className="leaderboard-model__body">
@@ -224,12 +229,14 @@ function ModelEvidence({ projectId, runId, entry, task, metricDirections, resour
     {tab === "diagnostics" && <ModelDiagnosticCharts diagnostics={entry.diagnostics} task={task} />}
     {tab === "resources" && <ResourcePanel resources={resources} />}
     {tab === "parameters" && <pre className="model-parameters-json">{JSON.stringify(entry.best_params, null, 2)}</pre>}
-    {tab === "pipeline" && <ModelPipeline projectId={projectId} runId={runId} entry={entry} task={task} />}
+    {tab === "pipeline" && <ModelPipeline projectId={projectId} runId={runId} entry={entry} task={task}
+      openFeatureSelection={openFeatureSelection} />}
   </div>;
 }
 
-function ModelPipeline({ projectId, runId, entry, task }: {
+function ModelPipeline({ projectId, runId, entry, task, openFeatureSelection }: {
   projectId: string; runId: string; entry: LeaderboardEntry; task: TaskType;
+  openFeatureSelection: () => void;
 }) {
   const [downloadError, setDownloadError] = useState("");
   const [downloadStatus, setDownloadStatus] = useState("");
@@ -249,13 +256,14 @@ function ModelPipeline({ projectId, runId, entry, task }: {
     <header><div><span className="eyebrow">Fitted estimator graph</span><h3>Training pipeline</h3>
       <p>The preprocessing branches that transform each feature family before they converge into this estimator.</p></div>
       <div className="model-audit-actions">
+        <Button variant="secondary" onClick={openFeatureSelection}>
+          <GitBranch size={14} />View feature selection</Button>
         <Button variant="secondary" loading={Boolean(downloadStatus)} onClick={download}>
           <Download size={14} />Download PDF audit</Button>
       </div></header>
     {downloadError && <Notice tone="danger">{downloadError}</Notice>}
     {downloadStatus && <Notice>{downloadStatus}</Notice>}
     <PipelineDiagram diagram={diagram} modelName={entry.model} />
-    <CorrelationEvidence diagnostics={entry.diagnostics} />
     <details className="pipeline-lifecycle"><summary>Execution evidence</summary><ol>
       {stages.map((stage) => <li key={stage.key} data-status={stage.status}>
         <i className={`timeline-dot timeline-dot--${stage.status}`} /><span><b>{stage.label}</b><small>{stage.summary}</small></span>
@@ -335,9 +343,23 @@ type CorrelationRemoval = {
   feature: string; kept_feature: string; correlation: number; score: number; kept_score: number;
 };
 type CorrelationDiagnostics = {
-  threshold?: number; score_method?: string; heatmap_truncated?: boolean;
+  threshold?: number; score_method?: string; numeric_feature_count?: number; heatmap_truncated?: boolean;
   removed_features?: CorrelationRemoval[]; before?: CorrelationMatrix; after?: CorrelationMatrix;
 };
+
+function FeatureSelectionPanel({ leaderboard, winner }: {
+  leaderboard: ReturnType<typeof useQuery<Leaderboard>>;
+  winner: LeaderboardEntry | undefined;
+}) {
+  const entry = winner || leaderboard.data?.entries.find((candidate) => candidate.status === "succeeded");
+  return <Card className="section-card feature-selection-card">
+    {leaderboard.isLoading ? <Loading label="Loading feature-selection evidence…" />
+      : leaderboard.error ? <ErrorState error={leaderboard.error} retry={() => leaderboard.refetch()} />
+      : entry ? <CorrelationEvidence diagnostics={entry.diagnostics} />
+      : <EmptyState title="Feature-selection evidence is not ready"
+          description="It appears after the first model candidate finishes." />}
+  </Card>;
+}
 
 function CorrelationEvidence({ diagnostics }: { diagnostics: Record<string, unknown> }) {
   const evidence = diagnostics.correlated_features as CorrelationDiagnostics | undefined;
@@ -347,21 +369,48 @@ function CorrelationEvidence({ diagnostics }: { diagnostics: Record<string, unkn
     return <Notice>Correlation heatmaps are unavailable for this model. Retrain it to capture feature-selection evidence.</Notice>;
   }
   const removals = evidence?.removed_features || [];
-  const heatmap = (matrix: CorrelationMatrix) => [{
-    type: "heatmap", z: matrix.values, x: matrix.columns, y: matrix.columns,
+  const beforeColumns = before.columns || [];
+  const afterColumns = after?.columns || [];
+  const numericFeatureCount = evidence?.numeric_feature_count ?? beforeColumns.length;
+  const retainedFeatureCount = Math.max(0, numericFeatureCount - removals.length);
+  const shown = (count: number, total: number) =>
+    count === total ? `${total} features` : `${count} of ${total} shown`;
+  const removed = new Set(removals.map((item) => item.feature));
+  const labels = beforeColumns.map((column) => removed.has(column) ? `✕ ${column}` : column);
+  const afterIndex = new Map(afterColumns.map((column, index) => [column, index]));
+  const retainedValues = beforeColumns.map((row) => beforeColumns.map((column) => {
+    const rowIndex = afterIndex.get(row);
+    const columnIndex = afterIndex.get(column);
+    return rowIndex == null || columnIndex == null ? null : after?.values?.[rowIndex]?.[columnIndex] ?? null;
+  }));
+  const heatmap = (values: Array<Array<number | null>>) => [{
+    type: "heatmap", z: values, x: labels, y: labels,
     zmin: -1, zmax: 1, colorscale: "RdBu", reversescale: true,
+    hoverongaps: false,
     hovertemplate: "%{y} × %{x}<br>r = %{z:.3f}<extra></extra>",
   }];
   return <section className="correlation-evidence">
     <header><div><span className="eyebrow">Feature selection evidence</span>
       <h3>Correlated-feature removal</h3>
-      <p>Threshold |r| ≥ {Number(evidence?.threshold || .9).toFixed(2)} · {titleCase(evidence?.score_method || "task aware score")}</p>
+      <p>Applied before every estimator · threshold |r| ≥ {Number(evidence?.threshold || .9).toFixed(2)}
+        {" "}· {titleCase(evidence?.score_method || "task aware score")}</p>
     </div>{evidence?.heatmap_truncated && <Badge status="truncated" />}</header>
+    <dl className="correlation-summary" aria-label="Feature removal summary">
+      <div><dt>Numeric features</dt><dd>{numericFeatureCount}</dd></div>
+      <div><dt>Retained</dt><dd>{retainedFeatureCount}</dd></div>
+      <div><dt>Removed</dt><dd>{removals.length}</dd></div>
+    </dl>
     <div className="model-evidence-grid">
-      <EvidenceChart title="Before removal" data={heatmap(before)} />
-      {after?.columns?.length && after.values?.length
-        ? <EvidenceChart title="After removal" data={heatmap(after)} /> : null}
+      <EvidenceChart title={`Before filtering · ${shown(beforeColumns.length, numericFeatureCount)}`}
+        data={heatmap((before.values || []) as number[][])} />
+      {afterColumns.length > 0 && after?.values?.length
+        ? <EvidenceChart title={`Retained features · ${afterColumns.length === retainedFeatureCount
+            ? `${retainedFeatureCount} of ${numericFeatureCount} kept`
+            : `${afterColumns.length} of ${retainedFeatureCount} shown`}`}
+            data={heatmap(retainedValues)} /> : null}
     </div>
+    <p className="correlation-explanation">The retained correlations do not change when columns are removed.
+      Blank rows and columns marked “✕” show the removed features.</p>
     {removals.length ? <div className="table-scroll"><table><thead><tr>
       <th>Removed</th><th>Retained</th><th>Correlation</th><th>Removed score</th><th>Retained score</th>
     </tr></thead><tbody>{removals.map((item) => <tr key={item.feature}>
@@ -536,18 +585,50 @@ function ClassificationCharts({ diagnostics }: { diagnostics: Record<string, unk
   const positiveLabelSource = typeof diagnostics.positive_label_source === "string"
     ? diagnostics.positive_label_source
     : positiveLabel ? "legacy_class_order" : "";
+  const binary = labels.length === 2 && labels.includes(positiveLabel);
+  const outcomes = matrix.map((row, actualIndex) => row.map((_, predictedIndex) => {
+    if (!binary) return { short: "", label: "" };
+    const actualPositive = labels[actualIndex] === positiveLabel;
+    const predictedPositive = labels[predictedIndex] === positiveLabel;
+    if (actualPositive && predictedPositive) return { short: "TP", label: "True positive" };
+    if (actualPositive) return { short: "FN", label: "False negative" };
+    if (predictedPositive) return { short: "FP", label: "False positive" };
+    return { short: "TN", label: "True negative" };
+  }));
+  const customdata = matrix.map((row, rowIndex) => row.map((count, columnIndex) => [
+    count, percentages[rowIndex]?.[columnIndex] || 0, outcomes[rowIndex]?.[columnIndex]?.label || "",
+  ]));
+  const cellText = (values: number[][], percentage: boolean) => values.map((row, rowIndex) =>
+    row.map((value, columnIndex) => [
+      outcomes[rowIndex]?.[columnIndex]?.short,
+      percentage ? `${value.toFixed(1)}%` : value.toLocaleString(),
+    ].filter(Boolean).join("<br>")));
   const report = diagnostics.classification_report as Record<string, Record<string, number>> | undefined;
   const reportLabels = report ? Object.keys(report).filter((label) => typeof report[label] === "object" && "precision" in report[label]) : [];
   return <>
     {matrix.length ? <EvidenceChart title="Confusion matrix" action={<div className="confusion-controls">
-      {positiveLabel && <span>Positive: <b>{positiveLabel}</b>{positiveLabelSource === "legacy_class_order" ? " · legacy default" : ""}</span>}
+      {positiveLabel && <span className="positive-class">Positive class: <b>{positiveLabel}</b>
+        {positiveLabelSource === "legacy_class_order" ? " · legacy default" : ""}</span>}
       <div className="chart-toggle" role="group" aria-label="Confusion matrix values">
         <button type="button" aria-pressed={!showPercentages} onClick={() => setShowPercentages(false)}>Counts</button>
-        <button type="button" aria-pressed={showPercentages} onClick={() => setShowPercentages(true)}>Percentages by actual class</button>
+        <button type="button" aria-pressed={showPercentages} onClick={() => setShowPercentages(true)}>Row %</button>
       </div>
     </div>} data={[showPercentages
-      ? { type: "heatmap", z: percentages, x: labels, y: labels, zmin: 0, zmax: 100, colorscale: "Blues", text: percentages.map((row) => row.map((value) => `${value.toFixed(1)}%`)), texttemplate: "%{text}", hovertemplate: "Actual %{y}<br>Predicted %{x}<br>Share %{z:.1f}%<extra></extra>" }
-      : { type: "heatmap", z: matrix, x: labels, y: labels, colorscale: "Blues", text: matrix.map((row) => row.map(String)), texttemplate: "%{text}", hovertemplate: "Actual %{y}<br>Predicted %{x}<br>Count %{z}<extra></extra>" }]} xTitle="Predicted" yTitle="Actual" /> : null}
+      ? { type: "heatmap", z: percentages, x: labels, y: labels, zmin: 0, zmax: 100,
+          colorscale: "Blues", xgap: 1, ygap: 1, customdata, text: cellText(percentages, true),
+          texttemplate: "%{text}", colorbar: { title: { text: "Row %" } },
+          hovertemplate: binary
+            ? "<b>%{customdata[2]}</b><br>Actual: %{y}<br>Predicted: %{x}<br>Row share: %{customdata[1]:.1f}%<br>Cases: %{customdata[0]:,}<extra></extra>"
+            : "Actual: %{y}<br>Predicted: %{x}<br>Row share: %{customdata[1]:.1f}%<br>Cases: %{customdata[0]:,}<extra></extra>" }
+      : { type: "heatmap", z: matrix, x: labels, y: labels, colorscale: "Blues", xgap: 1, ygap: 1,
+          customdata, text: cellText(matrix, false), texttemplate: "%{text}",
+          colorbar: { title: { text: "Cases" } }, hovertemplate: binary
+            ? "<b>%{customdata[2]}</b><br>Actual: %{y}<br>Predicted: %{x}<br>Cases: %{customdata[0]:,}<br>Row share: %{customdata[1]:.1f}%<extra></extra>"
+            : "Actual: %{y}<br>Predicted: %{x}<br>Cases: %{customdata[0]:,}<br>Row share: %{customdata[1]:.1f}%<extra></extra>" }]}
+      xTitle="Predicted class" yTitle="Actual class" reverseY
+      caption={showPercentages
+        ? "Row percentages: each actual class totals 100%. Hover a cell for its case count."
+        : "Counts show cases. Hover a cell for its share of that actual class."} /> : null}
     {rocCurves.length ? <EvidenceChart title="ROC curve" data={[
       ...rocCurves.map((curve) => ({ type: "scatter", mode: "lines", name: curve.label, x: curve.points.map((point) => point.false_positive_rate), y: curve.points.map((point) => point.true_positive_rate) })),
       { type: "scatter", mode: "lines", name: "Random", x: [0, 1], y: [0, 1], line: { dash: "dash", color: "#9aa1b2" } },
@@ -586,16 +667,18 @@ function ClusteringCharts({ diagnostics }: { diagnostics: Record<string, unknown
   </>;
 }
 
-function EvidenceChart({ title, data, xTitle, yTitle, action }: {
+function EvidenceChart({ title, data, xTitle, yTitle, action, reverseY = false, caption }: {
   title: string;
   data: Array<Record<string, unknown>>;
   xTitle?: string;
   yTitle?: string;
   action?: ReactNode;
+  reverseY?: boolean;
+  caption?: ReactNode;
 }) {
   return <section className="model-evidence-chart"><header className="model-evidence-chart__header"><h3>{title}</h3>{action}</header><Suspense fallback={<Loading label="Loading visualization…" />}>
-    <PlotlyChart data={data} layout={{ autosize: true, height: 310, margin: { l: 55, r: 15, t: 15, b: 55 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "#f8f9fc", barmode: "group", xaxis: { title: { text: xTitle }, automargin: true }, yaxis: { title: { text: yTitle }, automargin: true }, legend: { orientation: "h", y: 1.12 }, font: { family: "Inter, system-ui, sans-serif", size: 10, color: "#4e5870" } }} config={{ displayModeBar: false, responsive: true }} useResizeHandler style={{ width: "100%" }} />
-  </Suspense></section>;
+    <PlotlyChart data={data} layout={{ autosize: true, height: 310, margin: { l: 55, r: 15, t: 15, b: 55 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "#f8f9fc", barmode: "group", xaxis: { title: { text: xTitle }, automargin: true }, yaxis: { title: { text: yTitle }, automargin: true, autorange: reverseY ? "reversed" : true }, legend: { orientation: "h", y: 1.12 }, font: { family: "Inter, system-ui, sans-serif", size: 10, color: "#4e5870" } }} config={{ displayModeBar: false, responsive: true }} useResizeHandler style={{ width: "100%" }} />
+  </Suspense>{caption && <p className="evidence-chart-caption">{caption}</p>}</section>;
 }
 
 function AnalysisPanel({ projectId, run, successfulModels }: {
