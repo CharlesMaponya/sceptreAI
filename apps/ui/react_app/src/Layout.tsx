@@ -6,7 +6,6 @@ import {
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
 import { api, getSession, signOut } from "./api";
-import { Badge } from "./components/ui";
 import { cx, initials } from "./lib";
 import type { Project } from "./types";
 
@@ -69,7 +68,6 @@ export function Layout() {
     <main className="shell__main" id="main-content">
       <header className="topbar"><button className="icon-button topbar__menu" onClick={() => setOpen(true)} aria-label="Open menu"><Menu /></button>
         <div className="topbar__trail"><FolderKanban size={17} /><span>{current?.name || "Projects"}</span></div>
-        <div className="topbar__status"><Badge status="ok">Platform online</Badge></div>
       </header>
       <div className="page"><Outlet /></div>
     </main>

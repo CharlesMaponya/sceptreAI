@@ -52,7 +52,8 @@ export function RunsPage() {
       description="Compare candidates, inspect diagnostics, and challenge a model before promotion." />
     {!runs.data?.length
       ? <Card><EmptyState icon={<BarChart3 />} title="No experiment results yet"
-          description="Launch a training run to compare model candidates and build an evidence trail." /></Card>
+          description="Launch a training run to compare model candidates and build an evidence trail."
+          action={<Link className="button button--primary" to={`/projects/${projectId}/training`}><Play size={15} />Configure training</Link>} /></Card>
       : <div className="runs-layout">
           <Card className="run-list">
             <div className="run-list__head"><b>Training runs</b><span>{runs.data.length}</span></div>
@@ -215,7 +216,7 @@ function ModelEvidence({ projectId, runId, entry, task, metricDirections, resour
     <div className="model-tabs" role="tablist" aria-label={`${entry.model} evidence`}>
       {(["metrics", "diagnostics", "resources", "parameters", "pipeline"] as const).map((name) =>
         <button key={name} role="tab" aria-selected={tab === name} className={tab === name ? "active" : ""}
-          onClick={() => setTab(name)}>{titleCase(name)}</button>)}
+          onClick={() => setTab(name)}>{name === "pipeline" ? "Pipeline & features" : titleCase(name)}</button>)}
     </div>
     {tab === "metrics" && <section><h3>Metrics</h3><div className="metric-pills">
       {Object.entries(entry.metrics).map(([name, value]) => <span key={name}>
@@ -342,7 +343,9 @@ function CorrelationEvidence({ diagnostics }: { diagnostics: Record<string, unkn
   const evidence = diagnostics.correlated_features as CorrelationDiagnostics | undefined;
   const before = evidence?.before;
   const after = evidence?.after;
-  if (!before?.columns?.length || !before.values?.length) return null;
+  if (!before?.columns?.length || !before.values?.length) {
+    return <Notice>Correlation heatmaps are unavailable for this model. Retrain it to capture feature-selection evidence.</Notice>;
+  }
   const removals = evidence?.removed_features || [];
   const heatmap = (matrix: CorrelationMatrix) => [{
     type: "heatmap", z: matrix.values, x: matrix.columns, y: matrix.columns,
@@ -518,14 +521,33 @@ function ModelDiagnosticCharts({ diagnostics, task }: {
 }
 
 function ClassificationCharts({ diagnostics }: { diagnostics: Record<string, unknown> }) {
+  const [showPercentages, setShowPercentages] = useState(false);
   const labels = Array.isArray(diagnostics.labels) ? diagnostics.labels.map(String) : [];
   const matrix = Array.isArray(diagnostics.confusion_matrix) ? diagnostics.confusion_matrix as number[][] : [];
+  const percentages = matrix.map((row) => {
+    const total = row.reduce((sum, value) => sum + value, 0);
+    return row.map((value) => total ? (value / total) * 100 : 0);
+  });
   const rocCurves = Array.isArray(diagnostics.roc_curves) ? diagnostics.roc_curves as Curve[] : [];
   const precisionRecall = Array.isArray(diagnostics.precision_recall_curves) ? diagnostics.precision_recall_curves as Curve[] : [];
+  const positiveLabel = typeof diagnostics.positive_label === "string"
+    ? diagnostics.positive_label
+    : rocCurves.length === 1 ? rocCurves[0].label : "";
+  const positiveLabelSource = typeof diagnostics.positive_label_source === "string"
+    ? diagnostics.positive_label_source
+    : positiveLabel ? "legacy_class_order" : "";
   const report = diagnostics.classification_report as Record<string, Record<string, number>> | undefined;
   const reportLabels = report ? Object.keys(report).filter((label) => typeof report[label] === "object" && "precision" in report[label]) : [];
   return <>
-    {matrix.length ? <EvidenceChart title="Confusion matrix" data={[{ type: "heatmap", z: matrix, x: labels, y: labels, colorscale: "Blues", text: matrix.map((row) => row.map(String)), texttemplate: "%{text}", hovertemplate: "Actual %{y}<br>Predicted %{x}<br>Count %{z}<extra></extra>" }]} xTitle="Predicted" yTitle="Actual" /> : null}
+    {matrix.length ? <EvidenceChart title="Confusion matrix" action={<div className="confusion-controls">
+      {positiveLabel && <span>Positive: <b>{positiveLabel}</b>{positiveLabelSource === "legacy_class_order" ? " · legacy default" : ""}</span>}
+      <div className="chart-toggle" role="group" aria-label="Confusion matrix values">
+        <button type="button" aria-pressed={!showPercentages} onClick={() => setShowPercentages(false)}>Counts</button>
+        <button type="button" aria-pressed={showPercentages} onClick={() => setShowPercentages(true)}>Percentages by actual class</button>
+      </div>
+    </div>} data={[showPercentages
+      ? { type: "heatmap", z: percentages, x: labels, y: labels, zmin: 0, zmax: 100, colorscale: "Blues", text: percentages.map((row) => row.map((value) => `${value.toFixed(1)}%`)), texttemplate: "%{text}", hovertemplate: "Actual %{y}<br>Predicted %{x}<br>Share %{z:.1f}%<extra></extra>" }
+      : { type: "heatmap", z: matrix, x: labels, y: labels, colorscale: "Blues", text: matrix.map((row) => row.map(String)), texttemplate: "%{text}", hovertemplate: "Actual %{y}<br>Predicted %{x}<br>Count %{z}<extra></extra>" }]} xTitle="Predicted" yTitle="Actual" /> : null}
     {rocCurves.length ? <EvidenceChart title="ROC curve" data={[
       ...rocCurves.map((curve) => ({ type: "scatter", mode: "lines", name: curve.label, x: curve.points.map((point) => point.false_positive_rate), y: curve.points.map((point) => point.true_positive_rate) })),
       { type: "scatter", mode: "lines", name: "Random", x: [0, 1], y: [0, 1], line: { dash: "dash", color: "#9aa1b2" } },
@@ -564,13 +586,14 @@ function ClusteringCharts({ diagnostics }: { diagnostics: Record<string, unknown
   </>;
 }
 
-function EvidenceChart({ title, data, xTitle, yTitle }: {
+function EvidenceChart({ title, data, xTitle, yTitle, action }: {
   title: string;
   data: Array<Record<string, unknown>>;
   xTitle?: string;
   yTitle?: string;
+  action?: ReactNode;
 }) {
-  return <section className="model-evidence-chart"><h3>{title}</h3><Suspense fallback={<Loading label="Loading visualization…" />}>
+  return <section className="model-evidence-chart"><header className="model-evidence-chart__header"><h3>{title}</h3>{action}</header><Suspense fallback={<Loading label="Loading visualization…" />}>
     <PlotlyChart data={data} layout={{ autosize: true, height: 310, margin: { l: 55, r: 15, t: 15, b: 55 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "#f8f9fc", barmode: "group", xaxis: { title: { text: xTitle }, automargin: true }, yaxis: { title: { text: yTitle }, automargin: true }, legend: { orientation: "h", y: 1.12 }, font: { family: "Inter, system-ui, sans-serif", size: 10, color: "#4e5870" } }} config={{ displayModeBar: false, responsive: true }} useResizeHandler style={{ width: "100%" }} />
   </Suspense></section>;
 }

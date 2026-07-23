@@ -65,7 +65,8 @@ export interface Estimator {
   cost_tier: string; default_selected: boolean;
 }
 export interface TrainingPayload {
-  dataset_version_id: ID; target_column: string | null; evaluation_column: string | null;
+  dataset_version_id: ID; target_column: string | null; positive_label: string | null;
+  evaluation_column: string | null;
   task_type: TaskType; primary_metric: string; prefer_gpu: boolean; expected_minutes: number;
   candidate_limit: number; candidate_models: string[]; optimization_iterations: number;
   cv_folds: number;

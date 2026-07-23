@@ -61,6 +61,7 @@ from automl_api.training.evaluation import (
     classification_evaluation,
     clustering_evaluation,
     cross_validation_scoring,
+    default_binary_positive_label,
     metric_direction,
     regression_evaluation,
     resolve_primary_metric,
@@ -202,6 +203,11 @@ def _fit_model(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
         raise ValueError("At least 10 rows with a non-missing target are required.")
     if run.task_type in {TaskType.REGRESSION, TaskType.TIME_SERIES}:
         target = pd.to_numeric(target, errors="raise")
+    elif run.params.get("positive_label") is None and target.nunique() == 2:
+        run.params = {
+            **run.params,
+            "positive_label": default_binary_positive_label(target),
+        }
     features = _normalize_temporal_features(features)
 
     train_x, test_x, train_y, test_y = _supervised_split(features, target, run.task_type)
@@ -267,6 +273,7 @@ def _fit_model(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
         model=best_model,
         params={
             "winner": winner["model"],
+            "positive_label": run.params.get("positive_label"),
             "excluded_leakage_columns": excluded_leakage_columns,
             "deduplicated_rows": duplicate_row_count,
             **best_params,
@@ -410,6 +417,11 @@ def _fit_candidate(
                 test_x,
                 test_y,
                 predictions,
+                positive_label=(
+                    str(run.params["positive_label"])
+                    if run.params.get("positive_label") is not None
+                    else None
+                ),
             )
         else:
             metrics, diagnostics = regression_evaluation(
@@ -1310,6 +1322,10 @@ def _persist_training_success(
                 persisted_run.params.get("excluded_leakage_columns", []),
             ),
             "deduplicated_rows": result.params.get("deduplicated_rows", 0),
+            "positive_label": result.params.get(
+                "positive_label",
+                persisted_run.params.get("positive_label"),
+            ),
         }
         for name, value in result.metrics.items():
             db.add(

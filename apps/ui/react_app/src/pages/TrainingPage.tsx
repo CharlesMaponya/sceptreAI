@@ -33,6 +33,12 @@ const PRIMARY_METRICS: Record<TaskType, Array<{ value: string; label: string }>>
   ],
 };
 
+interface TrainingProfileResult {
+  feature_profiles_json: Record<string, {
+    distribution?: Array<{ label: string; count: number }>;
+  }>;
+}
+
 export function TrainingPage() {
   const { projectId = "" } = useParams();
   const navigate = useNavigate();
@@ -41,6 +47,7 @@ export function TrainingPage() {
   const [versionId, setVersionId] = useState("");
   const [task, setTask] = useState<TaskType>("classification");
   const [target, setTarget] = useState("");
+  const [positiveLabel, setPositiveLabel] = useState("");
   const [primaryMetric, setPrimaryMetric] = useState("balanced_accuracy");
   const [models, setModels] = useState<string[]>([]);
   const [minutes, setMinutes] = useState(10);
@@ -65,6 +72,15 @@ export function TrainingPage() {
     queryKey: ["profile", versionId],
     enabled: Boolean(versionId),
     queryFn: () => api<ProfileJob | null>(`/projects/${projectId}/datasets/${datasetId}/versions/${versionId}/profile-jobs/latest`),
+    refetchInterval: (query) => query.state.data
+      && ["queued", "precheck_running", "running"].includes(query.state.data.status) ? 2000 : false,
+  });
+  const profileResult = useQuery({
+    queryKey: ["profile-result", latestProfile.data?.id],
+    enabled: latestProfile.data?.status === "succeeded" && Boolean(latestProfile.data.target_column),
+    queryFn: () => api<TrainingProfileResult>(
+      `/projects/${projectId}/datasets/${datasetId}/versions/${versionId}/profile-jobs/${latestProfile.data!.id}/result`,
+    ),
   });
   useEffect(() => {
     const inferred = latestProfile.data?.overview_json?.task_inference?.task_type;
@@ -73,6 +89,21 @@ export function TrainingPage() {
     }
     if (inferred) setTask(inferred);
   }, [latestProfile.data?.id, latestProfile.data?.target_column, latestProfile.data?.overview_json?.task_inference?.task_type, columns]);
+  const positiveOptions = useMemo(() => {
+    const distribution = target
+      ? profileResult.data?.feature_profiles_json?.[target]?.distribution || []
+      : [];
+    return distribution.length === 2 ? distribution : [];
+  }, [profileResult.data, target]);
+  useEffect(() => {
+    if (task !== "classification" || positiveOptions.length !== 2) {
+      setPositiveLabel("");
+      return;
+    }
+    if (positiveOptions.some((item) => item.label === positiveLabel)) return;
+    const ranked = [...positiveOptions].sort((left, right) => left.count - right.count);
+    setPositiveLabel(ranked[0].count < ranked[1].count ? ranked[0].label : "");
+  }, [positiveLabel, positiveOptions, task]);
   useEffect(() => {
     if (!PRIMARY_METRICS[task].some((metric) => metric.value === primaryMetric)) {
       setPrimaryMetric(PRIMARY_METRICS[task][0].value);
@@ -83,10 +114,11 @@ export function TrainingPage() {
   useEffect(() => { if (estimators.data) setModels(estimators.data.filter((item) => item.default_selected).map((item) => item.name)); }, [estimators.data]);
   const payload = useMemo<TrainingPayload>(() => ({
     dataset_version_id: versionId, target_column: task === "clustering" ? null : target,
+    positive_label: task === "classification" ? positiveLabel || null : null,
     evaluation_column: null, task_type: task, primary_metric: primaryMetric,
     prefer_gpu: gpu, expected_minutes: minutes,
     candidate_limit: models.length, candidate_models: models, optimization_iterations: iterations, cv_folds: folds,
-  }), [versionId, target, task, primaryMetric, gpu, minutes, models, iterations, folds]);
+  }), [versionId, target, positiveLabel, task, primaryMetric, gpu, minutes, models, iterations, folds]);
   const estimate = useMutation({ mutationFn: () => api<TrainingEstimate>(`/projects/${projectId}/training/estimate`, json("POST", payload)) });
   const launch = useMutation({
     mutationFn: () => api(`/projects/${projectId}/training/runs`, json("POST", { ...payload, run_name: runName, params: {} })),
@@ -97,6 +129,31 @@ export function TrainingPage() {
   if (datasets.error) return <ErrorState error={datasets.error} retry={() => datasets.refetch()} />;
   if (!datasets.data?.length) return <><PageHeader eyebrow="Model training" title="Train a model" description="Configure an evidence-led experiment with governed compute." />
     <Card><div className="prerequisite"><Database /><h2>Data comes first</h2><p>Upload and profile a dataset before configuring training.</p><Button onClick={() => navigate(`/projects/${projectId}/data`)}>Go to data<ArrowRight size={16} /></Button></div></Card></>;
+  if (versions.isLoading) return <Loading label="Checking dataset versions…" />;
+  if (versions.error) return <ErrorState error={versions.error} retry={() => versions.refetch()} />;
+  if (versions.data && !versions.data.length) return <>
+    <PageHeader eyebrow="Model training" title="Add a dataset version"
+      description="Training requires an available, profiled dataset version." />
+    <Card><div className="prerequisite"><Database /><h2>No dataset version is available</h2>
+      <p>Upload a dataset before configuring training.</p>
+      <Button onClick={() => navigate(`/projects/${projectId}/data`)}>Go to data<ArrowRight size={16} /></Button>
+    </div></Card>
+  </>;
+  if (!versionId || latestProfile.isLoading) return <Loading label="Checking training prerequisites…" />;
+  if (latestProfile.error) return <ErrorState error={latestProfile.error} retry={() => latestProfile.refetch()} />;
+  if (!latestProfile.data || latestProfile.data.status !== "succeeded") return <>
+    <PageHeader eyebrow="Model training" title="Profile data before training"
+      description="Training uses the target, task, and safeguards confirmed by a completed profile." />
+    <Card><div className="prerequisite"><Database /><h2>Complete the data profile</h2>
+      <p>{latestProfile.data && ["queued", "precheck_running", "running"].includes(latestProfile.data.status)
+        ? "Profiling is still running. Return when it completes."
+        : "Choose a target and complete profiling before configuring this run."}</p>
+      <Button onClick={() => navigate(`/projects/${projectId}`)}>Go to profile setup<ArrowRight size={16} /></Button>
+    </div></Card>
+  </>;
+  const profileMatchesConfiguration = task === "clustering"
+    ? latestProfile.data.target_column == null
+    : target === latestProfile.data.target_column;
 
   return <>
     <PageHeader eyebrow="Model training" title="Configure training" description="Sceptre estimates resource needs before anything reaches the cluster." />
@@ -108,6 +165,13 @@ export function TrainingPage() {
         <div className="task-grid">{(["classification", "regression", "time_series", "clustering"] as TaskType[]).map((value) =>
           <button key={value} className={task === value ? "active" : ""} onClick={() => { setTask(value); estimate.reset(); }}><i>{task === value && <Check size={13} />}</i><b>{titleCase(value)}</b></button>)}</div>
         {task !== "clustering" && <label>Target column<select value={target} onChange={(e) => { setTarget(e.target.value); estimate.reset(); }}>{columns.map((column) => <option key={column}>{column}</option>)}</select><small>The outcome the model will predict.</small></label>}
+        {task === "classification" && positiveOptions.length === 2 && <label>Positive class<select required value={positiveLabel} onChange={(e) => { setPositiveLabel(e.target.value); estimate.reset(); }}>
+          {!positiveLabel && <option value="" disabled>Select the event of interest</option>}
+          {positiveOptions.map((item) => <option value={item.label} key={item.label}>{item.label} · {item.count.toLocaleString()} rows</option>)}</select>
+          <small>{positiveOptions[0].count === positiveOptions[1].count
+            ? "These classes are balanced, so you must choose the event of interest."
+            : "The minority class is suggested; change it if your event of interest is different."}</small></label>}
+        {!profileMatchesConfiguration && <Notice tone="danger">This target does not match the completed profile. Return to the project overview and reprofile before training.</Notice>}
         <label>Primary leaderboard metric<select value={primaryMetric} onChange={(e) => { setPrimaryMetric(e.target.value); estimate.reset(); }}>
           {PRIMARY_METRICS[task].map((metric) => <option value={metric.value} key={metric.value}>{metric.label}</option>)}</select><small>Models will be ranked by this metric.</small></label>
       </div></Card>
@@ -132,8 +196,8 @@ export function TrainingPage() {
       </div></Card>
     </div>
     <aside className="launch-card"><Card><span className="eyebrow">Launch summary</span><h2>{runName || "New training run"}</h2>
-      <dl><div><dt>Dataset</dt><dd>{selectedDataset?.name} · v{version?.version_number}</dd></div><div><dt>Task</dt><dd>{titleCase(task)}</dd></div><div><dt>Target</dt><dd>{task === "clustering" ? "Unsupervised" : target || "—"}</dd></div><div><dt>Ranking metric</dt><dd>{PRIMARY_METRICS[task].find((metric) => metric.value === primaryMetric)?.label}</dd></div><div><dt>Models</dt><dd>{models.length} candidates</dd></div></dl>
-      {!estimate.data ? <><Notice><Info size={16} /> Review compute requirements before launch.</Notice><Button className="full" disabled={!versionId || !models.length || (task !== "clustering" && !target)} loading={estimate.isPending} onClick={() => estimate.mutate()}><Cpu size={16} />Estimate resources</Button></>
+      <dl><div><dt>Dataset</dt><dd>{selectedDataset?.name} · v{version?.version_number}</dd></div><div><dt>Task</dt><dd>{titleCase(task)}</dd></div><div><dt>Target</dt><dd>{task === "clustering" ? "Unsupervised" : target || "—"}</dd></div>{task === "classification" && <div><dt>Positive class</dt><dd>{positiveLabel || "Auto · minority class"}</dd></div>}<div><dt>Ranking metric</dt><dd>{PRIMARY_METRICS[task].find((metric) => metric.value === primaryMetric)?.label}</dd></div><div><dt>Models</dt><dd>{models.length} candidates</dd></div></dl>
+      {!estimate.data ? <><Notice><Info size={16} /> Review compute requirements before launch.</Notice><Button className="full" disabled={!versionId || !models.length || !profileMatchesConfiguration || (task !== "clustering" && !target) || (task === "classification" && positiveOptions.length === 2 && !positiveLabel)} loading={estimate.isPending} onClick={() => estimate.mutate()}><Cpu size={16} />Estimate resources</Button></>
         : <div className="estimate"><div className="estimate__metrics"><Metric label="CPU" value={`${estimate.data.cpu_request_cores} cores`} /><Metric label="Memory" value={`${estimate.data.memory_request_mb} MiB`} /></div><div className="estimate__metrics"><Metric label="Accelerator" value={estimate.data.gpu_requested ? titleCase(estimate.data.gpu_vendor || "GPU") : "CPU"} /><Metric label="Node" value={estimate.data.selected_node || "Pending"} /></div><div className="estimate__metrics"><Metric label="Core-hours" value={estimate.data.estimated_core_hours} /><Metric label="Free CPU" value={estimate.data.capacity.available_cpu_cores.toFixed(1)} /></div>
           {estimate.data.warnings.length > 0 && <Notice>{estimate.data.warnings.join(" ")}</Notice>}{estimate.data.blockers.length > 0 && <Notice tone="danger">{estimate.data.blockers.join(" ")}</Notice>}
           <label>Run name<input value={runName} maxLength={255} onChange={(e) => setRunName(e.target.value)} /></label>

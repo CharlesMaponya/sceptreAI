@@ -173,11 +173,11 @@ export function ProjectOverview() {
       </div></Card>
       <Card className="journey"><h2>Model journey</h2><p className="muted">A clear path from raw data to an operating model.</p>
         {[
-          ["1", "Data", "Upload, target, and profile", profileSucceeded ? "complete" : "current"],
-          ["2", "Train", "Compare candidates", succeeded ? "complete" : profileSucceeded ? "current" : "upcoming"],
-          ["3", "Validate", "Challenge and explain", succeeded ? "current" : "upcoming"],
-          ["4", "Operate", "Promote and monitor", "upcoming"],
-        ].map(([number, name, text, state]) => <div className={`journey__step journey__step--${state}`} key={name}><i>{state === "complete" ? "✓" : number}</i><div><b>{name}</b><small>{text}</small></div></div>)}</Card>
+          ["1", "Data", "Upload, target, and profile", "data"],
+          ["2", "Train", "Compare candidates", "training"],
+          ["3", "Validate", "Challenge and explain", "runs"],
+          ["4", "Operate", "Promote and monitor", "operations"],
+        ].map(([number, name, text, to]) => <Link className="journey__step" to={to} key={name}><i>{number}</i><div><b>{name}</b><small>{text}</small></div><ArrowRight size={15} /></Link>)}</Card>
     </div>
     <Card className="section-card"><div className="section-heading"><div><h2>Recent training</h2><p>Latest activity across this project.</p></div><Link to="runs">View all <ArrowRight size={15} /></Link></div>
       {recent.length ? <div className="table-wrap"><table><thead><tr><th>Run</th><th>Task</th><th>Status</th><th>Created</th></tr></thead><tbody>{recent.map((run) =>
