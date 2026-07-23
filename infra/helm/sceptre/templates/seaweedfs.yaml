@@ -1,57 +1,58 @@
-{{- if .Values.minio.enabled }}
-{{- if .Values.minio.persistence.enabled }}
+{{- if .Values.seaweedfs.enabled }}
+{{- if .Values.seaweedfs.persistence.enabled }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "sceptre.fullname" . }}-minio
+  name: {{ include "sceptre.fullname" . }}-seaweedfs
   labels:
     {{- include "sceptre.labels" . | nindent 4 }}
-  {{- if .Values.minio.persistence.retainOnDelete }}
+  {{- if .Values.seaweedfs.persistence.retainOnDelete }}
   annotations:
     helm.sh/resource-policy: keep
   {{- end }}
 spec:
-  accessModes: [{{ .Values.minio.persistence.accessMode | quote }}]
-  {{- if .Values.minio.persistence.storageClass }}
-  storageClassName: {{ .Values.minio.persistence.storageClass | quote }}
+  accessModes: [{{ .Values.seaweedfs.persistence.accessMode | quote }}]
+  {{- if .Values.seaweedfs.persistence.storageClass }}
+  storageClassName: {{ .Values.seaweedfs.persistence.storageClass | quote }}
   {{- end }}
   resources:
     requests:
-      storage: {{ .Values.minio.persistence.size }}
+      storage: {{ .Values.seaweedfs.persistence.size }}
 ---
 {{- end }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "sceptre.fullname" . }}-minio
+  name: {{ include "sceptre.fullname" . }}-seaweedfs
   labels:
     {{- include "sceptre.labels" . | nindent 4 }}
 spec:
   type: ClusterIP
   selector:
     {{- include "sceptre.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/component: minio
+    app.kubernetes.io/component: seaweedfs
   ports:
-    - {name: api, port: 9000, targetPort: api}
-    - {name: console, port: 9001, targetPort: console}
+    - {name: s3, port: 8333, targetPort: s3}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "sceptre.fullname" . }}-minio
+  name: {{ include "sceptre.fullname" . }}-seaweedfs
   labels:
     {{- include "sceptre.labels" . | nindent 4 }}
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       {{- include "sceptre.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: minio
+      app.kubernetes.io/component: seaweedfs
   template:
     metadata:
       labels:
         {{- include "sceptre.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: minio
+        app.kubernetes.io/component: seaweedfs
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
@@ -60,33 +61,34 @@ spec:
         {{- end }}
       {{- end }}
       containers:
-        - name: minio
-          image: {{ include "sceptre.image" (dict "root" . "image" .Values.minio.image) | quote }}
-          imagePullPolicy: {{ .Values.minio.image.pullPolicy }}
-          args: ["server", "/data", "--console-address", ":9001"]
+        - name: seaweedfs
+          image: {{ include "sceptre.image" (dict "root" . "image" .Values.seaweedfs.image) | quote }}
+          imagePullPolicy: {{ .Values.seaweedfs.image.pullPolicy }}
+          args: ["mini", "-dir=/data"]
           envFrom:
             - secretRef:
                 name: {{ include "sceptre.objectStoreSecretName" . }}
+          env:
+            - {name: S3_BUCKET, value: {{ .Values.seaweedfs.bucket | quote }}}
           ports:
-            - {name: api, containerPort: 9000}
-            - {name: console, containerPort: 9001}
+            - {name: s3, containerPort: 8333}
           readinessProbe:
-            httpGet: {path: /minio/health/ready, port: api}
+            tcpSocket: {port: s3}
             periodSeconds: 5
             failureThreshold: 12
           livenessProbe:
-            httpGet: {path: /minio/health/live, port: api}
+            tcpSocket: {port: s3}
             periodSeconds: 15
             failureThreshold: 4
           resources:
-            {{- toYaml .Values.minio.resources | nindent 12 }}
+            {{- toYaml .Values.seaweedfs.resources | nindent 12 }}
           volumeMounts:
             - {name: data, mountPath: /data}
       volumes:
         - name: data
-          {{- if .Values.minio.persistence.enabled }}
+          {{- if .Values.seaweedfs.persistence.enabled }}
           persistentVolumeClaim:
-            claimName: {{ include "sceptre.fullname" . }}-minio
+            claimName: {{ include "sceptre.fullname" . }}-seaweedfs
           {{- else }}
           emptyDir: {}
           {{- end }}

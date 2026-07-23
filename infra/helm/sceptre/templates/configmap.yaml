@@ -12,6 +12,7 @@ data:
   SMTP_FROM_EMAIL: {{ .Values.auth.passwordResetEmail.fromEmail | quote }}
   SMTP_STARTTLS: {{ .Values.auth.passwordResetEmail.startTls | quote }}
   SMTP_USE_SSL: {{ .Values.auth.passwordResetEmail.useSsl | quote }}
+  # Legacy adapter name retained for compatibility with existing Sceptre images and artifact URIs.
   OBJECT_STORE_TYPE: minio
   OBJECT_STORE_ENDPOINT: {{ include "sceptre.objectStoreEndpoint" . | quote }}
   OBJECT_STORE_BUCKET: {{ include "sceptre.objectStoreBucket" . | quote }}

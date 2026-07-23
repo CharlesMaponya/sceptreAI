@@ -26,7 +26,7 @@
     <img src="https://github.com/CharlesMaponya/sceptreAI/actions/workflows/ci.yml/badge.svg" alt="CI status">
   </a>
   <a href="https://www.python.org/downloads/">
-    <img src="https://img.shields.io/badge/Python-3.11%2B-3776AB.svg" alt="Python 3.11 or newer">
+    <img src="https://img.shields.io/badge/Python-3.12%2B-3776AB.svg" alt="Python 3.12 or newer">
   </a>
   <a href="#quality-engineering">
     <img src="https://img.shields.io/badge/Coverage%20gate-%E2%89%A540%25-brightgreen.svg" alt="Coverage gate 40 percent">
@@ -54,7 +54,7 @@ to the question every serious ML project eventually faces: **why should we trust
 this model, and can we operate it?**
 
 Sceptre runs on infrastructure you control. Compute-heavy work is isolated in
-disposable Kubernetes Jobs, while PostgreSQL, MinIO, and MLflow retain the
+disposable Kubernetes Jobs, while PostgreSQL, SeaweedFS, and MLflow retain the
 operational record. It is designed for shared environments where auditability,
 resource fairness, and reproducibility matter as much as raw model performance.
 
@@ -110,12 +110,12 @@ The implemented local-cluster boundary is documented in the
 | Stage | What Sceptre delivers |
 | --- | --- |
 | Secure the workspace | Registration, 24-hour access sessions, refresh-token rotation, project RBAC, and share links |
-| Bring the data | CSV, Parquet, Excel, JSON, and JSONL ingestion; immutable versions; content hashes; MinIO persistence |
+| Bring the data | CSV, Parquet, Excel, JSON, and JSONL ingestion; immutable versions; content hashes; S3-compatible object persistence |
 | Understand it | Full-dataset statistics, five-number summaries, distributions, missingness, quality flags, temporal inference, relationships, and Dask fallback |
 | Frame the problem | Classification, regression, clustering, and time-series inference with target reprofiling and reusable feature statistics |
 | Train efficiently | Up to 20 models per run, dynamic scikit-learn discovery, Bayesian tuning, adaptive resource requests, and isolated Kubernetes Jobs |
 | Choose with evidence | Progressive results, task-specific metrics, diagnostics, ranking, and additional candidates without retraining completed models |
-| Reproduce the work | MLflow parent and candidate runs backed by PostgreSQL, with candidate models mirrored to MinIO |
+| Reproduce the work | MLflow parent and candidate runs backed by PostgreSQL, with candidate models mirrored to object storage |
 | Challenge the model | External dataset validation with persisted metrics and diagnostic artifacts |
 | Explain the outcome | On-demand SHAP, cached historical explanations, legacy model reconstruction, and support for non-predictive clustering estimators |
 | Operate the winner | Project registry, staged promotion, explicit fallback, Evidently drift Jobs, generated model Dockerfiles, Kubernetes inference deployments, health reporting, and guarded cleanup |
@@ -136,7 +136,7 @@ CatBoost candidates are included when their optional dependencies are installed.
 ## Platform Workflow
 
 1. Create a project and assign access.
-2. Upload a dataset; Sceptre creates an immutable version in MinIO.
+2. Upload a dataset; Sceptre creates an immutable version in object storage.
 3. Profile the complete dataset and select or revise the target.
 4. Review inferred types, distributions, quality findings, and preparation steps.
 5. Select up to 20 compatible models and estimate cluster resources.
@@ -154,10 +154,10 @@ flowchart LR
     User[Analyst or Data Scientist] --> UI[React + TypeScript]
     UI --> API[FastAPI]
     API --> PG[(PostgreSQL)]
-    API --> MINIO[(MinIO)]
+    API --> OBJECTS[(SeaweedFS / S3)]
     API --> K8S[Kubernetes API]
     K8S --> JOBS[Training and Analysis Jobs]
-    JOBS --> MINIO
+    JOBS --> OBJECTS
     JOBS --> MLFLOW[MLflow]
     MLFLOW --> PG
     MLFLOW --> PVC[(Artifact PVC)]
@@ -168,7 +168,7 @@ flowchart LR
 | React + TypeScript | Authenticated, responsive workflows and progressive result rendering |
 | FastAPI | Business rules, authorization, metadata APIs, and Kubernetes admission |
 | PostgreSQL | Users, RBAC, projects, datasets, runs, metrics, and MLflow metadata |
-| MinIO | Dataset versions, profiles, diagnostics, SHAP output, and durable model mirrors |
+| SeaweedFS / S3 | Dataset versions, profiles, diagnostics, SHAP output, and durable model mirrors |
 | MLflow | Experiment, candidate, metric, parameter, and model tracking |
 | Kubernetes Jobs | Isolated training, validation, and explainability execution |
 | Inference runtime | Generic FastAPI prediction service deployed from registered model artifacts |
@@ -206,7 +206,7 @@ Kubernetes ResourceQuota and the scheduler remain the final resource guardrails.
 
 This section is written for a data analyst who has not operated Kubernetes
 before. Follow either the Windows path or the Linux path from top to bottom. You
-do **not** need to install Python, Node.js, PostgreSQL, MinIO, or MLflow on your
+do **not** need to install Python, Node.js, PostgreSQL, SeaweedFS, or MLflow on your
 computer. Kubernetes pulls the published Sceptre images and one Helm command
 installs the complete application.
 
@@ -223,7 +223,7 @@ The few infrastructure words used below mean:
 | Pod | One running application component |
 | PVC | Local disk space retained for application data |
 
-The Helm release creates PostgreSQL, MinIO, MLflow, the API, the React UI,
+The Helm release creates PostgreSQL, SeaweedFS, MLflow, the API, the React UI,
 namespace-scoped permissions, training configuration, and persistent volumes.
 It also creates the `automl` and `mlflow` databases, applies every Alembic
 migration, creates all 13 application tables, and prevents the API from starting
@@ -363,7 +363,7 @@ function New-SceptreSecret {
 
 $JwtSecret = New-SceptreSecret
 $DatabasePassword = New-SceptreSecret
-$MinioPassword = New-SceptreSecret
+$ObjectStorePassword = New-SceptreSecret
 
 @"
 auth:
@@ -371,9 +371,9 @@ auth:
 postgresql:
   auth:
     password: "$DatabasePassword"
-minio:
+seaweedfs:
   auth:
-    rootPassword: "$MinioPassword"
+    secretKey: "$ObjectStorePassword"
 "@ | Set-Content -Encoding utf8 .\.env.sceptre-local.yaml
 ```
 
@@ -394,7 +394,7 @@ helm test sceptre --namespace sceptre
 ```
 
 All long-running pods should become `Running`, migration/bootstrap Jobs should
-be `Complete`, and the PostgreSQL, MinIO, and MLflow PVCs should be `Bound`.
+be `Complete`, and the PostgreSQL, SeaweedFS, and MLflow PVCs should be `Bound`.
 
 #### Windows 5: Open Sceptre
 
@@ -535,7 +535,7 @@ private registry, or source-code checkout is required.
 umask 077
 JWT_SECRET="$(openssl rand -hex 32)"
 DATABASE_PASSWORD="$(openssl rand -hex 32)"
-MINIO_PASSWORD="$(openssl rand -hex 32)"
+OBJECT_STORE_PASSWORD="$(openssl rand -hex 32)"
 
 cat > .env.sceptre-local.yaml <<EOF
 auth:
@@ -543,12 +543,12 @@ auth:
 postgresql:
   auth:
     password: "${DATABASE_PASSWORD}"
-minio:
+seaweedfs:
   auth:
-    rootPassword: "${MINIO_PASSWORD}"
+    secretKey: "${OBJECT_STORE_PASSWORD}"
 EOF
 
-unset JWT_SECRET DATABASE_PASSWORD MINIO_PASSWORD
+unset JWT_SECRET DATABASE_PASSWORD OBJECT_STORE_PASSWORD
 
 helm upgrade --install sceptre oci://registry-1.docker.io/maponyacharles/sceptre \
   --version "$CHART_VERSION" \
@@ -661,7 +661,7 @@ kubectl --namespace sceptre logs <pod-name> --all-containers --tail=200
 
 ### Uninstall, retain data, or reset completely
 
-Remove the application while retaining the default PostgreSQL, MinIO, and MLflow
+Remove the application while retaining the default PostgreSQL, SeaweedFS, and MLflow
 PVCs:
 
 ```bash
@@ -673,7 +673,7 @@ data. To permanently delete all local Sceptre data:
 
 ```bash
 helm uninstall sceptre --namespace sceptre --ignore-not-found
-kubectl --namespace sceptre delete pvc sceptre-postgresql sceptre-minio sceptre-mlflow --ignore-not-found
+kubectl --namespace sceptre delete pvc sceptre-postgresql sceptre-seaweedfs sceptre-mlflow --ignore-not-found
 kubectl delete namespace sceptre --ignore-not-found
 ```
 
@@ -802,10 +802,10 @@ The most important operational settings are:
 | `PUBLIC_APP_URL` | `http://localhost:8080` | Browser URL used in password-reset links |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM_EMAIL` | Unset, `587`, unset | Optional production password-reset email transport |
 | `SMTP_USERNAME`, `SMTP_PASSWORD` | Unset | Optional SMTP credentials; store these in a Kubernetes Secret |
-| `OBJECT_STORE_ENDPOINT` | Environment-specific | MinIO or compatible object-store endpoint |
+| `OBJECT_STORE_ENDPOINT` | Environment-specific | S3-compatible object-store endpoint |
 | `OBJECT_STORE_BUCKET` | `automl` | Shared bucket used by the API and Kubernetes Jobs |
-| `OBJECT_STORE_ACCESS_KEY` | Environment-specific | MinIO access key |
-| `OBJECT_STORE_SECRET_KEY` | Environment-specific | MinIO secret key |
+| `OBJECT_STORE_ACCESS_KEY` | Environment-specific | Object-store access key |
+| `OBJECT_STORE_SECRET_KEY` | Environment-specific | Object-store secret key |
 | `INFERENCE_IMAGE` | Derived from the installed Sceptre version | Kubernetes model-serving runtime |
 | `INFERENCE_SERVICE_ACCOUNT` | Chart-generated | Service account assigned to model deployments |
 | `INFERENCE_SERVICE_TYPE` | `ClusterIP` | Internal Service type used for model APIs |
@@ -821,14 +821,14 @@ Pull requests and pushes to `main` or `dev` must pass all CI gates:
 | --- | --- | --- |
 | Ruff | `ruff check apps packages alembic scripts tests` | Correctness, imports, modernization, and style |
 | Tests and coverage | `pytest tests/ -v --tb=short --cov --cov-fail-under=40` | Behavioral, API, UI, training, and analysis verification |
-| Syntax | `python -m compileall apps packages alembic scripts tests` | Python 3.11 syntax and import compilation |
+| Syntax | `python -m compileall apps packages alembic scripts tests` | Python 3.12 syntax and import compilation |
 | React | `npm test -- --run && npm run lint && npm run build` | UI workflows, types, lint, and production bundle |
 | Helm | `helm lint` plus all profile renders | Portable packaging and manifest regressions |
 
 The suite covers ingestion, temporal inference, exact and Dask profiling,
 authentication, route contracts, React workflows, Kubernetes resource
 estimation, adaptive deadlines, task metrics, estimator discovery, leaderboards,
-external validation, MinIO model recovery, historical reconstruction, SHAP
+external validation, object-store model recovery, historical reconstruction, SHAP
 percentage contributions, registry fallback, generated Dockerfiles, inference
 contracts, drift summaries, deployment manifests, and guarded cleanup.
 
@@ -867,9 +867,9 @@ docs/                  Architecture, schema, and decision records
 - Horizontal model training requires additional Kubernetes nodes and a
   distributed backend such as Dask or Ray; an HPA cannot divide one in-memory
   scikit-learn fit across nodes.
-- Historical models created before MinIO mirroring are reconstructed from the
+- Historical models created before object-store mirroring are reconstructed from the
   immutable source dataset and saved parameters before explainability runs.
-- PostgreSQL, MinIO, and MLflow PVCs require environment-specific backup,
+- PostgreSQL, SeaweedFS, and MLflow PVCs require environment-specific backup,
   retention, and disaster-recovery policies.
 - The default Helm values contain local-development credentials; override them
   or use existing Secrets before sharing a cluster.
@@ -886,7 +886,7 @@ docs/                  Architecture, schema, and decision records
 Create a feature branch, keep changes scoped, add tests for behavioral changes,
 and open a pull request against `dev`. Promote a tested release with a pull
 request from `dev` to protected `main`; use `hotfix/*` only for emergencies.
-Every merge to `main` publishes the six supported Docker images to
+Every merge to `main` publishes the eight supported Docker images to
 `maponyacharles/sceptreai`, verifies them, and then publishes the matching Helm
 chart to `maponyacharles/sceptre`. Images use component-and-version tags such as
 `api-<version>`; the chart uses the same semantic version. Change releases only

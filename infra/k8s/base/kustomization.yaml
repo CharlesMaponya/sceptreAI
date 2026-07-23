@@ -3,10 +3,10 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - configmap.yaml
-  - minio-secret.yaml
-  - minio-pvc.yaml
-  - minio-deployment.yaml
-  - minio-service.yaml
+  - seaweedfs-secret.yaml
+  - seaweedfs-pvc.yaml
+  - seaweedfs-deployment.yaml
+  - seaweedfs-service.yaml
   - platform-secret.yaml
   - postgres-secret.yaml
   - postgres-init-configmap.yaml

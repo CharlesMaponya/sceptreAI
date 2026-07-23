@@ -2,12 +2,12 @@ catboost>=1.2,<2
 evidently>=0.4,<1
 lightgbm>=4.3,<5
 minio>=7.2,<8
-mlflow==3.1.0
+mlflow==3.14.0
 numpy>=1.26,<2
 openpyxl>=3.1,<4
 pandas>=2.2,<3
 psycopg[binary]>=3.1,<4
-pyarrow>=16,<20
+pyarrow>=23.0.1,<25
 scikit-learn==1.5.1
 scikit-optimize==0.10.2
 shap>=0.45,<1

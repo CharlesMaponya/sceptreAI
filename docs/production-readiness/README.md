@@ -56,7 +56,7 @@ Use the following documents together:
 | Access | Loopback port-forward over HTTP | Private ingress with TLS and controlled users | Managed TLS ingress or gateway, DNS, authentication, authorization, and traffic policy |
 | Values | One local image-distribution profile plus a Git-ignored local secret override | Environment-specific non-secret values and centrally delivered Secrets | Reviewed, version-controlled non-secret production values and externally managed Secrets |
 | Images | Locally built and imported images; `pullPolicy: Never` is acceptable | Registry-hosted versioned images | Registry-hosted images pinned by immutable digest, scanned, and signed according to organization policy |
-| Data services | Bundled single-replica PostgreSQL, MinIO, and MLflow | Bundled services only for disposable testing; external services for persistent shared data | HA or managed PostgreSQL, object storage, and MLflow with tested backup and recovery |
+| Data services | Bundled single-replica PostgreSQL, SeaweedFS, and MLflow | Bundled services only for disposable testing; external services for persistent shared data | HA or managed PostgreSQL, object storage, and MLflow with tested backup and recovery |
 | Persistence | Local PVCs; retention is convenience, not backup | Explicit retention and backup policy for any important test data | Encryption, retention, backup, point-in-time or equivalent recovery, and restore evidence |
 | Scale | One user or a small trusted group; CPU-first | Quotas, metrics, bounded concurrency, and production-like tests | Measured capacity, multi-node failure tolerance, alerts, and documented scaling limits |
 | Data | Synthetic, public, or safely de-identified | Synthetic or approved non-production copies | Data classified and governed for the environment |
@@ -65,6 +65,8 @@ Use the following documents together:
 ### Promotion rules
 
 - Promote the same tested image digests; do not rebuild images per environment.
+- Select actively supported LTS or stable runtime lines no more than two major
+  releases behind current, and pin the exact patch release or immutable digest.
 - Keep local cluster profiles local. `values-local.yaml`, `values-k3d.yaml`,
   `values-kind.yaml`, `values-minikube.yaml`, and `values-microk8s.yaml` change
   image distribution and must never be used as a production base.
@@ -89,7 +91,7 @@ The current compatibility baseline includes:
   with thin local-cluster and accelerator profiles.
 - API, UI, MLflow, CPU training, NVIDIA/RAPIDS training, Intel training, and
   generic inference image definitions.
-- Bundled single-replica PostgreSQL, MinIO, and MLflow for local use, with
+- Bundled single-replica PostgreSQL, SeaweedFS, and MLflow for local use, with
   external PostgreSQL, S3-compatible object storage, and MLflow configuration.
 - Revision-specific Alembic migration Jobs, fresh-database bootstrap, a
   13-table schema verifier, and API startup gating on a complete schema.
@@ -129,6 +131,7 @@ dedicated time-series store, alert delivery, or automatic retraining execution.
 | `sceptre-training-intel` | Intel-enabled training Jobs |
 | `sceptre-inference` | Generic model-serving Deployment |
 | `sceptre-mlflow` | Bundled local MLflow server |
+| `sceptre-seaweedfs` | Bundled local S3-compatible object storage, rebuilt from the pinned upstream release with security-fixed Go dependencies |
 
 There is no separate orchestrator, durable queue service, model-builder image, or
 worker control plane in the current release. Those are production target
@@ -139,7 +142,7 @@ boundaries, not current components.
 | Helm release owns | Cluster or platform operator owns |
 | --- | --- |
 | Sceptre UI, API, training configuration, inference configuration, and namespace RBAC | Kubernetes lifecycle, nodes, CNI, DNS, time synchronization, and control-plane availability |
-| Bundled development PostgreSQL, MinIO, and MLflow, when enabled | Production-grade database, object storage, MLflow, encryption, backup, and disaster recovery |
+| Bundled development PostgreSQL, SeaweedFS, and MLflow, when enabled | Production-grade database, object storage, MLflow, encryption, backup, and disaster recovery |
 | Application schema migration and verification | Database creation and privileges for external services, plus pre-upgrade backups |
 | ClusterIP Services and optional Ingress objects | Ingress/Gateway controller, certificates, public DNS, WAF, load balancer, and traffic policy |
 | Resource requests/limits and optional namespace quota objects | Metrics Server, monitoring stack, node capacity, autoscaling, and cost controls |
@@ -163,16 +166,16 @@ The following are code or operational gaps, not configuration suggestions.
 | Profiling durability | Profiling runs in a FastAPI-owned thread pool and incomplete jobs are resumed at API startup | API restarts and multiple API replicas do not provide safe exactly-once or leased execution |
 | Scheduling | FastAPI performs admission and creates Kubernetes resources directly; capacity exhaustion is rejected instead of queued | There is no durable fair queue or separately scalable orchestrator |
 | Failure domain | All selected candidates run in one training Job and process | One candidate or process failure can affect the complete tournament |
-| Availability | API and UI default to one replica; bundled PostgreSQL, MinIO, and MLflow are single replica; there are no PDBs or topology rules | A node or voluntary disruption can interrupt the control plane or data services |
+| Availability | API and UI default to one replica; bundled PostgreSQL, SeaweedFS, and MLflow are single replica; there are no PDBs or topology rules | A node or voluntary disruption can interrupt the control plane or data services |
 | Network and workload security | No NetworkPolicy is installed; training Jobs do not set a restricted container security context, the GPU image remains root, and training receives platform database and shared object-store credentials | Namespace RBAC alone does not isolate traffic; a parser, dependency, or image compromise can cross tenant and data-service boundaries |
-| Secrets | Defaults contain known JWT, PostgreSQL, and MinIO credentials, and production mode does not reject them at startup or chart render | Default values are unsafe anywhere shared; production must fail closed on weak/default secrets and use workload-specific, least-privilege credentials |
+| Secrets | Defaults contain known JWT, PostgreSQL, and object-store credentials, and production mode does not reject them at startup or chart render | Default values are unsafe anywhere shared; production must fail closed on weak/default secrets and use workload-specific, least-privilege credentials |
 | Serving security | Generic inference endpoints have no built-in authentication, authorization, rate limit, or request quota; enabling per-model ingress exposes those endpoints directly and bypasses the authenticated platform gateway | Keep model Services internal until every direct path has authentication, authorization, quotas, TLS, logging, abuse controls, and tenant isolation |
 | Model artifact integrity | Inference downloads a model object and passes it directly to `joblib.load()` without checking the registered digest | Object-store tampering can become code execution; verify an expected immutable digest before deserialization and use read-only, prefix-scoped serving credentials |
 | Application hardening | Readiness and inference handlers return raw exception text, while the UI proxy does not set a reviewed CSP, HSTS, clickjacking, MIME-sniffing, or referrer policy | Public responses can disclose internal details, and browser compromise has greater impact while tokens remain script-readable |
 | Model delivery | A Dockerfile is generated as evidence, but no model builder scans, signs, pushes, resolves, or deploys a model-specific immutable image | Current one-click deployment is a functional baseline, not a governed supply-chain boundary |
 | Observability | Health probes, run status, logs, optional resource telemetry, deployment-linked metric/drift history, a governance dashboard, and versioned audit evidence exist | Operator alert delivery, durable telemetry retention policy, platform SLOs, and on-call runbooks still require deployment-specific integration and validation |
 | Recovery | Retained PVCs and migrations exist; backup/restore automation does not | Restore time, restore point, credential continuity, and rollback are unproven |
-| Release safety | Unit/frontend/migration/render CI and image SBOM/provenance generation exist, but CI has no dependency, secret, SAST, or container vulnerability gate and third-party Actions are not commit-pinned | Live cluster upgrade, rollback, disaster recovery, security, performance, supply-chain, and multi-cluster qualification are incomplete |
+| Release safety | Unit/frontend/migration/render CI, image SBOM/provenance generation, and an actionable HIGH/CRITICAL container vulnerability gate exist, but CI has no dependency, secret, or SAST gate and third-party Actions are not commit-pinned | Live cluster upgrade, rollback, disaster recovery, security, performance, supply-chain, and multi-cluster qualification are incomplete |
 
 Relevant implementation evidence:
 
@@ -231,7 +234,7 @@ provides every dependency and a usable Kubernetes context.
 A local installation is successful when:
 
 - the selected Kubernetes context and default StorageClass are correct;
-- PostgreSQL, MinIO, MLflow, API, and UI are ready;
+- PostgreSQL, SeaweedFS, MLflow, API, and UI are ready;
 - bootstrap and migration Jobs completed;
 - `helm test sceptre -n sceptre` passes;
 - registration and login work through the UI;
@@ -248,7 +251,7 @@ This proves local functionality only. It does not satisfy a production gate.
 Retained PVCs survive a normal Helm uninstall, but deleting the cluster, resetting
 Docker Desktop Kubernetes, or deleting PVCs destroys local data. Preserve the
 same generated secret override when reconnecting to retained PostgreSQL and
-MinIO claims. Keep local `.env` and secret override files readable only by their
+SeaweedFS claims. Keep local `.env` and secret override files readable only by their
 owner, for example mode `0600` on Linux. Use only disposable or separately
 backed-up data locally.
 
@@ -275,7 +278,7 @@ between a workstation and production. At minimum:
 - record known deviations so a non-production success is not mistaken for
   production evidence.
 
-Bundled PostgreSQL, MinIO, and MLflow are acceptable for disposable shared tests.
+Bundled PostgreSQL, SeaweedFS, and MLflow are acceptable for disposable shared tests.
 They are not a high-availability architecture.
 
 ## 7. Production Qualification Target
@@ -351,7 +354,7 @@ closed.
 | Images | Reachable authenticated registry and immutable digest for every Sceptre runtime image |
 | API/UI scale | Replica, disruption, and placement policy proven safe by multi-replica tests |
 | PostgreSQL | `postgresql.enabled=false`, external connection Secret, TLS, HA, backup, restore, and migration privileges |
-| Object storage | `minio.enabled=false`, pre-provisioned bucket, TLS endpoint, existing Secret or future workload identity, retention, versioning, and recovery |
+| Object storage | `seaweedfs.enabled=false`, pre-provisioned bucket, TLS endpoint, existing Secret or future workload identity, retention, versioning, and recovery |
 | MLflow | `mlflow.enabled=false` with an external protected tracking service and durable artifact store |
 | Authentication | Open registration and verification policy, approved account provisioning, secure token/session policy, identity integration, and login/registration/reset throttling |
 | Exposure | UI ingress/gateway class, trusted certificate, DNS, proxy limits/timeouts, security headers, error redaction, and request protection |
@@ -371,7 +374,7 @@ Prefer existing Secrets populated by an external secret-management process:
 | `externalObjectStore.existingSecret` | Configured access-key and secret-key fields |
 | `global.imagePullSecrets` | Registry credentials in Kubernetes pull-secret format |
 
-Current external object storage is a MinIO/S3-compatible static-key adapter. It
+Current external object storage uses an S3-compatible static-key adapter. It
 does not yet provide native Azure Blob/GCS adapters, cloud workload identity,
 session-token handling, or chart-managed custom CA mounts. Do not claim those
 capabilities until their implementation and tests exist.
