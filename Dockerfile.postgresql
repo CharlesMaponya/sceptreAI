@@ -1,0 +1,15 @@
+FROM golang:1.25.12-alpine3.23 AS gosu-build
+
+ARG GOSU_COMMIT=6456aaa0f3c854d199d0f037f068eb97515b7513
+RUN apk add --no-cache git
+WORKDIR /src
+RUN git init \
+    && git remote add origin https://github.com/tianon/gosu.git \
+    && git fetch --depth 1 origin "${GOSU_COMMIT}" \
+    && git checkout --detach FETCH_HEAD \
+    && CGO_ENABLED=0 go build -trimpath -ldflags="-d -w" -o /usr/local/bin/gosu .
+
+FROM postgres:16.14-alpine3.24
+COPY --from=gosu-build /usr/local/bin/gosu /usr/local/bin/gosu
+RUN apk upgrade --no-cache \
+    && gosu --version

@@ -12,6 +12,48 @@
         }
       }
     },
+    "postgresql": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "image": {
+          "type": "object",
+          "properties": {
+            "tag": {"type": "string"},
+            "digest": {"type": "string"}
+          }
+        }
+      }
+    },
+    "seaweedfs": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "image": {
+          "type": "object",
+          "properties": {
+            "tag": {"type": "string"},
+            "digest": {"type": "string"}
+          }
+        },
+        "bucket": {"type": "string", "minLength": 1},
+        "persistence": {
+          "type": "object",
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "size": {"type": "string", "minLength": 1}
+          }
+        }
+      },
+      "required": ["enabled"]
+    },
+    "mlflow": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "workers": {"type": "integer", "minimum": 1}
+      }
+    },
     "training": {
       "type": "object",
       "properties": {

@@ -7,7 +7,7 @@ installation profile, not an application runtime dependency.
 
 | Layer | Ownership |
 | --- | --- |
-| Application | FastAPI, React, training/analysis, inference, MinIO, and MLflow clients |
+| Application | FastAPI, React, training/analysis, inference, S3-compatible storage, and MLflow clients |
 | Workload | Namespace-scoped Jobs, pod status/logs, Deployments, Services, and optional Ingresses |
 | Capability | Optional quota, metrics, GPU, ingress, PriorityClass, and shared-cache discovery |
 | Packaging | One generic Helm chart plus thin image-distribution and accelerator profiles |
@@ -52,11 +52,11 @@ PriorityClasses but cannot mutate them.
 | Ingress controller | ClusterIP plus `kubectl port-forward` remains available |
 | PriorityClass | Omitted by default; configured absence is a warning |
 | Job TTL controller | Project cleanup can delete completed Jobs |
-| Shared RWX storage | Per-pod `emptyDir` cache is used; MinIO is authoritative |
+| Shared RWX storage | Per-pod `emptyDir` cache is used; object storage is authoritative |
 
 ## Storage and lifecycle
 
-Bundled PostgreSQL, MinIO, and MLflow use independently configurable durable
+Bundled PostgreSQL, SeaweedFS, and MLflow use independently configurable durable
 claims. A cluster default StorageClass is used unless one is supplied. The chart
 can instead consume external services and existing Secrets.
 
@@ -66,7 +66,7 @@ and MLflow databases; Alembic then creates the 13 application tables, constraint
 and indexes. API pods do not start until both the current migration revision and
 all registered application tables are present. External PostgreSQL remains
 responsible for database creation and credentials, while the same migration Job
-owns application table lifecycle. PostgreSQL, MinIO, and MLflow claims are
+owns application table lifecycle. PostgreSQL, SeaweedFS, and MLflow claims are
 retained on uninstall by default; explicit PVC deletion is the delete-data
 operation.
 

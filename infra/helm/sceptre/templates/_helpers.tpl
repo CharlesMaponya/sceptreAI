@@ -54,31 +54,31 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
 {{- define "sceptre.objectStoreSecretName" -}}
-{{- if .Values.minio.enabled -}}
-{{- default (printf "%s-minio" (include "sceptre.fullname" .)) .Values.minio.auth.existingSecret -}}
+{{- if .Values.seaweedfs.enabled -}}
+{{- default (printf "%s-seaweedfs" (include "sceptre.fullname" .)) .Values.seaweedfs.auth.existingSecret -}}
 {{- else -}}
-{{- required "externalObjectStore.existingSecret is required when minio.enabled=false" .Values.externalObjectStore.existingSecret -}}
+{{- required "externalObjectStore.existingSecret is required when seaweedfs.enabled=false" .Values.externalObjectStore.existingSecret -}}
 {{- end -}}
 {{- end -}}
 
 {{- define "sceptre.objectStoreAccessKey" -}}
-{{- ternary .Values.minio.auth.accessKeyKey .Values.externalObjectStore.accessKeyKey .Values.minio.enabled -}}
+{{- ternary .Values.seaweedfs.auth.accessKeyKey .Values.externalObjectStore.accessKeyKey .Values.seaweedfs.enabled -}}
 {{- end -}}
 
 {{- define "sceptre.objectStoreSecretKey" -}}
-{{- ternary .Values.minio.auth.secretKeyKey .Values.externalObjectStore.secretKeyKey .Values.minio.enabled -}}
+{{- ternary .Values.seaweedfs.auth.secretKeyKey .Values.externalObjectStore.secretKeyKey .Values.seaweedfs.enabled -}}
 {{- end -}}
 
 {{- define "sceptre.objectStoreEndpoint" -}}
-{{- if .Values.minio.enabled -}}
-{{- printf "http://%s-minio:9000" (include "sceptre.fullname" .) -}}
+{{- if .Values.seaweedfs.enabled -}}
+{{- printf "http://%s-seaweedfs:8333" (include "sceptre.fullname" .) -}}
 {{- else -}}
-{{- required "externalObjectStore.endpoint is required when minio.enabled=false" .Values.externalObjectStore.endpoint -}}
+{{- required "externalObjectStore.endpoint is required when seaweedfs.enabled=false" .Values.externalObjectStore.endpoint -}}
 {{- end -}}
 {{- end -}}
 
 {{- define "sceptre.objectStoreBucket" -}}
-{{- ternary .Values.minio.bucket .Values.externalObjectStore.bucket .Values.minio.enabled -}}
+{{- ternary .Values.seaweedfs.bucket .Values.externalObjectStore.bucket .Values.seaweedfs.enabled -}}
 {{- end -}}
 
 {{- define "sceptre.mlflowTrackingUri" -}}

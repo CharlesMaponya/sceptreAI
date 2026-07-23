@@ -44,7 +44,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: pip
 
       - name: Install ruff
@@ -58,7 +58,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16.14-alpine3.24
         env:
           POSTGRES_DB: automl_test
           POSTGRES_USER: automl
@@ -77,7 +77,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: pip
 
       - name: Install dependencies
@@ -126,7 +126,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
           cache-dependency-path: apps/ui/react_app/package-lock.json
 
@@ -148,7 +148,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Check syntax with compileall
         run: python -m compileall apps packages alembic scripts tests
@@ -192,6 +192,8 @@ jobs:
       - name: Assert portable defaults
         run: |
           rendered=/tmp/sceptre-values.yaml
+          image=docker.io/maponyacharles/sceptreai
+          version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml)"
           ! grep -q 'kind: ClusterRole' "$rendered"
           ! grep -q 'nodeSelector:' "$rendered"
           ! grep -qi 'minikube' "$rendered"
@@ -204,6 +206,10 @@ jobs:
           grep -q 'waiting for complete API database schema' "$rendered"
           grep -Fq 'resources: ["jobs/status"]' "$rendered"
           grep -Fq 'resources: ["deployments/status"]' "$rendered"
+          grep -Fq "image: \"${image}:seaweedfs-${version}\"" "$rendered"
+          grep -Fq 'OBJECT_STORE_ENDPOINT: "http://sceptre-seaweedfs:8333"' "$rendered"
+          grep -Fq "image: \"${image}:postgresql-${version}\"" "$rendered"
+          ! grep -Fq 'minio/minio' "$rendered"
 
       - name: Assert public Docker Hub image distribution
         run: |
@@ -248,7 +254,7 @@ jobs:
           while true
           do
             available=true
-            for component in api ui mlflow training-cpu training-intel inference
+            for component in api ui mlflow postgresql seaweedfs training-cpu training-intel inference
             do
               if docker buildx imagetools inspect \
                 "${IMAGE}:${component}-${version}" >/dev/null 2>&1; then
@@ -290,6 +296,12 @@ jobs:
           - component: mlflow
             context: .
             file: Dockerfile.mlflow
+          - component: seaweedfs
+            context: .
+            file: Dockerfile.seaweedfs
+          - component: postgresql
+            context: .
+            file: Dockerfile.postgresql
           - component: training-cpu
             context: .
             file: Dockerfile.training.cpu
@@ -339,6 +351,12 @@ jobs:
               docker run --rm --entrypoint python "$candidate" -m py_compile \
                 /opt/automl/mlflow_migrate_if_initialized.py
               ;;
+            seaweedfs)
+              docker run --rm --entrypoint /usr/bin/weed "$candidate" version
+              ;;
+            postgresql)
+              docker run --rm --entrypoint postgres "$candidate" --version
+              ;;
             training-cpu)
               docker run --rm --entrypoint python "$candidate" -c \
                 "import automl_api, catboost, lightgbm, sklearn, xgboost; assert automl_api.__version__ == '${VERSION}'"
@@ -348,6 +366,17 @@ jobs:
                 "import automl_api; assert automl_api.__version__ == '${VERSION}'"
               ;;
           esac
+
+      - name: Reject actionable high and critical vulnerabilities
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          docker run --rm \
+            --volume /var/run/docker.sock:/var/run/docker.sock \
+            --volume "$RUNNER_TEMP/trivy-cache:/root/.cache/" \
+            aquasec/trivy@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f \
+            image --scanners vuln --severity CRITICAL,HIGH \
+            --ignore-unfixed --exit-code 1 "${IMAGE}@${DIGEST}"
 
       - name: Save the candidate digest
         env:
@@ -410,6 +439,17 @@ jobs:
           docker run --rm --entrypoint python "${IMAGE}@${DIGEST}" -c \
             "import automl_api; assert automl_api.__version__ == '${VERSION}'"
 
+      - name: Reject actionable high and critical vulnerabilities
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          docker run --rm \
+            --volume /var/run/docker.sock:/var/run/docker.sock \
+            --volume "$RUNNER_TEMP/trivy-cache:/root/.cache/" \
+            aquasec/trivy@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f \
+            image --scanners vuln --severity CRITICAL,HIGH \
+            --ignore-unfixed --exit-code 1 "${IMAGE}@${DIGEST}"
+
       - name: Save the candidate digest
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
@@ -454,7 +494,7 @@ jobs:
         env:
           VERSION: ${{ needs.release-preflight.outputs.version }}
         run: |
-          for component in api ui mlflow training-cpu training-intel inference
+          for component in api ui mlflow postgresql seaweedfs training-cpu training-intel inference
           do
             digest="$(cat "$RUNNER_TEMP/digests/$component")"
             docker buildx imagetools create \
@@ -466,7 +506,7 @@ jobs:
         env:
           VERSION: ${{ needs.release-preflight.outputs.version }}
         run: |
-          for component in api ui mlflow training-cpu training-intel inference
+          for component in api ui mlflow postgresql seaweedfs training-cpu training-intel inference
           do
             docker buildx imagetools inspect "${IMAGE}:${component}-${VERSION}" >/dev/null
           done
@@ -478,6 +518,8 @@ jobs:
         run: |
           printf '%s' "$DOCKERHUB_TOKEN" | helm registry login registry-1.docker.io \
             --username maponyacharles --password-stdin
+          sed -i "s/SCEPTRE_RELEASE_VERSION/${VERSION}/g" \
+            infra/helm/sceptre/Chart.yaml
           helm package infra/helm/sceptre --destination "$RUNNER_TEMP" \
             --version "$VERSION" --app-version "$VERSION"
           helm push "$RUNNER_TEMP/sceptre-${VERSION}.tgz" \

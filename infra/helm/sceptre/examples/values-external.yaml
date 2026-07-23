@@ -1,6 +1,6 @@
 postgresql:
   enabled: false
-minio:
+seaweedfs:
   enabled: false
 
 # Create these Secrets before installation. The platform Secret must contain
@@ -10,7 +10,7 @@ platform:
 auth:
   existingSecret: sceptre-auth
 externalObjectStore:
-  endpoint: https://minio.example.test
+  endpoint: https://s3.example.test
   bucket: sceptre
   existingSecret: sceptre-external-object-store
 mlflow:

@@ -20,10 +20,10 @@
 
 - CSV, Parquet, Excel, JSON, and JSONL upload contracts: implemented
 - Dataset versions and content hashing: implemented
-- Remote MinIO object storage with legacy local-read fallback: implemented
+- Remote S3-compatible object storage with legacy local-read fallback: implemented
 - CSV and JSON metadata extraction: implemented
 - Parquet and Excel storage/versioning with deferred rich parsing: implemented
-- Embedded MinIO manifests: implemented
+- Embedded SeaweedFS manifests: implemented
 - Ephemeral per-Job dataset cache with optional shared PVC: implemented
 - Default or explicitly configured StorageClass through Helm: implemented
 
@@ -35,7 +35,7 @@
 - Full-dataset profiling with automatic memory-aware Dask partitioning: implemented
 - Durable staged profiling jobs with restart resume and cancellation: implemented
 - Progressive feature batches, polling, SSE progress, and lazy feature retrieval: implemented
-- MinIO-cached feature, relationship, preparation, and complete profile artifacts: implemented
+- Object-store-cached feature, relationship, preparation, and complete profile artifacts: implemented
 - Automatic background profiling after dataset upload: implemented
 - Target replacement with feature reuse and task-dependent reprofiling: implemented
 - Pearson and Cramer relationship summaries against the selected target: implemented     
@@ -62,7 +62,7 @@
 - Candidate failure isolation, winner persistence, and leaderboard API/UI: implemented
 - MLflow parent/candidate runs, project tags, leaderboard artifact, and winning model: implemented
 - In-cluster PostgreSQL for application and MLflow metadata with persistent storage: implemented
-- MLflow candidate models mirrored to MinIO for durable validation and recovery: implemented
+- MLflow candidate models mirrored to object storage for durable validation and recovery: implemented
 - HTTP and authenticated WebSocket log streaming: implemented
 - Optional Kubernetes Metrics API workload telemetry with graceful fallback: implemented
 - Kubernetes/metadata reconciliation before multi-user admission checks: implemented
@@ -72,7 +72,7 @@
 
 - Holdout and K-fold diagnostics during model tournaments: implemented
 - External validation against compatible dataset versions: implemented
-- Task-specific metrics and stored MinIO diagnostic artifacts: implemented
+- Task-specific metrics and stored object-store diagnostic artifacts: implemented
 - On-demand isolated SHAP jobs with mixed-type feature support: implemented
 - Progressive React validation and explainability results: implemented
 - Failure parsing and user-facing remediation messages: implemented

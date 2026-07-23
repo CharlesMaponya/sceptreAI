@@ -108,9 +108,11 @@ class MinioObjectStore(ObjectStore):
         from minio import Minio
 
         if not settings.object_store_endpoint:
-            raise ValueError("OBJECT_STORE_ENDPOINT is required for remote MinIO storage.")
+            raise ValueError(
+                "OBJECT_STORE_ENDPOINT is required for remote S3-compatible storage."
+            )
         if not settings.object_store_access_key or not settings.object_store_secret_key:
-            raise ValueError("MinIO access and secret keys are required.")
+            raise ValueError("Object-store access and secret keys are required.")
 
         parsed_endpoint = urlparse(settings.object_store_endpoint)
         endpoint = parsed_endpoint.netloc or parsed_endpoint.path
@@ -142,7 +144,7 @@ class MinioObjectStore(ObjectStore):
     def read_bytes(self, uri: str) -> bytes:
         prefix = f"minio://{self.bucket}/"
         if not uri.startswith(prefix):
-            raise ValueError("Object URI does not belong to the configured MinIO store.")
+            raise ValueError("Object URI does not belong to the configured remote store.")
         key = uri.removeprefix(prefix).strip("/")
         response = None
         try:
@@ -152,7 +154,7 @@ class MinioObjectStore(ObjectStore):
             fallback_path = self.fallback.root / self.bucket / key
             if fallback_path.exists():
                 return fallback_path.read_bytes()
-            raise OSError(f"Could not read MinIO object '{key}': {exc}") from exc
+            raise OSError(f"Could not read object-store object '{key}': {exc}") from exc
         finally:
             if response is not None:
                 response.close()
@@ -161,7 +163,7 @@ class MinioObjectStore(ObjectStore):
     def read_head(self, uri: str, length: int = 4096) -> bytes:
         prefix = f"minio://{self.bucket}/"
         if not uri.startswith(prefix):
-            raise ValueError("Object URI does not belong to the configured MinIO store.")
+            raise ValueError("Object URI does not belong to the configured remote store.")
         key = uri.removeprefix(prefix).strip("/")
         response = None
         try:
@@ -172,7 +174,7 @@ class MinioObjectStore(ObjectStore):
             if fallback_path.exists():
                 with fallback_path.open("rb") as source:
                     return source.read(length)
-            raise OSError(f"Could not read MinIO object '{key}': {exc}") from exc
+            raise OSError(f"Could not read object-store object '{key}': {exc}") from exc
         finally:
             if response is not None:
                 response.close()
@@ -192,7 +194,7 @@ class MinioObjectStore(ObjectStore):
     def dataframe_source(self, uri: str) -> tuple[str, dict[str, object]]:
         prefix = f"minio://{self.bucket}/"
         if not uri.startswith(prefix):
-            raise ValueError("Object URI does not belong to the configured MinIO store.")
+            raise ValueError("Object URI does not belong to the configured remote store.")
         key = uri.removeprefix(prefix).strip("/")
         try:
             self.client.stat_object(self.bucket, key)
@@ -200,7 +202,7 @@ class MinioObjectStore(ObjectStore):
             fallback_path = self.fallback.root / self.bucket / key
             if fallback_path.exists():
                 return str(fallback_path.resolve()), {}
-            raise OSError(f"Could not locate MinIO object '{key}': {exc}") from exc
+            raise OSError(f"Could not locate object-store object '{key}': {exc}") from exc
         return (
             f"s3://{self.bucket}/{key}",
             {
@@ -213,7 +215,7 @@ class MinioObjectStore(ObjectStore):
     def delete(self, uri: str) -> None:
         prefix = f"minio://{self.bucket}/"
         if not uri.startswith(prefix):
-            raise ValueError("Object URI does not belong to the configured MinIO store.")
+            raise ValueError("Object URI does not belong to the configured remote store.")
         key = uri.removeprefix(prefix).strip("/")
         try:
             self.client.remove_object(self.bucket, key)
@@ -222,7 +224,7 @@ class MinioObjectStore(ObjectStore):
             if fallback_path.exists():
                 fallback_path.unlink()
                 return
-            raise OSError(f"Could not delete MinIO object '{key}': {exc}") from exc
+            raise OSError(f"Could not delete object-store object '{key}': {exc}") from exc
 
     def healthcheck(self) -> None:
         if not self.client.bucket_exists(self.bucket):
@@ -231,7 +233,7 @@ class MinioObjectStore(ObjectStore):
     def size(self, uri: str) -> int:
         prefix = f"minio://{self.bucket}/"
         if not uri.startswith(prefix):
-            raise ValueError("Object URI does not belong to the configured MinIO store.")
+            raise ValueError("Object URI does not belong to the configured remote store.")
         key = uri.removeprefix(prefix).strip("/")
         try:
             return int(self.client.stat_object(self.bucket, key).size)
@@ -239,7 +241,7 @@ class MinioObjectStore(ObjectStore):
             fallback_path = self.fallback.root / self.bucket / key
             if fallback_path.exists():
                 return fallback_path.stat().st_size
-            raise OSError(f"Could not stat MinIO object '{key}': {exc}") from exc
+            raise OSError(f"Could not stat object-store object '{key}': {exc}") from exc
 
 
 def get_object_store(settings: Settings | None = None) -> ObjectStore:
@@ -256,7 +258,7 @@ def get_object_store(settings: Settings | None = None) -> ObjectStore:
         ]
         if missing:
             raise ValueError(
-                "MinIO object storage is configured but required settings are missing: "
+                "Remote object storage is configured but required settings are missing: "
                 + ", ".join(missing)
                 + ". Set them before uploading datasets; refusing to fall back to the "
                 "local embedded store prevents training pods from losing access to uploads."

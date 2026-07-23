@@ -7,7 +7,7 @@ name = "smme-tabular-automl"
 version = "0.1.5"
 description = "SMME-safe tabular AutoML platform with FastAPI, React, PostgreSQL, and Kubernetes."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.13",
     "dask[dataframe]>=2024.8",
@@ -36,7 +36,7 @@ ml = [
     "catboost>=1.2",
     "evidently>=0.4",
     "lightgbm>=4.3",
-    "mlflow>=2.14",
+    "mlflow>=3.14,<4",
     "pandas>=2.2",
     "scikit-learn==1.5.1",
     "scikit-optimize==0.10.2",
@@ -50,9 +50,9 @@ k8s = [
 training = [
     "catboost>=1.2",
     "lightgbm>=4.3",
-    "mlflow>=2.14",
+    "mlflow>=3.14,<4",
     "openpyxl>=3.1",
-    "pyarrow>=16",
+    "pyarrow>=23.0.1",
     "scikit-learn>=1.5",
     "scikit-optimize>=0.10",
     "shap>=0.45,<1",
@@ -66,7 +66,7 @@ include = ["automl_api*", "automl_shared*"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

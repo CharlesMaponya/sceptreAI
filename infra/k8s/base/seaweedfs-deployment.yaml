@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: automl-seaweedfs
+  namespace: automl
+  labels:
+    app.kubernetes.io/name: automl-seaweedfs
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: automl-seaweedfs
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: automl-seaweedfs
+    spec:
+      containers:
+        - name: seaweedfs
+          image: docker.io/maponyacharles/sceptreai:seaweedfs-0.1.7
+          args:
+            - mini
+            - -dir=/data
+          envFrom:
+            - secretRef:
+                name: automl-seaweedfs-credentials
+          env:
+            - name: S3_BUCKET
+              value: automl
+          ports:
+            - name: s3
+              containerPort: 8333
+          readinessProbe:
+            tcpSocket:
+              port: s3
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            tcpSocket:
+              port: s3
+            periodSeconds: 15
+            failureThreshold: 4
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 300Mi
+          volumeMounts:
+            - name: seaweedfs-data
+              mountPath: /data
+      volumes:
+        - name: seaweedfs-data
+          persistentVolumeClaim:
+            claimName: automl-seaweedfs-data
