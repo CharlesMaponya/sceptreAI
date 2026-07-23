@@ -108,8 +108,10 @@ def classification_evaluation(
     test_x: pd.DataFrame,
     test_y: pd.Series,
     predictions: np.ndarray,
+    positive_label: str | None = None,
 ) -> tuple[dict[str, float], dict[str, Any]]:
     labels = list(getattr(fitted, "classes_", np.unique(test_y)))
+    positive_index = _binary_positive_index(labels, test_y, positive_label)
     metrics = {
         "accuracy": float(accuracy_score(test_y, predictions)),
         "balanced_accuracy": float(balanced_accuracy_score(test_y, predictions)),
@@ -143,26 +145,35 @@ def classification_evaluation(
             str(label): int(np.sum(predictions == label)) for label in labels
         },
     }
+    if positive_index is not None:
+        diagnostics["positive_label"] = str(labels[positive_index])
+        label_counts = [int(np.sum(np.asarray(test_y) == label)) for label in labels]
+        diagnostics["positive_label_source"] = "configured" if positive_label is not None else (
+            "legacy_class_order" if label_counts[0] == label_counts[1] else "minority_class"
+        )
     probabilities = _probabilities(fitted, test_x)
     scores = _decision_scores(fitted, test_x)
     try:
         if probabilities is not None:
             metrics["log_loss"] = float(log_loss(test_y, probabilities, labels=labels))
             if len(labels) == 2:
-                positive = probabilities[:, 1]
-                metrics["roc_auc"] = float(roc_auc_score(test_y, positive))
-                binary_y = (np.asarray(test_y) == labels[1]).astype(int)
+                assert positive_index is not None
+                positive = probabilities[:, positive_index]
+                binary_y = (np.asarray(test_y) == labels[positive_index]).astype(int)
+                metrics["roc_auc"] = float(roc_auc_score(binary_y, positive))
                 metrics["average_precision"] = float(average_precision_score(binary_y, positive))
                 metrics["brier_score"] = float(brier_score_loss(binary_y, positive))
                 metrics["gini"] = float(2 * metrics["roc_auc"] - 1)
                 diagnostics["roc_curves"] = [
-                    _roc_curve_payload(binary_y, positive, str(labels[1]))
+                    _roc_curve_payload(binary_y, positive, str(labels[positive_index]))
                 ]
                 diagnostics["precision_recall_curves"] = [
-                    _precision_recall_payload(binary_y, positive, str(labels[1]))
+                    _precision_recall_payload(binary_y, positive, str(labels[positive_index]))
                 ]
                 if matrix.shape == (2, 2):
-                    true_negative, false_positive, _, _ = matrix.ravel()
+                    negative_index = 1 - positive_index
+                    true_negative = matrix[negative_index, negative_index]
+                    false_positive = matrix[negative_index, positive_index]
                     denominator = true_negative + false_positive
                     if denominator:
                         metrics["specificity"] = float(true_negative / denominator)
@@ -197,20 +208,51 @@ def classification_evaluation(
                     )
                     for index, label in enumerate(labels)
                 ]
-        elif scores is not None:
-            metrics["roc_auc"] = float(roc_auc_score(test_y, scores))
-            if len(labels) == 2:
-                binary_y = (np.asarray(test_y) == labels[1]).astype(int)
-                metrics["gini"] = float(2 * metrics["roc_auc"] - 1)
-                diagnostics["roc_curves"] = [
-                    _roc_curve_payload(binary_y, np.asarray(scores), str(labels[1]))
-                ]
-                diagnostics["precision_recall_curves"] = [
-                    _precision_recall_payload(binary_y, np.asarray(scores), str(labels[1]))
-                ]
+        elif scores is not None and len(labels) == 2:
+            assert positive_index is not None
+            binary_y = (np.asarray(test_y) == labels[positive_index]).astype(int)
+            positive_scores = np.asarray(scores)
+            if positive_index == 0:
+                positive_scores = -positive_scores
+            metrics["roc_auc"] = float(roc_auc_score(binary_y, positive_scores))
+            metrics["gini"] = float(2 * metrics["roc_auc"] - 1)
+            diagnostics["roc_curves"] = [
+                _roc_curve_payload(binary_y, positive_scores, str(labels[positive_index]))
+            ]
+            diagnostics["precision_recall_curves"] = [
+                _precision_recall_payload(binary_y, positive_scores, str(labels[positive_index]))
+            ]
     except ValueError:
         pass
     return finite_metrics(metrics), diagnostics
+
+
+def default_binary_positive_label(target: pd.Series) -> str:
+    counts = target.value_counts()
+    if len(counts) != 2:
+        raise ValueError("A positive class can only be inferred for a binary target.")
+    minority = counts[counts == counts.min()].index.tolist()
+    if len(minority) != 1:
+        raise ValueError(
+            "The binary target is balanced. Select the positive class explicitly before training."
+        )
+    return str(minority[0])
+
+
+def _binary_positive_index(
+    labels: list[Any],
+    target: pd.Series,
+    requested: str | None,
+) -> int | None:
+    if len(labels) != 2:
+        return None
+    if requested is not None:
+        for index, label in enumerate(labels):
+            if str(label) == requested:
+                return index
+        raise ValueError(f"Positive label '{requested}' is not present in the fitted classes.")
+    counts = np.asarray([np.sum(np.asarray(target) == label) for label in labels])
+    return 1 if counts[1] <= counts[0] else 0
 
 
 def regression_evaluation(

@@ -5,7 +5,7 @@ import {
   Trash2, Upload,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api, getSession, json, uploadFormData } from "../api";
 import {
   Badge, Button, Card, EmptyState, ErrorState, Loading, Metric, Modal, Notice, PageHeader,
@@ -522,6 +522,7 @@ function RegisterModal({ projectId, initialRunId, initialModel, close, done }: {
         <Button disabled={!runId || !model} loading={register.isPending}
           onClick={() => register.mutate()}>Register model</Button></div>
     </div> : <EmptyState icon={<Activity />} title="No successful runs"
-      description="Complete a training run before registering a model." />}
+      description="Complete a training run before registering a model."
+      action={<Link className="button button--primary" to={`/projects/${projectId}/training`} onClick={close}>Configure training</Link>} />}
   </Modal>;
 }

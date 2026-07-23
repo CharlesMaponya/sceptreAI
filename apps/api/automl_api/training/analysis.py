@@ -118,6 +118,11 @@ def _execute_validation(
                 features,
                 target,
                 predictions,
+                positive_label=(
+                    str(run.params["positive_label"])
+                    if run.params.get("positive_label") is not None
+                    else None
+                ),
             )
         else:
             numeric_target = pd.to_numeric(target, errors="raise")

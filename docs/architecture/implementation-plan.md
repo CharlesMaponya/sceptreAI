@@ -40,7 +40,7 @@
 - Target replacement with feature reuse and task-dependent reprofiling: implemented
 - Pearson and Cramer relationship summaries against the selected target: implemented     
 - Type-aware preprocessing and feature engineering plans: implemented
-- Information Value and pairplot artifact generation: pending
+- Standalone profiling Information Value and pairplot artifacts: pending
 
 ## Phase 5: Training Orchestration
 
@@ -58,6 +58,7 @@
 - Full classification, regression, time-series, and clustering review metrics: implemented
 - Optional external clustering validation with fold means and deviations: implemented
 - Chronological holdout for time series and sampled silhouette ranking for clustering: implemented
+- Fold-local correlated-feature removal with task-aware scoring and before/after heatmaps: implemented
 - Candidate failure isolation, winner persistence, and leaderboard API/UI: implemented
 - MLflow parent/candidate runs, project tags, leaderboard artifact, and winning model: implemented
 - In-cluster PostgreSQL for application and MLflow metadata with persistent storage: implemented

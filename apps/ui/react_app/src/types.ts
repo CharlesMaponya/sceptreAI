@@ -65,7 +65,8 @@ export interface Estimator {
   cost_tier: string; default_selected: boolean;
 }
 export interface TrainingPayload {
-  dataset_version_id: ID; target_column: string | null; evaluation_column: string | null;
+  dataset_version_id: ID; target_column: string | null; positive_label: string | null;
+  evaluation_column: string | null;
   task_type: TaskType; primary_metric: string; prefer_gpu: boolean; expected_minutes: number;
   candidate_limit: number; candidate_models: string[]; optimization_iterations: number;
   cv_folds: number;
@@ -117,6 +118,7 @@ export interface LeaderboardEntry {
     feature_processing: Record<string, unknown>; parameters: Record<string, unknown>;
     diagram?: {
       input_gates?: string[];
+      correlation_filter?: { name: string; type: string; summary: string };
       transformer?: { name: string; type: string; branches: Array<{ key: string; label: string; steps: string[] }> };
       selector?: { name: string; type: string; summary: string } | null;
       estimator?: { name: string; type: string };

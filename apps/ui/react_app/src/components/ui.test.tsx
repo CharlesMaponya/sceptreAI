@@ -20,6 +20,17 @@ describe("shared UI primitives", () => {
     expect(close).toHaveBeenCalledOnce();
   });
 
+  it("keeps keyboard focus inside a modal", () => {
+    render(<Modal title="Edit project" onClose={() => undefined}><button>Save project</button></Modal>);
+    const close = screen.getByRole("button", { name: "Close" });
+    const save = screen.getByRole("button", { name: "Save project" });
+    expect(close).toHaveFocus();
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(save).toHaveFocus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(close).toHaveFocus();
+  });
+
   it("announces skeleton loading states", () => {
     render(<Loading label="Preparing project evidence…" />);
     expect(screen.getByRole("status")).toHaveTextContent("Preparing project evidence…");

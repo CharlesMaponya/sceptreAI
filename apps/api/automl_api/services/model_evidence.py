@@ -38,6 +38,10 @@ def feature_processing_contract(model_name: str) -> dict[str, Any]:
         "numeric_features": numeric,
         "categorical_and_text_features": categorical,
         "temporal_features": ["Normalize detected Unix timestamps to epoch days"],
+        "correlated_feature_removal": (
+            "Remove numeric pairs at |r| ≥ 0.90 using IV for binary classification, "
+            "mutual information for other supervised tasks, and completeness for clustering"
+        ),
         "supervised_feature_selection": (
             "Keep the top 80% of transformed features by mutual information"
         ),
@@ -240,9 +244,10 @@ def build_model_pipeline(
             "Feature selection",
             statuses[4],
             (
-                processing["supervised_feature_selection"]
+                f"{processing['correlated_feature_removal']}; then "
+                f"{processing['supervised_feature_selection'].lower()}."
                 if task_type != TaskType.CLUSTERING
-                else "Retain the transformed clustering feature space."
+                else processing["correlated_feature_removal"] + "."
             ),
         ),
         _stage(
@@ -293,6 +298,11 @@ def _pipeline_diagram(
             ),
             "Temporal normalization",
         ],
+        "correlation_filter": {
+            "name": "correlation filter",
+            "type": "CorrelatedFeatureFilter",
+            "summary": processing["correlated_feature_removal"],
+        },
         "transformer": {
             "name": "preprocessor",
             "type": "ColumnTransformer",

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, FolderKanban, Link2, Plus, Search } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api, json } from "../api";
 import { Badge, Button, Card, EmptyState, ErrorState, Loading, Modal, PageHeader } from "../components/ui";
 import { formatDate, initials } from "../lib";
@@ -41,11 +41,11 @@ export function ProjectsPage() {
       <span>{projects.data?.length || 0} project{projects.data?.length === 1 ? "" : "s"}</span></div>
     {projects.isLoading ? <Loading /> : projects.error ? <ErrorState error={projects.error} retry={() => projects.refetch()} /> :
       filtered?.length ? <div className="project-grid">{filtered.map((project) =>
-        <Card className="project-card" key={project.id} onClick={() => navigate(`/projects/${project.id}`)}>
+        <Link className="card project-card" key={project.id} to={`/projects/${project.id}`}>
           <div className="project-card__top"><div className="project-mark">{initials(project.name)}</div><Badge status={project.status} /></div>
           <h2>{project.name}</h2><p>{project.description || "A governed Sceptre AI workspace."}</p>
           <div className="project-card__foot"><span><FolderKanban size={15} /> Updated {formatDate(project.updated_at)}</span><ArrowRight size={18} /></div>
-        </Card>)}</div> :
+        </Link>)}</div> :
         <Card><EmptyState icon={<FolderKanban />} title={search ? "No matching projects" : "Create your first project"}
           description={search ? "Try a different name or clear the search." : "Projects keep datasets, experiments, models, and team access together."}
           action={!search && <Button onClick={() => setDialog("create")}><Plus size={16} />Create project</Button>} /></Card>}

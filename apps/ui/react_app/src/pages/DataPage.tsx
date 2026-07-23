@@ -129,12 +129,18 @@ function DatasetDetail({
     queryKey: ["profile-result", profile.data?.id], enabled: profile.data?.status === "succeeded",
     queryFn: () => api<ProfileResult>(`${profilePath}/profile-jobs/${profile.data!.id}/result`),
   });
-  const startProfile = useMutation({
-    mutationFn: () => api<ProfileJob>(`${profilePath}/profile-jobs`, json("POST", { target_column: null, force: true })),
+  const retryProfile = useMutation({
+    mutationFn: () => api<ProfileJob>(`${profilePath}/profile-jobs`, json("POST", {
+      target_column: profile.data?.target_column ?? null,
+      force: true,
+    })),
     onSuccess: () => client.invalidateQueries({ queryKey: ["profile", versionId] }),
   });
   const columns = useMemo(() => Object.values(result.data?.feature_profiles_json || {}), [result.data]);
   if (versions.isLoading) return <Card><Loading label="Loading versions…" /></Card>;
+  if (!versionId && versions.data?.length) return <Card><Loading label="Selecting latest version…" /></Card>;
+  if (!versions.data?.length) return <Card><EmptyState title="No dataset versions"
+    description="Upload a new version before profiling this dataset." /></Card>;
   return <div className="dataset-detail">
     <Card className="dataset-hero"><div><span className="eyebrow">Dataset</span><h2>{dataset.name}</h2><p>{dataset.description || "No description provided."}</p></div>
       <div className="dataset-hero__controls"><label>Dataset<select value={dataset.id} onChange={(e) => { const next = datasets.find((item) => item.id === e.target.value); if (next) onDatasetChange(next); }}>
@@ -143,8 +149,13 @@ function DatasetDetail({
     {version && <div className="metrics-grid metrics-grid--compact"><Metric label="Rows" value={version.row_count?.toLocaleString() || "Pending"} /><Metric label="Columns" value={version.column_count || "Pending"} /><Metric label="Size" value={formatBytes(version.byte_size)} /><Metric label="Format" value={version.format.toUpperCase()} /></div>}
     <Card className="section-card">
       <div className="section-heading"><div><h2>Data profile</h2><p>Quality, structure, and model-readiness across the full dataset.</p></div>
-        {profile.data?.status === "succeeded" ? <Badge status="succeeded" /> : <Button variant="secondary" loading={startProfile.isPending} onClick={() => startProfile.mutate()}><RefreshCw size={15} />{profile.data ? "Run again" : "Start profiling"}</Button>}</div>
-      {profile.isLoading ? <Loading label="Checking profile…" /> : profile.data && ["queued", "running"].includes(profile.data.status) ?
+        {profile.data?.status === "succeeded" ? <Badge status="succeeded" />
+          : profile.data && ["failed", "cancelled"].includes(profile.data.status)
+            ? <Button variant="secondary" loading={retryProfile.isPending} onClick={() => retryProfile.mutate()}><RefreshCw size={15} />Retry profile</Button>
+            : !profile.data && !profile.isLoading
+              ? <Button variant="secondary" onClick={() => navigate(`/projects/${projectId}`)}>Choose target & profile</Button>
+              : null}</div>
+      {profile.isLoading || result.isLoading ? <Loading label="Checking profile…" /> : profile.data && ["queued", "running"].includes(profile.data.status) ?
         <div className="progress-panel"><div><b>{titleCase(profile.data.current_stage || "Preparing")}</b><span>{Math.round((profile.data.progress || 0) * 100)}%</span></div><progress value={profile.data.progress || 0} max={1} /><p>Profiling {profile.data.completed_columns || 0} of {profile.data.total_columns || 0} columns. You can leave this page safely.</p></div>
         : result.data ? <><div className="profile-summary"><div><span>Inferred task</span><strong>{titleCase(result.data.overview_json?.task_inference?.task_type || "Pending")}</strong></div>
           <div><span>Confidence</span><strong>{Math.round((result.data.overview_json?.task_inference?.confidence || 0) * 100)}%</strong></div><p>{result.data.overview_json?.task_inference?.rationale}</p></div>
@@ -152,7 +163,7 @@ function DatasetDetail({
           <FeatureAccordions columns={columns} target={result.data.target_column} relationships={result.data.relationships_json} preparation={result.data.preparation_json} leakageFindings={result.data.overview_json?.leakage_analysis?.findings || []} />
           <div className="profile-training-action"><Button className="full" onClick={() => navigate(`/projects/${projectId}/training`)}>
             <Play size={15} />Start training</Button></div></>
-          : <div className="inline-empty"><Database /><span><b>No completed profile</b><small>Profile this version before configuring a training run.</small></span></div>}
+          : <div className="inline-empty"><Database /><span><b>No completed profile</b><small>Choose the target from the project overview before training.</small></span></div>}
     </Card>
   </div>;
 }

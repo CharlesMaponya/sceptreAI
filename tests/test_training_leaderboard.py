@@ -224,7 +224,7 @@ def test_categorical_nb_preprocessing_never_produces_negative_values() -> None:
     target = pd.Series([0, 1, 0, 1, 1, 0, 1, 1])
     model = Pipeline(
         [
-            ("prepare", _preprocessor_for_model(features, "CategoricalNB")),
+            ("prepare", _preprocessor_for_model("CategoricalNB")),
             ("model", CategoricalNB()),
         ]
     )
