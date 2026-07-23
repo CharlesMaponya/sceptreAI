@@ -111,7 +111,7 @@ def estimate_training_run(
     if not object_exists:
         estimate.blockers = [
             *estimate.blockers,
-            "The dataset object is missing from MinIO. Re-upload or restore this "
+            "The dataset object is missing from object storage. Re-upload or restore this "
             "dataset version before training.",
         ]
         estimate.can_launch = False
@@ -449,7 +449,7 @@ def restart_training_run(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "The dataset object is missing from MinIO. Re-upload or restore "
+                "The dataset object is missing from object storage. Re-upload or restore "
                 "this dataset version before restarting."
             ),
         )

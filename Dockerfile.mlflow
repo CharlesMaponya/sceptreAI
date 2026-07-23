@@ -1,4 +1,11 @@
-FROM ghcr.io/mlflow/mlflow:v3.1.0
+FROM python:3.12.13-slim-bookworm
 
-RUN pip install --no-cache-dir psycopg2-binary==2.9.10
+RUN pip install --no-cache-dir \
+    mlflow==3.14.0 \
+    psycopg2-binary==2.9.10 \
+    "GitPython>=3.1.52" \
+    "pillow>=12.3.0" \
+    "pyasn1>=0.6.4" \
+    "setuptools>=78.1.1" \
+    "wheel>=0.46.2"
 COPY scripts/mlflow_migrate_if_initialized.py /opt/automl/mlflow_migrate_if_initialized.py

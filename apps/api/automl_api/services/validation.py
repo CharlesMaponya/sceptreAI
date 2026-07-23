@@ -376,7 +376,7 @@ def _dataset_version(
     if not get_object_store().exists(version.object_uri):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="The selected dataset object is missing from MinIO.",
+            detail="The selected dataset object is missing from object storage.",
         )
     return version
 

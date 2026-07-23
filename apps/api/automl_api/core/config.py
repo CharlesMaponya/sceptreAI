@@ -105,9 +105,9 @@ class Settings:
     training_job_ttl_seconds: int = 300
     database_secret_name: str = "automl-platform-secrets"
     database_secret_key: str = "DATABASE_URL"
-    object_store_secret_name: str = "automl-minio-credentials"
-    object_store_access_key_secret_key: str = "MINIO_ROOT_USER"
-    object_store_secret_key_secret_key: str = "MINIO_ROOT_PASSWORD"
+    object_store_secret_name: str = "automl-seaweedfs-credentials"
+    object_store_access_key_secret_key: str = "AWS_ACCESS_KEY_ID"
+    object_store_secret_key_secret_key: str = "AWS_SECRET_ACCESS_KEY"
     inference_image: str = f"docker.io/maponyacharles/sceptreai:inference-{__version__}"
     inference_image_pull_policy: str = "IfNotPresent"
     inference_service_account: str = "default"

@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.12.13-slim-bookworm
 
 ARG SCEPTRE_VERSION=0.0.0
 WORKDIR /app

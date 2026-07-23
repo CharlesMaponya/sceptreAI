@@ -20,3 +20,37 @@ maintainers:
     url: https://github.com/CharlesMaponya
 annotations:
   artifacthub.io/category: ai-machine-learning
+  # CI replaces SCEPTRE_RELEASE_VERSION in the packaged chart.
+  artifacthub.io/images: |
+    - name: Sceptre API
+      image: docker.io/maponyacharles/sceptreai:api-SCEPTRE_RELEASE_VERSION
+      platforms:
+        - linux/amd64
+    - name: Sceptre UI
+      image: docker.io/maponyacharles/sceptreai:ui-SCEPTRE_RELEASE_VERSION
+      platforms:
+        - linux/amd64
+    - name: Sceptre MLflow
+      image: docker.io/maponyacharles/sceptreai:mlflow-SCEPTRE_RELEASE_VERSION
+      platforms:
+        - linux/amd64
+    - name: Sceptre CPU training
+      image: docker.io/maponyacharles/sceptreai:training-cpu-SCEPTRE_RELEASE_VERSION
+      platforms:
+        - linux/amd64
+    - name: Sceptre Intel training
+      image: docker.io/maponyacharles/sceptreai:training-intel-SCEPTRE_RELEASE_VERSION
+      platforms:
+        - linux/amd64
+    - name: Sceptre inference
+      image: docker.io/maponyacharles/sceptreai:inference-SCEPTRE_RELEASE_VERSION
+      platforms:
+        - linux/amd64
+    - name: SeaweedFS
+      image: docker.io/maponyacharles/sceptreai:seaweedfs-SCEPTRE_RELEASE_VERSION
+      platforms:
+        - linux/amd64
+    - name: PostgreSQL
+      image: docker.io/maponyacharles/sceptreai:postgresql-SCEPTRE_RELEASE_VERSION
+    - name: Helm test
+      image: docker.io/library/busybox:1.36

@@ -512,7 +512,7 @@ def _load_model(
         return _rebuild_historical_model(run, version)
     if mlflow_error is not None:
         raise ValueError(
-            f"MLflow model loading failed and no MinIO model mirror exists: {mlflow_error}"
+            f"MLflow model loading failed and no object-store mirror exists: {mlflow_error}"
         ) from mlflow_error
     raise ValueError("The source model has no persisted artifact.")
 

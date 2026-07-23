@@ -62,9 +62,9 @@ auth:
 postgresql:
   enabled: true
   image:
-    repository: postgres
-    useGlobal: false
-    tag: 16-alpine
+    repository: sceptreai
+    tagPrefix: postgresql
+    tag: ""
     digest: ""
     pullPolicy: IfNotPresent
   auth:
@@ -92,20 +92,20 @@ platform:
   databaseUrlKey: DATABASE_URL
   mlflowDatabaseUrlKey: MLFLOW_DATABASE_URL
 
-minio:
+seaweedfs:
   enabled: true
   image:
-    repository: minio/minio
-    useGlobal: false
-    tag: RELEASE.2024-07-16T23-46-41Z
+    repository: sceptreai
+    tagPrefix: seaweedfs
+    tag: ""
     digest: ""
     pullPolicy: IfNotPresent
   auth:
-    rootUser: automl
-    rootPassword: change-me-before-sharing-this-installation
+    accessKey: automl
+    secretKey: change-me-before-sharing-this-installation
     existingSecret: ""
-    accessKeyKey: MINIO_ROOT_USER
-    secretKeyKey: MINIO_ROOT_PASSWORD
+    accessKeyKey: AWS_ACCESS_KEY_ID
+    secretKeyKey: AWS_SECRET_ACCESS_KEY
   bucket: automl
   persistence:
     enabled: true
@@ -118,7 +118,7 @@ minio:
     limits: {cpu: 500m, memory: 512Mi}
 
 externalObjectStore:
-  # Used when minio.enabled=false.
+  # Used when seaweedfs.enabled=false.
   endpoint: ""
   bucket: automl
   existingSecret: ""
@@ -127,6 +127,7 @@ externalObjectStore:
 
 mlflow:
   enabled: true
+  workers: 1
   image:
     repository: sceptreai
     tagPrefix: mlflow
@@ -141,8 +142,8 @@ mlflow:
     accessMode: ReadWriteOnce
     retainOnDelete: true
   resources:
-    requests: {cpu: 100m, memory: 256Mi}
-    limits: {cpu: 500m, memory: 1Gi}
+    requests: {cpu: 100m, memory: 512Mi}
+    limits: {cpu: 500m, memory: 2Gi}
 
 training:
   maxConcurrentJobs: 2

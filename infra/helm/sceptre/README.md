@@ -7,7 +7,7 @@ Minikube, kind, k3d, MicroK8s, Docker Desktop, or any cluster-specific CLI.
 ## What one Helm release installs
 
 - PostgreSQL and durable metadata storage, or an external database connection
-- MinIO and durable dataset/model storage, or an external S3-compatible endpoint
+- SeaweedFS and durable dataset/model storage, or an external S3-compatible endpoint
 - MLflow and durable artifacts, or an external tracking server
 - Idempotent database bootstrap and Alembic migration Jobs
 - FastAPI and React/Nginx Deployments and ClusterIP Services
@@ -47,11 +47,13 @@ provisionable storage before training workloads are considered.
 
 ## Published application images
 
-The chart pulls six pinned `linux/amd64` images from one public repository:
+The chart pulls eight pinned `linux/amd64` images from one public repository:
 
 - `maponyacharles/sceptreai:api-<version>`
 - `maponyacharles/sceptreai:ui-<version>`
 - `maponyacharles/sceptreai:mlflow-<version>`
+- `maponyacharles/sceptreai:postgresql-<version>`
+- `maponyacharles/sceptreai:seaweedfs-<version>`
 - `maponyacharles/sceptreai:training-cpu-<version>`
 - `maponyacharles/sceptreai:training-intel-<version>`
 - `maponyacharles/sceptreai:inference-<version>`
@@ -117,15 +119,15 @@ is absent, the API reports a warning and uses the CPU image.
 
 ## Storage and external services
 
-PostgreSQL, MinIO, and MLflow PVCs use the cluster's default StorageClass unless
+PostgreSQL, SeaweedFS, and MLflow PVCs use the cluster's default StorageClass unless
 `storageClass` is set. Their default `retainOnDelete=true` annotations preserve
 data during `helm uninstall`.
 
-The training cache defaults to per-pod `emptyDir`; MinIO remains the source of
+The training cache defaults to per-pod `emptyDir`; object storage remains the source of
 truth. Enable `training.cache.mode=shared-pvc` only when the selected StorageClass
 and access mode work across the cluster (usually RWX).
 
-Set `postgresql.enabled=false`, `minio.enabled=false`, or `mlflow.enabled=false`
+Set `postgresql.enabled=false`, `seaweedfs.enabled=false`, or `mlflow.enabled=false`
 to use external services. Prefer `platform.existingSecret`,
 `externalObjectStore.existingSecret`, and `auth.existingSecret` rather than
 putting credentials in values files. Required secret key names are documented in
@@ -135,6 +137,17 @@ embedding credentials.
 `examples/values-capabilities.yaml` exercises ingress, per-model ingress, an RWX
 cache, PriorityClass, ResourceQuota, and LimitRange on clusters that provide
 those capabilities.
+
+### Upgrading from the bundled MinIO service
+
+SeaweedFS uses a different on-disk format, so the chart deliberately creates a
+new `sceptre-seaweedfs` PVC and leaves any retained `sceptre-minio` PVC
+untouched. Before upgrading an installation that contains data, copy every
+object from MinIO to an external S3-compatible bucket or to the new SeaweedFS
+endpoint, verify object counts and checksums, and only then retire the old PVC.
+The application continues to accept existing `minio://` artifact URIs; that
+scheme is retained as a compatibility identifier and does not require a MinIO
+server.
 
 ## Exposure
 
@@ -194,7 +207,7 @@ With default retention, explicitly delete PVCs only when data loss is intended:
 
 ```bash
 kubectl -n sceptre delete pvc \
-  sceptre-postgresql sceptre-minio sceptre-mlflow
+  sceptre-postgresql sceptre-seaweedfs sceptre-mlflow
 ```
 
 ## Chart regression checks
