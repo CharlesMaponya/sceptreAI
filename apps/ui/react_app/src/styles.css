@@ -173,6 +173,11 @@ tbody tr:last-child td { border-bottom: 0; }
 .project-card h2 { margin-top: 17px; }.project-card > p { color: var(--muted); height: 43px; overflow: hidden; font-size: .8rem; }
 .project-card__foot { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 13px; color: #8891a6; font-size: .68rem; }
 .project-card__foot span { display: flex; align-items: center; gap: 5px; }
+.project-pagination { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 18px; }
+.project-pagination p { margin: 0; color: var(--muted); font-size: .72rem; }
+.project-pagination > div { display: flex; align-items: center; gap: 10px; }
+.project-pagination > div > span { min-width: 76px; color: var(--muted); text-align: center; font-size: .7rem; }
+.project-pagination .button { min-height: 36px; padding: 7px 12px; font-size: .68rem; }
 .modal-backdrop { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(12,19,42,.52); backdrop-filter: blur(3px); }
 .modal { position: relative; width: min(520px, 100%); max-height: calc(100vh - 40px); overflow: auto; border-radius: 15px; padding: 27px; background: white; box-shadow: 0 28px 70px rgba(11,18,42,.25); }
 .modal > p { margin: 7px 0 21px; }
@@ -358,6 +363,7 @@ td a { display: inline-flex; align-items: center; gap: 4px; }
 @media (max-width: 560px) {
   .project-grid, .metrics-grid { grid-template-columns: 1fr; }
   .toolbar { align-items: stretch; flex-direction: column; gap: 8px; }.toolbar > span { display: none; }
+  .project-pagination { align-items: stretch; flex-direction: column; }.project-pagination > div { justify-content: space-between; }
   .next-card { flex-direction: column; }.overview-guidance__controls { grid-template-columns: 1fr; }.overview-guidance__controls .button { grid-column: auto; }.target-statistics { grid-template-columns: 1fr 1fr; }.feature-detail-grid { grid-template-columns: 1fr; }.dataset-hero { flex-direction: column; }.dataset-hero__controls { width: 100%; }.dataset-hero__controls label { width: 100%; }
   .form-grid, .task-grid { grid-template-columns: repeat(2, 1fr); }
   .profile-summary { grid-template-columns: 1fr 1fr; }.profile-summary p { grid-column: 1 / -1; }.dataset-hero__controls { grid-template-columns: 1fr; }

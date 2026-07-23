@@ -7,11 +7,14 @@ import { Badge, Button, Card, EmptyState, ErrorState, Loading, Modal, PageHeader
 import { formatDate, initials } from "../lib";
 import type { Project } from "../types";
 
+const PAGE_SIZE = 6;
+
 export function ProjectsPage() {
   const navigate = useNavigate();
   const client = useQueryClient();
   const [dialog, setDialog] = useState<"create" | "invite" | null>(null);
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api<Project[]>("/projects") });
   const create = useMutation({
     mutationFn: (body: object) => api<Project>("/projects", json("POST", body)),
@@ -24,6 +27,10 @@ export function ProjectsPage() {
   const filtered = useMemo(() => projects.data?.filter((project) =>
     `${project.name} ${project.description}`.toLowerCase().includes(search.toLowerCase())
   ), [projects.data, search]);
+  const pageCount = Math.max(1, Math.ceil((filtered?.length || 0) / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const firstProject = (currentPage - 1) * PAGE_SIZE;
+  const visible = filtered?.slice(firstProject, firstProject + PAGE_SIZE);
 
   function submitCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); const values = Object.fromEntries(new FormData(event.currentTarget));
@@ -37,15 +44,21 @@ export function ProjectsPage() {
     <PageHeader eyebrow="Your workspaces" title="Projects" description="Build, compare, and operate models in isolated team workspaces."
       action={<div className="button-row"><Button variant="secondary" onClick={() => setDialog("invite")}><Link2 size={16} />Join project</Button>
         <Button onClick={() => setDialog("create")}><Plus size={16} />New project</Button></div>} />
-    <div className="toolbar"><label className="search"><Search size={17} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search projects…" aria-label="Search projects" /></label>
+    <div className="toolbar"><label className="search"><Search size={17} /><input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search projects…" aria-label="Search projects" /></label>
       <span>{projects.data?.length || 0} project{projects.data?.length === 1 ? "" : "s"}</span></div>
     {projects.isLoading ? <Loading /> : projects.error ? <ErrorState error={projects.error} retry={() => projects.refetch()} /> :
-      filtered?.length ? <div className="project-grid">{filtered.map((project) =>
+      filtered?.length ? <><div className="project-grid">{visible?.map((project) =>
         <Link className="card project-card" key={project.id} to={`/projects/${project.id}`}>
           <div className="project-card__top"><div className="project-mark">{initials(project.name)}</div><Badge status={project.status} /></div>
           <h2>{project.name}</h2><p>{project.description || "A governed Sceptre AI workspace."}</p>
           <div className="project-card__foot"><span><FolderKanban size={15} /> Updated {formatDate(project.updated_at)}</span><ArrowRight size={18} /></div>
-        </Link>)}</div> :
+        </Link>)}</div>
+        {filtered.length > PAGE_SIZE && <nav className="project-pagination" aria-label="Projects pagination">
+          <p aria-live="polite">Showing {firstProject + 1}–{Math.min(firstProject + PAGE_SIZE, filtered.length)} of {filtered.length}</p>
+          <div><Button variant="secondary" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>Previous</Button>
+            <span aria-current="page">Page {currentPage} of {pageCount}</span>
+            <Button variant="secondary" disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)}>Next</Button></div>
+        </nav>}</> :
         <Card><EmptyState icon={<FolderKanban />} title={search ? "No matching projects" : "Create your first project"}
           description={search ? "Try a different name or clear the search." : "Projects keep datasets, experiments, models, and team access together."}
           action={!search && <Button onClick={() => setDialog("create")}><Plus size={16} />Create project</Button>} /></Card>}
