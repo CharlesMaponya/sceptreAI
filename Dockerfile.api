@@ -1,4 +1,4 @@
-FROM python:3.12.13-slim-bookworm
+FROM python:3.15.0b4-alpine
 
 ARG SCEPTRE_VERSION=0.0.0
 ENV PYTHONUNBUFFERED=1 \
@@ -14,10 +14,9 @@ COPY apps/ui/react_app/public/sceptre-icon.png ./apps/ui/react_app/public/sceptr
 COPY packages ./packages
 COPY scripts/verify_database_schema.py ./scripts/verify_database_schema.py
 
-RUN apt-get update \
-    && apt-get install --no-install-recommends --yes libgomp1 \
-    && rm -rf /var/lib/apt/lists/* \
-    && useradd --create-home --uid 10001 sceptre
+RUN apk update --no-cache \
+    && apk add --no-cache libgomp build-base gfortran python3-dev lapack-dev blas-dev openblas-dev \
+    && adduser -D -h /home/sceptre -u 10001 sceptre
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install ".[k8s,ml]"
 
