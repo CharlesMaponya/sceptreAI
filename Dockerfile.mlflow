@@ -1,4 +1,4 @@
-FROM python:3.12.13-slim-bookworm
+FROM python:3.15.0b4-alpine
 
 RUN pip install --no-cache-dir \
     mlflow==3.14.0 \
