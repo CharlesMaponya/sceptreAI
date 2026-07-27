@@ -14,7 +14,7 @@ dependencies = [
     "fastapi>=0.111",
     "httpx>=0.27,<1",
     "minio>=7.2",
-    "numpy>=1.26",
+    "numpy>=2.3,<3",
     "pandas>=2.2",
     "psycopg[binary]>=3.1",
     "pydantic>=2.7",
@@ -38,11 +38,11 @@ ml = [
     "lightgbm>=4.3",
     "mlflow>=3.14,<4",
     "pandas>=2.2",
-    "scikit-learn>=1.5",
+    "scikit-learn>=1.9,<2",
     "scikit-optimize>=0.10",
     "shap>=0.45",
     "xgboost-cpu>=2.1,<3",
-    "zenml>=0.60",
+    "zenml==0.96.2",
 ]
 k8s = [
     "kubernetes>=30.1",
@@ -53,11 +53,11 @@ training = [
     "mlflow>=3.14,<4",
     "openpyxl>=3.1",
     "pyarrow>=23.0.1",
-    "scikit-learn>=1.5",
+    "scikit-learn>=1.9,<2",
     "scikit-optimize>=0.10",
     "shap>=0.45,<1",
     "xgboost-cpu>=2.1,<3",
-    "zenml>=0.60",
+    "zenml==0.96.2",
 ]
 
 [tool.setuptools.packages.find]

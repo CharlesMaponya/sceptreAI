@@ -4,10 +4,10 @@ USER root
 
 WORKDIR /app
 COPY requirements-training.txt ./
-RUN python -m pip install --no-cache-dir -r requirements-training.txt
-
-COPY requirements-zenml-local.txt ./
-RUN python -m pip install --no-cache-dir -r requirements-zenml-local.txt
+RUN python -m pip install --no-cache-dir --upgrade pip==26.1.2 \
+    && sed 's/^xgboost-cpu/xgboost/' requirements-training.txt \
+       > /tmp/requirements-training-gpu.txt \
+    && python -m pip install --no-cache-dir -r /tmp/requirements-training-gpu.txt
 
 RUN apt-get update \
     && apt-get install --no-install-recommends --yes libgomp1 \

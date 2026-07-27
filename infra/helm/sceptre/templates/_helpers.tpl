@@ -115,7 +115,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 
 {{- define "sceptre.mlflowDatabaseUrl" -}}
 {{- if .Values.postgresql.enabled -}}
-{{- printf "postgresql+psycopg2://%s:%s@%s-postgresql:5432/mlflow" .Values.postgresql.auth.username .Values.postgresql.auth.password (include "sceptre.fullname" .) -}}
+{{- printf "postgresql+psycopg://%s:%s@%s-postgresql:5432/mlflow" .Values.postgresql.auth.username .Values.postgresql.auth.password (include "sceptre.fullname" .) -}}
 {{- else if .Values.mlflow.enabled -}}
 {{- required "externalDatabase.mlflowUrl is required for bundled MLflow when postgresql.enabled=false" .Values.externalDatabase.mlflowUrl -}}
 {{- else -}}

@@ -13,6 +13,12 @@ spec:
       labels:
         app.kubernetes.io/name: automl-mlflow
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
         - name: migrate-database
           image: docker.io/maponyacharles/sceptreai:mlflow-0.0.0
@@ -33,9 +39,17 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
           volumeMounts:
             - name: data
               mountPath: /mlflow
+            - name: tmp
+              mountPath: /tmp
       containers:
         - name: mlflow
           image: docker.io/maponyacharles/sceptreai:mlflow-0.0.0
@@ -85,10 +99,20 @@ spec:
             limits:
               cpu: 500m
               memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
           volumeMounts:
             - name: data
               mountPath: /mlflow
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: data
           persistentVolumeClaim:
             claimName: automl-mlflow-data
+        - name: tmp
+          emptyDir: {}

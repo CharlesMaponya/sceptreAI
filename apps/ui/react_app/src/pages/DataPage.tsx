@@ -5,7 +5,7 @@ import { api, json, uploadFormData } from "../api";
 import { Badge, Button, Card, EmptyState, ErrorState, Loading, Metric, Modal, Notice, PageHeader } from "../components/ui";
 import { formatBytes, titleCase } from "../lib";
 import type { Dataset, DatasetVersion, LeakageAnalysis, LeakageFinding, ProfileJob } from "../types";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router";
 
 type ProfileResult = ProfileJob & {
   feature_profiles_json: Record<string, {

@@ -1,6 +1,6 @@
 nameOverride: ""
 fullnameOverride: ""
-environment: production
+environment: local
 
 global:
   imageRegistry: docker.io/maponyacharles
