@@ -67,7 +67,7 @@ function multipartRequest<T>(
       }
     };
     request.onload = () => {
-      let data: unknown = null;
+      let data: unknown;
       try { data = request.responseText ? JSON.parse(request.responseText) : null; }
       catch { data = request.responseText; }
       if (request.status >= 200 && request.status < 300) {

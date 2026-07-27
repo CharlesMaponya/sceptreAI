@@ -824,6 +824,15 @@ Pull requests and pushes to `main` or `dev` must pass all CI gates:
 | Syntax | `python -m compileall apps packages alembic scripts tests` | Python 3.12 syntax and import compilation |
 | React | `npm test -- --run && npm run lint && npm run build` | UI workflows, types, lint, and production bundle |
 | Helm | `helm lint` plus all profile renders | Portable packaging and manifest regressions |
+| Security | SecObserve Trivy and Gitleaks actions | Dependency, infrastructure, credential, image, and release-gate findings |
+
+The security job always stores its CycloneDX and SARIF reports as a workflow
+artifact and rejects credential findings. To also import observations
+and enforce the configured SecObserve security gate, add repository variables
+`SO_API_BASE_URL` and `SO_PRODUCT_NAME`, plus a repository secret named
+`SO_API_TOKEN`. Image release candidates are scanned separately with Trivy and
+are not published when they contain a fixable vulnerability or embedded
+secret.
 
 The suite covers ingestion, temporal inference, exact and Dask profiling,
 authentication, route contracts, React workflows, Kubernetes resource

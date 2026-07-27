@@ -7,6 +7,8 @@ RUN git init \
     && git remote add origin https://github.com/tianon/gosu.git \
     && git fetch --depth 1 origin "${GOSU_COMMIT}" \
     && git checkout --detach FETCH_HEAD \
+    && go get golang.org/x/sys@v0.44.0 \
+    && go mod tidy \
     && CGO_ENABLED=0 go build -trimpath -ldflags="-d -w" -o /usr/local/bin/gosu .
 
 FROM postgres:16.14-alpine3.24

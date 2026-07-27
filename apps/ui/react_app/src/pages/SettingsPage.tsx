@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormEvent } from "react";
-import { useParams } from "react-router-dom";
+import { useParams } from "react-router";
 import { api, json } from "../api";
 import { Button, Card, ErrorState, Loading, Notice, PageHeader } from "../components/ui";
 import type { Project } from "../types";

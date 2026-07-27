@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, Rocket, Sparkles, Upload } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router";
 import { api, json } from "../api";
 import { Badge, Button, Card, ErrorState, Loading, Metric, Notice, PageHeader } from "../components/ui";
 import { formatDate, titleCase } from "../lib";

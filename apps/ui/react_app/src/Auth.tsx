@@ -4,7 +4,7 @@ import {
   authenticate, confirmPasswordReset, requestPasswordReset,
 } from "./api";
 import { Button, Notice } from "./components/ui";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router";
 
 type AuthMode = "login" | "register" | "forgot" | "reset";
 
