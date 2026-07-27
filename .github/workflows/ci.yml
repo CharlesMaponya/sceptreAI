@@ -166,51 +166,50 @@ jobs:
       - name: Prepare reports directory
         run: mkdir security-reports
 
-      - name: Scan dependencies with Trivy
-        uses: SecObserve/secobserve_actions_templates/actions/SCA/trivy_filesystem@9953b3d60f1dc2ada4059b26cb1a6785ca1c4cfd
-        with:
-          target: .
-          report_name: security-reports/trivy-dependencies.cdx.json
-          further_parameters: --skip-dirs .git --skip-dirs .venv --skip-dirs node_modules
-          so_upload: ${{ env.SECOBSERVE_UPLOAD }}
-          so_api_base_url: ${{ vars.SO_API_BASE_URL || 'http://secobserve.invalid' }}
-          so_api_token: ${{ secrets.SO_API_TOKEN || 'not-configured' }}
-          so_product_name: ${{ vars.SO_PRODUCT_NAME || 'sceptre' }}
-          so_branch_name: ${{ github.head_ref || github.ref_name }}
-
-      - name: Scan infrastructure as code with Trivy
-        uses: SecObserve/secobserve_actions_templates/actions/SAST/trivy_config@9953b3d60f1dc2ada4059b26cb1a6785ca1c4cfd
-        with:
-          target: .
-          report_name: security-reports/trivy-config.sarif
-          further_parameters: --skip-dirs .git --skip-dirs .venv --skip-dirs node_modules
-          so_upload: ${{ env.SECOBSERVE_UPLOAD }}
-          so_api_base_url: ${{ vars.SO_API_BASE_URL || 'http://secobserve.invalid' }}
-          so_api_token: ${{ secrets.SO_API_TOKEN || 'not-configured' }}
-          so_product_name: ${{ vars.SO_PRODUCT_NAME || 'sceptre' }}
-          so_branch_name: ${{ github.head_ref || github.ref_name }}
-
-      - name: Scan for credentials with Trivy
-        uses: SecObserve/secobserve_actions_templates/actions/secrets/trivy_filesystem_secrets@9953b3d60f1dc2ada4059b26cb1a6785ca1c4cfd
-        with:
-          target: .
-          report_name: security-reports/trivy-secrets.sarif
-          further_parameters: --skip-dirs .git --skip-dirs .venv --skip-dirs node_modules
-          so_upload: ${{ env.SECOBSERVE_UPLOAD }}
-          so_api_base_url: ${{ vars.SO_API_BASE_URL || 'http://secobserve.invalid' }}
-          so_api_token: ${{ secrets.SO_API_TOKEN || 'not-configured' }}
-          so_product_name: ${{ vars.SO_PRODUCT_NAME || 'sceptre' }}
-          so_branch_name: ${{ github.head_ref || github.ref_name }}
-
-      - name: Cross-check credentials with Gitleaks
-        uses: SecObserve/secobserve_actions_templates/actions/secrets/gitleaks@9953b3d60f1dc2ada4059b26cb1a6785ca1c4cfd
-        with:
-          report_name: security-reports/gitleaks.sarif
-          so_upload: ${{ env.SECOBSERVE_UPLOAD }}
-          so_api_base_url: ${{ vars.SO_API_BASE_URL || 'http://secobserve.invalid' }}
-          so_api_token: ${{ secrets.SO_API_TOKEN || 'not-configured' }}
-          so_product_name: ${{ vars.SO_PRODUCT_NAME || 'sceptre' }}
-          so_branch_name: ${{ github.head_ref || github.ref_name }}
+      - name: Run SecObserve repository scanners
+        env:
+          SECOBSERVE_IMAGE: ghcr.io/secobserve/secobserve-scanners@sha256:e2ff1b2e34b6dfefd1fbbfecfca0a0f40d389d32630362eb6e1cc2c7b5013fe6
+          SO_UPLOAD: ${{ env.SECOBSERVE_UPLOAD }}
+          SO_API_BASE_URL: ${{ vars.SO_API_BASE_URL || 'http://secobserve.invalid' }}
+          SO_API_TOKEN: ${{ secrets.SO_API_TOKEN || 'not-configured' }}
+          SO_PRODUCT_NAME: ${{ vars.SO_PRODUCT_NAME || 'sceptre' }}
+          SO_BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+        run: |
+          scanner_args=(
+            --rm
+            --volume "$GITHUB_WORKSPACE:/github/workspace"
+            --workdir /github/workspace
+            --env GITHUB_WORKSPACE=/github/workspace
+            --env RUN_DIRECTORY=.
+            --env SO_UPLOAD
+            --env SO_API_BASE_URL
+            --env SO_API_TOKEN
+            --env SO_PRODUCT_NAME
+            --env SO_BRANCH_NAME
+          )
+          scan_ignores="--skip-dirs .git --skip-dirs .venv --skip-dirs node_modules"
+          docker run "${scanner_args[@]}" \
+            --env TARGET=. \
+            --env REPORT_NAME=security-reports/trivy-dependencies.cdx.json \
+            --env "FURTHER_PARAMETERS=$scan_ignores" \
+            --entrypoint /entrypoints/entrypoint_trivy_filesystem.sh \
+            "$SECOBSERVE_IMAGE"
+          docker run "${scanner_args[@]}" \
+            --env TARGET=. \
+            --env REPORT_NAME=security-reports/trivy-config.sarif \
+            --env "FURTHER_PARAMETERS=$scan_ignores" \
+            --entrypoint /entrypoints/entrypoint_trivy_config.sh \
+            "$SECOBSERVE_IMAGE"
+          docker run "${scanner_args[@]}" \
+            --env TARGET=. \
+            --env REPORT_NAME=security-reports/trivy-secrets.sarif \
+            --env "FURTHER_PARAMETERS=$scan_ignores" \
+            --entrypoint /entrypoints/entrypoint_trivy_filesystem_secrets.sh \
+            "$SECOBSERVE_IMAGE"
+          docker run "${scanner_args[@]}" \
+            --env REPORT_NAME=security-reports/gitleaks.sarif \
+            --entrypoint /entrypoints/entrypoint_gitleaks.sh \
+            "$SECOBSERVE_IMAGE"
 
       - name: Reject credential leaks
         run: |
@@ -221,11 +220,18 @@ jobs:
 
       - name: Check the SecObserve security gate
         if: ${{ env.SECOBSERVE_UPLOAD == 'true' }}
-        uses: SecObserve/secobserve_actions_templates/actions/check_security_gate@9953b3d60f1dc2ada4059b26cb1a6785ca1c4cfd
-        with:
-          so_api_base_url: ${{ vars.SO_API_BASE_URL }}
-          so_api_token: ${{ secrets.SO_API_TOKEN }}
-          so_product_name: ${{ vars.SO_PRODUCT_NAME }}
+        env:
+          SECOBSERVE_IMAGE: ghcr.io/secobserve/secobserve-scanners@sha256:e2ff1b2e34b6dfefd1fbbfecfca0a0f40d389d32630362eb6e1cc2c7b5013fe6
+          SO_API_BASE_URL: ${{ vars.SO_API_BASE_URL }}
+          SO_API_TOKEN: ${{ secrets.SO_API_TOKEN }}
+          SO_PRODUCT_NAME: ${{ vars.SO_PRODUCT_NAME }}
+        run: |
+          docker run --rm \
+            --env SO_API_BASE_URL \
+            --env SO_API_TOKEN \
+            --env SO_PRODUCT_NAME \
+            --entrypoint /usr/local/importer/bin/check_security_gate.sh \
+            "$SECOBSERVE_IMAGE"
 
       - name: Preserve security reports
         if: always()
