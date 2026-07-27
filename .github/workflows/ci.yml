@@ -167,7 +167,7 @@ jobs:
         run: mkdir security-reports
 
       - name: Scan dependencies with Trivy
-        uses: secobserve/actions-templates/actions/SCA/trivy_filesystem@9953b3d60f1dc2ada4059b26cb1a6785ca1c4cfd
+        uses: SecObserve/secobserve_actions_templates/actions/SCA/trivy_filesystem@9953b3d60f1dc2ada4059b26cb1a6785ca1c4cfd
         with:
           target: .
           report_name: security-reports/trivy-dependencies.cdx.json
@@ -179,7 +179,7 @@ jobs:
           so_branch_name: ${{ github.head_ref || github.ref_name }}
 
       - name: Scan infrastructure as code with Trivy
-        uses: secobserve/actions-templates/actions/SAST/trivy_config@9953b3d60f1dc2ada4059b26cb1a6785ca1c4cfd
+        uses: SecObserve/secobserve_actions_templates/actions/SAST/trivy_config@9953b3d60f1dc2ada4059b26cb1a6785ca1c4cfd
         with:
           target: .
           report_name: security-reports/trivy-config.sarif
@@ -191,7 +191,7 @@ jobs:
           so_branch_name: ${{ github.head_ref || github.ref_name }}
 
       - name: Scan for credentials with Trivy
-        uses: secobserve/actions-templates/actions/secrets/trivy_filesystem_secrets@9953b3d60f1dc2ada4059b26cb1a6785ca1c4cfd
+        uses: SecObserve/secobserve_actions_templates/actions/secrets/trivy_filesystem_secrets@9953b3d60f1dc2ada4059b26cb1a6785ca1c4cfd
         with:
           target: .
           report_name: security-reports/trivy-secrets.sarif
@@ -203,7 +203,7 @@ jobs:
           so_branch_name: ${{ github.head_ref || github.ref_name }}
 
       - name: Cross-check credentials with Gitleaks
-        uses: secobserve/actions-templates/actions/secrets/gitleaks@9953b3d60f1dc2ada4059b26cb1a6785ca1c4cfd
+        uses: SecObserve/secobserve_actions_templates/actions/secrets/gitleaks@9953b3d60f1dc2ada4059b26cb1a6785ca1c4cfd
         with:
           report_name: security-reports/gitleaks.sarif
           so_upload: ${{ env.SECOBSERVE_UPLOAD }}
@@ -221,7 +221,7 @@ jobs:
 
       - name: Check the SecObserve security gate
         if: ${{ env.SECOBSERVE_UPLOAD == 'true' }}
-        uses: secobserve/actions-templates/actions/check_security_gate@9953b3d60f1dc2ada4059b26cb1a6785ca1c4cfd
+        uses: SecObserve/secobserve_actions_templates/actions/check_security_gate@9953b3d60f1dc2ada4059b26cb1a6785ca1c4cfd
         with:
           so_api_base_url: ${{ vars.SO_API_BASE_URL }}
           so_api_token: ${{ secrets.SO_API_TOKEN }}
