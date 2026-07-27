@@ -1,24 +1,26 @@
-# Sceptre
+# Sceptre: Kubernetes-Native Tabular AutoML and MLOps
 
 <p align="center">
-  <img src="docs/architecture/images/sceptre-logo.png" alt="Sceptre logo" width="420">
+  <img src="docs/architecture/images/sceptre-logo.png" alt="Sceptre Kubernetes-native tabular AutoML platform logo" width="420">
 </p>
 
 <p align="center">
-  <strong>From tabular data to a governed model endpoint—without building an MLOps department.</strong>
+  <strong>Turn tabular data into governed, explainable model endpoints—without assembling an MLOps stack.</strong>
 </p>
 
 <p align="center">
-  Train, compare, validate, explain, register, and deploy models from one
-  Kubernetes-native workspace.
+  Train, compare, validate, explain, register, deploy, and monitor models from
+  one Kubernetes-native workspace.
 </p>
 
 <p align="center">
-  <a href="#quick-start-on-local-kubernetes"><strong>Run Sceptre locally</strong></a>
+  <a href="#install-sceptre-with-helm-on-local-kubernetes"><strong>Install Sceptre with Helm</strong></a>
   ·
-  <a href="#platform-workflow">See the workflow</a>
+  <a href="#tabular-automl-and-mlops-capabilities">Explore the platform</a>
   ·
-  <a href="docs/production-readiness/README.md">Plan for production</a>
+  <a href="https://artifacthub.io/packages/helm/sceptreai/sceptre">View the Helm chart</a>
+  ·
+  <a href="docs/production-readiness/README.md">Review production readiness</a>
 </p>
 
 <p align="center">
@@ -28,73 +30,81 @@
   <a href="https://www.python.org/downloads/">
     <img src="https://img.shields.io/badge/Python-3.12%2B-3776AB.svg" alt="Python 3.12 or newer">
   </a>
-  <a href="#quality-engineering">
-    <img src="https://img.shields.io/badge/Coverage%20gate-%E2%89%A540%25-brightgreen.svg" alt="Coverage gate 40 percent">
-  </a>
   <a href="https://kubernetes.io/">
     <img src="https://img.shields.io/badge/Orchestration-Kubernetes-326CE5.svg" alt="Kubernetes">
   </a>
+  <a href="https://artifacthub.io/packages/helm/sceptreai/sceptre">
+    <img src="https://img.shields.io/badge/Helm-Artifact%20Hub-417598.svg" alt="Sceptre Helm chart on Artifact Hub">
+  </a>
 </p>
 
-## Overview
+## From Tabular Data to a Governed Model Endpoint
 
-Most AutoML products finish at a leaderboard. That is where the difficult part
-usually begins: proving the model on new data, explaining its decisions,
-controlling compute, preserving lineage, promoting the right version, and
-serving it safely.
+A leaderboard winner is not yet an operable model. Teams still need to prove it
+on new data, explain its decisions, preserve lineage, control compute, promote
+the right version, and serve predictions safely.
 
-Sceptre closes that gap. It gives small and growing teams one governed path from
-an uploaded table to a reviewable, deployable model. Dataset management,
-full-dataset profiling, resource-aware training, experiment tracking, external
+Sceptre closes that gap. This Kubernetes-native tabular AutoML and MLOps platform
+gives small and growing teams one governed path from an uploaded dataset to a
+reviewable, deployable model endpoint. Dataset versioning, full-dataset
+profiling, resource-aware training, MLflow experiment tracking, external
 validation, SHAP explainability, model promotion, drift analysis, and Kubernetes
-serving all live in one project-isolated workspace.
+model serving live in one project-isolated workspace.
 
-The result is less platform assembly, fewer hand-offs, and a much clearer answer
-to the question every serious ML project eventually faces: **why should we trust
-this model, and can we operate it?**
+Instead of stitching together notebooks, storage, experiment tracking, model
+registries, and serving infrastructure, teams work through one traceable
+workflow. The result is less platform assembly, fewer hand-offs, and a clearer
+answer to the question every serious machine-learning project must face:
+**why should we trust this model, and can we operate it?**
 
-Sceptre runs on infrastructure you control. Compute-heavy work is isolated in
+Sceptre runs on infrastructure you control. Compute-heavy workloads execute in
 disposable Kubernetes Jobs, while PostgreSQL, SeaweedFS, and MLflow retain the
-operational record. It is designed for shared environments where auditability,
-resource fairness, and reproducibility matter as much as raw model performance.
+operational record. The platform is designed for shared clusters where
+auditability, resource fairness, and reproducibility matter as much as model
+performance.
 
-> **Current maturity:** The working platform and provider-neutral Helm chart are
-> ready for local development, evaluation, and compatibility testing. The current
-> release is not production certified; shared or production environments require
-> the controls and qualification evidence documented below.
+> **Release status — evaluation:** Sceptre and its provider-neutral Helm chart
+> are ready for local development, product evaluation, and compatibility
+> testing. The current release is not production certified. Shared and
+> production environments require the controls and qualification evidence in
+> the production-readiness guide.
 
-The environment boundary, current blockers, promotion contract, and production
-acceptance gates are documented in the
-[Local Development and Production Readiness Guide](docs/production-readiness/README.md).
-The implemented local-cluster boundary is documented in the
-[Kubernetes Portability Contract](docs/architecture/kubernetes-portability.md).
+Review the environment boundary, current blockers, promotion contract, and
+acceptance gates in the
+[Sceptre production-readiness guide](docs/production-readiness/README.md). The
+[Kubernetes portability contract](docs/architecture/kubernetes-portability.md)
+defines the implemented local-cluster boundary.
 
-## Why Teams Choose Sceptre
+## Why Sceptre
 
-| What teams usually piece together | What Sceptre provides |
+Sceptre connects the work before and after model training, so evidence stays
+attached to the model throughout its lifecycle.
+
+| The fragmented approach | The Sceptre approach |
 | --- | --- |
-| Upload scripts, notebooks, and shared folders | Project-scoped datasets, immutable versions, hashes, access roles, and durable object storage |
-| Manual profiling and preparation guesses | Full-dataset statistics, quality flags, temporal inference, relationships, and preparation recommendations |
-| One opaque “best model” score | Progressive leaderboards with task-specific metrics, diagnostics, correlation-removal heatmaps, parameters, and experiment history |
+| Upload scripts, notebooks, and shared folders | Project-scoped datasets with immutable versions, content hashes, role-based access, and durable object storage |
+| Manual profiling and preparation decisions | Full-dataset statistics, quality flags, temporal inference, relationships, and preparation recommendations |
+| One opaque “best model” score | Progressive leaderboards with task-specific metrics, diagnostics, parameters, correlation-removal heatmaps, and experiment history |
 | Cluster requests based on intuition | Preflight CPU, memory, and duration estimates with admission limits and adaptive deadlines |
-| Validation and explainability as follow-up work | External validation and on-demand SHAP for current or historical candidates |
-| Model files passed between people | A project registry with staged promotion, explicit fallback, drift checks, and artifact protection |
-| A bespoke serving service for every model | Generated model packaging and Kubernetes deployments with online and offline prediction APIs |
+| Validation and explainability deferred until later | External validation and on-demand SHAP for current and historical candidates |
+| Model files passed between people | A project registry with staged promotion, explicit fallback, drift checks, and protected artifacts |
+| A bespoke serving service for every model | Generated model packaging and Kubernetes deployments with authenticated online and offline prediction APIs |
 
-### The business case
+### Business outcomes
 
-- **Ship sooner:** move from raw data to ranked, validated candidates in one
-  workflow instead of integrating separate tools first.
-- **Make defensible model choices:** evaluate more than a headline score with
+- **Move from data to evidence in one workflow.** Compare ranked, validated
+  candidates without integrating a platform before training can begin.
+- **Make defensible model decisions.** Look beyond a headline score with
   diagnostics, holdout results, external validation, and feature contributions.
-- **Protect shared infrastructure:** estimate demand before launch, cap each Job,
-  limit concurrency, and let higher-priority business workloads win.
-- **Keep evidence attached:** preserve dataset versions, parameters, metrics,
-  artifacts, model lineage, and operational status by project.
-- **Turn experiments into an operating process:** promote, deploy, monitor, stop,
-  and clean up models through explicit governed actions.
+- **Protect shared Kubernetes infrastructure.** Estimate demand before launch,
+  cap each Job, limit concurrency, and preserve capacity for higher-priority
+  workloads.
+- **Keep the operational record intact.** Retain dataset versions, parameters,
+  metrics, artifacts, lineage, and model status within each project.
+- **Turn experiments into a repeatable process.** Promote, deploy, monitor, stop,
+  and clean up models through explicit, governed actions.
 
-### Built for
+### Who Sceptre Is For
 
 - Small ML and data teams that need production discipline without a dedicated
   platform group.
@@ -105,22 +115,22 @@ The implemented local-cluster boundary is documented in the
 - Regulated or approval-driven environments that value traceability and human
   review over one-click automation.
 
-## Product Capabilities
+## Tabular AutoML and MLOps Capabilities
 
 | Stage | What Sceptre delivers |
 | --- | --- |
-| Secure the workspace | Registration, 24-hour access sessions, refresh-token rotation, project RBAC, and share links |
-| Bring the data | CSV, Parquet, Excel, JSON, and JSONL ingestion; immutable versions; content hashes; S3-compatible object persistence |
-| Understand it | Full-dataset statistics, five-number summaries, distributions, missingness, quality flags, temporal inference, relationships, and Dask fallback |
-| Frame the problem | Classification, regression, clustering, and time-series inference with target reprofiling and reusable feature statistics |
+| Control access | Registration, 24-hour access sessions, refresh-token rotation, project RBAC, and share links |
+| Ingest and version data | CSV, Parquet, Excel, JSON, and JSONL ingestion; immutable versions; content hashes; S3-compatible object persistence |
+| Profile every dataset | Full-dataset statistics, five-number summaries, distributions, missingness, quality flags, temporal inference, relationships, and Dask fallback |
+| Frame the ML problem | Classification, regression, clustering, and time-series inference with target reprofiling and reusable feature statistics |
 | Train efficiently | Up to 20 models per run, dynamic scikit-learn discovery, Bayesian tuning, adaptive resource requests, and isolated Kubernetes Jobs |
-| Choose with evidence | Progressive results, task-specific metrics, diagnostics, ranking, and additional candidates without retraining completed models |
-| Reproduce the work | MLflow parent and candidate runs backed by PostgreSQL, with candidate models mirrored to object storage |
-| Challenge the model | External dataset validation with persisted metrics and diagnostic artifacts |
-| Explain the outcome | On-demand SHAP, cached historical explanations, legacy model reconstruction, and support for non-predictive clustering estimators |
-| Operate the winner | Project registry, staged promotion, explicit fallback, Evidently drift Jobs, generated model Dockerfiles, Kubernetes inference deployments, health reporting, and guarded cleanup |
+| Select with evidence | Progressive results, task-specific metrics, diagnostics, ranking, and new candidates without retraining completed models |
+| Reproduce each experiment | MLflow parent and candidate runs backed by PostgreSQL, with candidate models mirrored to object storage |
+| Validate on external data | Persisted metrics and diagnostic artifacts for external dataset validation |
+| Explain model behavior | On-demand SHAP, cached historical explanations, legacy model reconstruction, and support for non-predictive clustering estimators |
+| Deploy and monitor | Project registry, staged promotion, explicit fallback, Evidently drift Jobs, generated model Dockerfiles, Kubernetes inference deployments, health reporting, and guarded cleanup |
 
-## Supported Machine-Learning Tasks
+## Supported Tabular Machine-Learning Tasks
 
 | Task | Ranking and review metrics |
 | --- | --- |
@@ -133,7 +143,7 @@ The estimator catalog is discovered from scikit-learn using the task-appropriate
 `ClassifierMixin`, `RegressorMixin`, or `ClusterMixin`. XGBoost, LightGBM, and
 CatBoost candidates are included when their optional dependencies are installed.
 
-## Platform Workflow
+## From Dataset to Deployed Model
 
 1. Create a project and assign access.
 2. Upload a dataset; Sceptre creates an immutable version in object storage.
@@ -147,7 +157,7 @@ CatBoost candidates are included when their optional dependencies are installed.
 10. Register approved candidates, select a fallback, run drift checks, and
     deploy or stop models from the Operations workspace.
 
-## Architecture
+## Kubernetes-Native MLOps Architecture
 
 ```mermaid
 flowchart LR
@@ -177,7 +187,7 @@ Project UUIDs are the tenant isolation boundary. Every dataset version, run,
 metric, artifact, and registry record carries a `project_id`, and backend queries
 enforce project access before returning data.
 
-## Resource Governance
+## Kubernetes Resource Governance
 
 Sceptre is built for shared clusters:
 
@@ -202,7 +212,7 @@ Sceptre is built for shared clusters:
 Increasing `MAX_CONCURRENT_JOBS` permits more application-level parallelism;
 Kubernetes ResourceQuota and the scheduler remain the final resource guardrails.
 
-## Quick Start on Local Kubernetes
+## Install Sceptre with Helm on Local Kubernetes
 
 This section is written for a data analyst who has not operated Kubernetes
 before. Follow either the Windows path or the Linux path from top to bottom. You
@@ -210,7 +220,7 @@ do **not** need to install Python, Node.js, PostgreSQL, SeaweedFS, or MLflow on 
 computer. Kubernetes pulls the published Sceptre images and one Helm command
 installs the complete application.
 
-### What you are installing
+### What the Helm chart installs
 
 The few infrastructure words used below mean:
 
@@ -235,7 +245,7 @@ against an incomplete schema.
 compatibility. That does not mean an end-of-life version should be installed.
 Kubernetes maintains only its three newest minor releases.
 
-As of **13 July 2026**, the supported upstream minors are 1.34, 1.35, and 1.36.
+As of **July 2026**, the supported upstream minors are 1.34, 1.35, and 1.36.
 For a new local installation:
 
 - choose the newest stable patch offered for 1.35 or 1.36;
@@ -680,7 +690,7 @@ kubectl delete namespace sceptre --ignore-not-found
 Deleting the `sceptre-local` k3d cluster or resetting Docker Desktop Kubernetes
 also permanently deletes cluster-local data.
 
-### Official installation references
+### Kubernetes and Helm installation references
 
 - [Supported Kubernetes releases](https://kubernetes.io/releases/)
 - [Docker Desktop for Windows](https://docs.docker.com/desktop/setup/install/windows-install/)
@@ -691,7 +701,7 @@ also permanently deletes cluster-local data.
 - [Install Helm](https://helm.sh/docs/intro/install/)
 - [Sceptre Helm configuration guide](infra/helm/sceptre/README.md)
 
-### Deployed model APIs
+### Authenticated model prediction APIs
 
 Each ready model is available through Sceptre's authenticated application
 gateway. In **Operations**, choose **API access** to copy the project-scoped URLs.
@@ -781,7 +791,7 @@ This exposes the model directly at `http://127.0.0.1:8081` for as long as the
 command runs. It is not the normal application flow and does not enforce Sceptre
 project membership.
 
-## Configuration
+## Kubernetes and Helm Configuration
 
 Configuration is supplied through environment variables and Kubernetes Secrets.
 The most important operational settings are:
@@ -813,7 +823,7 @@ The most important operational settings are:
 Use `.env.example` as the local configuration reference. Do not commit production
 credentials or reuse the development secrets in `infra/k8s/base`.
 
-## Quality Engineering
+## Quality Engineering and Supply-Chain Security
 
 Pull requests and pushes to `main` or `dev` must pass all CI gates:
 
@@ -824,15 +834,17 @@ Pull requests and pushes to `main` or `dev` must pass all CI gates:
 | Syntax | `python -m compileall apps packages alembic scripts tests` | Python 3.12 syntax and import compilation |
 | React | `npm test -- --run && npm run lint && npm run build` | UI workflows, types, lint, and production bundle |
 | Helm | `helm lint` plus all profile renders | Portable packaging and manifest regressions |
-| Security | SecObserve Trivy and Gitleaks actions | Dependency, infrastructure, credential, image, and release-gate findings |
+| Security | Pinned SecObserve Scanner containers running Trivy and Gitleaks | Dependency, infrastructure, credential, image, and release-gate findings |
 
-The security job always stores its CycloneDX and SARIF reports as a workflow
-artifact and rejects credential findings. To also import observations
-and enforce the configured SecObserve security gate, add repository variables
-`SO_API_BASE_URL` and `SO_PRODUCT_NAME`, plus a repository secret named
-`SO_API_TOKEN`. Image release candidates are scanned separately with Trivy and
-are not published when they contain a fixable vulnerability or embedded
-secret.
+The security job stores its CycloneDX and SARIF reports as workflow artifacts
+and rejects credential findings. To import observations and enforce the
+configured SecObserve security gate, add the `SO_API_BASE_URL` and
+`SO_PRODUCT_NAME` repository variables and an `SO_API_TOKEN` repository secret.
+Trivy scans image release candidates separately; CI will not publish an image
+with a fixable vulnerability or embedded secret.
+
+Published chart releases expose their available security metadata through the
+[Sceptre security report on Artifact Hub](https://artifacthub.io/packages/helm/sceptreai/sceptre?modal=security-report).
 
 The suite covers ingestion, temporal inference, exact and Dask profiling,
 authentication, route contracts, React workflows, Kubernetes resource
@@ -868,7 +880,7 @@ tests/                 Automated test suite
 docs/                  Architecture, schema, and decision records
 ```
 
-## Operational Considerations
+## Production and Scaling Considerations
 
 - The current scikit-learn tournaments are single-pod, in-memory workloads.
 - Multi-gigabyte datasets may exceed the configured Job memory limit even when
@@ -883,31 +895,47 @@ docs/                  Architecture, schema, and decision records
 - The default Helm values contain local-development credentials; override them
   or use existing Secrets before sharing a cluster.
 
-## Documentation
+## Sceptre Documentation and Support
+
+### Evaluate and operate Sceptre
+
+- [Install Sceptre with Helm on local Kubernetes](#install-sceptre-with-helm-on-local-kubernetes)
+- [Configure the Sceptre Helm chart](infra/helm/sceptre/README.md)
+- [Review production readiness and acceptance gates](docs/production-readiness/README.md)
+- [Understand the Kubernetes portability contract](docs/architecture/kubernetes-portability.md)
+- [Report a bug or request a feature](https://github.com/CharlesMaponya/sceptreAI/issues)
+
+### Architecture and engineering references
 
 - [Implementation plan](docs/architecture/implementation-plan.md)
-- [Directory structure](docs/architecture/directory-structure.md)
+- [Repository directory structure](docs/architecture/directory-structure.md)
 - [Database schema](docs/architecture/database-schema.md)
-- [Architecture decision 0001](docs/decisions/0001-decoupled-smme-automl.md)
+- [Decoupled AutoML architecture decision](docs/decisions/0001-decoupled-smme-automl.md)
 
-## Contributing
+## Contributing and Release Process
 
-Create a feature branch, keep changes scoped, add tests for behavioral changes,
-and open a pull request against `dev`. Promote a tested release with a pull
-request from `dev` to protected `main`; use `hotfix/*` only for emergencies.
-Every merge to `main` publishes the eight supported Docker images to
-`maponyacharles/sceptreai`, verifies them, and then publishes the matching Helm
-chart to `maponyacharles/sceptre`. Images use component-and-version tags such as
-`api-<version>`; the chart uses the same semantic version. Change releases only
-through `project.version` in `pyproject.toml`; CI injects it into the images and
-packaged chart. Existing releases are never overwritten, and no `latest`,
-environment, or commit-SHA tags are created. Add a GitHub Actions repository
-secret named `DOCKERHUB_TOKEN` containing a Docker Hub access token with write
-access to both repositories before the first release.
+Create a feature branch, keep the change focused, add tests for behavioral
+changes, and open a pull request against `dev`. Promote a tested release through
+a pull request from `dev` to protected `main`; reserve `hotfix/*` for
+emergencies.
 
-After the first chart release, confirm that `maponyacharles/sceptre` is public
-on Docker Hub, then add one Helm OCI repository in the
+Every merge to `main`:
+
+1. Builds and verifies the eight supported Docker images.
+2. Publishes versioned images to `maponyacharles/sceptreai`.
+3. Publishes the matching Helm chart to `maponyacharles/sceptre`.
+
+Images use component-and-version tags such as `api-<version>`, and the chart
+uses the same semantic version. Change the release version only through
+`project.version` in `pyproject.toml`; CI injects it into the images and packaged
+chart. Existing releases are never overwritten, and the release process does
+not create `latest`, environment, or commit-SHA tags.
+
+Before the first release, add a GitHub Actions repository secret named
+`DOCKERHUB_TOKEN` with write access to both Docker Hub repositories. Then
+confirm that `maponyacharles/sceptre` is public and register this Helm OCI
+repository in the
 [Artifact Hub control panel](https://artifacthub.io/control-panel/repositories):
-`oci://registry-1.docker.io/maponyacharles/sceptre`. Artifact Hub then indexes
-new semantic versions automatically; it does not receive a credential or store
-the chart.
+`oci://registry-1.docker.io/maponyacharles/sceptre`. Artifact Hub indexes new
+semantic versions automatically without receiving a registry credential or
+storing the chart.
