@@ -5,12 +5,12 @@
 </p>
 
 <p align="center">
-  <strong>Turn tabular data into governed, explainable model endpoints—without assembling an MLOps stack.</strong>
+  <strong>Governed tabular AutoML, from evidence to endpoint.</strong>
 </p>
 
 <p align="center">
-  Train, compare, validate, explain, register, deploy, and monitor models from
-  one Kubernetes-native workspace.
+  Profile the full dataset, compare candidates, validate and explain your
+  choice, then deploy it on Kubernetes you control.
 </p>
 
 <p align="center">
@@ -38,32 +38,41 @@
   </a>
 </p>
 
-## From Tabular Data to a Governed Model Endpoint
+## Sceptre at a Glance
 
-A leaderboard winner is not yet an operable model. Teams still need to prove it
-on new data, explain its decisions, preserve lineage, control compute, promote
-the right version, and serve predictions safely.
+| Product fact | What ships today |
+| --- | --- |
+| Machine-learning tasks | Classification, regression, time series, and clustering |
+| Dataset formats | CSV, Parquet, Excel, JSON, and JSONL |
+| Candidate comparison | Up to 20 compatible models in one run |
+| Evidence | Dataset lineage, diagnostics, external validation, SHAP explanations, drift results, and downloadable audit documents |
+| Deployment | Authenticated online and offline prediction APIs on Kubernetes |
+| Installation | One Helm release for the application, PostgreSQL, SeaweedFS, and MLflow |
 
-Sceptre closes that gap. This Kubernetes-native tabular AutoML and MLOps platform
-gives small and growing teams one governed path from an uploaded dataset to a
-reviewable, deployable model endpoint. Dataset versioning, full-dataset
-profiling, resource-aware training, MLflow experiment tracking, external
-validation, SHAP explainability, model promotion, drift analysis, and Kubernetes
-model serving live in one project-isolated workspace.
+## AutoML Should Not Stop at the Leaderboard
 
-Instead of stitching together notebooks, storage, experiment tracking, model
-registries, and serving infrastructure, teams work through one traceable
-workflow. The result is less platform assembly, fewer hand-offs, and a clearer
-answer to the question every serious machine-learning project must face:
-**why should we trust this model, and can we operate it?**
+A leaderboard can tell you which candidate scored highest. It cannot prove the
+model on new data, explain its decisions, preserve lineage, control compute,
+record approval, or serve predictions safely.
+
+Sceptre is a self-hosted automated machine learning (AutoML) and MLOps platform
+for tabular data. It gives small ML and data teams one governed path from an
+uploaded dataset to a reviewable model API. Dataset versioning, full-dataset
+profiling, resource-aware training, MLflow tracking, external validation, SHAP
+explainability, model promotion, drift analysis, and Kubernetes serving stay
+inside one project boundary.
+
+Instead of passing datasets, scores, model files, and approvals between tools,
+your team works from one traceable operating record. You can answer the two
+questions that matter after training: **why should we trust this model, and can
+we operate it?**
 
 Sceptre runs on infrastructure you control. Compute-heavy workloads execute in
 disposable Kubernetes Jobs, while PostgreSQL, SeaweedFS, and MLflow retain the
-operational record. The platform is designed for shared clusters where
-auditability, resource fairness, and reproducibility matter as much as model
-performance.
+record. This design suits shared clusters where auditability, resource fairness,
+and reproducibility matter as much as model performance.
 
-> **Release status — evaluation:** Sceptre and its provider-neutral Helm chart
+> **Release status: evaluation.** Sceptre and its provider-neutral Helm chart
 > are ready for local development, product evaluation, and compatibility
 > testing. The current release is not production certified. Shared and
 > production environments require the controls and qualification evidence in
@@ -77,23 +86,22 @@ defines the implemented local-cluster boundary.
 
 ## Why Sceptre
 
-Sceptre connects the work before and after model training, so evidence stays
-attached to the model throughout its lifecycle.
+Sceptre connects the work before and after training, so evidence stays attached
+to the model throughout its lifecycle.
 
 | The fragmented approach | The Sceptre approach |
 | --- | --- |
-| Upload scripts, notebooks, and shared folders | Project-scoped datasets with immutable versions, content hashes, role-based access, and durable object storage |
-| Manual profiling and preparation decisions | Full-dataset statistics, quality flags, temporal inference, relationships, and preparation recommendations |
-| One opaque “best model” score | Progressive leaderboards with task-specific metrics, diagnostics, parameters, correlation-removal heatmaps, and experiment history |
+| Datasets, notebooks, and model files spread across tools | Project-scoped data, experiments, models, deployments, and evidence |
+| One opaque “best model” score | Task-specific metrics, diagnostics, parameters, correlation-removal evidence, and experiment history |
 | Cluster requests based on intuition | Preflight CPU, memory, and duration estimates with admission limits and adaptive deadlines |
-| Validation and explainability deferred until later | External validation and on-demand SHAP for current and historical candidates |
-| Model files passed between people | A project registry with staged promotion, explicit fallback, drift checks, and protected artifacts |
-| A bespoke serving service for every model | Generated model packaging and Kubernetes deployments with authenticated online and offline prediction APIs |
+| Validation and explainability deferred until later | External validation and on-demand SHAP for current and historical models |
+| Manual promotion and bespoke serving | A project registry, explicit fallback, drift checks, generated packaging, and authenticated prediction APIs |
 
 ### Business outcomes
 
 - **Move from data to evidence in one workflow.** Compare ranked, validated
-  candidates without integrating a platform before training can begin.
+  candidates without first wiring together storage, tracking, training, and
+  serving tools.
 - **Make defensible model decisions.** Look beyond a headline score with
   diagnostics, holdout results, external validation, and feature contributions.
 - **Protect shared Kubernetes infrastructure.** Estimate demand before launch,
@@ -104,31 +112,32 @@ attached to the model throughout its lifecycle.
 - **Turn experiments into a repeatable process.** Promote, deploy, monitor, stop,
   and clean up models through explicit, governed actions.
 
-### Who Sceptre Is For
+### Choose Sceptre When
 
-- Small ML and data teams that need production discipline without a dedicated
-  platform group.
-- Organizations running Kubernetes that want model workloads to coexist fairly
-  with business services.
-- Consultancies and internal analytics teams that need isolated, reviewable
-  project workspaces.
-- Regulated or approval-driven environments that value traceability and human
-  review over one-click automation.
+- Your team works primarily with tabular machine-learning problems.
+- You already run Kubernetes and want model workloads to coexist fairly with
+  business services.
+- You need self-hosted data, artifacts, training, and inference.
+- You need to review lineage, validation, explanations, and operational evidence
+  before promoting a model.
+- You want a focused product workflow without assigning a platform team to
+  assemble every MLOps component.
+
+> **Consider another approach if** you need a managed SaaS, deep-learning or LLM
+> training, multi-node distributed training out of the box, or a
+> production-certified platform today.
 
 ## Tabular AutoML and MLOps Capabilities
 
-| Stage | What Sceptre delivers |
+| Outcome | How Sceptre delivers it |
 | --- | --- |
-| Control access | Registration, 24-hour access sessions, refresh-token rotation, project RBAC, and share links |
-| Ingest and version data | CSV, Parquet, Excel, JSON, and JSONL ingestion; immutable versions; content hashes; S3-compatible object persistence |
-| Profile every dataset | Full-dataset statistics, five-number summaries, distributions, missingness, quality flags, temporal inference, relationships, and Dask fallback |
-| Frame the ML problem | Classification, regression, clustering, and time-series inference with target reprofiling and reusable feature statistics |
-| Train efficiently | Up to 20 models per run, dynamic scikit-learn discovery, Bayesian tuning, adaptive resource requests, and isolated Kubernetes Jobs |
-| Select with evidence | Progressive results, task-specific metrics, diagnostics, ranking, and new candidates without retraining completed models |
-| Reproduce each experiment | MLflow parent and candidate runs backed by PostgreSQL, with candidate models mirrored to object storage |
-| Validate on external data | Persisted metrics and diagnostic artifacts for external dataset validation |
-| Explain model behavior | On-demand SHAP, cached historical explanations, legacy model reconstruction, and support for non-predictive clustering estimators |
-| Deploy and monitor | Project registry, staged promotion, explicit fallback, Evidently drift Jobs, generated model Dockerfiles, Kubernetes inference deployments, health reporting, and guarded cleanup |
+| Control who can see and change the work | Registration, refresh-token rotation, project RBAC, scoped share links, and 24-hour access sessions |
+| Know exactly what you are training on | Immutable dataset versions, content hashes, S3-compatible storage, full-dataset statistics, quality flags, temporal inference, relationships, and Dask fallback |
+| Match the training plan to the problem and cluster | Four inferred task families, reusable feature statistics, up to 20 candidates, Bayesian tuning, resource estimates, and isolated Kubernetes Jobs |
+| Select a model you can defend | Progressive task metrics, diagnostics, ranking, external validation, leakage controls, correlation-removal evidence, and on-demand SHAP |
+| Reproduce the decision | MLflow parent and candidate runs backed by PostgreSQL, with candidate models mirrored to object storage |
+| Move an approved model into operation | Project registry, staged promotion, explicit fallback, generated model Dockerfiles, Kubernetes deployments, authenticated prediction APIs, and health reporting |
+| Keep evidence after deployment | Evidently drift Jobs, deployment monitoring records, downloadable audit evidence, and guarded cleanup |
 
 ## Supported Tabular Machine-Learning Tasks
 
@@ -156,6 +165,11 @@ CatBoost candidates are included when their optional dependencies are installed.
 9. Run external validation and SHAP analysis for current or historical models.
 10. Register approved candidates, select a fallback, run drift checks, and
     deploy or stop models from the Operations workspace.
+
+> **Ready to evaluate Sceptre?** Follow the
+> [local Kubernetes installation guide](#install-sceptre-with-helm-on-local-kubernetes).
+> It uses published images and requires no local application build or private
+> registry.
 
 ## Kubernetes-Native MLOps Architecture
 
