@@ -1,5 +1,5 @@
 import { ArrowLeft, Compass } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 
 export function NotFound() {
   return <main className="not-found" id="main-content">

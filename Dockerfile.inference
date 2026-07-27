@@ -1,15 +1,19 @@
-FROM python:3.15.0b4-alpine
+FROM python:3.14.6-slim-trixie
 
 ARG SCEPTRE_VERSION=0.0.0
 WORKDIR /app
 COPY requirements-inference.txt ./
-RUN pip install --no-cache-dir -r requirements-inference.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install --upgrade pip==26.1.2 \
+    && python -m pip install -r requirements-inference.txt
 
 COPY requirements-inference-upload.txt ./
-RUN pip install --no-cache-dir -r requirements-inference-upload.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install -r requirements-inference-upload.txt
 
-RUN apk update \
-    && apk add --no-cache libgomp
+RUN apt-get update \
+    && apt-get install --no-install-recommends --yes libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY apps/api ./apps/api
 COPY packages ./packages
@@ -18,7 +22,7 @@ ENV PYTHONPATH=/app/apps/api:/app/packages
 ENV PYTHONUNBUFFERED=1
 ENV SCEPTRE_VERSION=${SCEPTRE_VERSION}
 
-RUN adduser -D -h /home/sceptre -u 10001 sceptre
+RUN useradd --create-home --uid 10001 sceptre
 USER 10001
 
 EXPOSE 8080

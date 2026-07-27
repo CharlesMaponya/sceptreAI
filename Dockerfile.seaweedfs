@@ -30,5 +30,6 @@ RUN chmod 755 /entrypoint.sh
 VOLUME /data
 WORKDIR /data
 EXPOSE 7333 8333 8888 9333
+USER seaweed
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["mini", "-dir=/data"]

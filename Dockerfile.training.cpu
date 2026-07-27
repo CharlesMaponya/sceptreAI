@@ -1,4 +1,4 @@
-FROM python:3.15.0b4-alpine
+FROM python:3.14.6-slim-trixie
 
 ARG SCEPTRE_VERSION=0.0.0
 ENV PYTHONUNBUFFERED=1 \
@@ -7,15 +7,17 @@ ENV PYTHONUNBUFFERED=1 \
     SCEPTRE_VERSION=${SCEPTRE_VERSION}
 
 WORKDIR /app
-COPY requirements-training.txt requirements-zenml-local.txt ./
-RUN apk update \
-    && apk add --no-cache libgomp build-base \
-    && python -m pip install --no-cache-dir -r requirements-training.txt \
-    && python -m pip install --no-cache-dir -r requirements-zenml-local.txt
+COPY requirements-training.txt ./
+RUN --mount=type=cache,target=/root/.cache/pip \
+    apt-get update \
+    && apt-get install --no-install-recommends --yes libgomp1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && python -m pip install --upgrade pip==26.1.2 \
+    && python -m pip install -r requirements-training.txt
 
 COPY apps/api ./apps/api
 COPY packages ./packages
-RUN adduser -D -h /home/sceptre -u 10001 sceptre
+RUN useradd --create-home --uid 10001 sceptre
 USER 10001
 
 CMD ["python", "-m", "automl_api.training.worker", "--help"]

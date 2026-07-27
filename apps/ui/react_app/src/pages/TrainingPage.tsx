@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, Check, Cpu, Database, Info, Sparkles, Zap } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router";
 import { api, json } from "../api";
 import { Button, Card, ErrorState, Loading, Metric, Notice, PageHeader } from "../components/ui";
 import { titleCase } from "../lib";

@@ -15,7 +15,10 @@ spec:
         {{- include "sceptre.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: database-bootstrap
     spec:
+      automountServiceAccountToken: false
       restartPolicy: Never
+      securityContext:
+        seccompProfile: {type: RuntimeDefault}
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- range . }}
@@ -44,6 +47,20 @@ spec:
                 secretKeyRef:
                   name: {{ include "sceptre.fullname" . }}-postgresql
                   key: POSTGRES_PASSWORD
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 100m, memory: 64Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 70
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}
 ---
 {{- end }}
 apiVersion: batch/v1
@@ -62,7 +79,10 @@ spec:
         {{- include "sceptre.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: api-migration
     spec:
+      automountServiceAccountToken: false
       restartPolicy: Never
+      securityContext:
+        seccompProfile: {type: RuntimeDefault}
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- range . }}
@@ -88,3 +108,16 @@ spec:
                 secretKeyRef:
                   name: {{ include "sceptre.platformSecretName" . }}
                   key: {{ .Values.platform.databaseUrlKey }}
+          resources:
+            requests: {cpu: 25m, memory: 64Mi}
+            limits: {cpu: 250m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}

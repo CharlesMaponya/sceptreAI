@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, FolderKanban, Link2, Plus, Search } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router";
 import { api, json } from "../api";
 import { Badge, Button, Card, EmptyState, ErrorState, Loading, Modal, PageHeader } from "../components/ui";
 import { formatDate, initials } from "../lib";

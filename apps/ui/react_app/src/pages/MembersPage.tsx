@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Check, Copy, Link2, Users } from "lucide-react";
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams } from "react-router";
 import { api, json } from "../api";
 import { Badge, Button, Card, EmptyState, ErrorState, Loading, Notice, PageHeader } from "../components/ui";
 import { formatDate, initials, titleCase } from "../lib";

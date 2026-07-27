@@ -4,7 +4,7 @@ import {
   LogOut, Menu, Settings, ShieldCheck, UserRound, Users, X,
 } from "lucide-react";
 import { useState } from "react";
-import { NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
+import { NavLink, Outlet, useNavigate, useParams } from "react-router";
 import { api, getSession, signOut } from "./api";
 import { cx, initials } from "./lib";
 import type { Project } from "./types";

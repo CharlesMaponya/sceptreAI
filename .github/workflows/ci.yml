@@ -153,6 +153,89 @@ jobs:
       - name: Check syntax with compileall
         run: python -m compileall apps packages alembic scripts tests
 
+  repository-security:
+    name: Repository Security
+    runs-on: ubuntu-latest
+    env:
+      SECOBSERVE_UPLOAD: ${{ vars.SO_API_BASE_URL != '' && vars.SO_PRODUCT_NAME != '' && secrets.SO_API_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Prepare reports directory
+        run: mkdir security-reports
+
+      - name: Scan dependencies with Trivy
+        uses: secobserve/actions-templates/actions/SCA/trivy_filesystem@9953b3d60f1dc2ada4059b26cb1a6785ca1c4cfd
+        with:
+          target: .
+          report_name: security-reports/trivy-dependencies.cdx.json
+          further_parameters: --skip-dirs .git --skip-dirs .venv --skip-dirs node_modules
+          so_upload: ${{ env.SECOBSERVE_UPLOAD }}
+          so_api_base_url: ${{ vars.SO_API_BASE_URL || 'http://secobserve.invalid' }}
+          so_api_token: ${{ secrets.SO_API_TOKEN || 'not-configured' }}
+          so_product_name: ${{ vars.SO_PRODUCT_NAME || 'sceptre' }}
+          so_branch_name: ${{ github.head_ref || github.ref_name }}
+
+      - name: Scan infrastructure as code with Trivy
+        uses: secobserve/actions-templates/actions/SAST/trivy_config@9953b3d60f1dc2ada4059b26cb1a6785ca1c4cfd
+        with:
+          target: .
+          report_name: security-reports/trivy-config.sarif
+          further_parameters: --skip-dirs .git --skip-dirs .venv --skip-dirs node_modules
+          so_upload: ${{ env.SECOBSERVE_UPLOAD }}
+          so_api_base_url: ${{ vars.SO_API_BASE_URL || 'http://secobserve.invalid' }}
+          so_api_token: ${{ secrets.SO_API_TOKEN || 'not-configured' }}
+          so_product_name: ${{ vars.SO_PRODUCT_NAME || 'sceptre' }}
+          so_branch_name: ${{ github.head_ref || github.ref_name }}
+
+      - name: Scan for credentials with Trivy
+        uses: secobserve/actions-templates/actions/secrets/trivy_filesystem_secrets@9953b3d60f1dc2ada4059b26cb1a6785ca1c4cfd
+        with:
+          target: .
+          report_name: security-reports/trivy-secrets.sarif
+          further_parameters: --skip-dirs .git --skip-dirs .venv --skip-dirs node_modules
+          so_upload: ${{ env.SECOBSERVE_UPLOAD }}
+          so_api_base_url: ${{ vars.SO_API_BASE_URL || 'http://secobserve.invalid' }}
+          so_api_token: ${{ secrets.SO_API_TOKEN || 'not-configured' }}
+          so_product_name: ${{ vars.SO_PRODUCT_NAME || 'sceptre' }}
+          so_branch_name: ${{ github.head_ref || github.ref_name }}
+
+      - name: Cross-check credentials with Gitleaks
+        uses: secobserve/actions-templates/actions/secrets/gitleaks@9953b3d60f1dc2ada4059b26cb1a6785ca1c4cfd
+        with:
+          report_name: security-reports/gitleaks.sarif
+          so_upload: ${{ env.SECOBSERVE_UPLOAD }}
+          so_api_base_url: ${{ vars.SO_API_BASE_URL || 'http://secobserve.invalid' }}
+          so_api_token: ${{ secrets.SO_API_TOKEN || 'not-configured' }}
+          so_product_name: ${{ vars.SO_PRODUCT_NAME || 'sceptre' }}
+          so_branch_name: ${{ github.head_ref || github.ref_name }}
+
+      - name: Reject credential leaks
+        run: |
+          jq --exit-status '[.runs[].results[]?] | length == 0' \
+            security-reports/trivy-secrets.sarif
+          jq --exit-status '[.runs[].results[]?] | length == 0' \
+            security-reports/gitleaks.sarif
+
+      - name: Check the SecObserve security gate
+        if: ${{ env.SECOBSERVE_UPLOAD == 'true' }}
+        uses: secobserve/actions-templates/actions/check_security_gate@9953b3d60f1dc2ada4059b26cb1a6785ca1c4cfd
+        with:
+          so_api_base_url: ${{ vars.SO_API_BASE_URL }}
+          so_api_token: ${{ secrets.SO_API_TOKEN }}
+          so_product_name: ${{ vars.SO_PRODUCT_NAME }}
+
+      - name: Preserve security reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: security-reports
+          path: security-reports/
+          if-no-files-found: error
+          retention-days: 30
+
   helm-chart:
     name: Helm Chart Regression
     runs-on: ubuntu-latest
@@ -229,7 +312,7 @@ jobs:
   release-preflight:
     name: Release Preflight
     if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
-    needs: [branch-policy, lint, test, frontend, syntax-check, helm-chart]
+    needs: [branch-policy, lint, test, frontend, syntax-check, repository-security, helm-chart]
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -345,11 +428,11 @@ jobs:
                 "import automl_api; assert automl_api.__version__ == '${VERSION}'"
               ;;
             ui)
-              docker run --rm --entrypoint nginx "$candidate" -t
+              docker run --rm --env API_SERVICE_HOST=127.0.0.1 "$candidate" nginx -t
               ;;
             mlflow)
-              docker run --rm --entrypoint python "$candidate" -m py_compile \
-                /opt/automl/mlflow_migrate_if_initialized.py
+              docker run --rm --entrypoint python "$candidate" -c \
+                "import mlflow, psycopg; compile(open('/opt/automl/mlflow_migrate_if_initialized.py').read(), 'mlflow_migrate_if_initialized.py', 'exec')"
               ;;
             seaweedfs)
               docker run --rm --entrypoint /usr/bin/weed "$candidate" version
@@ -359,7 +442,7 @@ jobs:
               ;;
             training-cpu)
               docker run --rm --entrypoint python "$candidate" -c \
-                "import automl_api, catboost, lightgbm, sklearn, xgboost; assert automl_api.__version__ == '${VERSION}'"
+                "import automl_api, catboost, lightgbm, sklearn, xgboost, zenml; assert automl_api.__version__ == '${VERSION}'; assert zenml.__version__ == '0.96.2'"
               ;;
             inference)
               docker run --rm --entrypoint python "$candidate" -c \
@@ -367,7 +450,7 @@ jobs:
               ;;
           esac
 
-      - name: Reject actionable high and critical vulnerabilities
+      - name: Reject actionable vulnerabilities and embedded secrets
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
         run: |
@@ -375,7 +458,8 @@ jobs:
             --volume /var/run/docker.sock:/var/run/docker.sock \
             --volume "$RUNNER_TEMP/trivy-cache:/root/.cache/" \
             aquasec/trivy@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f \
-            image --scanners vuln --severity CRITICAL,HIGH \
+            image --timeout 20m --scanners vuln,secret \
+            --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
             --ignore-unfixed --exit-code 1 "${IMAGE}@${DIGEST}"
 
       - name: Save the candidate digest
@@ -439,7 +523,7 @@ jobs:
           docker run --rm --entrypoint python "${IMAGE}@${DIGEST}" -c \
             "import automl_api; assert automl_api.__version__ == '${VERSION}'"
 
-      - name: Reject actionable high and critical vulnerabilities
+      - name: Reject actionable vulnerabilities and embedded secrets
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
         run: |
@@ -447,7 +531,8 @@ jobs:
             --volume /var/run/docker.sock:/var/run/docker.sock \
             --volume "$RUNNER_TEMP/trivy-cache:/root/.cache/" \
             aquasec/trivy@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f \
-            image --scanners vuln --severity CRITICAL,HIGH \
+            image --timeout 20m --scanners vuln,secret \
+            --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
             --ignore-unfixed --exit-code 1 "${IMAGE}@${DIGEST}"
 
       - name: Save the candidate digest

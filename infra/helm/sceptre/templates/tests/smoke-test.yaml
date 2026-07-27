@@ -10,7 +10,10 @@ metadata:
     helm.sh/hook: test
     helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
 spec:
+  automountServiceAccountToken: false
   restartPolicy: Never
+  securityContext:
+    seccompProfile: {type: RuntimeDefault}
   {{- with .Values.global.imagePullSecrets }}
   imagePullSecrets:
     {{- range . }}
@@ -26,4 +29,13 @@ spec:
         - |
           wget -qO- http://{{ include "sceptre.fullname" . }}-ui/
           wget -qO- http://{{ include "sceptre.fullname" . }}-ui/health/ready | grep -q '"status":"ok"'
+      resources:
+        requests: {cpu: 5m, memory: 8Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities: {drop: ["ALL"]}
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 65532
 {{- end }}

@@ -66,6 +66,9 @@ spec:
         {{- include "sceptre.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: postgresql
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile: {type: RuntimeDefault}
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- range . }}
@@ -94,6 +97,11 @@ spec:
             failureThreshold: 4
           resources:
             {{- toYaml .Values.postgresql.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data

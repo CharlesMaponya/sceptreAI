@@ -175,7 +175,7 @@ The following are code or operational gaps, not configuration suggestions.
 | Model delivery | A Dockerfile is generated as evidence, but no model builder scans, signs, pushes, resolves, or deploys a model-specific immutable image | Current one-click deployment is a functional baseline, not a governed supply-chain boundary |
 | Observability | Health probes, run status, logs, optional resource telemetry, deployment-linked metric/drift history, a governance dashboard, and versioned audit evidence exist | Operator alert delivery, durable telemetry retention policy, platform SLOs, and on-call runbooks still require deployment-specific integration and validation |
 | Recovery | Retained PVCs and migrations exist; backup/restore automation does not | Restore time, restore point, credential continuity, and rollback are unproven |
-| Release safety | Unit/frontend/migration/render CI, image SBOM/provenance generation, and an actionable HIGH/CRITICAL container vulnerability gate exist, but CI has no dependency, secret, or SAST gate and third-party Actions are not commit-pinned | Live cluster upgrade, rollback, disaster recovery, security, performance, supply-chain, and multi-cluster qualification are incomplete |
+| Release safety | Unit/frontend/migration/render CI, image SBOM/provenance generation, all-severity actionable container and embedded-secret gates, and SecObserve-compatible dependency, IaC, and credential reports exist; most third-party Actions are still version-pinned rather than commit-pinned | Live cluster upgrade, rollback, disaster recovery, security, performance, supply-chain, and multi-cluster qualification are incomplete |
 
 Relevant implementation evidence:
 
