@@ -77,8 +77,10 @@ Use the following documents together:
 - Do not copy local PVCs into production. Promote immutable datasets and model
   artifacts through an approved, traceable process.
 - Do not interpret `ENVIRONMENT=production` as automatic hardening. In the
-  current application it only changes a small number of API behaviors; the chart
-  does not presently expose this setting correctly.
+  current application it only changes a small number of API behaviors. The chart
+  exposes the setting but defaults it to `local`; a production profile must set
+  and validate it explicitly, while security controls must not depend on a
+  fragile environment-name comparison.
 
 ## 3. What the Current Release Actually Provides
 
@@ -160,28 +162,33 @@ The following are code or operational gaps, not configuration suggestions.
 | --- | --- | --- |
 | Identity | Local email/password authentication includes registration, login, rotating refresh tokens, profile updates, password change, and SMTP-backed reset; there is no OIDC/SSO, SAML adapter, MFA, SCIM lifecycle, or passkey support; self-registration creates verified users, browser tokens use `localStorage`, access tokens default to 24 hours, the log WebSocket accepts a bearer token in its URL, and authentication/reset endpoints have no abuse throttling | Production requires a managed identity boundary, secure browser sessions with no bearer tokens in URLs or script-readable storage, phishing-resistant MFA for privileged access, shorter token exposure, rate limits, and reviewed CSRF/XSS and credential-stuffing controls |
 | Password reset — **critical** | For any `ENVIRONMENT` value other than the exact string `production`, the unauthenticated reset-request endpoint returns a valid reset token for the supplied existing email address; the UI offers that requester a direct continuation into password confirmation | Any user who can reach a local, staging, or misconfigured deployment can reset another user’s password and revoke their sessions; environment-name gating is not an acceptable control and the token must never be returned by the API |
+| Session revocation and replay | Ordinary HTTP authorization checks the user token version, but the training-log WebSocket does not; concurrent refresh-token or password-reset redemption is not protected by an atomic consume/row lock, and refresh-token replay does not revoke the token family | Logout, password change, deprovisioning, and one-time-token guarantees are incomplete under theft or concurrency; use server-side sessions or atomic token-family rotation/reuse detection and apply the same revocation decision to HTTP, streaming, and WebSocket paths |
 | Authorization semantics | Project role checks are centralized, but an administrator can create an `OWNER` share link and stored membership `permissions` are not evaluated by authorization decisions | Define and enforce delegation ceilings, ownership-transfer rules, and any claimed fine-grained permissions; test concurrent share-link use limits |
 | Organization and tenant lifecycle | The application has users and project membership but no organization/tenant boundary, enterprise group mapping, automated provisioning/deprovisioning, or tenant-level quota and audit policy | Do not claim enterprise multi-tenancy until tenant identity is explicit in data, authorization, storage, queueing, billing/quota, audit, deletion, and negative isolation tests |
 | Dataset ingestion | The browser reports multipart progress, but Nginx permits 5 GB on upload routes, FastAPI calls `file.file.read()`, and CSV inspection retains unbounded distinct values and row fingerprints | The former 5 GB or 10 GB goal is not a supported current limit; enforce a small bounded limit until memory-safe resumable or direct-to-object-store upload and bounded inspection are implemented |
+| Object-store safety and portability | The remote factory implements only the exact `minio` adapter; `s3`, `azure`, `gcs`, misspelled, or other values silently select the embedded filesystem even though supported-looking enum values can be persisted. Embedded keys are joined without a canonical containment check, so a crafted filename containing path segments can escape the intended bucket directory | Unknown or unimplemented providers must fail closed, stored filenames must be server-generated or reduced to a safe basename, every local path must remain canonically inside its configured root, and production must never silently fall back from remote to node-local storage |
 | Training memory | Training reads complete dataset objects before creating in-memory pandas structures | Raw file size is not a memory requirement; large-data claims require a bounded or distributed implementation and load evidence |
+| Training duration and model selection | Candidates execute serially in one process; a tunable candidate can run Bayesian search plus a separate learning curve with single-process cross-validation, and up to 20 candidates are accepted. `expected_minutes` is caller input rather than a measured runtime prediction. The same 20% holdout is then used to rank candidates, so it is not an untouched final test set | A fixed completion objective and model quality are unqualified; establish measured workload and estimator envelopes, publish execution-class budgets, isolate or checkpoint candidates, rank on nested/repeated validation, retain an untouched final or external evaluation set, and refit an approved winner under a reproducible policy |
 | Profiling durability | Profiling runs in a FastAPI-owned thread pool and incomplete jobs are resumed at API startup | API restarts and multiple API replicas do not provide safe exactly-once or leased execution |
 | Scheduling | FastAPI performs admission and creates Kubernetes resources directly; capacity exhaustion is rejected instead of queued | There is no durable fair queue or separately scalable orchestrator |
 | Failure domain | All selected candidates run in one training Job and process | One candidate or process failure can affect the complete tournament |
 | Availability | API and UI default to one replica; bundled PostgreSQL, SeaweedFS, and MLflow are single replica; there are no PDBs or topology rules | A node or voluntary disruption can interrupt the control plane or data services |
-| Network and workload security | No NetworkPolicy is installed; training Jobs do not set a restricted container security context, the GPU image remains root, and training receives platform database and shared object-store credentials | Namespace RBAC alone does not isolate traffic; a parser, dependency, or image compromise can cross tenant and data-service boundaries |
+| Network and workload security | No NetworkPolicy is installed; training Jobs do not set a restricted container security context, the GPU image remains root, and training receives platform database and shared object-store credentials. A project administrator may also choose an arbitrary inference image; that untrusted image receives the shared object-store credentials and unrestricted outbound connectivity | Namespace RBAC alone does not isolate traffic. Remove the user-selectable runtime image or restrict it to a signed immutable-digest allowlist enforced by admission policy; use project/prefix-scoped short-lived credentials and default-deny egress |
 | Secrets | Defaults contain known JWT, PostgreSQL, and object-store credentials, and production mode does not reject them at startup or chart render | Default values are unsafe anywhere shared; production must fail closed on weak/default secrets and use workload-specific, least-privilege credentials |
 | Serving security | Generic inference endpoints have no built-in authentication, authorization, rate limit, or request quota; enabling per-model ingress exposes those endpoints directly and bypasses the authenticated platform gateway | Keep model Services internal until every direct path has authentication, authorization, quotas, TLS, logging, abuse controls, and tenant isolation |
 | Model artifact integrity | Inference downloads a model object and passes it directly to `joblib.load()` without checking the registered digest | Object-store tampering can become code execution; verify an expected immutable digest before deserialization and use read-only, prefix-scoped serving credentials |
 | Application hardening | Readiness and inference handlers return raw exception text, while the UI proxy does not set a reviewed CSP, HSTS, clickjacking, MIME-sniffing, or referrer policy | Public responses can disclose internal details, and browser compromise has greater impact while tokens remain script-readable |
 | Model delivery | A Dockerfile is generated as evidence, but no model builder scans, signs, pushes, resolves, or deploys a model-specific immutable image | Current one-click deployment is a functional baseline, not a governed supply-chain boundary |
+| Cloud and multi-cluster control | The repository has a provider-neutral Helm chart but no cloud IaC, cloud workload-identity integration, native GCS or Azure storage adapter, multi-cluster dispatcher, or durable cluster identity in workflow state. The Kubernetes client binds to one in-cluster namespace, and NVIDIA training requires a separately supplied image | Rendering on Kubernetes is not EKS/GKE/AKS qualification; each claimed provider needs reproducible IaC and identity/storage/network/recovery evidence, and simultaneous use needs explicit placement, data locality, leasing, failover, reconciliation, and combined load/chaos tests |
 | Observability | Health probes, run status, logs, optional resource telemetry, deployment-linked metric/drift history, a governance dashboard, and versioned audit evidence exist; complete user-activity coverage and seven-day centralized log persistence are not proven | Operator alert delivery, durable user/security/application log storage, retention enforcement, platform SLOs, and on-call runbooks still require deployment-specific integration and validation |
 | Recovery | Retained PVCs and migrations exist; backup/restore automation does not | Restore time, restore point, credential continuity, and rollback are unproven |
-| Release safety | Unit/frontend/migration/render CI, image SBOM/provenance generation, all-severity actionable container and embedded-secret gates, and SecObserve-compatible dependency, IaC, and credential reports exist; most third-party Actions are still version-pinned rather than commit-pinned | Live cluster upgrade, rollback, disaster recovery, security, performance, supply-chain, and multi-cluster qualification are incomplete |
+| Release safety | Unit/frontend/migration/render CI, image SBOM/provenance generation, all-severity actionable container and embedded-secret gates, and SecObserve-compatible dependency, IaC, and credential reports exist; the backend coverage floor is only 40%, critical concurrency/failure paths are not integration tested, and most third-party Actions are version-pinned rather than commit-pinned. Render-only CI does not catch the current external-MLflow smoke test calling the absent bundled MLflow Service | Raise risk-based coverage on identity, storage, durable work, reconciliation, and deployment paths; fix and execute Helm tests for bundled and external-service modes; live cluster upgrade, rollback, disaster recovery, security, performance, supply-chain, and multi-cluster qualification remain incomplete |
 
 Relevant implementation evidence:
 
 - [Complete API upload buffering](../../apps/api/automl_api/api/routes/datasets.py)
 - [Unbounded upload inspection](../../apps/api/automl_api/services/dataset_inspection.py)
+- [Object-store selection and embedded path handling](../../apps/api/automl_api/storage/object_store.py)
 - [Current authentication lifecycle](../../apps/api/automl_api/api/routes/auth.py)
 - [Password-reset response schema](../../apps/api/automl_api/schemas/auth.py)
 - [Password-reset browser flow](../../apps/ui/react_app/src/Auth.tsx)
@@ -195,6 +202,7 @@ Relevant implementation evidence:
 - [GPU training image](../../Dockerfile.training)
 - [Current Helm defaults](../../infra/helm/sceptre/values.yaml)
 - [Current RBAC boundary](../../infra/helm/sceptre/templates/rbac.yaml)
+- [Current Helm smoke test](../../infra/helm/sceptre/templates/tests/smoke-test.yaml)
 - [Current chart CI](../../.github/workflows/ci.yml)
 
 ## 5. Local Development and Evaluation
@@ -303,15 +311,15 @@ expansion and estimator choice can make working memory many times larger than
 the raw file. Capacity must be measured with representative datasets and model
 selections.
 
-### Capacity and two-hour benchmark contract
+### Capacity and workload benchmark contract
 
-“15 users,” “10 GB,” and “one to two hours” are not sufficient benchmark
-definitions on their own. Qualification must publish the exact dataset and
-pipeline envelope: file format and compressed/uncompressed size, rows, columns,
-sparsity, categorical cardinality, text width, missingness, target balance,
-split strategy, feature-selection method, candidate algorithms, search budget,
-cross-validation folds, explanations, hardware, storage class, and warm/cold
-cache state.
+“15 users” and “10 GB” are not sufficient benchmark definitions on their own.
+Qualification must publish the exact dataset and pipeline envelope: file format
+and compressed/uncompressed size, rows, columns, sparsity, categorical
+cardinality, text width, missingness, target balance, split strategy,
+feature-selection method, candidate algorithms, search budget, cross-validation
+folds, explanations, hardware, storage class, warm/cold cache state, and the
+workload- and estimator-specific completion objective.
 
 Two separate tests are required:
 
@@ -320,14 +328,14 @@ Two separate tests are required:
    Every accepted request is durable, idempotent, cancellable, visible in queue
    position, and survives API/orchestrator restart. Four running workloads with
    eleven queued may be used as the initial control-plane baseline, but this
-   does not satisfy a two-hour completion claim.
-2. **Two-hour service profile:** all 15 qualifying workflows are submitted
-   concurrently and each reaches its declared terminal success state within
-   120 minutes measured from accepted submission, including queue wait,
-   profiling, feature selection, tuning, validation, explanation, registration,
-   and required artifact persistence. If only training compute is covered, label
-   the metric `training_compute_duration` and do not market it as end-to-end
-   completion.
+   does not by itself satisfy a workflow completion objective.
+2. **Workload service profile:** all 15 qualifying workflows are submitted
+   concurrently and each reaches its declared terminal success state within its
+   published workload- and estimator-specific objective, measured from accepted
+   submission and including queue wait, profiling, feature selection, tuning,
+   validation, explanation, registration, and required artifact persistence.
+   If only training compute is covered, label the metric
+   `training_compute_duration` and do not market it as end-to-end completion.
 
 Run at least three production-like repetitions, including one cold-cache run and
 one controlled worker or node disruption. Report per-stage and end-to-end p50,
@@ -336,8 +344,8 @@ API latency/error rate, retries, OOM/evictions, CPU/GPU/memory/disk/network,
 database/object-store saturation, autoscaling time, and cost. Passing requires
 zero lost or corrupt uploads, zero silently dropped or duplicated jobs, zero
 cross-project access, zero unexplained OOMs, all 15 service-profile workflows
-within 120 minutes, and control-plane/error-budget objectives remaining within
-their approved SLOs.
+meeting their published objectives, and control-plane/error-budget objectives
+remaining within their approved SLOs.
 
 Admission must use measured peak working-set and temporary-storage estimates,
 not raw file size alone. Unsupported shapes or algorithms must be rejected
@@ -402,6 +410,28 @@ an irreproducible model. For every task and representative dataset:
   approval where the intended use or policy requires them. A statistically
   worse, uncalibrated, non-reproducible, or policy-failing candidate cannot be
   promoted merely because it finished inside the time budget.
+
+### Keras and TPOT production scope of work
+
+Keras and TPOT are not present in the current dependencies, candidate catalog,
+training images, artifact loaders, or tests. They are planned opt-in,
+high-cost capabilities and must not be advertised as supported until their
+individual acceptance gates pass.
+
+| Workstream | Production deliverable and controls | Acceptance evidence |
+| --- | --- | --- |
+| Keras tabular models | Add bounded classifier and regressor candidates with fold-safe preprocessing. Use a separate signed CPU image and, where required, a separately qualified GPU image with pinned framework, CUDA, driver, and accelerator compatibility. Bound layers, width, epochs, batch size, learning rate, total parameters, memory, wall time, and checkpoint size; require early stopping, deterministic seeds where supported, cancellation, and restart-safe checkpoints. | Classification and regression parity tests; deterministic-tolerance tests; CPU/GPU compatibility matrix; peak-memory, cold-start, training-time, prediction-latency, throughput, and cost results; node-loss/checkpoint recovery; and successful inclusion in the applicable Section 7 workload profile. |
+| Keras artifacts and serving | Store the preprocessing contract, feature/schema order, labels, architecture, weights, framework versions, immutable digests, evaluation evidence, and an approved native or standardized export. Load it only in a framework-specific serving runtime that verifies the expected digest; do not pass Keras artifacts through the current generic `joblib` loader. | Round-trip prediction parity between training and serving; malformed/tampered artifact rejection; signed-image and artifact verification; authenticated canary deployment, health, rollback, monitoring, and batch/online inference tests. |
+| TPOT pipeline search | Treat TPOT as a search controller rather than one estimator. Support classification and regression initially, disabled by default. Run it in an isolated candidate Job with an allowlisted operator set and explicit population, generation, mutation/crossover, cross-validation, CPU, memory, temporary-storage, wall-time, and total-fit budgets. Do not wrap TPOT in the existing Bayesian search. | The Job stops within every declared limit; cancel, timeout, eviction, checkpoint/resume, and partial-result behavior are deterministic; generated pipelines contain only approved operators; and no failure can terminate other candidates or the API control plane. |
+| TPOT validation and artifacts | Evaluate the selected pipeline with nested or external validation rather than the data used to drive its genetic search. Persist the fitted pipeline plus its exact graph/code, operator and dependency versions, seed, search history, resource use, dataset/split fingerprints, and immutable digests. Scan generated code and dependencies before registration or deployment. | Reproduction from recorded inputs; dummy/incumbent comparison; leakage and holdout tests; pipeline-complexity and inference-latency limits; digest/signature verification; safe serving, rollback, drift monitoring, and governance-report coverage. |
+
+Both integrations must use dedicated resource classes and immutable framework
+images so their heavy dependency trees do not enlarge every baseline training
+or inference image. The candidate API and UI must expose their estimated cost,
+compatibility, search/training budget, current phase, and reason for rejection.
+If either family is included in a marketed 15-user or completion-time claim, it
+must be part of that exact repeated benchmark envelope rather than qualified by
+a smaller substitute dataset.
 
 ### Target production control boundary
 
@@ -476,10 +506,14 @@ Prefer existing Secrets populated by an external secret-management process:
 | `externalObjectStore.existingSecret` | Configured access-key and secret-key fields |
 | `global.imagePullSecrets` | Registry credentials in Kubernetes pull-secret format |
 
-Current external object storage uses an S3-compatible static-key adapter. It
-does not yet provide native Azure Blob/GCS adapters, cloud workload identity,
-session-token handling, or chart-managed custom CA mounts. Do not claim those
-capabilities until their implementation and tests exist.
+The chart configures its bundled and external object-storage paths through the
+legacy `minio` adapter name and static access/secret keys. The backend enum also
+contains `s3`, `azure`, and `gcs`, but the factory implements no corresponding
+remote adapters: any value other than the exact string `minio` silently selects
+the embedded filesystem while dataset metadata may record the requested enum.
+Do not set or claim those provider values. Replace that fallback with strict
+configuration validation before adding native Azure Blob/GCS, cloud workload
+identity, session-token handling, or chart-managed custom CA support.
 
 Production startup and Helm validation must reject missing, known-default, or
 insufficiently strong JWT and configured database, object-store, and SMTP
@@ -561,11 +595,12 @@ group-removal delay, stale sessions, share-link delegation ceilings, cross-tenan
 IDs, bulk/export paths, and background Jobs acting outside the initiating
 user’s current permissions.
 
-The chart now defaults `ENVIRONMENT` to `production`, which suppresses
-development API documentation and reset-token responses. That string comparison
-is too fragile to protect an account-recovery credential: the current
-`reset_token_for_dev` response permits cross-user account takeover in every
-non-production environment and in production if the environment is misspelled.
+The chart exposes `ENVIRONMENT` but defaults it to `local`. Only the exact string
+`production` suppresses development API documentation and reset-token responses.
+That comparison is too fragile to protect an account-recovery credential: the
+current `reset_token_for_dev` response permits cross-user account takeover in
+every non-production environment and in production if the environment is
+misspelled.
 
 Remove `reset_token_for_dev` from the response schema and browser flow in every
 runtime mode. A reset token may leave the server only through the account
@@ -645,7 +680,7 @@ not the sum of three install tests. Before claiming it:
   accounts, encryption keys, buckets/containers, databases, registries, quotas,
   and audit streams so one compromise or quota exhaustion does not become a
   three-cloud failure; and
-- run the 15-user admission-safety and two-hour service profiles with work
+- run the 15-user admission-safety and workload service profiles with work
   distributed across all three providers, then remove a cluster, identity
   provider, network path, registry, and object store in controlled tests.
 
@@ -800,7 +835,7 @@ of authentication/tenant isolation block release.
 | Serving security | Authenticated and authorized inference, rate/request limits, tenant isolation, model-digest verification before deserialization, and safe endpoint lifecycle | **Blocked** |
 | Platform reliability and observability | Central logs/metrics/traces, correlation IDs, complete user-activity auditing, at least seven days of searchable user/security/application logs, platform/dependency dashboards, paging and ticket alerts, tested SLOs/error budgets, queue/overload behavior, tamper-evident audit export, incident/status process, and exercised runbooks | **Blocked** |
 | Model observability and governance | Deployment-anchored performance/drift timelines, governed retraining, versioned governance reports, monitoring-scale tests, scoped roles, and audit evidence defined in Section 15 | **Blocked** |
-| Capacity | Three representative executions of both Section 7 profiles with all 15 service-profile workflows succeeding within 120 minutes, durable admission, no data loss/duplicate work/cross-tenant access/unexplained OOM, SLO conformance, saturation and cost measurements, and a published capacity limit | Unqualified |
+| Capacity | Three representative executions of both Section 7 profiles with all 15 service-profile workflows meeting their published workload- and estimator-specific objectives, durable admission, no data loss/duplicate work/cross-tenant access/unexplained OOM, SLO conformance, saturation and cost measurements, and a published capacity limit | Unqualified |
 | Upgrade/recovery | Backward-compatible migration rehearsal, rollback decision test, dependency failure test, and DR exercise | Partial |
 | Model validation and governance | Dummy/incumbent comparison, leakage-safe validation and feature selection, uncertainty/calibration and task metrics, reproducibility, external validation, fairness where applicable, immutable lineage, approval, explainability, scan/sign/deploy evidence, monitoring, and rollback policy | Partial |
 
@@ -825,8 +860,12 @@ At minimum, a release candidate must prove:
    blocking the API control plane.
 5. Every selected model appears in the leaderboard as pending, running,
    succeeded, or failed with stable unique ranks and phase/resource progress.
+   When enabled, Keras candidates expose training/checkpoint phases and TPOT
+   exposes its bounded search generation and fit-budget progress.
 6. Successful candidates, metrics, parameters, artifacts, and registered models
-   are visible and consistent in MLflow.
+   are visible and consistent in MLflow. Keras records its framework-specific
+   artifact and export contract; TPOT records its complete generated pipeline
+   graph, search history, and operator versions.
 7. SHAP results are bound to the selected run and model and refresh without a
    manual browser reload.
 8. External validation and drift accept uploaded comparison data only after
@@ -957,8 +996,9 @@ Retain at least:
 
 ### P0: production launch blockers
 
-- Make runtime environment explicit in Helm and suppress every development-only
-  response in production; reject default or weak secrets before startup.
+- Require a recognized, explicit production runtime mode in Helm and at startup,
+  suppress every development-only response, and reject default or weak secrets;
+  do not use the environment string as the control protecting a credential.
 - Remove `reset_token_for_dev` from the API and UI in every environment; deliver
   single-use reset tokens only through the verified recovery channel and leave
   reset unavailable when that channel is not configured.
@@ -972,10 +1012,16 @@ Retain at least:
   quotas and cost budgets in the application, not only at ingress.
 - Replace API-buffered uploads with bounded inspection and resumable or direct
   object-store ingestion, content-addressed integrity, malware/quarantine
-  policy, and bounded parser/cardinality/decompression behavior.
+  policy, bounded parser/cardinality/decompression behavior, server-generated
+  object keys, and canonical path-containment checks for every filesystem path.
+- Fail closed on unknown object-store types; implement and qualify provider
+  adapters before allowing their enum values to be persisted or selected.
 - Move profiling and workload reconciliation into durable leased execution and
   prove multiple API replicas safe.
 - Separate API, orchestrator, training, and inference identities and credentials.
+- Remove user-selected runtime images or restrict them to signed immutable
+  digests enforced by admission policy; never attach shared credentials to
+  user-selectable code.
 - Add production Pod security, NetworkPolicies, PDBs, topology placement, and
   safe replica controls.
 - Keep model Services internal, verify model digests before deserialization, and
@@ -1009,7 +1055,11 @@ Retain at least:
 - Implement leakage-safe preprocessing/feature selection and the Section 7 model
   quality, calibration, uncertainty, fairness, reproducibility, and promotion
   contract.
-- Pass the Section 7 admission-safety and two-hour service profiles; publish the
+- Implement and qualify the opt-in Keras and TPOT workstreams in Section 7,
+  including isolated immutable runtimes, bounded resource/search budgets,
+  framework-specific artifact loading, reproducibility, safe serving,
+  monitoring, and inclusion in every performance claim that names them.
+- Pass the Section 7 admission-safety and workload service profiles; publish the
   tested dataset/algorithm envelope, resource classes, queue fairness, capacity,
   saturation, cost, and scaling limits.
 - Add live install/upgrade/restore/security/performance qualification to release
