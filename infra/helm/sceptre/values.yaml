@@ -128,6 +128,8 @@ externalObjectStore:
 mlflow:
   enabled: true
   workers: 1
+  # Additional Host header patterns appended to the generated Kubernetes service allowlist.
+  allowedHosts: []
   image:
     repository: sceptreai
     tagPrefix: mlflow
