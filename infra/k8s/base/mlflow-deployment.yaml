@@ -20,6 +20,35 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       initContainers:
+        - name: prepare-mlflow-storage
+          image: docker.io/maponyacharles/sceptreai:mlflow-0.0.0
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -ec
+          args:
+            - |
+              mkdir -p /mlflow/artifacts
+              chown -R 10001:10001 /mlflow/artifacts
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN"]
+            readOnlyRootFilesystem: true
+            runAsNonRoot: false
+            runAsUser: 0
+            runAsGroup: 0
+          volumeMounts:
+            - name: data
+              mountPath: /mlflow
         - name: migrate-database
           image: docker.io/maponyacharles/sceptreai:mlflow-0.0.0
           imagePullPolicy: IfNotPresent
@@ -61,6 +90,8 @@ spec:
             - 0.0.0.0
             - --port
             - "5000"
+            - --allowed-hosts
+            - localhost:*,127.0.0.1:*,10.*,192.168.*,172.16.*,172.17.*,172.18.*,172.19.*,172.20.*,172.21.*,172.22.*,172.23.*,172.24.*,172.25.*,172.26.*,172.27.*,172.28.*,172.29.*,172.30.*,172.31.*,automl-mlflow,automl-mlflow:*,automl-mlflow.automl,automl-mlflow.automl:*,automl-mlflow.automl.svc,automl-mlflow.automl.svc:*,automl-mlflow.automl.svc.cluster.local,automl-mlflow.automl.svc.cluster.local:*
             - --backend-store-uri
             - $(MLFLOW_DATABASE_URL)
             - --artifacts-destination

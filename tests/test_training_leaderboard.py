@@ -5,6 +5,8 @@ import uuid
 from types import SimpleNamespace
 
 import automl_api.training.pipeline as training_pipeline
+import mlflow.sklearn as mlflow_sklearn
+import numpy as np
 import pandas as pd
 import pytest
 from automl_api.models.enums import TaskType
@@ -22,17 +24,20 @@ from automl_api.training.model_catalog import (
     supported_gpu_vendors,
 )
 from automl_api.training.pipeline import (
+    _SKOPS_TRUSTED_TYPES,
     _log_metrics_synchronously,
     _normalize_temporal_features,
     _pending_candidate,
     _preprocessor_for_model,
     _registered_model_name,
+    _supervised_model_pipeline,
     _supervised_split,
     merge_leaderboard_entries,
     rank_leaderboard,
     rebuild_candidate_model,
 )
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import Ridge
 from sklearn.naive_bayes import CategoricalNB
 from sklearn.pipeline import Pipeline
 
@@ -236,6 +241,66 @@ def test_categorical_nb_preprocessing_never_produces_negative_values() -> None:
 
     assert transformed.min() >= 0
     assert model.predict(features).shape == (len(features),)
+
+
+def test_mlflow_model_logging_uses_the_sceptre_skops_allowlist(monkeypatch) -> None:
+    logged: dict[str, object] = {}
+
+    def capture(model, **kwargs):
+        logged["model"] = model
+        logged.update(kwargs)
+        return "logged"
+
+    monkeypatch.setattr(training_pipeline.mlflow_sklearn, "log_model", capture)
+
+    result = training_pipeline._log_sklearn_model("model", artifact_path="model")
+
+    assert result == "logged"
+    assert logged["model"] == "model"
+    assert logged["artifact_path"] == "model"
+    assert logged["skops_trusted_types"] == list(_SKOPS_TRUSTED_TYPES)
+
+
+def test_sceptre_supervised_pipelines_round_trip_with_mlflow_skops(tmp_path) -> None:
+    features = pd.DataFrame(
+        {
+            "amount": [float(index) for index in range(40)],
+            "score": [float((index * 7) % 13) for index in range(40)],
+            "segment": ["a", "b", "c", "d"] * 10,
+        }
+    )
+    models = [
+        (
+            "classification",
+            _supervised_model_pipeline(
+                "CategoricalNB",
+                CategoricalNB(),
+                TaskType.CLASSIFICATION,
+            ),
+            pd.Series(["yes", "no"] * 20),
+        ),
+        (
+            "regression",
+            _supervised_model_pipeline(
+                "Ridge",
+                Ridge(),
+                TaskType.REGRESSION,
+            ),
+            pd.Series([float(index * 2 + (index % 3)) for index in range(40)]),
+        ),
+    ]
+
+    for name, model, target in models:
+        model.fit(features, target)
+        model_path = tmp_path / name
+        mlflow_sklearn.save_model(
+            model,
+            model_path,
+            skops_trusted_types=list(_SKOPS_TRUSTED_TYPES),
+        )
+        restored = mlflow_sklearn.load_model(model_path)
+
+        np.testing.assert_array_equal(restored.predict(features), model.predict(features))
 
 
 def test_rapids_accelerator_is_selected_for_supported_sklearn_models() -> None:

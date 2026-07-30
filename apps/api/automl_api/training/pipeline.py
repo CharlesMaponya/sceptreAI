@@ -82,6 +82,28 @@ _TERMINAL_RUN_STATUSES = frozenset(
     }
 )
 
+# Exact non-core types created by Sceptre's supported sklearn pipelines and
+# third-party estimator wrappers. MLflow stores this allowlist with the skops
+# model so later loads apply the same narrow trust boundary.
+_SKOPS_TRUSTED_TYPES = (
+    "automl_api.training.correlation.CorrelatedFeatureFilter",
+    "automl_api.training.model_catalog.XGBLabelEncodingClassifier",
+    "automl_api.training.pipeline._shift_nonnegative",
+    "catboost.core.CatBoostClassifier",
+    "catboost.core.CatBoostRegressor",
+    "collections.OrderedDict",
+    "lightgbm.basic.Booster",
+    "lightgbm.sklearn.LGBMClassifier",
+    "lightgbm.sklearn.LGBMRegressor",
+    "numpy.dtype",
+    "sklearn.compose._column_transformer.make_column_selector",
+    "sklearn.feature_selection._mutual_info.mutual_info_classif",
+    "sklearn.feature_selection._mutual_info.mutual_info_regression",
+    "xgboost.core.Booster",
+    "xgboost.sklearn.XGBClassifier",
+    "xgboost.sklearn.XGBRegressor",
+)
+
 
 @dataclass
 class TournamentResult:
@@ -100,6 +122,14 @@ def train_run_step(run_id: str) -> dict[str, float]:
 @pipeline
 def tabular_automl_pipeline(run_id: str) -> None:
     train_run_step(run_id=run_id)
+
+
+def _log_sklearn_model(model: Any, **kwargs: Any) -> Any:
+    return mlflow_sklearn.log_model(
+        model,
+        skops_trusted_types=list(_SKOPS_TRUSTED_TYPES),
+        **kwargs,
+    )
 
 
 def execute_training_run(run_id: uuid.UUID) -> dict[str, float]:
@@ -141,7 +171,7 @@ def execute_training_run(run_id: uuid.UUID) -> dict[str, float]:
                 },
                 "leaderboard.json",
             )
-            mlflow_sklearn.log_model(result.model, artifact_path="model")
+            _log_sklearn_model(result.model, artifact_path="model")
             mlflow_run_id = mlflow_run.info.run_id
 
         if not _persist_training_success(run_id, result, mlflow_run_id):
@@ -474,7 +504,7 @@ def _fit_candidate(
             _log_metric_synchronously("cv_primary_standard_deviation", cv_std)
             _log_metric_synchronously("fit_duration_seconds", duration)
             mlflow.log_dict(_json_safe(diagnostics), "evaluation.json")
-            mlflow_sklearn.log_model(
+            _log_sklearn_model(
                 fitted,
                 artifact_path="model",
                 registered_model_name=registered_model_name,
@@ -724,7 +754,7 @@ def _fit_clustering_candidate(
             _log_metrics_synchronously(best_metrics)
             _log_metric_synchronously("fit_duration_seconds", duration)
             mlflow.log_dict(_json_safe(diagnostics), "evaluation.json")
-            mlflow_sklearn.log_model(
+            _log_sklearn_model(
                 pipeline_model,
                 artifact_path="model",
                 registered_model_name=registered_model_name,

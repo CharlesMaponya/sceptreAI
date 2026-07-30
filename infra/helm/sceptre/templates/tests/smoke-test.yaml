@@ -29,6 +29,8 @@ spec:
         - |
           wget -qO- http://{{ include "sceptre.fullname" . }}-ui/
           wget -qO- http://{{ include "sceptre.fullname" . }}-ui/health/ready | grep -q '"status":"ok"'
+          wget -qO- http://{{ include "sceptre.fullname" . }}-mlflow:5000/health | grep -q 'OK'
+          wget -qO- 'http://{{ include "sceptre.fullname" . }}-mlflow:5000/api/2.0/mlflow/experiments/get-by-name?experiment_name=Default' | grep -q '"experiment"'
       resources:
         requests: {cpu: 5m, memory: 8Mi}
         limits: {cpu: 50m, memory: 32Mi}
@@ -38,4 +40,45 @@ spec:
         readOnlyRootFilesystem: true
         runAsNonRoot: true
         runAsUser: 65532
+    {{- if .Values.mlflow.enabled }}
+    - name: mlflow-artifact-test
+      image: {{ include "sceptre.image" (dict "root" . "image" .Values.mlflow.image) | quote }}
+      imagePullPolicy: {{ .Values.mlflow.image.pullPolicy }}
+      command: ["python", "-c"]
+      args:
+        - |
+          import pathlib
+          import requests
+          import shutil
+
+          url = "http://{{ include "sceptre.fullname" . }}-mlflow:5000/api/2.0/mlflow-artifacts/artifacts/.sceptre-smoke/probe/artifacts/probe.txt"
+          response = requests.put(url, data=b"sceptre-artifact-ok", timeout=30)
+          response.raise_for_status()
+          response = requests.get(url, timeout=30)
+          response.raise_for_status()
+          assert response.content == b"sceptre-artifact-ok"
+          {{- if .Values.mlflow.persistence.enabled }}
+          shutil.rmtree(pathlib.Path("/mlflow/artifacts/.sceptre-smoke"), ignore_errors=True)
+          {{- end }}
+      resources:
+        requests: {cpu: 10m, memory: 32Mi}
+        limits: {cpu: 100m, memory: 128Mi}
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities: {drop: ["ALL"]}
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+      {{- if .Values.mlflow.persistence.enabled }}
+      volumeMounts:
+        - {name: mlflow-data, mountPath: /mlflow}
+      {{- end }}
+    {{- end }}
+  {{- if and .Values.mlflow.enabled .Values.mlflow.persistence.enabled }}
+  volumes:
+    - name: mlflow-data
+      persistentVolumeClaim:
+        claimName: {{ include "sceptre.fullname" . }}-mlflow
+  {{- end }}
 {{- end }}
