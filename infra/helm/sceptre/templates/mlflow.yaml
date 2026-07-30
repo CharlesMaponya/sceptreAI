@@ -64,6 +64,28 @@ spec:
         {{- end }}
       {{- end }}
       initContainers:
+        - name: prepare-mlflow-storage
+          image: {{ include "sceptre.image" (dict "root" . "image" .Values.mlflow.image) | quote }}
+          imagePullPolicy: {{ .Values.mlflow.image.pullPolicy }}
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              mkdir -p /mlflow/artifacts
+              chown -R 10001:10001 /mlflow/artifacts
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 100m, memory: 64Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN"]
+            readOnlyRootFilesystem: true
+            runAsNonRoot: false
+            runAsUser: 0
+            runAsGroup: 0
+          volumeMounts:
+            - {name: data, mountPath: /mlflow}
         - name: migrate-mlflow
           image: {{ include "sceptre.image" (dict "root" . "image" .Values.mlflow.image) | quote }}
           imagePullPolicy: {{ .Values.mlflow.image.pullPolicy }}
@@ -95,6 +117,8 @@ spec:
             - 0.0.0.0
             - --port
             - "5000"
+            - --allowed-hosts
+            - {{ include "sceptre.mlflowAllowedHosts" . | quote }}
             - --workers
             - {{ .Values.mlflow.workers | quote }}
             - --backend-store-uri

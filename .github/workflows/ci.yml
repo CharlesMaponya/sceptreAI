@@ -298,6 +298,19 @@ jobs:
           grep -Fq "image: \"${image}:seaweedfs-${version}\"" "$rendered"
           grep -Fq 'OBJECT_STORE_ENDPOINT: "http://sceptre-seaweedfs:8333"' "$rendered"
           grep -Fq "image: \"${image}:postgresql-${version}\"" "$rendered"
+          grep -Fq 'runAsUser: 101' "$rendered"
+          grep -Fq 'runAsGroup: 101' "$rendered"
+          grep -Fq 'runAsUser: 1000' "$rendered"
+          grep -Fq 'runAsGroup: 1000' "$rendered"
+          grep -Fq 'mountPath: /tmp' "$rendered"
+          grep -Fq 'sizeLimit: 64Mi' "$rendered"
+          grep -Fq 'http://sceptre-mlflow:5000/health' "$rendered"
+          grep -Fq -- '--allowed-hosts' "$rendered"
+          grep -Fq 'sceptre-mlflow:*' "$rendered"
+          grep -Fq 'experiments/get-by-name?experiment_name=Default' "$rendered"
+          grep -Fq 'name: prepare-mlflow-storage' "$rendered"
+          grep -Fq 'chown -R 10001:10001 /mlflow/artifacts' "$rendered"
+          grep -Fq '/api/2.0/mlflow-artifacts/artifacts/.sceptre-smoke/' "$rendered"
           ! grep -Fq 'minio/minio' "$rendered"
 
       - name: Assert public Docker Hub image distribution
@@ -434,13 +447,15 @@ jobs:
                 "import automl_api; assert automl_api.__version__ == '${VERSION}'"
               ;;
             ui)
+              test "$(docker run --rm --entrypoint id "$candidate" -u)" = "101"
               docker run --rm --env API_SERVICE_HOST=127.0.0.1 "$candidate" nginx -t
               ;;
             mlflow)
               docker run --rm --entrypoint python "$candidate" -c \
-                "import mlflow, psycopg; compile(open('/opt/automl/mlflow_migrate_if_initialized.py').read(), 'mlflow_migrate_if_initialized.py', 'exec')"
+                "import mlflow, mlflow.server.fastapi_app, psycopg; compile(open('/opt/automl/mlflow_migrate_if_initialized.py').read(), 'mlflow_migrate_if_initialized.py', 'exec')"
               ;;
             seaweedfs)
+              test "$(docker run --rm --entrypoint id "$candidate" -u)" = "1000"
               docker run --rm --entrypoint /usr/bin/weed "$candidate" version
               ;;
             postgresql)

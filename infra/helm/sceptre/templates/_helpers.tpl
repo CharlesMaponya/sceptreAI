@@ -89,6 +89,32 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 {{- end -}}
 
+{{- define "sceptre.mlflowAllowedHosts" -}}
+{{- $service := printf "%s-mlflow" (include "sceptre.fullname" .) -}}
+{{- $namespace := .Release.Namespace -}}
+{{- $hosts := list
+  "localhost:*"
+  "127.0.0.1:*"
+  "10.*"
+  "192.168.*"
+  $service
+  (printf "%s:*" $service)
+  (printf "%s.%s" $service $namespace)
+  (printf "%s.%s:*" $service $namespace)
+  (printf "%s.%s.svc" $service $namespace)
+  (printf "%s.%s.svc:*" $service $namespace)
+  (printf "%s.%s.svc.cluster.local" $service $namespace)
+  (printf "%s.%s.svc.cluster.local:*" $service $namespace)
+-}}
+{{- range $octet := untilStep 16 32 1 -}}
+{{- $hosts = append $hosts (printf "172.%d.*" $octet) -}}
+{{- end -}}
+{{- range .Values.mlflow.allowedHosts -}}
+{{- $hosts = append $hosts . -}}
+{{- end -}}
+{{- join "," $hosts -}}
+{{- end -}}
+
 {{- define "sceptre.trainingServiceAccount" -}}
 {{- printf "%s-training" (include "sceptre.fullname" .) -}}
 {{- end -}}

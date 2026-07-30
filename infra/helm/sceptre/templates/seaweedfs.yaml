@@ -77,6 +77,10 @@ spec:
             - {name: S3_BUCKET, value: {{ .Values.seaweedfs.bucket | quote }}}
           ports:
             - {name: s3, containerPort: 8333}
+          startupProbe:
+            tcpSocket: {port: s3}
+            periodSeconds: 2
+            failureThreshold: 60
           readinessProbe:
             tcpSocket: {port: s3}
             periodSeconds: 5
@@ -92,8 +96,11 @@ spec:
             capabilities: {drop: ["ALL"]}
             readOnlyRootFilesystem: true
             runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
           volumeMounts:
             - {name: data, mountPath: /data}
+            - {name: tmp, mountPath: /tmp}
       volumes:
         - name: data
           {{- if .Values.seaweedfs.persistence.enabled }}
@@ -102,4 +109,7 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
 {{- end }}

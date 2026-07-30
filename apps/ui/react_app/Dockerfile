@@ -23,6 +23,6 @@ RUN mkdir -p /run/nginx /var/lib/nginx/tmp /etc/nginx/http.d \
 ENV NGINX_ENVSUBST_FILTER=API_SERVICE_HOST \
     NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx/http.d \
     API_SERVICE_HOST=api
-USER nginx
+USER 101
 EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1/ || exit 1
