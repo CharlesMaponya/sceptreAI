@@ -158,9 +158,10 @@ The following are code or operational gaps, not configuration suggestions.
 
 | Area | Current baseline | Production implication |
 | --- | --- | --- |
-| Identity | Local email/password authentication includes registration, login, rotating refresh tokens, profile updates, password change, and SMTP-backed reset; self-registration creates verified users, browser tokens use `localStorage`, access tokens default to 24 hours, the log WebSocket accepts a bearer token in its URL, and authentication/reset endpoints have no abuse throttling | Production requires configured SMTP, an approved registration and verification policy, secure browser sessions with no bearer tokens in URLs, shorter access-token exposure, rate limits, and reviewed CSRF/XSS and credential-stuffing controls |
+| Identity | Local email/password authentication includes registration, login, rotating refresh tokens, profile updates, password change, and SMTP-backed reset; there is no OIDC/SSO, SAML adapter, MFA, SCIM lifecycle, or passkey support; self-registration creates verified users, browser tokens use `localStorage`, access tokens default to 24 hours, the log WebSocket accepts a bearer token in its URL, and authentication/reset endpoints have no abuse throttling | Production requires a managed identity boundary, secure browser sessions with no bearer tokens in URLs or script-readable storage, phishing-resistant MFA for privileged access, shorter token exposure, rate limits, and reviewed CSRF/XSS and credential-stuffing controls |
 | Password reset — **critical** | For any `ENVIRONMENT` value other than the exact string `production`, the unauthenticated reset-request endpoint returns a valid reset token for the supplied existing email address; the UI offers that requester a direct continuation into password confirmation | Any user who can reach a local, staging, or misconfigured deployment can reset another user’s password and revoke their sessions; environment-name gating is not an acceptable control and the token must never be returned by the API |
 | Authorization semantics | Project role checks are centralized, but an administrator can create an `OWNER` share link and stored membership `permissions` are not evaluated by authorization decisions | Define and enforce delegation ceilings, ownership-transfer rules, and any claimed fine-grained permissions; test concurrent share-link use limits |
+| Organization and tenant lifecycle | The application has users and project membership but no organization/tenant boundary, enterprise group mapping, automated provisioning/deprovisioning, or tenant-level quota and audit policy | Do not claim enterprise multi-tenancy until tenant identity is explicit in data, authorization, storage, queueing, billing/quota, audit, deletion, and negative isolation tests |
 | Dataset ingestion | The browser reports multipart progress, but Nginx permits 5 GB on upload routes, FastAPI calls `file.file.read()`, and CSV inspection retains unbounded distinct values and row fingerprints | The former 5 GB or 10 GB goal is not a supported current limit; enforce a small bounded limit until memory-safe resumable or direct-to-object-store upload and bounded inspection are implemented |
 | Training memory | Training reads complete dataset objects before creating in-memory pandas structures | Raw file size is not a memory requirement; large-data claims require a bounded or distributed implementation and load evidence |
 | Profiling durability | Profiling runs in a FastAPI-owned thread pool and incomplete jobs are resumed at API startup | API restarts and multiple API replicas do not provide safe exactly-once or leased execution |
@@ -173,7 +174,7 @@ The following are code or operational gaps, not configuration suggestions.
 | Model artifact integrity | Inference downloads a model object and passes it directly to `joblib.load()` without checking the registered digest | Object-store tampering can become code execution; verify an expected immutable digest before deserialization and use read-only, prefix-scoped serving credentials |
 | Application hardening | Readiness and inference handlers return raw exception text, while the UI proxy does not set a reviewed CSP, HSTS, clickjacking, MIME-sniffing, or referrer policy | Public responses can disclose internal details, and browser compromise has greater impact while tokens remain script-readable |
 | Model delivery | A Dockerfile is generated as evidence, but no model builder scans, signs, pushes, resolves, or deploys a model-specific immutable image | Current one-click deployment is a functional baseline, not a governed supply-chain boundary |
-| Observability | Health probes, run status, logs, optional resource telemetry, deployment-linked metric/drift history, a governance dashboard, and versioned audit evidence exist | Operator alert delivery, durable telemetry retention policy, platform SLOs, and on-call runbooks still require deployment-specific integration and validation |
+| Observability | Health probes, run status, logs, optional resource telemetry, deployment-linked metric/drift history, a governance dashboard, and versioned audit evidence exist; complete user-activity coverage and seven-day centralized log persistence are not proven | Operator alert delivery, durable user/security/application log storage, retention enforcement, platform SLOs, and on-call runbooks still require deployment-specific integration and validation |
 | Recovery | Retained PVCs and migrations exist; backup/restore automation does not | Restore time, restore point, credential continuity, and rollback are unproven |
 | Release safety | Unit/frontend/migration/render CI, image SBOM/provenance generation, all-severity actionable container and embedded-secret gates, and SecObserve-compatible dependency, IaC, and credential reports exist; most third-party Actions are still version-pinned rather than commit-pinned | Live cluster upgrade, rollback, disaster recovery, security, performance, supply-chain, and multi-cluster qualification are incomplete |
 
@@ -302,6 +303,106 @@ expansion and estimator choice can make working memory many times larger than
 the raw file. Capacity must be measured with representative datasets and model
 selections.
 
+### Capacity and two-hour benchmark contract
+
+“15 users,” “10 GB,” and “one to two hours” are not sufficient benchmark
+definitions on their own. Qualification must publish the exact dataset and
+pipeline envelope: file format and compressed/uncompressed size, rows, columns,
+sparsity, categorical cardinality, text width, missingness, target balance,
+split strategy, feature-selection method, candidate algorithms, search budget,
+cross-validation folds, explanations, hardware, storage class, and warm/cold
+cache state.
+
+Two separate tests are required:
+
+1. **Admission-safety profile:** 15 authenticated users each start a 10 GB
+   resumable or direct-to-object-store upload and submit a qualifying workflow.
+   Every accepted request is durable, idempotent, cancellable, visible in queue
+   position, and survives API/orchestrator restart. Four running workloads with
+   eleven queued may be used as the initial control-plane baseline, but this
+   does not satisfy a two-hour completion claim.
+2. **Two-hour service profile:** all 15 qualifying workflows are submitted
+   concurrently and each reaches its declared terminal success state within
+   120 minutes measured from accepted submission, including queue wait,
+   profiling, feature selection, tuning, validation, explanation, registration,
+   and required artifact persistence. If only training compute is covered, label
+   the metric `training_compute_duration` and do not market it as end-to-end
+   completion.
+
+Run at least three production-like repetitions, including one cold-cache run and
+one controlled worker or node disruption. Report per-stage and end-to-end p50,
+p95, maximum, confidence intervals where meaningful, queue wait, throughput,
+API latency/error rate, retries, OOM/evictions, CPU/GPU/memory/disk/network,
+database/object-store saturation, autoscaling time, and cost. Passing requires
+zero lost or corrupt uploads, zero silently dropped or duplicated jobs, zero
+cross-project access, zero unexplained OOMs, all 15 service-profile workflows
+within 120 minutes, and control-plane/error-budget objectives remaining within
+their approved SLOs.
+
+Admission must use measured peak working-set and temporary-storage estimates,
+not raw file size alone. Unsupported shapes or algorithms must be rejected
+before work starts with a stable reason and recommended resource class. Meeting
+the service profile therefore requires enough simultaneously available
+capacity—or an implementation proven to reduce the work—not merely a deeper
+queue.
+
+### Service-level, overload, and operations contract
+
+Define measurable service-level indicators and objectives before load testing.
+At minimum cover UI/API availability and p95/p99 latency, authentication success,
+upload-part acceptance and completion, durable queue admission and age, time to
+first worker, workflow success and end-to-end duration, inference availability/
+latency/error rate, audit-write success, telemetry freshness, and restore
+objectives. Publish the measurement point, exclusions, window, target, owner,
+alert, runbook, and error-budget policy for each SLO.
+
+“Does not stall” means the control plane remains responsive and gives an honest
+state under saturation. Enforce bounded request and dependency timeouts,
+connection/worker pools, backpressure, per-user/project/global quotas, priority
+and fair scheduling, idempotency keys, exponential backoff with jitter, maximum
+attempts, lease expiry, cancellation, poison-work quarantine or dead-letter
+handling, and `Retry-After`/stable error responses. Readiness must fail when an
+instance cannot safely accept traffic; liveness must not create restart loops
+during a recoverable dependency outage.
+
+Capacity and autoscaling policies must include minimum warm capacity, maximum
+scale, scale-up latency, node/GPU availability, disruption/headroom reserve,
+regional/zone failure assumptions, database/object-store connection and request
+limits, queue-age alarms, and a cost ceiling. Error-budget exhaustion freezes
+risky releases and triggers the documented reliability work or an explicitly
+approved exception; it must not be hidden by excluding failed or queued runs.
+
+The on-call owner needs dashboards, paging and ticket thresholds, dependency and
+provider status visibility, incident severity/command/communications, a user
+status channel, rollback and feature-disable controls, and exercised runbooks
+for saturation, identity outage, stuck/poisoned work, data-service failure,
+corrupt artifacts, credential compromise, restore, regional loss, and
+multi-cloud partial failure. Every exercise records detection, acknowledgement,
+mitigation, recovery, data loss, customer impact, follow-up owner, and due date.
+
+### Model-quality and reproducibility contract
+
+Fast completion is not a valid result if model selection leaks data or produces
+an irreproducible model. For every task and representative dataset:
+
+- compare against a simple dummy baseline and the deployed incumbent, if one
+  exists, using pre-declared primary and guardrail metrics;
+- use stratified, grouped, or time-aware splits where the data-generating
+  process requires them, and fit preprocessing and feature selection inside
+  each training fold;
+- report cross-validation distribution and uncertainty rather than only the best
+  point estimate; use precision-recall metrics for materially imbalanced
+  classification and calibration evidence when probabilities drive decisions;
+- run duplicate, temporal, target, split, and feature leakage checks before
+  promotion, plus external holdout or production-like validation;
+- record seed, source revision, image/dependency digests, immutable dataset and
+  schema fingerprints, split indices, feature set, parameters, resource class,
+  and every model/artifact digest needed to reproduce the result; and
+- evaluate subgroup performance, fairness, explainability, privacy, and human
+  approval where the intended use or policy requires them. A statistically
+  worse, uncalibrated, non-reproducible, or policy-failing candidate cannot be
+  promoted merely because it finished inside the time budget.
+
 ### Target production control boundary
 
 The present API owns HTTP handling, profiling, admission, and Kubernetes
@@ -361,6 +462,7 @@ closed.
 | Model serving | Internal-only ClusterIP unless an authenticated gateway and endpoint policy are ready |
 | Resources | API/UI requests, training resource classes, namespace quotas, node pools, and bounded concurrency |
 | Storage | Explicit StorageClass only for any remaining PVC-backed component; encryption and recovery validated |
+| Logging and audit | Central sink, structured user-activity event schema, redaction, access/integrity controls, capacity alerts, and at least seven days of searchable user/security/application log persistence |
 | Capabilities | Metrics, ingress, GPU, PriorityClass, and read-only cluster observation enabled only when installed and approved |
 
 ### Secret contract
@@ -389,11 +491,77 @@ The current health check attempts to create the bucket when it is absent, so
 bucket existence and least-privilege behavior must be verified with the exact
 credentials used by Sceptre.
 
-### Identity and environment mode
+### Identity, SSO, OAuth, and account lifecycle
 
-`auth.simpleAuthEnabled=false` disables self-registration; it does not configure
-OIDC, SSO, MFA, user provisioning, rate limiting, or a secure browser session
-mechanism. The chart now defaults `ENVIRONMENT` to `production`, which suppresses
+`auth.simpleAuthEnabled=false` only disables self-registration. It does not
+configure enterprise identity or harden browser sessions. Use one standards
+path first:
+
+- OpenID Connect (OIDC) is the production authentication and SSO contract;
+  OAuth 2.0 supplies delegated authorization, not user authentication by itself.
+- Use Authorization Code flow with transaction-bound PKCE `S256`, `state`, and
+  OIDC `nonce`. Register exact HTTPS redirect URIs and reject the implicit and
+  resource-owner-password grants.
+- Use a maintained OIDC relying-party library and an external identity provider;
+  Sceptre must not become a general-purpose authorization server or store
+  enterprise passwords merely to provide SSO.
+- Add SAML 2.0 only as an adapter when a named customer identity provider cannot
+  use OIDC. Normalize SAML and OIDC identities into the same internal subject,
+  organization, group, role, session, and audit model.
+- Treat `(issuer, subject)` as the stable federated identity key. Email,
+  display name, hosted domain, and other mutable claims are profile data, not
+  authorization decisions.
+
+The preferred browser boundary is a backend-for-frontend session: the server
+redeems the code and keeps provider/access/refresh tokens out of JavaScript,
+while the browser receives an opaque session identifier in a `Secure`,
+`HttpOnly`, appropriately scoped `SameSite` cookie. Apply CSRF protection to
+state-changing requests, rotate the session identifier after authentication and
+privilege change, impose idle and absolute expiry, and revoke all applicable
+sessions on logout, deprovisioning, recovery, or security response. Do not put
+tokens in query strings, WebSocket URLs, browser history, logs, or
+`localStorage`. If a browser token is temporarily unavoidable, document the
+threat-model exception, minimize lifetime and scope, and provide replay
+detection and revocation.
+
+OIDC validation must allowlist issuer, audience/client ID, authorized party where
+applicable, signature algorithms, and redirect targets; validate signature,
+`iss`, `aud`, `azp`, `exp`, `nbf`, `iat`, `nonce`, and transaction binding;
+cache and rotate provider metadata/JWKS safely; and fail closed on an unknown key,
+algorithm, issuer, or audience. Refresh tokens, when issued, require rotation,
+reuse detection, revocation, secure server-side storage, and tested provider
+logout/session-expiry behavior. Provider outage, JWKS rotation, clock skew,
+account disablement, group removal, and replay are required failure tests.
+
+Account lifecycle must define:
+
+- invite-only, verified-domain, or approved just-in-time provisioning policy;
+- group-to-role mappings based on immutable provider group IDs, with
+  deny-by-default authorization and no automatic mapping to `OWNER` or platform
+  administrator;
+- SCIM 2.0 provisioning/deprovisioning for enterprise deployments, or a
+  documented reconciliation process with an equivalent disablement SLO;
+- tenant/org creation, domain claim, ownership transfer, merge, suspension,
+  export, retention, deletion, and legal-hold behavior;
+- phishing-resistant MFA such as WebAuthn/passkeys for privileged users and
+  step-up authentication for identity, ownership, deployment, secret, export,
+  billing/quota, and break-glass actions;
+- at least two separately controlled break-glass administrator accounts,
+  excluded from ordinary federation failure, strongly authenticated, vaulted,
+  alerted on every use, rotated, and exercised; and
+- non-human identities using OAuth client credentials, cloud workload identity,
+  or another short-lived machine credential with an explicit audience and
+  narrow scope. A user token must never be shared with a workload.
+
+SSO establishes identity; Sceptre remains responsible for authorization. Enforce
+global, organization, project, dataset, run, model, deployment, monitoring,
+audit, and export permissions server-side on every API and object lookup.
+Positive and negative tests must cover horizontal/vertical privilege escalation,
+group-removal delay, stale sessions, share-link delegation ceilings, cross-tenant
+IDs, bulk/export paths, and background Jobs acting outside the initiating
+user’s current permissions.
+
+The chart now defaults `ENVIRONMENT` to `production`, which suppresses
 development API documentation and reset-token responses. That string comparison
 is too fragile to protect an account-recovery credential: the current
 `reset_token_for_dev` response permits cross-user account takeover in every
@@ -403,13 +571,15 @@ Remove `reset_token_for_dev` from the response schema and browser flow in every
 runtime mode. A reset token may leave the server only through the account
 owner’s verified recovery channel. If that channel is unavailable, return the
 same generic response without exposing a token or reset continuation. Disable
-local-password reset for identities that are not allowed to authenticate with a
-local password. Reset requests must remain indistinguishable for existing and
-unknown accounts, be rate-limited, and avoid placing reusable credentials in
-proxy logs, referrers, or browser history.
+local-password reset for federated-only identities. Reset requests must remain
+indistinguishable for existing and unknown accounts, be single-use and
+rate-limited, and avoid credentials in proxy logs, referrers, or browser
+history.
 
-Production mode also does not validate secrets or harden sessions. Production
-identity therefore remains an implementation and security-review gate.
+Production mode does not currently validate secrets, configure federation, or
+harden sessions. Identity therefore remains an implementation, migration,
+threat-model, and penetration-test gate; documenting these requirements does not
+close it.
 
 ### Exposure
 
@@ -430,6 +600,59 @@ identity therefore remains an implementation and security-review gate.
   serving identities must have read-only access only to their approved prefix.
 - Continue to hide endpoint links until Kubernetes and the configured exposure
   mechanism report a usable endpoint.
+
+### Cloud-provider and simultaneous multi-cluster qualification
+
+A provider-neutral Helm render is not evidence that Sceptre is operationally
+qualified on a provider. Qualify one cloud end to end first, then reuse the same
+contract for the next provider. Because the current object-store integration is
+S3-compatible, AWS is the smallest first qualification unless a required GCS or
+Azure Blob adapter is implemented first.
+
+| Target | Required provider integration |
+| --- | --- |
+| AWS EKS | EKS Pod Identity or IRSA with short-lived, service-account-scoped access; private S3 and approved PostgreSQL/MLflow services; KMS, private endpoints, registry, ingress/gateway, autoscaling/GPU, audit, backup, and restore evidence |
+| Google GKE | Workload Identity Federation for GKE; a native GCS adapter or a separately qualified S3-compatible service; approved PostgreSQL/MLflow services; KMS, private networking, registry, ingress/gateway, autoscaling/GPU, audit, backup, and restore evidence |
+| Azure AKS | Microsoft Entra Workload ID with the cluster OIDC issuer; a native Blob/ADLS adapter or a separately qualified S3-compatible service; approved PostgreSQL/MLflow services; Key Vault, private networking, registry, ingress/gateway, autoscaling/GPU, audit, backup, and restore evidence |
+
+Each provider profile must pin supported Kubernetes, CNI, CSI/StorageClass,
+ingress/Gateway, autoscaler, accelerator/device-plugin, registry, external-secret,
+database, object-store, and observability versions. IaC must create the cluster
+and external dependencies reproducibly with encrypted, locked remote state,
+policy/security scanning, least-privilege deploy roles, drift detection, budget
+alerts, and a documented destroy/recovery procedure. Static cloud keys in Helm
+Secrets do not satisfy the production identity gate where provider workload
+identity is available.
+
+Running on EKS, GKE, and AKS **simultaneously** is a separate product capability,
+not the sum of three install tests. Before claiming it:
+
+- identify every cluster and namespace in durable workflow state and route each
+  job to an explicit eligible cluster based on data locality, capability,
+  quota, cost, and policy;
+- use one reconciler ownership/lease model so two clusters cannot execute the
+  same logical attempt, and make retries, cancellation, failover, and result
+  reconciliation idempotent;
+- define whether the control plane and data services are per-cloud or shared,
+  then document latency, egress cost, residency, consistency, replication,
+  backup ordering, and the failure of the shared dependency. Do not stretch
+  PostgreSQL or a filesystem across clouds without a separately qualified
+  design;
+- make dataset and artifact locations explicit and content-addressed; do not
+  assume an S3 URI is readable from GKE or AKS or silently copy regulated data
+  across a residency boundary;
+- use separate cloud accounts/projects/subscriptions, clusters, service
+  accounts, encryption keys, buckets/containers, databases, registries, quotas,
+  and audit streams so one compromise or quota exhaustion does not become a
+  three-cloud failure; and
+- run the 15-user admission-safety and two-hour service profiles with work
+  distributed across all three providers, then remove a cluster, identity
+  provider, network path, registry, and object store in controlled tests.
+
+Record per-provider and combined results. A failure or unqualified native
+storage/identity adapter keeps that provider—and therefore the simultaneous
+multi-cloud claim—blocked without preventing a separately qualified provider
+from operating.
 
 ## 9. Database, Migrations, Upgrade, and Rollback
 
@@ -511,21 +734,75 @@ Each gate needs a named owner, evidence location, test date, application/chart
 version, environment, result, and accepted exception expiry. “Configured” is not
 evidence; a test result is.
 
+### Security verification contract
+
+Maintain a versioned data-flow diagram and STRIDE threat model for the browser,
+identity provider, edge, API, database, upload/object path, MLflow, orchestrator,
+Kubernetes API, build/registry path, training Jobs, model artifacts, inference,
+monitoring, and every cross-cloud link. Each threat records asset, trust
+boundary, precondition, abuse case, DREAD score, control, owner, due date,
+validation evidence, residual risk, and approval. Threats scoring 7 or higher
+require an explicit security owner and cannot be silently accepted in a release
+note.
+
+Use OWASP ASVS 5.0 Level 2 as the minimum application verification baseline,
+plus risk-selected Level 3 controls for privileged administration, sensitive
+datasets, model deployment, audit, and key management. Add the OWASP API
+Security Top 10 to cover object/function/property authorization, authentication,
+resource consumption, sensitive workflows, SSRF, inventory, and third-party API
+trust. The security test plan must include:
+
+- SAST, dependency and license analysis, full-history secret scanning, IaC and
+  Helm policy scanning, container/OS scanning, SBOMs, signatures, and verified
+  provenance for application and model images;
+- API authorization tests for every role and object type, including BOLA/IDOR,
+  function/property-level authorization, pagination/bulk/export, guessed opaque
+  IDs, share links, stale membership, and background worker permissions;
+- OIDC redirect, issuer/audience/algorithm/JWKS, PKCE/state/nonce, login CSRF,
+  session fixation/replay/revocation, logout, account linking, MFA/step-up,
+  SCIM deprovisioning, break-glass, brute-force, and recovery tests;
+- upload and data tests for size/count/decompression limits, interrupted
+  resumable parts, content/type mismatch, path traversal and object-key
+  canonicalization, malicious formulas where exported, parser bombs, malware
+  quarantine, unsupported schemas, and storage-quota exhaustion;
+- command/template/query injection, XSS/CSP, CSRF, SSRF including cloud metadata
+  and DNS rebinding, unsafe deserialization, error disclosure, CORS, WebSocket,
+  request smuggling/normalization, and denial-of-wallet/resource-exhaustion
+  tests;
+- cloud/IaC tests for wildcard or escalation-capable IAM, public storage,
+  unencrypted or unversioned data, open management/data ports, missing audit
+  logs, default service accounts, unrestricted pod service-account tokens,
+  privileged/root workloads, host access, and absent default-deny network
+  policy; and
+- model-supply-chain tests that reject a tampered digest, unsigned/unapproved
+  model or image, poisoned/unapproved dataset version, cross-project artifact,
+  unsafe serialized object, and rollback to an unapproved version.
+
+Run DAST and manual penetration testing only against an authorized isolated
+environment with production-equivalent controls and synthetic or approved test
+data. Complete an independent penetration test before the first internet-facing
+launch and after a material identity, tenant, upload, execution, serving, or
+cross-cloud boundary change. Retest fixes. Unresolved critical or high findings,
+confirmed secrets, exploitable privilege paths, public data stores, or bypasses
+of authentication/tenant isolation block release.
+
 | Gate | Required evidence | Current status |
 | --- | --- | --- |
 | Packaging | Reproducible images, commit-pinned CI Actions, Helm render/install, digest manifest, SBOM, dependency/secret/SAST/container scans, and signature verification | **Blocked** |
-| Identity | Approved identity, account lifecycle, no reset token in any API response or log in any runtime mode, verified recovery-channel delivery, cross-user reset denial, rejection of default secrets, secure browser sessions, abuse throttling, role-delegation constraints, and authorization tests | **Blocked** |
+| Identity and lifecycle | OIDC Authorization Code + PKCE conformance; issuer/claim/JWKS validation; server-side secure sessions; MFA/step-up; SCIM or equivalent deprovisioning; break-glass; service identity; approved account/tenant lifecycle; no reset token in any response/log; verified recovery delivery; rejection of default secrets; abuse throttling; delegation constraints; and positive/negative authorization tests | **Blocked** |
+| Security verification | Current DFD/STRIDE register, ASVS 5.0 and API Top 10 verification, SAST/SCA/secret/DAST/IaC/container evidence, independent penetration test and retest, and no open critical/high finding or confirmed secret | **Blocked** |
 | Ingestion | Resumable or direct memory-bounded upload through all proxies with interruption/retry tests | **Blocked** |
 | Durable work | Leased persistent queue/orchestrator, idempotency, restart recovery, and multi-replica correctness | **Blocked** |
 | Availability | Multi-node placement, safe replicas, PDBs, dependency HA, and node/disruption tests | **Blocked** |
-| Data protection | Encryption, least privilege, automated backups, successful clean restore, and RPO/RTO evidence | **Blocked** |
+| Data protection and privacy | Classification, purpose/consent where applicable, minimization, malware/quarantine policy, residency, retention/deletion/export/legal hold, encryption/key rotation, least privilege, automated backups, successful clean restore, and RPO/RTO evidence | **Blocked** |
 | Kubernetes security | Restricted non-root workload posture, service-account and data-credential isolation, NetworkPolicies, admission policy, and RBAC review | **Blocked** |
+| Cloud and IaC | Reproducible IaC, locked state, drift/policy scans, private networking, workload identity, per-provider support matrix, install/upgrade/restore/failure evidence, and combined multi-cluster tests for every simultaneous-cloud claim | **Blocked** |
 | Serving security | Authenticated and authorized inference, rate/request limits, tenant isolation, model-digest verification before deserialization, and safe endpoint lifecycle | **Blocked** |
-| Platform observability | Central logs/metrics/traces, platform dashboards, alerts, SLOs, audit export, and actionable runbooks | **Blocked** |
+| Platform reliability and observability | Central logs/metrics/traces, correlation IDs, complete user-activity auditing, at least seven days of searchable user/security/application logs, platform/dependency dashboards, paging and ticket alerts, tested SLOs/error budgets, queue/overload behavior, tamper-evident audit export, incident/status process, and exercised runbooks | **Blocked** |
 | Model observability and governance | Deployment-anchored performance/drift timelines, governed retraining, versioned governance reports, monitoring-scale tests, scoped roles, and audit evidence defined in Section 15 | **Blocked** |
-| Capacity | Representative 10 GB and concurrency tests with CPU, memory, disk, object-store, DB, and queue measurements | Unqualified |
+| Capacity | Three representative executions of both Section 7 profiles with all 15 service-profile workflows succeeding within 120 minutes, durable admission, no data loss/duplicate work/cross-tenant access/unexplained OOM, SLO conformance, saturation and cost measurements, and a published capacity limit | Unqualified |
 | Upgrade/recovery | Backward-compatible migration rehearsal, rollback decision test, dependency failure test, and DR exercise | Partial |
-| Model governance | Immutable lineage, approval, external validation, explainability, scan/sign/deploy evidence, monitoring, and rollback policy | Partial |
+| Model validation and governance | Dummy/incumbent comparison, leakage-safe validation and feature selection, uncertainty/calibration and task metrics, reproducibility, external validation, fairness where applicable, immutable lineage, approval, explainability, scan/sign/deploy evidence, monitoring, and rollback policy | Partial |
 
 No internet-facing or regulated production launch may proceed while a **Blocked**
 gate remains. A lower-risk internal deployment still needs an explicit security
@@ -535,9 +812,11 @@ and data-owner decision; renaming it “production” does not remove the gaps.
 
 At minimum, a release candidate must prove:
 
-1. Registration policy, login, refresh, logout, authorization, project
-   isolation, and recovery-channel-only password reset behave as configured;
-   requesting another user’s reset never reveals a token or permits takeover.
+1. OIDC SSO or the explicitly approved local-auth fallback, provisioning,
+   group/role mapping, MFA/step-up, session refresh/revocation, logout,
+   deprovisioning, authorization, tenant/project isolation, break-glass, and
+   recovery-channel-only reset behave as configured; requesting another user’s
+   reset never reveals a token or permits takeover.
 2. Upload shows real transfer progress, persists the exact object, and returns to
    project overview without starting profiling.
 3. Selecting a target immediately shows the inferred task and appropriate target
@@ -572,6 +851,17 @@ Test at least:
 - object-store and MLflow latency, denial, and outage;
 - ingress/gateway and certificate failure;
 - login/reset/upload/prediction abuse at configured rate and size limits;
+- OIDC provider outage and recovery, signing-key rotation, invalid issuer,
+  audience, algorithm, redirect, PKCE verifier, state, nonce, and clock claims;
+- session fixation, replay after logout/deprovisioning, CSRF, bearer-token
+  leakage, stale group/role mapping, MFA/step-up bypass, and audited break-glass;
+- user activity from authentication through data, training, model, deployment,
+  export, role, and administrative actions reaches central audit storage with
+  actor, tenant/project, action, object, outcome, time, and correlation ID;
+- user/security/application logs survive pod, node, and logging-backend restart,
+  remain searchable for at least seven consecutive 24-hour periods, expire only
+  according to policy, and do not contain tokens, secrets, raw dataset values,
+  passwords, reset links, or unnecessary personal data;
 - reset requests for existing and unknown accounts produce indistinguishable
   public responses, and a requester cannot reset another user’s password;
 - reset tokens never appear in API responses, application/proxy logs, referrers,
@@ -585,6 +875,13 @@ Test at least:
 - tampered model artifact rejection before deserialization;
 - compromised training or inference workload containment without cross-project
   database or object-store access;
+- BOLA/IDOR and function/property authorization across tenant, project, dataset,
+  run, model, deployment, monitoring, bulk, and export endpoints;
+- interrupted/multipart upload retry, malformed and disguised files, traversal
+  and object-key normalization, parser/decompression bombs, malware quarantine,
+  and storage/compute denial-of-wallet;
+- EKS, GKE, and AKS workload-identity failure or revocation, plus loss of one
+  cluster during combined multi-cluster admission and execution;
 - monitoring-store latency or outage, stale/missing inference telemetry, delayed
   labels, duplicate monitoring windows, failed alert delivery, and safe backfill;
 - drift-job retry and scheduler overlap without duplicate metrics, alerts, or
@@ -637,11 +934,21 @@ Retain at least:
   and signature results;
 - values commit with Secret names but no secret values;
 - database migration and schema verification results;
-- functional and authorization reports;
-- load-test dataset description and capacity report;
+- OIDC/SSO conformance, MFA/step-up, session, SCIM/deprovisioning,
+  break-glass, functional, tenant-isolation, and authorization reports;
+- versioned DFD/threat register, ASVS/API verification matrix, SAST/SCA/secret/
+  DAST/IaC/container results, penetration-test report, remediation, and retest;
+- benchmark dataset/pipeline manifest and raw results for both Section 7
+  profiles, including per-run timing, resource/saturation, failure, SLO, cost,
+  and capacity reports;
+- EKS/GKE/AKS provider support matrices, IaC plans/policy results, workload-
+  identity tests, and per-provider plus simultaneous multi-cluster evidence for
+  every claimed target;
 - backup and restore timestamps;
-- security review and penetration-test findings;
 - dashboards, alert tests, SLO report, and runbook exercise;
+- user-activity event coverage and denied-action tests, seven-day log-retention
+  configuration plus oldest/newest query evidence, access-control and
+  tamper-detection results, redaction tests, and retention-expiry evidence;
 - model lineage, approval, validation, explainability, and deployment evidence;
   and
 - release approval with owners and exception expiries.
@@ -655,10 +962,17 @@ Retain at least:
 - Remove `reset_token_for_dev` from the API and UI in every environment; deliver
   single-use reset tokens only through the verified recovery channel and leave
   reset unavailable when that channel is not configured.
-- Implement approved identity and secure browser sessions; rate-limit identity,
-  upload, and prediction paths.
+- Implement OIDC Authorization Code + PKCE through an external provider and a
+  server-side browser session; add phishing-resistant privileged MFA/step-up,
+  SCIM or bounded deprovisioning reconciliation, deny-by-default role/group
+  mapping, audited break-glass, workload identity, and safe migration/linking of
+  existing local accounts. Add SAML only for a named incompatible customer IdP.
+- Rate-limit identity, upload, expensive analysis/training, report/export, and
+  prediction paths by IP plus authenticated tenant/project identity; enforce
+  quotas and cost budgets in the application, not only at ingress.
 - Replace API-buffered uploads with bounded inspection and resumable or direct
-  object-store ingestion.
+  object-store ingestion, content-addressed integrity, malware/quarantine
+  policy, and bounded parser/cardinality/decompression behavior.
 - Move profiling and workload reconciliation into durable leased execution and
   prove multiple API replicas safe.
 - Separate API, orchestrator, training, and inference identities and credentials.
@@ -668,9 +982,18 @@ Retain at least:
   expose inference only through an authenticated, authorized gateway.
 - Qualify external HA data services, backup/restore, encryption, and least
   privilege.
-- Add dependency, secret, SAST, and container scanning; pin third-party CI
-  Actions and verify release signatures.
-- Add central telemetry, alerts, audit export, SLOs, and runbooks.
+- Complete the Section 10 threat model and ASVS/API verification plan; add
+  dependency, license, full-history secret, SAST, DAST, IaC, Helm, container,
+  and model-artifact scanning; pin third-party CI Actions; produce/verify SBOM,
+  signatures, and provenance; close and retest all critical/high findings.
+- Add explicit tenant/org and data lifecycle semantics: residency,
+  classification, minimization, export, retention, deletion, legal hold,
+  immutable audit, and negative cross-tenant tests.
+- Add central logs/metrics/traces, correlation IDs, complete user-activity
+  events, at least seven days of searchable user/security/application log
+  retention, redaction, tamper-evident audit export, service-level
+  indicators/objectives, error budgets, on-call ownership, status/incident
+  communications, and exercised runbooks.
 - Establish the deployment-anchored monitoring event schema, privacy and
   retention controls, versioned thresholds, audit events, and governance-report
   integrity contract in Section 15.
@@ -683,20 +1006,35 @@ Retain at least:
   prediction monitoring.
 - Add the centralized model dashboard, scheduled drift Jobs, governed retraining
   proposals, auditor views, and versioned JSON/HTML/PDF governance reports.
-- Measure the target dataset/concurrency envelope and define resource classes,
-  queue fairness, and cost limits.
+- Implement leakage-safe preprocessing/feature selection and the Section 7 model
+  quality, calibration, uncertainty, fairness, reproducibility, and promotion
+  contract.
+- Pass the Section 7 admission-safety and two-hour service profiles; publish the
+  tested dataset/algorithm envelope, resource classes, queue fairness, capacity,
+  saturation, cost, and scaling limits.
 - Add live install/upgrade/restore/security/performance qualification to release
   CI.
 
 ### P2: extended portability
 
-- Qualify managed-cloud and on-premises profiles with TLS external PostgreSQL.
-- Add workload-identity and native object-store adapters where required.
+- Qualify one managed cloud end to end, then GKE, EKS, AKS, and required
+  on-premises profiles with TLS external PostgreSQL and the support matrix in
+  Section 8.
+- Add provider workload identity and native GCS and Azure Blob/ADLS adapters;
+  retain S3 compatibility without forcing static keys into other providers.
+- Add durable multi-cluster placement/reconciliation, explicit data locality,
+  per-cloud failure isolation, and combined chaos/load/DR/cost evidence before
+  claiming simultaneous EKS/GKE/AKS execution.
 - Add custom CA, private registry, offline bundle, and air-gapped procedures.
 - Qualify at least one ingress and one Gateway API implementation if both are
   declared supported.
 - Publish a support matrix for Kubernetes minors, CNIs, CSIs, GPUs, and external
   service versions.
+
+If simultaneous EKS, GKE, and AKS operation is part of the first production
+launch promise, every applicable P2 item above becomes a P0 launch blocker.
+Multi-cloud complexity is not a substitute for first making one provider
+secure, recoverable, observable, and fast.
 
 ## 13. Definition of Production Ready
 
@@ -708,11 +1046,18 @@ Sceptre is production ready for a named environment only when:
 - the exact release has completed install, upgrade, failure, recovery, security,
   and representative load qualification;
 - the restore exercise meets the approved RPO and RTO;
+- the named identity/tenant lifecycle, independent security verification, and
+  penetration-test gates pass without an unresolved critical/high issue;
+- the claimed workload envelope passes the Section 7 profiles; a four-worker
+  queue test cannot be used to claim 15 workflows complete within two hours;
 - operations, security, data, and model-risk owners approve the release;
 - monitoring, alerts, escalation, rollback, and disaster-recovery runbooks are
   active; and
 - the model observability and governance gate in Section 15 passes for every
   environment in which that capability is claimed; and
+- every claimed cloud provider is independently qualified, and any simultaneous
+  multi-cloud claim also passes the combined placement, identity, data,
+  failure-isolation, performance, recovery, and cost tests; and
 - no local-only image, credential, port-forward, bundled single-replica data
   service, or unprotected model endpoint remains in the production path.
 
@@ -1071,6 +1416,13 @@ At minimum, immutable or tamper-evident audit events capture:
 - actor/service identity, effective role, project/deployment/model IDs, action,
   object ID/version, event and receipt time, request/correlation ID, source, and
   outcome;
+- login, logout, failed authentication, MFA/step-up, recovery, session
+  revocation, provisioning/deprovisioning, break-glass, role/membership/share
+  changes, and denied authorization attempts;
+- dataset upload, download, export, access, classification, and deletion;
+  profiling/training/validation start, cancellation, retry, and completion; and
+  model registration, approval, promotion, deployment, inference-endpoint
+  exposure, rollback, and retirement;
 - before/after digest or safe structured change for monitoring configuration,
   threshold, suppression, approval, promotion, rollback, and retention changes;
 - alert acknowledgement/resolution, retraining trigger/decision, report
@@ -1079,9 +1431,28 @@ At minimum, immutable or tamper-evident audit events capture:
 - denied attempts and policy failures without logging tokens, secrets, or raw
   protected data.
 
-Audit storage has independent retention, access, backup, clock-synchronization,
-integrity, and export controls. Application administrators must not be able to
-silently alter audit history. Audit queries and exports are themselves audited.
+User-activity audit events and security-relevant authentication/authorization
+logs must be centralized and searchable for at least seven consecutive 24-hour
+periods from receipt. Application operational logs must have the same minimum
+seven-day persistence. A data, legal, incident-response, or regulatory policy
+may require longer retention; it may not silently shorten the production
+minimum. Expiry after the approved period must be automatic, testable, and
+compatible with documented incident/legal holds.
+
+Container stdout and node-local files are transport buffers, not the retained
+record. Audit storage has independent access, backup, clock synchronization,
+integrity, export, capacity, and retention controls. It is append-only or
+tamper-evident, and alerts before ingestion failure, backlog, or storage
+exhaustion causes loss. Application administrators must not be able to silently
+alter audit history. Audit access, queries, exports, retention changes, and
+deletions are themselves audited.
+
+Log only the metadata needed for security and accountability. Never record
+passwords, reset links, session/OAuth tokens, secret values, raw dataset rows,
+model inputs, unrestricted free text, or unnecessary personal data. Apply
+structured redaction before events leave the application and test redaction
+against application, ingress, identity, worker, Kubernetes, and cloud audit
+streams.
 
 ### 15.12 API and persistence boundary
 
@@ -1216,9 +1587,21 @@ permit a `qualified` claim.
 
 ## 16. External References
 
+- [OAuth 2.0 Security Best Current Practice (RFC 9700)](https://www.rfc-editor.org/rfc/rfc9700.html)
+- [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0-18.html)
+- [SCIM protocol (RFC 7644)](https://www.rfc-editor.org/rfc/rfc7644.html)
+- [NIST SP 800-63-4 digital identity guidelines](https://pages.nist.gov/800-63-4/)
+- [OWASP Application Security Verification Standard 5.0](https://owasp.org/www-project-application-security-verification-standard/)
+- [OWASP API Security Top 10](https://owasp.org/API-Security/editions/2023/en/0x11-t10/)
+- [SLSA specification 1.2](https://slsa.dev/spec/v1.2/)
 - [Kubernetes production environment guidance](https://kubernetes.io/docs/setup/production-environment/)
 - [Kubernetes application security checklist](https://kubernetes.io/docs/concepts/security/application-security-checklist/)
 - [Kubernetes security checklist](https://kubernetes.io/docs/concepts/security/security-checklist/)
+- [Kubernetes Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/)
+- [Kubernetes Pod Security Admission](https://kubernetes.io/docs/concepts/security/pod-security-admission/)
 - [Kubernetes supported releases](https://kubernetes.io/releases/)
 - [Kubernetes encryption at rest](https://kubernetes.io/docs/tasks/administer-cluster/encrypt-data/)
+- [Amazon EKS Pod Identity](https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html)
+- [Workload Identity Federation for GKE](https://cloud.google.com/kubernetes-engine/docs/concepts/workload-identity)
+- [Microsoft Entra Workload ID for AKS](https://learn.microsoft.com/en-us/azure/aks/workload-identity-overview)
 - [Helm chart tests](https://helm.sh/docs/topics/chart_tests/)
