@@ -1,0 +1,2834 @@
+{
+  "version": "2.1.0",
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "fullName": "Trivy Vulnerability Scanner",
+          "informationUri": "https://github.com/aquasecurity/trivy",
+          "name": "Trivy",
+          "rules": [
+            {
+              "id": "DS-0026",
+              "name": "Misconfiguration",
+              "shortDescription": {
+                "text": "No HEALTHCHECK defined"
+              },
+              "fullDescription": {
+                "text": "You should add HEALTHCHECK instruction in your docker container images to perform the health check on running containers."
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "helpUri": "https://avd.aquasec.com/misconfig/ds-0026",
+              "help": {
+                "text": "Misconfiguration DS-0026\nType: Dockerfile Security Check\nSeverity: LOW\nCheck: No HEALTHCHECK defined\nMessage: Add HEALTHCHECK instruction in your Dockerfile\nLink: [DS-0026](https://avd.aquasec.com/misconfig/ds-0026)\nYou should add HEALTHCHECK instruction in your docker container images to perform the health check on running containers.",
+                "markdown": "**Misconfiguration DS-0026**\n| Type | Severity | Check | Message | Link |\n| --- | --- | --- | --- | --- |\n|Dockerfile Security Check|LOW|No HEALTHCHECK defined|Add HEALTHCHECK instruction in your Dockerfile|[DS-0026](https://avd.aquasec.com/misconfig/ds-0026)|\n\nYou should add HEALTHCHECK instruction in your docker container images to perform the health check on running containers."
+              },
+              "properties": {
+                "precision": "very-high",
+                "security-severity": "2.0",
+                "tags": [
+                  "misconfiguration",
+                  "security",
+                  "LOW"
+                ]
+              }
+            },
+            {
+              "id": "DS-0002",
+              "name": "Misconfiguration",
+              "shortDescription": {
+                "text": "Image user should not be 'root'"
+              },
+              "fullDescription": {
+                "text": "Running containers with 'root' user can lead to a container escape situation. It is a best practice to run containers as non-root users, which can be done by adding a 'USER' statement to the Dockerfile."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://avd.aquasec.com/misconfig/ds-0002",
+              "help": {
+                "text": "Misconfiguration DS-0002\nType: Dockerfile Security Check\nSeverity: HIGH\nCheck: Image user should not be 'root'\nMessage: Last USER command in Dockerfile should not be 'root'\nLink: [DS-0002](https://avd.aquasec.com/misconfig/ds-0002)\nRunning containers with 'root' user can lead to a container escape situation. It is a best practice to run containers as non-root users, which can be done by adding a 'USER' statement to the Dockerfile.",
+                "markdown": "**Misconfiguration DS-0002**\n| Type | Severity | Check | Message | Link |\n| --- | --- | --- | --- | --- |\n|Dockerfile Security Check|HIGH|Image user should not be 'root'|Last USER command in Dockerfile should not be 'root'|[DS-0002](https://avd.aquasec.com/misconfig/ds-0002)|\n\nRunning containers with 'root' user can lead to a container escape situation. It is a best practice to run containers as non-root users, which can be done by adding a 'USER' statement to the Dockerfile."
+              },
+              "properties": {
+                "precision": "very-high",
+                "security-severity": "8.0",
+                "tags": [
+                  "misconfiguration",
+                  "security",
+                  "HIGH"
+                ]
+              }
+            },
+            {
+              "id": "DS-0013",
+              "name": "Misconfiguration",
+              "shortDescription": {
+                "text": "'RUN cd ...' to change directory"
+              },
+              "fullDescription": {
+                "text": "Use WORKDIR instead of proliferating instructions like 'RUN cd … \u0026\u0026 do-something', which are hard to read, troubleshoot, and maintain."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "helpUri": "https://avd.aquasec.com/misconfig/ds-0013",
+              "help": {
+                "text": "Misconfiguration DS-0013\nType: Dockerfile Security Check\nSeverity: MEDIUM\nCheck: 'RUN cd ...' to change directory\nMessage: RUN should not be used to change directory: 'cd weed     \u0026\u0026 CGO_ENABLED=0 go build     -ldflags=\"-s -w -X github.com/seaweedfs/seaweedfs/weed/util/version.COMMIT=${SEAWEEDFS_COMMIT}+grpc1.82.1\"     -o /usr/local/bin/weed .'. Use 'WORKDIR' statement instead.\nLink: [DS-0013](https://avd.aquasec.com/misconfig/ds-0013)\nUse WORKDIR instead of proliferating instructions like 'RUN cd … \u0026\u0026 do-something', which are hard to read, troubleshoot, and maintain.",
+                "markdown": "**Misconfiguration DS-0013**\n| Type | Severity | Check | Message | Link |\n| --- | --- | --- | --- | --- |\n|Dockerfile Security Check|MEDIUM|'RUN cd ...' to change directory|RUN should not be used to change directory: 'cd weed     \u0026\u0026 CGO_ENABLED=0 go build     -ldflags=\"-s -w -X github.com/seaweedfs/seaweedfs/weed/util/version.COMMIT=${SEAWEEDFS_COMMIT}+grpc1.82.1\"     -o /usr/local/bin/weed .'. Use 'WORKDIR' statement instead.|[DS-0013](https://avd.aquasec.com/misconfig/ds-0013)|\n\nUse WORKDIR instead of proliferating instructions like 'RUN cd … \u0026\u0026 do-something', which are hard to read, troubleshoot, and maintain."
+              },
+              "properties": {
+                "precision": "very-high",
+                "security-severity": "5.5",
+                "tags": [
+                  "misconfiguration",
+                  "security",
+                  "MEDIUM"
+                ]
+              }
+            },
+            {
+              "id": "KSV-0020",
+              "name": "Misconfiguration",
+              "shortDescription": {
+                "text": "Runs with UID \u003c= 10000"
+              },
+              "fullDescription": {
+                "text": "Force the container to run with user ID \u003e 10000 to avoid conflicts with the host’s user table."
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "helpUri": "https://avd.aquasec.com/misconfig/ksv-0020",
+              "help": {
+                "text": "Misconfiguration KSV-0020\nType: Kubernetes Security Check\nSeverity: LOW\nCheck: Runs with UID \u003c= 10000\nMessage: Container 'seaweedfs' of Deployment 'automl-seaweedfs' should set 'securityContext.runAsUser' \u003e 10000\nLink: [KSV-0020](https://avd.aquasec.com/misconfig/ksv-0020)\nForce the container to run with user ID \u003e 10000 to avoid conflicts with the host’s user table.",
+                "markdown": "**Misconfiguration KSV-0020**\n| Type | Severity | Check | Message | Link |\n| --- | --- | --- | --- | --- |\n|Kubernetes Security Check|LOW|Runs with UID \u003c= 10000|Container 'seaweedfs' of Deployment 'automl-seaweedfs' should set 'securityContext.runAsUser' \u003e 10000|[KSV-0020](https://avd.aquasec.com/misconfig/ksv-0020)|\n\nForce the container to run with user ID \u003e 10000 to avoid conflicts with the host’s user table."
+              },
+              "properties": {
+                "precision": "very-high",
+                "security-severity": "2.0",
+                "tags": [
+                  "misconfiguration",
+                  "security",
+                  "LOW"
+                ]
+              }
+            },
+            {
+              "id": "KSV-0021",
+              "name": "Misconfiguration",
+              "shortDescription": {
+                "text": "Runs with GID \u003c= 10000"
+              },
+              "fullDescription": {
+                "text": "Force the container to run with group ID \u003e 10000 to avoid conflicts with the host’s user table."
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "helpUri": "https://avd.aquasec.com/misconfig/ksv-0021",
+              "help": {
+                "text": "Misconfiguration KSV-0021\nType: Kubernetes Security Check\nSeverity: LOW\nCheck: Runs with GID \u003c= 10000\nMessage: Container 'seaweedfs' of Deployment 'automl-seaweedfs' should set 'securityContext.runAsGroup' \u003e 10000\nLink: [KSV-0021](https://avd.aquasec.com/misconfig/ksv-0021)\nForce the container to run with group ID \u003e 10000 to avoid conflicts with the host’s user table.",
+                "markdown": "**Misconfiguration KSV-0021**\n| Type | Severity | Check | Message | Link |\n| --- | --- | --- | --- | --- |\n|Kubernetes Security Check|LOW|Runs with GID \u003c= 10000|Container 'seaweedfs' of Deployment 'automl-seaweedfs' should set 'securityContext.runAsGroup' \u003e 10000|[KSV-0021](https://avd.aquasec.com/misconfig/ksv-0021)|\n\nForce the container to run with group ID \u003e 10000 to avoid conflicts with the host’s user table."
+              },
+              "properties": {
+                "precision": "very-high",
+                "security-severity": "2.0",
+                "tags": [
+                  "misconfiguration",
+                  "security",
+                  "LOW"
+                ]
+              }
+            },
+            {
+              "id": "KSV-0022",
+              "name": "Misconfiguration",
+              "shortDescription": {
+                "text": "Specific capabilities added"
+              },
+              "fullDescription": {
+                "text": "According to pod security standard 'Capabilities', capabilities beyond the default set must not be added."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "helpUri": "https://avd.aquasec.com/misconfig/ksv-0022",
+              "help": {
+                "text": "Misconfiguration KSV-0022\nType: Kubernetes Security Check\nSeverity: MEDIUM\nCheck: Specific capabilities added\nMessage: Container 'postgres' of StatefulSet 'automl-postgres' should not set 'securityContext.capabilities.add'\nLink: [KSV-0022](https://avd.aquasec.com/misconfig/ksv-0022)\nAccording to pod security standard 'Capabilities', capabilities beyond the default set must not be added.",
+                "markdown": "**Misconfiguration KSV-0022**\n| Type | Severity | Check | Message | Link |\n| --- | --- | --- | --- | --- |\n|Kubernetes Security Check|MEDIUM|Specific capabilities added|Container 'postgres' of StatefulSet 'automl-postgres' should not set 'securityContext.capabilities.add'|[KSV-0022](https://avd.aquasec.com/misconfig/ksv-0022)|\n\nAccording to pod security standard 'Capabilities', capabilities beyond the default set must not be added."
+              },
+              "properties": {
+                "precision": "very-high",
+                "security-severity": "5.5",
+                "tags": [
+                  "misconfiguration",
+                  "security",
+                  "MEDIUM"
+                ]
+              }
+            },
+            {
+              "id": "KSV-0110",
+              "name": "Misconfiguration",
+              "shortDescription": {
+                "text": "Workloads in the default namespace"
+              },
+              "fullDescription": {
+                "text": "Checks whether a workload is running in the default namespace."
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "helpUri": "https://avd.aquasec.com/misconfig/ksv-0110",
+              "help": {
+                "text": "Misconfiguration KSV-0110\nType: Helm Security Check\nSeverity: LOW\nCheck: Workloads in the default namespace\nMessage: deployment sceptre-seaweedfs in default namespace should set metadata.namespace to a non-default namespace\nLink: [KSV-0110](https://avd.aquasec.com/misconfig/ksv-0110)\nChecks whether a workload is running in the default namespace.",
+                "markdown": "**Misconfiguration KSV-0110**\n| Type | Severity | Check | Message | Link |\n| --- | --- | --- | --- | --- |\n|Helm Security Check|LOW|Workloads in the default namespace|deployment sceptre-seaweedfs in default namespace should set metadata.namespace to a non-default namespace|[KSV-0110](https://avd.aquasec.com/misconfig/ksv-0110)|\n\nChecks whether a workload is running in the default namespace."
+              },
+              "properties": {
+                "precision": "very-high",
+                "security-severity": "2.0",
+                "tags": [
+                  "misconfiguration",
+                  "security",
+                  "LOW"
+                ]
+              }
+            },
+            {
+              "id": "KSV-0117",
+              "name": "Misconfiguration",
+              "shortDescription": {
+                "text": "Prevent binding to privileged ports"
+              },
+              "fullDescription": {
+                "text": "The ports which are lower than 1024 receive and transmit various sensitive and privileged data. Allowing containers to use them can bring serious implications."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "helpUri": "https://avd.aquasec.com/misconfig/ksv-0117",
+              "help": {
+                "text": "Misconfiguration KSV-0117\nType: Helm Security Check\nSeverity: MEDIUM\nCheck: Prevent binding to privileged ports\nMessage: deployment sceptre-ui in default namespace should not set spec.template.spec.containers.ports.containerPort to less than 1024\nLink: [KSV-0117](https://avd.aquasec.com/misconfig/ksv-0117)\nThe ports which are lower than 1024 receive and transmit various sensitive and privileged data. Allowing containers to use them can bring serious implications.",
+                "markdown": "**Misconfiguration KSV-0117**\n| Type | Severity | Check | Message | Link |\n| --- | --- | --- | --- | --- |\n|Helm Security Check|MEDIUM|Prevent binding to privileged ports|deployment sceptre-ui in default namespace should not set spec.template.spec.containers.ports.containerPort to less than 1024|[KSV-0117](https://avd.aquasec.com/misconfig/ksv-0117)|\n\nThe ports which are lower than 1024 receive and transmit various sensitive and privileged data. Allowing containers to use them can bring serious implications."
+              },
+              "properties": {
+                "precision": "very-high",
+                "security-severity": "5.5",
+                "tags": [
+                  "misconfiguration",
+                  "security",
+                  "MEDIUM"
+                ]
+              }
+            },
+            {
+              "id": "KSV-0125",
+              "name": "Misconfiguration",
+              "shortDescription": {
+                "text": "Restrict container images to trusted registries"
+              },
+              "fullDescription": {
+                "text": "Ensure that all containers use images only from trusted registry domains."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "helpUri": "https://avd.aquasec.com/misconfig/ksv-0125",
+              "help": {
+                "text": "Misconfiguration KSV-0125\nType: Kubernetes Security Check\nSeverity: MEDIUM\nCheck: Restrict container images to trusted registries\nMessage: Container seaweedfs in deployment automl-seaweedfs (namespace: automl) uses an image from an untrusted registry.\nLink: [KSV-0125](https://avd.aquasec.com/misconfig/ksv-0125)\nEnsure that all containers use images only from trusted registry domains.",
+                "markdown": "**Misconfiguration KSV-0125**\n| Type | Severity | Check | Message | Link |\n| --- | --- | --- | --- | --- |\n|Kubernetes Security Check|MEDIUM|Restrict container images to trusted registries|Container seaweedfs in deployment automl-seaweedfs (namespace: automl) uses an image from an untrusted registry.|[KSV-0125](https://avd.aquasec.com/misconfig/ksv-0125)|\n\nEnsure that all containers use images only from trusted registry domains."
+              },
+              "properties": {
+                "precision": "very-high",
+                "security-severity": "5.5",
+                "tags": [
+                  "misconfiguration",
+                  "security",
+                  "MEDIUM"
+                ]
+              }
+            },
+            {
+              "id": "KSV-01010",
+              "name": "Misconfiguration",
+              "shortDescription": {
+                "text": "ConfigMap with sensitive content"
+              },
+              "fullDescription": {
+                "text": "Storing sensitive content such as usernames and email addresses in configMaps is unsafe"
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "helpUri": "https://avd.aquasec.com/misconfig/ksv-01010",
+              "help": {
+                "text": "Misconfiguration KSV-01010\nType: Kubernetes Security Check\nSeverity: MEDIUM\nCheck: ConfigMap with sensitive content\nMessage: ConfigMap 'automl-platform-config' in 'automl' namespace stores sensitive contents in key(s) or value(s) '{\"TRAINING_ACTIVE_DEADLINE_SECONDS\", \"TRAINING_MAX_ACTIVE_DEADLINE_SECONDS\", \"TRAINING_MEMORY_LIMIT_MB\", \"TRAINING_MEMORY_REQUEST_MB\"}'\nLink: [KSV-01010](https://avd.aquasec.com/misconfig/ksv-01010)\nStoring sensitive content such as usernames and email addresses in configMaps is unsafe",
+                "markdown": "**Misconfiguration KSV-01010**\n| Type | Severity | Check | Message | Link |\n| --- | --- | --- | --- | --- |\n|Kubernetes Security Check|MEDIUM|ConfigMap with sensitive content|ConfigMap 'automl-platform-config' in 'automl' namespace stores sensitive contents in key(s) or value(s) '{\"TRAINING_ACTIVE_DEADLINE_SECONDS\", \"TRAINING_MAX_ACTIVE_DEADLINE_SECONDS\", \"TRAINING_MEMORY_LIMIT_MB\", \"TRAINING_MEMORY_REQUEST_MB\"}'|[KSV-01010](https://avd.aquasec.com/misconfig/ksv-01010)|\n\nStoring sensitive content such as usernames and email addresses in configMaps is unsafe"
+              },
+              "properties": {
+                "precision": "very-high",
+                "security-severity": "5.5",
+                "tags": [
+                  "misconfiguration",
+                  "security",
+                  "MEDIUM"
+                ]
+              }
+            },
+            {
+              "id": "KSV-0109",
+              "name": "Misconfiguration",
+              "shortDescription": {
+                "text": "ConfigMap with secrets"
+              },
+              "fullDescription": {
+                "text": "Storing secrets in configMaps is unsafe"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://avd.aquasec.com/misconfig/ksv-0109",
+              "help": {
+                "text": "Misconfiguration KSV-0109\nType: Helm Security Check\nSeverity: HIGH\nCheck: ConfigMap with secrets\nMessage: ConfigMap 'sceptre-config' in 'default' namespace stores secrets in key(s) or value(s) '{\"DATABASE_SECRET_KEY\", \"DATABASE_SECRET_NAME\", \"INFERENCE_INGRESS_TLS_SECRET_NAME\", \"OBJECT_STORE_ACCESS_KEY_SECRET_KEY\", \"OBJECT_STORE_SECRET_KEY_SECRET_KEY\", \"OBJECT_STORE_SECRET_NAME\", \"WORKLOAD_IMAGE_PULL_SECRETS\"}'\nLink: [KSV-0109](https://avd.aquasec.com/misconfig/ksv-0109)\nStoring secrets in configMaps is unsafe",
+                "markdown": "**Misconfiguration KSV-0109**\n| Type | Severity | Check | Message | Link |\n| --- | --- | --- | --- | --- |\n|Helm Security Check|HIGH|ConfigMap with secrets|ConfigMap 'sceptre-config' in 'default' namespace stores secrets in key(s) or value(s) '{\"DATABASE_SECRET_KEY\", \"DATABASE_SECRET_NAME\", \"INFERENCE_INGRESS_TLS_SECRET_NAME\", \"OBJECT_STORE_ACCESS_KEY_SECRET_KEY\", \"OBJECT_STORE_SECRET_KEY_SECRET_KEY\", \"OBJECT_STORE_SECRET_NAME\", \"WORKLOAD_IMAGE_PULL_SECRETS\"}'|[KSV-0109](https://avd.aquasec.com/misconfig/ksv-0109)|\n\nStoring secrets in configMaps is unsafe"
+              },
+              "properties": {
+                "precision": "very-high",
+                "security-severity": "8.0",
+                "tags": [
+                  "misconfiguration",
+                  "security",
+                  "HIGH"
+                ]
+              }
+            },
+            {
+              "id": "KSV-0012",
+              "name": "Misconfiguration",
+              "shortDescription": {
+                "text": "Runs as root user"
+              },
+              "fullDescription": {
+                "text": "Force the running image to run as a non-root user to ensure least privileges."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "helpUri": "https://avd.aquasec.com/misconfig/ksv-0012",
+              "help": {
+                "text": "Misconfiguration KSV-0012\nType: Kubernetes Security Check\nSeverity: MEDIUM\nCheck: Runs as root user\nMessage: Container 'postgres' of StatefulSet 'automl-postgres' should set 'securityContext.runAsNonRoot' to true\nLink: [KSV-0012](https://avd.aquasec.com/misconfig/ksv-0012)\nForce the running image to run as a non-root user to ensure least privileges.",
+                "markdown": "**Misconfiguration KSV-0012**\n| Type | Severity | Check | Message | Link |\n| --- | --- | --- | --- | --- |\n|Kubernetes Security Check|MEDIUM|Runs as root user|Container 'postgres' of StatefulSet 'automl-postgres' should set 'securityContext.runAsNonRoot' to true|[KSV-0012](https://avd.aquasec.com/misconfig/ksv-0012)|\n\nForce the running image to run as a non-root user to ensure least privileges."
+              },
+              "properties": {
+                "precision": "very-high",
+                "security-severity": "5.5",
+                "tags": [
+                  "misconfiguration",
+                  "security",
+                  "MEDIUM"
+                ]
+              }
+            },
+            {
+              "id": "KSV-0105",
+              "name": "Misconfiguration",
+              "shortDescription": {
+                "text": "Containers must not set runAsUser to 0"
+              },
+              "fullDescription": {
+                "text": "Containers should be forbidden from running with a root UID."
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "helpUri": "https://avd.aquasec.com/misconfig/ksv-0105",
+              "help": {
+                "text": "Misconfiguration KSV-0105\nType: Kubernetes Security Check\nSeverity: LOW\nCheck: Containers must not set runAsUser to 0\nMessage: securityContext.runAsUser should be set to a value greater than 0\nLink: [KSV-0105](https://avd.aquasec.com/misconfig/ksv-0105)\nContainers should be forbidden from running with a root UID.",
+                "markdown": "**Misconfiguration KSV-0105**\n| Type | Severity | Check | Message | Link |\n| --- | --- | --- | --- | --- |\n|Kubernetes Security Check|LOW|Containers must not set runAsUser to 0|securityContext.runAsUser should be set to a value greater than 0|[KSV-0105](https://avd.aquasec.com/misconfig/ksv-0105)|\n\nContainers should be forbidden from running with a root UID."
+              },
+              "properties": {
+                "precision": "very-high",
+                "security-severity": "2.0",
+                "tags": [
+                  "misconfiguration",
+                  "security",
+                  "LOW"
+                ]
+              }
+            },
+            {
+              "id": "KSV-0106",
+              "name": "Misconfiguration",
+              "shortDescription": {
+                "text": "Container capabilities must only include NET_BIND_SERVICE"
+              },
+              "fullDescription": {
+                "text": "Containers must drop ALL capabilities, and are only permitted to add back the NET_BIND_SERVICE capability."
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "helpUri": "https://avd.aquasec.com/misconfig/ksv-0106",
+              "help": {
+                "text": "Misconfiguration KSV-0106\nType: Kubernetes Security Check\nSeverity: LOW\nCheck: Container capabilities must only include NET_BIND_SERVICE\nMessage: container should not add stuff\nLink: [KSV-0106](https://avd.aquasec.com/misconfig/ksv-0106)\nContainers must drop ALL capabilities, and are only permitted to add back the NET_BIND_SERVICE capability.",
+                "markdown": "**Misconfiguration KSV-0106**\n| Type | Severity | Check | Message | Link |\n| --- | --- | --- | --- | --- |\n|Kubernetes Security Check|LOW|Container capabilities must only include NET_BIND_SERVICE|container should not add stuff|[KSV-0106](https://avd.aquasec.com/misconfig/ksv-0106)|\n\nContainers must drop ALL capabilities, and are only permitted to add back the NET_BIND_SERVICE capability."
+              },
+              "properties": {
+                "precision": "very-high",
+                "security-severity": "2.0",
+                "tags": [
+                  "misconfiguration",
+                  "security",
+                  "LOW"
+                ]
+              }
+            },
+            {
+              "id": "KSV-0014",
+              "name": "Misconfiguration",
+              "shortDescription": {
+                "text": "Root file system is not read-only"
+              },
+              "fullDescription": {
+                "text": "An immutable root file system prevents applications from writing to their local disk. This can limit intrusions, as attackers will not be able to tamper with the file system or write foreign executables to disk."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://avd.aquasec.com/misconfig/ksv-0014",
+              "help": {
+                "text": "Misconfiguration KSV-0014\nType: Kubernetes Security Check\nSeverity: HIGH\nCheck: Root file system is not read-only\nMessage: Container 'postgres' of StatefulSet 'automl-postgres' should set 'securityContext.readOnlyRootFilesystem' to true\nLink: [KSV-0014](https://avd.aquasec.com/misconfig/ksv-0014)\nAn immutable root file system prevents applications from writing to their local disk. This can limit intrusions, as attackers will not be able to tamper with the file system or write foreign executables to disk.",
+                "markdown": "**Misconfiguration KSV-0014**\n| Type | Severity | Check | Message | Link |\n| --- | --- | --- | --- | --- |\n|Kubernetes Security Check|HIGH|Root file system is not read-only|Container 'postgres' of StatefulSet 'automl-postgres' should set 'securityContext.readOnlyRootFilesystem' to true|[KSV-0014](https://avd.aquasec.com/misconfig/ksv-0014)|\n\nAn immutable root file system prevents applications from writing to their local disk. This can limit intrusions, as attackers will not be able to tamper with the file system or write foreign executables to disk."
+              },
+              "properties": {
+                "precision": "very-high",
+                "security-severity": "8.0",
+                "tags": [
+                  "misconfiguration",
+                  "security",
+                  "HIGH"
+                ]
+              }
+            },
+            {
+              "id": "KSV-0048",
+              "name": "Misconfiguration",
+              "shortDescription": {
+                "text": "Manage Kubernetes workloads and pods"
+              },
+              "fullDescription": {
+                "text": "Depending on the policies enforced by the admission controller, this permission ranges from the ability to steal compute (crypto) by running workloads or allowing for creating workloads that escape to the node as root and escalation to cluster-admin."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "helpUri": "https://avd.aquasec.com/misconfig/ksv-0048",
+              "help": {
+                "text": "Misconfiguration KSV-0048\nType: Helm Security Check\nSeverity: MEDIUM\nCheck: Manage Kubernetes workloads and pods\nMessage: Role 'sceptre-workloads' should not have access to resources [\"pods\", \"deployments\", \"jobs\", \"cronjobs\", \"statefulsets\", \"daemonsets\", \"replicasets\", \"replicationcontrollers\"] for verbs [\"create\", \"update\", \"patch\", \"delete\", \"deletecollection\", \"impersonate\", \"*\"]\nLink: [KSV-0048](https://avd.aquasec.com/misconfig/ksv-0048)\nDepending on the policies enforced by the admission controller, this permission ranges from the ability to steal compute (crypto) by running workloads or allowing for creating workloads that escape to the node as root and escalation to cluster-admin.",
+                "markdown": "**Misconfiguration KSV-0048**\n| Type | Severity | Check | Message | Link |\n| --- | --- | --- | --- | --- |\n|Helm Security Check|MEDIUM|Manage Kubernetes workloads and pods|Role 'sceptre-workloads' should not have access to resources [\"pods\", \"deployments\", \"jobs\", \"cronjobs\", \"statefulsets\", \"daemonsets\", \"replicasets\", \"replicationcontrollers\"] for verbs [\"create\", \"update\", \"patch\", \"delete\", \"deletecollection\", \"impersonate\", \"*\"]|[KSV-0048](https://avd.aquasec.com/misconfig/ksv-0048)|\n\nDepending on the policies enforced by the admission controller, this permission ranges from the ability to steal compute (crypto) by running workloads or allowing for creating workloads that escape to the node as root and escalation to cluster-admin."
+              },
+              "properties": {
+                "precision": "very-high",
+                "security-severity": "5.5",
+                "tags": [
+                  "misconfiguration",
+                  "security",
+                  "MEDIUM"
+                ]
+              }
+            },
+            {
+              "id": "KSV-0056",
+              "name": "Misconfiguration",
+              "shortDescription": {
+                "text": "Manage Kubernetes networking"
+              },
+              "fullDescription": {
+                "text": "The ability to control which pods get service traffic directed to them allows for interception attacks. Controlling network policy allows for bypassing lateral movement restrictions."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://avd.aquasec.com/misconfig/ksv-0056",
+              "help": {
+                "text": "Misconfiguration KSV-0056\nType: Helm Security Check\nSeverity: HIGH\nCheck: Manage Kubernetes networking\nMessage: Role 'sceptre-workloads' should not have access to resources [\"services\", \"endpoints\", \"endpointslices\", \"networkpolicies\", \"ingresses\"] for verbs [\"create\", \"update\", \"patch\", \"delete\", \"deletecollection\", \"impersonate\", \"*\"]\nLink: [KSV-0056](https://avd.aquasec.com/misconfig/ksv-0056)\nThe ability to control which pods get service traffic directed to them allows for interception attacks. Controlling network policy allows for bypassing lateral movement restrictions.",
+                "markdown": "**Misconfiguration KSV-0056**\n| Type | Severity | Check | Message | Link |\n| --- | --- | --- | --- | --- |\n|Helm Security Check|HIGH|Manage Kubernetes networking|Role 'sceptre-workloads' should not have access to resources [\"services\", \"endpoints\", \"endpointslices\", \"networkpolicies\", \"ingresses\"] for verbs [\"create\", \"update\", \"patch\", \"delete\", \"deletecollection\", \"impersonate\", \"*\"]|[KSV-0056](https://avd.aquasec.com/misconfig/ksv-0056)|\n\nThe ability to control which pods get service traffic directed to them allows for interception attacks. Controlling network policy allows for bypassing lateral movement restrictions."
+              },
+              "properties": {
+                "precision": "very-high",
+                "security-severity": "8.0",
+                "tags": [
+                  "misconfiguration",
+                  "security",
+                  "HIGH"
+                ]
+              }
+            },
+            {
+              "id": "KSV-0113",
+              "name": "Misconfiguration",
+              "shortDescription": {
+                "text": "Manage namespace secrets"
+              },
+              "fullDescription": {
+                "text": "Viewing secrets at the namespace scope can lead to escalation if another service account in that namespace has a higher privileged rolebinding or clusterrolebinding bound."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "helpUri": "https://avd.aquasec.com/misconfig/ksv-0113",
+              "help": {
+                "text": "Misconfiguration KSV-0113\nType: Helm Security Check\nSeverity: MEDIUM\nCheck: Manage namespace secrets\nMessage: Role 'sceptre-workloads' shouldn't have access to manage secrets in namespace 'default'\nLink: [KSV-0113](https://avd.aquasec.com/misconfig/ksv-0113)\nViewing secrets at the namespace scope can lead to escalation if another service account in that namespace has a higher privileged rolebinding or clusterrolebinding bound.",
+                "markdown": "**Misconfiguration KSV-0113**\n| Type | Severity | Check | Message | Link |\n| --- | --- | --- | --- | --- |\n|Helm Security Check|MEDIUM|Manage namespace secrets|Role 'sceptre-workloads' shouldn't have access to manage secrets in namespace 'default'|[KSV-0113](https://avd.aquasec.com/misconfig/ksv-0113)|\n\nViewing secrets at the namespace scope can lead to escalation if another service account in that namespace has a higher privileged rolebinding or clusterrolebinding bound."
+              },
+              "properties": {
+                "precision": "very-high",
+                "security-severity": "5.5",
+                "tags": [
+                  "misconfiguration",
+                  "security",
+                  "MEDIUM"
+                ]
+              }
+            }
+          ],
+          "version": "0.72.0"
+        }
+      },
+      "results": [
+        {
+          "ruleId": "DS-0026",
+          "ruleIndex": 0,
+          "level": "note",
+          "message": {
+            "text": "Artifact: Dockerfile.api\nType: dockerfile\nVulnerability DS-0026\nSeverity: LOW\nMessage: Add HEALTHCHECK instruction in your Dockerfile\nLink: [DS-0026](https://avd.aquasec.com/misconfig/ds-0026)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "Dockerfile.api",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1,
+                  "endLine": 1,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "Dockerfile.api"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "DS-0026",
+          "ruleIndex": 0,
+          "level": "note",
+          "message": {
+            "text": "Artifact: Dockerfile.inference\nType: dockerfile\nVulnerability DS-0026\nSeverity: LOW\nMessage: Add HEALTHCHECK instruction in your Dockerfile\nLink: [DS-0026](https://avd.aquasec.com/misconfig/ds-0026)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "Dockerfile.inference",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1,
+                  "endLine": 1,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "Dockerfile.inference"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "DS-0026",
+          "ruleIndex": 0,
+          "level": "note",
+          "message": {
+            "text": "Artifact: Dockerfile.mlflow\nType: dockerfile\nVulnerability DS-0026\nSeverity: LOW\nMessage: Add HEALTHCHECK instruction in your Dockerfile\nLink: [DS-0026](https://avd.aquasec.com/misconfig/ds-0026)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "Dockerfile.mlflow",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1,
+                  "endLine": 1,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "Dockerfile.mlflow"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "DS-0002",
+          "ruleIndex": 1,
+          "level": "error",
+          "message": {
+            "text": "Artifact: Dockerfile.postgresql\nType: dockerfile\nVulnerability DS-0002\nSeverity: HIGH\nMessage: Specify at least 1 USER command in Dockerfile with non-root user as argument\nLink: [DS-0002](https://avd.aquasec.com/misconfig/ds-0002)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "Dockerfile.postgresql",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1,
+                  "endLine": 1,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "Dockerfile.postgresql"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "DS-0026",
+          "ruleIndex": 0,
+          "level": "note",
+          "message": {
+            "text": "Artifact: Dockerfile.postgresql\nType: dockerfile\nVulnerability DS-0026\nSeverity: LOW\nMessage: Add HEALTHCHECK instruction in your Dockerfile\nLink: [DS-0026](https://avd.aquasec.com/misconfig/ds-0026)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "Dockerfile.postgresql",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1,
+                  "endLine": 1,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "Dockerfile.postgresql"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "DS-0013",
+          "ruleIndex": 2,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: Dockerfile.seaweedfs\nType: dockerfile\nVulnerability DS-0013\nSeverity: MEDIUM\nMessage: RUN should not be used to change directory: 'cd weed     \u0026\u0026 CGO_ENABLED=0 go build     -ldflags=\"-s -w -X github.com/seaweedfs/seaweedfs/weed/util/version.COMMIT=${SEAWEEDFS_COMMIT}+grpc1.82.1\"     -o /usr/local/bin/weed .'. Use 'WORKDIR' statement instead.\nLink: [DS-0013](https://avd.aquasec.com/misconfig/ds-0013)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "Dockerfile.seaweedfs",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 12,
+                  "startColumn": 1,
+                  "endLine": 15,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "Dockerfile.seaweedfs"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "DS-0026",
+          "ruleIndex": 0,
+          "level": "note",
+          "message": {
+            "text": "Artifact: Dockerfile.seaweedfs\nType: dockerfile\nVulnerability DS-0026\nSeverity: LOW\nMessage: Add HEALTHCHECK instruction in your Dockerfile\nLink: [DS-0026](https://avd.aquasec.com/misconfig/ds-0026)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "Dockerfile.seaweedfs",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1,
+                  "endLine": 1,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "Dockerfile.seaweedfs"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "DS-0002",
+          "ruleIndex": 1,
+          "level": "error",
+          "message": {
+            "text": "Artifact: Dockerfile.training\nType: dockerfile\nVulnerability DS-0002\nSeverity: HIGH\nMessage: Last USER command in Dockerfile should not be 'root'\nLink: [DS-0002](https://avd.aquasec.com/misconfig/ds-0002)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "Dockerfile.training",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 3,
+                  "startColumn": 1,
+                  "endLine": 3,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "Dockerfile.training"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "DS-0026",
+          "ruleIndex": 0,
+          "level": "note",
+          "message": {
+            "text": "Artifact: Dockerfile.training\nType: dockerfile\nVulnerability DS-0026\nSeverity: LOW\nMessage: Add HEALTHCHECK instruction in your Dockerfile\nLink: [DS-0026](https://avd.aquasec.com/misconfig/ds-0026)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "Dockerfile.training",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1,
+                  "endLine": 1,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "Dockerfile.training"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0020",
+          "ruleIndex": 3,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/application.yaml\nType: helm\nVulnerability KSV-0020\nSeverity: LOW\nMessage: Container 'api' of Deployment 'sceptre-api' should set 'securityContext.runAsUser' \u003e 10000\nLink: [KSV-0020](https://avd.aquasec.com/misconfig/ksv-0020)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/application.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 54,
+                  "startColumn": 1,
+                  "endLine": 121,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/application.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0020",
+          "ruleIndex": 3,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/application.yaml\nType: helm\nVulnerability KSV-0020\nSeverity: LOW\nMessage: Container 'ui' of Deployment 'sceptre-ui' should set 'securityContext.runAsUser' \u003e 10000\nLink: [KSV-0020](https://avd.aquasec.com/misconfig/ksv-0020)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/application.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 31,
+                  "startColumn": 1,
+                  "endLine": 67,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/application.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0020",
+          "ruleIndex": 3,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/application.yaml\nType: helm\nVulnerability KSV-0020\nSeverity: LOW\nMessage: Container 'wait-for-migrations' of Deployment 'sceptre-api' should set 'securityContext.runAsUser' \u003e 10000\nLink: [KSV-0020](https://avd.aquasec.com/misconfig/ksv-0020)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/application.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 31,
+                  "startColumn": 1,
+                  "endLine": 52,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/application.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0021",
+          "ruleIndex": 4,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/application.yaml\nType: helm\nVulnerability KSV-0021\nSeverity: LOW\nMessage: Container 'api' of Deployment 'sceptre-api' should set 'securityContext.runAsGroup' \u003e 10000\nLink: [KSV-0021](https://avd.aquasec.com/misconfig/ksv-0021)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/application.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 54,
+                  "startColumn": 1,
+                  "endLine": 121,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/application.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0021",
+          "ruleIndex": 4,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/application.yaml\nType: helm\nVulnerability KSV-0021\nSeverity: LOW\nMessage: Container 'ui' of Deployment 'sceptre-ui' should set 'securityContext.runAsGroup' \u003e 10000\nLink: [KSV-0021](https://avd.aquasec.com/misconfig/ksv-0021)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/application.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 31,
+                  "startColumn": 1,
+                  "endLine": 67,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/application.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0021",
+          "ruleIndex": 4,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/application.yaml\nType: helm\nVulnerability KSV-0021\nSeverity: LOW\nMessage: Container 'wait-for-migrations' of Deployment 'sceptre-api' should set 'securityContext.runAsGroup' \u003e 10000\nLink: [KSV-0021](https://avd.aquasec.com/misconfig/ksv-0021)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/application.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 31,
+                  "startColumn": 1,
+                  "endLine": 52,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/application.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0022",
+          "ruleIndex": 5,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/application.yaml\nType: helm\nVulnerability KSV-0022\nSeverity: MEDIUM\nMessage: Container 'ui' of Deployment 'sceptre-ui' should not set 'securityContext.capabilities.add'\nLink: [KSV-0022](https://avd.aquasec.com/misconfig/ksv-0022)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/application.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 31,
+                  "startColumn": 1,
+                  "endLine": 67,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/application.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0110",
+          "ruleIndex": 6,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/application.yaml\nType: helm\nVulnerability KSV-0110\nSeverity: LOW\nMessage: deployment sceptre-api in default namespace should set metadata.namespace to a non-default namespace\nLink: [KSV-0110](https://avd.aquasec.com/misconfig/ksv-0110)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/application.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 4,
+                  "startColumn": 1,
+                  "endLine": 10,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/application.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0110",
+          "ruleIndex": 6,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/application.yaml\nType: helm\nVulnerability KSV-0110\nSeverity: LOW\nMessage: deployment sceptre-ui in default namespace should set metadata.namespace to a non-default namespace\nLink: [KSV-0110](https://avd.aquasec.com/misconfig/ksv-0110)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/application.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 4,
+                  "startColumn": 1,
+                  "endLine": 10,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/application.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0117",
+          "ruleIndex": 7,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/application.yaml\nType: helm\nVulnerability KSV-0117\nSeverity: MEDIUM\nMessage: deployment sceptre-ui in default namespace should not set spec.template.spec.containers.ports.containerPort to less than 1024\nLink: [KSV-0117](https://avd.aquasec.com/misconfig/ksv-0117)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/application.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1,
+                  "endLine": 1,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/application.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0125",
+          "ruleIndex": 8,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/application.yaml\nType: helm\nVulnerability KSV-0125\nSeverity: MEDIUM\nMessage: Container api in deployment sceptre-api (namespace: default) uses an image from an untrusted registry.\nLink: [KSV-0125](https://avd.aquasec.com/misconfig/ksv-0125)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/application.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 54,
+                  "startColumn": 1,
+                  "endLine": 121,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/application.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0125",
+          "ruleIndex": 8,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/application.yaml\nType: helm\nVulnerability KSV-0125\nSeverity: MEDIUM\nMessage: Container ui in deployment sceptre-ui (namespace: default) uses an image from an untrusted registry.\nLink: [KSV-0125](https://avd.aquasec.com/misconfig/ksv-0125)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/application.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 31,
+                  "startColumn": 1,
+                  "endLine": 67,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/application.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0125",
+          "ruleIndex": 8,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/application.yaml\nType: helm\nVulnerability KSV-0125\nSeverity: MEDIUM\nMessage: Container wait-for-migrations in deployment sceptre-api (namespace: default) uses an image from an untrusted registry.\nLink: [KSV-0125](https://avd.aquasec.com/misconfig/ksv-0125)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/application.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 31,
+                  "startColumn": 1,
+                  "endLine": 52,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/application.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-01010",
+          "ruleIndex": 9,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/configmap.yaml\nType: helm\nVulnerability KSV-01010\nSeverity: MEDIUM\nMessage: ConfigMap 'sceptre-config' in 'default' namespace stores sensitive contents in key(s) or value(s) '{\"DATABASE_SECRET_KEY\", \"OBJECT_STORE_ACCESS_KEY_SECRET_KEY\", \"OBJECT_STORE_SECRET_KEY_SECRET_KEY\", \"SMTP_FROM_EMAIL\", \"SMTP_PORT\", \"TRAINING_ACTIVE_DEADLINE_SECONDS\", \"TRAINING_JOB_TTL_SECONDS\", \"TRAINING_MAX_ACTIVE_DEADLINE_SECONDS\", \"TRAINING_MEMORY_LIMIT_MB\", \"TRAINING_MEMORY_REQUEST_MB\"}'\nLink: [KSV-01010](https://avd.aquasec.com/misconfig/ksv-01010)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/configmap.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1,
+                  "endLine": 1,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/configmap.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0109",
+          "ruleIndex": 10,
+          "level": "error",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/configmap.yaml\nType: helm\nVulnerability KSV-0109\nSeverity: HIGH\nMessage: ConfigMap 'sceptre-config' in 'default' namespace stores secrets in key(s) or value(s) '{\"DATABASE_SECRET_KEY\", \"DATABASE_SECRET_NAME\", \"INFERENCE_INGRESS_TLS_SECRET_NAME\", \"OBJECT_STORE_ACCESS_KEY_SECRET_KEY\", \"OBJECT_STORE_SECRET_KEY_SECRET_KEY\", \"OBJECT_STORE_SECRET_NAME\", \"WORKLOAD_IMAGE_PULL_SECRETS\"}'\nLink: [KSV-0109](https://avd.aquasec.com/misconfig/ksv-0109)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/configmap.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1,
+                  "endLine": 1,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/configmap.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0020",
+          "ruleIndex": 3,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/migrations.yaml\nType: helm\nVulnerability KSV-0020\nSeverity: LOW\nMessage: Container 'create-mlflow-database' of Job 'sceptre-db-bootstrap-1' should set 'securityContext.runAsUser' \u003e 10000\nLink: [KSV-0020](https://avd.aquasec.com/misconfig/ksv-0020)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/migrations.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 27,
+                  "startColumn": 1,
+                  "endLine": 58,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/migrations.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0020",
+          "ruleIndex": 3,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/migrations.yaml\nType: helm\nVulnerability KSV-0020\nSeverity: LOW\nMessage: Container 'migrate' of Job 'sceptre-migrate-1' should set 'securityContext.runAsUser' \u003e 10000\nLink: [KSV-0020](https://avd.aquasec.com/misconfig/ksv-0020)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/migrations.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 27,
+                  "startColumn": 1,
+                  "endLine": 54,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/migrations.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0021",
+          "ruleIndex": 4,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/migrations.yaml\nType: helm\nVulnerability KSV-0021\nSeverity: LOW\nMessage: Container 'create-mlflow-database' of Job 'sceptre-db-bootstrap-1' should set 'securityContext.runAsGroup' \u003e 10000\nLink: [KSV-0021](https://avd.aquasec.com/misconfig/ksv-0021)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/migrations.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 27,
+                  "startColumn": 1,
+                  "endLine": 58,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/migrations.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0021",
+          "ruleIndex": 4,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/migrations.yaml\nType: helm\nVulnerability KSV-0021\nSeverity: LOW\nMessage: Container 'migrate' of Job 'sceptre-migrate-1' should set 'securityContext.runAsGroup' \u003e 10000\nLink: [KSV-0021](https://avd.aquasec.com/misconfig/ksv-0021)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/migrations.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 27,
+                  "startColumn": 1,
+                  "endLine": 54,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/migrations.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0110",
+          "ruleIndex": 6,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/migrations.yaml\nType: helm\nVulnerability KSV-0110\nSeverity: LOW\nMessage: job sceptre-db-bootstrap-1 in default namespace should set metadata.namespace to a non-default namespace\nLink: [KSV-0110](https://avd.aquasec.com/misconfig/ksv-0110)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/migrations.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 4,
+                  "startColumn": 1,
+                  "endLine": 11,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/migrations.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0110",
+          "ruleIndex": 6,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/migrations.yaml\nType: helm\nVulnerability KSV-0110\nSeverity: LOW\nMessage: job sceptre-migrate-1 in default namespace should set metadata.namespace to a non-default namespace\nLink: [KSV-0110](https://avd.aquasec.com/misconfig/ksv-0110)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/migrations.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 4,
+                  "startColumn": 1,
+                  "endLine": 11,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/migrations.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0125",
+          "ruleIndex": 8,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/migrations.yaml\nType: helm\nVulnerability KSV-0125\nSeverity: MEDIUM\nMessage: Container create-mlflow-database in job sceptre-db-bootstrap-1 (namespace: default) uses an image from an untrusted registry.\nLink: [KSV-0125](https://avd.aquasec.com/misconfig/ksv-0125)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/migrations.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 27,
+                  "startColumn": 1,
+                  "endLine": 58,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/migrations.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0125",
+          "ruleIndex": 8,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/migrations.yaml\nType: helm\nVulnerability KSV-0125\nSeverity: MEDIUM\nMessage: Container migrate in job sceptre-migrate-1 (namespace: default) uses an image from an untrusted registry.\nLink: [KSV-0125](https://avd.aquasec.com/misconfig/ksv-0125)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/migrations.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 27,
+                  "startColumn": 1,
+                  "endLine": 54,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/migrations.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0012",
+          "ruleIndex": 11,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/mlflow.yaml\nType: helm\nVulnerability KSV-0012\nSeverity: MEDIUM\nMessage: Container 'prepare-mlflow-storage' of Deployment 'sceptre-mlflow' should set 'securityContext.runAsNonRoot' to true\nLink: [KSV-0012](https://avd.aquasec.com/misconfig/ksv-0012)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/mlflow.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 31,
+                  "startColumn": 1,
+                  "endLine": 52,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/mlflow.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0020",
+          "ruleIndex": 3,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/mlflow.yaml\nType: helm\nVulnerability KSV-0020\nSeverity: LOW\nMessage: Container 'migrate-mlflow' of Deployment 'sceptre-mlflow' should set 'securityContext.runAsUser' \u003e 10000\nLink: [KSV-0020](https://avd.aquasec.com/misconfig/ksv-0020)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/mlflow.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 53,
+                  "startColumn": 1,
+                  "endLine": 72,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/mlflow.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0020",
+          "ruleIndex": 3,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/mlflow.yaml\nType: helm\nVulnerability KSV-0020\nSeverity: LOW\nMessage: Container 'mlflow' of Deployment 'sceptre-mlflow' should set 'securityContext.runAsUser' \u003e 10000\nLink: [KSV-0020](https://avd.aquasec.com/misconfig/ksv-0020)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/mlflow.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 74,
+                  "startColumn": 1,
+                  "endLine": 126,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/mlflow.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0020",
+          "ruleIndex": 3,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/mlflow.yaml\nType: helm\nVulnerability KSV-0020\nSeverity: LOW\nMessage: Container 'prepare-mlflow-storage' of Deployment 'sceptre-mlflow' should set 'securityContext.runAsUser' \u003e 10000\nLink: [KSV-0020](https://avd.aquasec.com/misconfig/ksv-0020)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/mlflow.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 31,
+                  "startColumn": 1,
+                  "endLine": 52,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/mlflow.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0021",
+          "ruleIndex": 4,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/mlflow.yaml\nType: helm\nVulnerability KSV-0021\nSeverity: LOW\nMessage: Container 'migrate-mlflow' of Deployment 'sceptre-mlflow' should set 'securityContext.runAsGroup' \u003e 10000\nLink: [KSV-0021](https://avd.aquasec.com/misconfig/ksv-0021)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/mlflow.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 53,
+                  "startColumn": 1,
+                  "endLine": 72,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/mlflow.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0021",
+          "ruleIndex": 4,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/mlflow.yaml\nType: helm\nVulnerability KSV-0021\nSeverity: LOW\nMessage: Container 'mlflow' of Deployment 'sceptre-mlflow' should set 'securityContext.runAsGroup' \u003e 10000\nLink: [KSV-0021](https://avd.aquasec.com/misconfig/ksv-0021)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/mlflow.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 74,
+                  "startColumn": 1,
+                  "endLine": 126,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/mlflow.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0021",
+          "ruleIndex": 4,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/mlflow.yaml\nType: helm\nVulnerability KSV-0021\nSeverity: LOW\nMessage: Container 'prepare-mlflow-storage' of Deployment 'sceptre-mlflow' should set 'securityContext.runAsGroup' \u003e 10000\nLink: [KSV-0021](https://avd.aquasec.com/misconfig/ksv-0021)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/mlflow.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 31,
+                  "startColumn": 1,
+                  "endLine": 52,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/mlflow.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0022",
+          "ruleIndex": 5,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/mlflow.yaml\nType: helm\nVulnerability KSV-0022\nSeverity: MEDIUM\nMessage: Container 'prepare-mlflow-storage' of Deployment 'sceptre-mlflow' should not set 'securityContext.capabilities.add'\nLink: [KSV-0022](https://avd.aquasec.com/misconfig/ksv-0022)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/mlflow.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 31,
+                  "startColumn": 1,
+                  "endLine": 52,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/mlflow.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0105",
+          "ruleIndex": 12,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/mlflow.yaml\nType: helm\nVulnerability KSV-0105\nSeverity: LOW\nMessage: securityContext.runAsUser should be set to a value greater than 0\nLink: [KSV-0105](https://avd.aquasec.com/misconfig/ksv-0105)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/mlflow.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 42,
+                  "startColumn": 1,
+                  "endLine": 50,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/mlflow.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0106",
+          "ruleIndex": 13,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/mlflow.yaml\nType: helm\nVulnerability KSV-0106\nSeverity: LOW\nMessage: container should not add stuff\nLink: [KSV-0106](https://avd.aquasec.com/misconfig/ksv-0106)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/mlflow.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 44,
+                  "startColumn": 1,
+                  "endLine": 46,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/mlflow.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0110",
+          "ruleIndex": 6,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/mlflow.yaml\nType: helm\nVulnerability KSV-0110\nSeverity: LOW\nMessage: deployment sceptre-mlflow in default namespace should set metadata.namespace to a non-default namespace\nLink: [KSV-0110](https://avd.aquasec.com/misconfig/ksv-0110)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/mlflow.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 4,
+                  "startColumn": 1,
+                  "endLine": 10,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/mlflow.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0125",
+          "ruleIndex": 8,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/mlflow.yaml\nType: helm\nVulnerability KSV-0125\nSeverity: MEDIUM\nMessage: Container migrate-mlflow in deployment sceptre-mlflow (namespace: default) uses an image from an untrusted registry.\nLink: [KSV-0125](https://avd.aquasec.com/misconfig/ksv-0125)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/mlflow.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 53,
+                  "startColumn": 1,
+                  "endLine": 72,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/mlflow.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0125",
+          "ruleIndex": 8,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/mlflow.yaml\nType: helm\nVulnerability KSV-0125\nSeverity: MEDIUM\nMessage: Container mlflow in deployment sceptre-mlflow (namespace: default) uses an image from an untrusted registry.\nLink: [KSV-0125](https://avd.aquasec.com/misconfig/ksv-0125)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/mlflow.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 74,
+                  "startColumn": 1,
+                  "endLine": 126,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/mlflow.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0125",
+          "ruleIndex": 8,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/mlflow.yaml\nType: helm\nVulnerability KSV-0125\nSeverity: MEDIUM\nMessage: Container prepare-mlflow-storage in deployment sceptre-mlflow (namespace: default) uses an image from an untrusted registry.\nLink: [KSV-0125](https://avd.aquasec.com/misconfig/ksv-0125)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/mlflow.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 31,
+                  "startColumn": 1,
+                  "endLine": 52,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/mlflow.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0012",
+          "ruleIndex": 11,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/postgresql.yaml\nType: helm\nVulnerability KSV-0012\nSeverity: MEDIUM\nMessage: Container 'postgresql' of StatefulSet 'sceptre-postgresql' should set 'securityContext.runAsNonRoot' to true\nLink: [KSV-0012](https://avd.aquasec.com/misconfig/ksv-0012)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/postgresql.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 30,
+                  "startColumn": 1,
+                  "endLine": 66,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/postgresql.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0014",
+          "ruleIndex": 14,
+          "level": "error",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/postgresql.yaml\nType: helm\nVulnerability KSV-0014\nSeverity: HIGH\nMessage: Container 'postgresql' of StatefulSet 'sceptre-postgresql' should set 'securityContext.readOnlyRootFilesystem' to true\nLink: [KSV-0014](https://avd.aquasec.com/misconfig/ksv-0014)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/postgresql.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 30,
+                  "startColumn": 1,
+                  "endLine": 66,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/postgresql.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0020",
+          "ruleIndex": 3,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/postgresql.yaml\nType: helm\nVulnerability KSV-0020\nSeverity: LOW\nMessage: Container 'postgresql' of StatefulSet 'sceptre-postgresql' should set 'securityContext.runAsUser' \u003e 10000\nLink: [KSV-0020](https://avd.aquasec.com/misconfig/ksv-0020)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/postgresql.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 30,
+                  "startColumn": 1,
+                  "endLine": 66,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/postgresql.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0021",
+          "ruleIndex": 4,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/postgresql.yaml\nType: helm\nVulnerability KSV-0021\nSeverity: LOW\nMessage: Container 'postgresql' of StatefulSet 'sceptre-postgresql' should set 'securityContext.runAsGroup' \u003e 10000\nLink: [KSV-0021](https://avd.aquasec.com/misconfig/ksv-0021)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/postgresql.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 30,
+                  "startColumn": 1,
+                  "endLine": 66,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/postgresql.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0022",
+          "ruleIndex": 5,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/postgresql.yaml\nType: helm\nVulnerability KSV-0022\nSeverity: MEDIUM\nMessage: Container 'postgresql' of StatefulSet 'sceptre-postgresql' should not set 'securityContext.capabilities.add'\nLink: [KSV-0022](https://avd.aquasec.com/misconfig/ksv-0022)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/postgresql.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 30,
+                  "startColumn": 1,
+                  "endLine": 66,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/postgresql.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0106",
+          "ruleIndex": 13,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/postgresql.yaml\nType: helm\nVulnerability KSV-0106\nSeverity: LOW\nMessage: container should not add stuff\nLink: [KSV-0106](https://avd.aquasec.com/misconfig/ksv-0106)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/postgresql.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 58,
+                  "startColumn": 1,
+                  "endLine": 60,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/postgresql.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0110",
+          "ruleIndex": 6,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/postgresql.yaml\nType: helm\nVulnerability KSV-0110\nSeverity: LOW\nMessage: statefulset sceptre-postgresql in default namespace should set metadata.namespace to a non-default namespace\nLink: [KSV-0110](https://avd.aquasec.com/misconfig/ksv-0110)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/postgresql.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 4,
+                  "startColumn": 1,
+                  "endLine": 10,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/postgresql.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0125",
+          "ruleIndex": 8,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/postgresql.yaml\nType: helm\nVulnerability KSV-0125\nSeverity: MEDIUM\nMessage: Container postgresql in statefulset sceptre-postgresql (namespace: default) uses an image from an untrusted registry.\nLink: [KSV-0125](https://avd.aquasec.com/misconfig/ksv-0125)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/postgresql.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 30,
+                  "startColumn": 1,
+                  "endLine": 66,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/postgresql.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0048",
+          "ruleIndex": 15,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/rbac.yaml\nType: helm\nVulnerability KSV-0048\nSeverity: MEDIUM\nMessage: Role 'sceptre-workloads' should not have access to resources [\"pods\", \"deployments\", \"jobs\", \"cronjobs\", \"statefulsets\", \"daemonsets\", \"replicasets\", \"replicationcontrollers\"] for verbs [\"create\", \"update\", \"patch\", \"delete\", \"deletecollection\", \"impersonate\", \"*\"]\nLink: [KSV-0048](https://avd.aquasec.com/misconfig/ksv-0048)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/rbac.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 12,
+                  "startColumn": 1,
+                  "endLine": 14,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/rbac.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0048",
+          "ruleIndex": 15,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/rbac.yaml\nType: helm\nVulnerability KSV-0048\nSeverity: MEDIUM\nMessage: Role 'sceptre-workloads' should not have access to resources [\"pods\", \"deployments\", \"jobs\", \"cronjobs\", \"statefulsets\", \"daemonsets\", \"replicasets\", \"replicationcontrollers\"] for verbs [\"create\", \"update\", \"patch\", \"delete\", \"deletecollection\", \"impersonate\", \"*\"]\nLink: [KSV-0048](https://avd.aquasec.com/misconfig/ksv-0048)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/rbac.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 30,
+                  "startColumn": 1,
+                  "endLine": 32,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/rbac.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0056",
+          "ruleIndex": 16,
+          "level": "error",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/rbac.yaml\nType: helm\nVulnerability KSV-0056\nSeverity: HIGH\nMessage: Role 'sceptre-workloads' should not have access to resources [\"services\", \"endpoints\", \"endpointslices\", \"networkpolicies\", \"ingresses\"] for verbs [\"create\", \"update\", \"patch\", \"delete\", \"deletecollection\", \"impersonate\", \"*\"]\nLink: [KSV-0056](https://avd.aquasec.com/misconfig/ksv-0056)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/rbac.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 21,
+                  "startColumn": 1,
+                  "endLine": 23,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/rbac.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0113",
+          "ruleIndex": 17,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/rbac.yaml\nType: helm\nVulnerability KSV-0113\nSeverity: MEDIUM\nMessage: Role 'sceptre-workloads' shouldn't have access to manage secrets in namespace 'default'\nLink: [KSV-0113](https://avd.aquasec.com/misconfig/ksv-0113)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/rbac.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 24,
+                  "startColumn": 1,
+                  "endLine": 29,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/rbac.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0020",
+          "ruleIndex": 3,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/seaweedfs.yaml\nType: helm\nVulnerability KSV-0020\nSeverity: LOW\nMessage: Container 'seaweedfs' of Deployment 'sceptre-seaweedfs' should set 'securityContext.runAsUser' \u003e 10000\nLink: [KSV-0020](https://avd.aquasec.com/misconfig/ksv-0020)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/seaweedfs.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 33,
+                  "startColumn": 1,
+                  "endLine": 72,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/seaweedfs.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0021",
+          "ruleIndex": 4,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/seaweedfs.yaml\nType: helm\nVulnerability KSV-0021\nSeverity: LOW\nMessage: Container 'seaweedfs' of Deployment 'sceptre-seaweedfs' should set 'securityContext.runAsGroup' \u003e 10000\nLink: [KSV-0021](https://avd.aquasec.com/misconfig/ksv-0021)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/seaweedfs.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 33,
+                  "startColumn": 1,
+                  "endLine": 72,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/seaweedfs.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0110",
+          "ruleIndex": 6,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/seaweedfs.yaml\nType: helm\nVulnerability KSV-0110\nSeverity: LOW\nMessage: deployment sceptre-seaweedfs in default namespace should set metadata.namespace to a non-default namespace\nLink: [KSV-0110](https://avd.aquasec.com/misconfig/ksv-0110)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/seaweedfs.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 4,
+                  "startColumn": 1,
+                  "endLine": 10,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/seaweedfs.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0125",
+          "ruleIndex": 8,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/helm/sceptre/templates/seaweedfs.yaml\nType: helm\nVulnerability KSV-0125\nSeverity: MEDIUM\nMessage: Container seaweedfs in deployment sceptre-seaweedfs (namespace: default) uses an image from an untrusted registry.\nLink: [KSV-0125](https://avd.aquasec.com/misconfig/ksv-0125)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/helm/sceptre/templates/seaweedfs.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 33,
+                  "startColumn": 1,
+                  "endLine": 72,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/helm/sceptre/templates/seaweedfs.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-01010",
+          "ruleIndex": 9,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/k8s/base/configmap.yaml\nType: kubernetes\nVulnerability KSV-01010\nSeverity: MEDIUM\nMessage: ConfigMap 'automl-platform-config' in 'automl' namespace stores sensitive contents in key(s) or value(s) '{\"TRAINING_ACTIVE_DEADLINE_SECONDS\", \"TRAINING_MAX_ACTIVE_DEADLINE_SECONDS\", \"TRAINING_MEMORY_LIMIT_MB\", \"TRAINING_MEMORY_REQUEST_MB\"}'\nLink: [KSV-01010](https://avd.aquasec.com/misconfig/ksv-01010)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/k8s/base/configmap.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1,
+                  "endLine": 1,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/k8s/base/configmap.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0012",
+          "ruleIndex": 11,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/k8s/base/mlflow-deployment.yaml\nType: kubernetes\nVulnerability KSV-0012\nSeverity: MEDIUM\nMessage: Container 'prepare-mlflow-storage' of Deployment 'automl-mlflow' should set 'securityContext.runAsNonRoot' to true\nLink: [KSV-0012](https://avd.aquasec.com/misconfig/ksv-0012)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/k8s/base/mlflow-deployment.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 23,
+                  "startColumn": 1,
+                  "endLine": 51,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/k8s/base/mlflow-deployment.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0020",
+          "ruleIndex": 3,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/k8s/base/mlflow-deployment.yaml\nType: kubernetes\nVulnerability KSV-0020\nSeverity: LOW\nMessage: Container 'migrate-database' of Deployment 'automl-mlflow' should set 'securityContext.runAsUser' \u003e 10000\nLink: [KSV-0020](https://avd.aquasec.com/misconfig/ksv-0020)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/k8s/base/mlflow-deployment.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 52,
+                  "startColumn": 1,
+                  "endLine": 81,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/k8s/base/mlflow-deployment.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0020",
+          "ruleIndex": 3,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/k8s/base/mlflow-deployment.yaml\nType: kubernetes\nVulnerability KSV-0020\nSeverity: LOW\nMessage: Container 'mlflow' of Deployment 'automl-mlflow' should set 'securityContext.runAsUser' \u003e 10000\nLink: [KSV-0020](https://avd.aquasec.com/misconfig/ksv-0020)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/k8s/base/mlflow-deployment.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 83,
+                  "startColumn": 1,
+                  "endLine": 143,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/k8s/base/mlflow-deployment.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0020",
+          "ruleIndex": 3,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/k8s/base/mlflow-deployment.yaml\nType: kubernetes\nVulnerability KSV-0020\nSeverity: LOW\nMessage: Container 'prepare-mlflow-storage' of Deployment 'automl-mlflow' should set 'securityContext.runAsUser' \u003e 10000\nLink: [KSV-0020](https://avd.aquasec.com/misconfig/ksv-0020)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/k8s/base/mlflow-deployment.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 23,
+                  "startColumn": 1,
+                  "endLine": 51,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/k8s/base/mlflow-deployment.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0021",
+          "ruleIndex": 4,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/k8s/base/mlflow-deployment.yaml\nType: kubernetes\nVulnerability KSV-0021\nSeverity: LOW\nMessage: Container 'migrate-database' of Deployment 'automl-mlflow' should set 'securityContext.runAsGroup' \u003e 10000\nLink: [KSV-0021](https://avd.aquasec.com/misconfig/ksv-0021)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/k8s/base/mlflow-deployment.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 52,
+                  "startColumn": 1,
+                  "endLine": 81,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/k8s/base/mlflow-deployment.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0021",
+          "ruleIndex": 4,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/k8s/base/mlflow-deployment.yaml\nType: kubernetes\nVulnerability KSV-0021\nSeverity: LOW\nMessage: Container 'mlflow' of Deployment 'automl-mlflow' should set 'securityContext.runAsGroup' \u003e 10000\nLink: [KSV-0021](https://avd.aquasec.com/misconfig/ksv-0021)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/k8s/base/mlflow-deployment.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 83,
+                  "startColumn": 1,
+                  "endLine": 143,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/k8s/base/mlflow-deployment.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0021",
+          "ruleIndex": 4,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/k8s/base/mlflow-deployment.yaml\nType: kubernetes\nVulnerability KSV-0021\nSeverity: LOW\nMessage: Container 'prepare-mlflow-storage' of Deployment 'automl-mlflow' should set 'securityContext.runAsGroup' \u003e 10000\nLink: [KSV-0021](https://avd.aquasec.com/misconfig/ksv-0021)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/k8s/base/mlflow-deployment.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 23,
+                  "startColumn": 1,
+                  "endLine": 51,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/k8s/base/mlflow-deployment.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0022",
+          "ruleIndex": 5,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/k8s/base/mlflow-deployment.yaml\nType: kubernetes\nVulnerability KSV-0022\nSeverity: MEDIUM\nMessage: Container 'prepare-mlflow-storage' of Deployment 'automl-mlflow' should not set 'securityContext.capabilities.add'\nLink: [KSV-0022](https://avd.aquasec.com/misconfig/ksv-0022)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/k8s/base/mlflow-deployment.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 23,
+                  "startColumn": 1,
+                  "endLine": 51,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/k8s/base/mlflow-deployment.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0105",
+          "ruleIndex": 12,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/k8s/base/mlflow-deployment.yaml\nType: kubernetes\nVulnerability KSV-0105\nSeverity: LOW\nMessage: securityContext.runAsUser should be set to a value greater than 0\nLink: [KSV-0105](https://avd.aquasec.com/misconfig/ksv-0105)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/k8s/base/mlflow-deployment.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 40,
+                  "startColumn": 1,
+                  "endLine": 48,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/k8s/base/mlflow-deployment.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0106",
+          "ruleIndex": 13,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/k8s/base/mlflow-deployment.yaml\nType: kubernetes\nVulnerability KSV-0106\nSeverity: LOW\nMessage: container should not add stuff\nLink: [KSV-0106](https://avd.aquasec.com/misconfig/ksv-0106)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/k8s/base/mlflow-deployment.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 42,
+                  "startColumn": 1,
+                  "endLine": 44,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/k8s/base/mlflow-deployment.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0125",
+          "ruleIndex": 8,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/k8s/base/mlflow-deployment.yaml\nType: kubernetes\nVulnerability KSV-0125\nSeverity: MEDIUM\nMessage: Container migrate-database in deployment automl-mlflow (namespace: automl) uses an image from an untrusted registry.\nLink: [KSV-0125](https://avd.aquasec.com/misconfig/ksv-0125)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/k8s/base/mlflow-deployment.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 52,
+                  "startColumn": 1,
+                  "endLine": 81,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/k8s/base/mlflow-deployment.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0125",
+          "ruleIndex": 8,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/k8s/base/mlflow-deployment.yaml\nType: kubernetes\nVulnerability KSV-0125\nSeverity: MEDIUM\nMessage: Container mlflow in deployment automl-mlflow (namespace: automl) uses an image from an untrusted registry.\nLink: [KSV-0125](https://avd.aquasec.com/misconfig/ksv-0125)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/k8s/base/mlflow-deployment.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 83,
+                  "startColumn": 1,
+                  "endLine": 143,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/k8s/base/mlflow-deployment.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0125",
+          "ruleIndex": 8,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/k8s/base/mlflow-deployment.yaml\nType: kubernetes\nVulnerability KSV-0125\nSeverity: MEDIUM\nMessage: Container prepare-mlflow-storage in deployment automl-mlflow (namespace: automl) uses an image from an untrusted registry.\nLink: [KSV-0125](https://avd.aquasec.com/misconfig/ksv-0125)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/k8s/base/mlflow-deployment.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 23,
+                  "startColumn": 1,
+                  "endLine": 51,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/k8s/base/mlflow-deployment.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0012",
+          "ruleIndex": 11,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/k8s/base/postgres-statefulset.yaml\nType: kubernetes\nVulnerability KSV-0012\nSeverity: MEDIUM\nMessage: Container 'postgres' of StatefulSet 'automl-postgres' should set 'securityContext.runAsNonRoot' to true\nLink: [KSV-0012](https://avd.aquasec.com/misconfig/ksv-0012)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/k8s/base/postgres-statefulset.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 22,
+                  "startColumn": 1,
+                  "endLine": 67,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/k8s/base/postgres-statefulset.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0014",
+          "ruleIndex": 14,
+          "level": "error",
+          "message": {
+            "text": "Artifact: infra/k8s/base/postgres-statefulset.yaml\nType: kubernetes\nVulnerability KSV-0014\nSeverity: HIGH\nMessage: Container 'postgres' of StatefulSet 'automl-postgres' should set 'securityContext.readOnlyRootFilesystem' to true\nLink: [KSV-0014](https://avd.aquasec.com/misconfig/ksv-0014)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/k8s/base/postgres-statefulset.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 22,
+                  "startColumn": 1,
+                  "endLine": 67,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/k8s/base/postgres-statefulset.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0020",
+          "ruleIndex": 3,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/k8s/base/postgres-statefulset.yaml\nType: kubernetes\nVulnerability KSV-0020\nSeverity: LOW\nMessage: Container 'postgres' of StatefulSet 'automl-postgres' should set 'securityContext.runAsUser' \u003e 10000\nLink: [KSV-0020](https://avd.aquasec.com/misconfig/ksv-0020)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/k8s/base/postgres-statefulset.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 22,
+                  "startColumn": 1,
+                  "endLine": 67,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/k8s/base/postgres-statefulset.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0021",
+          "ruleIndex": 4,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/k8s/base/postgres-statefulset.yaml\nType: kubernetes\nVulnerability KSV-0021\nSeverity: LOW\nMessage: Container 'postgres' of StatefulSet 'automl-postgres' should set 'securityContext.runAsGroup' \u003e 10000\nLink: [KSV-0021](https://avd.aquasec.com/misconfig/ksv-0021)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/k8s/base/postgres-statefulset.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 22,
+                  "startColumn": 1,
+                  "endLine": 67,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/k8s/base/postgres-statefulset.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0022",
+          "ruleIndex": 5,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/k8s/base/postgres-statefulset.yaml\nType: kubernetes\nVulnerability KSV-0022\nSeverity: MEDIUM\nMessage: Container 'postgres' of StatefulSet 'automl-postgres' should not set 'securityContext.capabilities.add'\nLink: [KSV-0022](https://avd.aquasec.com/misconfig/ksv-0022)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/k8s/base/postgres-statefulset.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 22,
+                  "startColumn": 1,
+                  "endLine": 67,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/k8s/base/postgres-statefulset.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0106",
+          "ruleIndex": 13,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/k8s/base/postgres-statefulset.yaml\nType: kubernetes\nVulnerability KSV-0106\nSeverity: LOW\nMessage: container should not add stuff\nLink: [KSV-0106](https://avd.aquasec.com/misconfig/ksv-0106)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/k8s/base/postgres-statefulset.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 59,
+                  "startColumn": 1,
+                  "endLine": 61,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/k8s/base/postgres-statefulset.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0125",
+          "ruleIndex": 8,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/k8s/base/postgres-statefulset.yaml\nType: kubernetes\nVulnerability KSV-0125\nSeverity: MEDIUM\nMessage: Container postgres in statefulset automl-postgres (namespace: automl) uses an image from an untrusted registry.\nLink: [KSV-0125](https://avd.aquasec.com/misconfig/ksv-0125)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/k8s/base/postgres-statefulset.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 22,
+                  "startColumn": 1,
+                  "endLine": 67,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/k8s/base/postgres-statefulset.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0020",
+          "ruleIndex": 3,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/k8s/base/seaweedfs-deployment.yaml\nType: kubernetes\nVulnerability KSV-0020\nSeverity: LOW\nMessage: Container 'seaweedfs' of Deployment 'automl-seaweedfs' should set 'securityContext.runAsUser' \u003e 10000\nLink: [KSV-0020](https://avd.aquasec.com/misconfig/ksv-0020)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/k8s/base/seaweedfs-deployment.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 27,
+                  "startColumn": 1,
+                  "endLine": 75,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/k8s/base/seaweedfs-deployment.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0021",
+          "ruleIndex": 4,
+          "level": "note",
+          "message": {
+            "text": "Artifact: infra/k8s/base/seaweedfs-deployment.yaml\nType: kubernetes\nVulnerability KSV-0021\nSeverity: LOW\nMessage: Container 'seaweedfs' of Deployment 'automl-seaweedfs' should set 'securityContext.runAsGroup' \u003e 10000\nLink: [KSV-0021](https://avd.aquasec.com/misconfig/ksv-0021)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/k8s/base/seaweedfs-deployment.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 27,
+                  "startColumn": 1,
+                  "endLine": 75,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/k8s/base/seaweedfs-deployment.yaml"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "KSV-0125",
+          "ruleIndex": 8,
+          "level": "warning",
+          "message": {
+            "text": "Artifact: infra/k8s/base/seaweedfs-deployment.yaml\nType: kubernetes\nVulnerability KSV-0125\nSeverity: MEDIUM\nMessage: Container seaweedfs in deployment automl-seaweedfs (namespace: automl) uses an image from an untrusted registry.\nLink: [KSV-0125](https://avd.aquasec.com/misconfig/ksv-0125)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "infra/k8s/base/seaweedfs-deployment.yaml",
+                  "uriBaseId": "ROOTPATH"
+                },
+                "region": {
+                  "startLine": 27,
+                  "startColumn": 1,
+                  "endLine": 75,
+                  "endColumn": 1
+                }
+              },
+              "message": {
+                "text": "infra/k8s/base/seaweedfs-deployment.yaml"
+              }
+            }
+          ]
+        }
+      ],
+      "columnKind": "utf16CodeUnits",
+      "originalUriBaseIds": {
+        "ROOTPATH": {
+          "uri": "file:///github/workspace/"
+        }
+      }
+    }
+  ]
+}

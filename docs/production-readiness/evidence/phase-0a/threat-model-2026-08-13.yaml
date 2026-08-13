@@ -1,0 +1,77 @@
+schema_revision: sceptre-threat-model-v1
+methodology:
+  taxonomy: STRIDE
+  scoring: DREAD average of damage, reproducibility, exploitability, affected users, discoverability
+  high_risk_threshold: 7.0
+  assessed_at: "2026-08-13T11:55:00+02:00"
+scope:
+  data_flow_elements:
+    - API reconciler to Kubernetes API
+    - KubeRay operator to per-attempt RayCluster
+    - Ray head to workers
+    - splitter to role-isolated object prefixes
+    - training workers to remote checkpoints
+    - evaluator to locked final-test prefix
+    - all attempts to PostgreSQL terminal compare-and-set
+  trust_boundaries:
+    - authenticated API boundary
+    - Kubernetes control-plane boundary
+    - project-and-attempt namespace boundary
+    - object-store project and stage prefix boundary
+    - one-shot final-evaluation boundary
+threats:
+  - id: TM-P0A-001
+    stride: Spoofing
+    scenario: A workload uses another project or attempt identity.
+    dread: {damage: 9, reproducibility: 8, exploitability: 7, affected_users: 8, discoverability: 7, average: 7.8}
+    disposition: mitigated
+    controls: [project-and-attempt-bound subject and audience, short expiry, cross-claim negative tests]
+    owner: workspace-user
+  - id: TM-P0A-002
+    stride: Tampering
+    scenario: A stale trial or run overwrites a terminal result or artifact manifest.
+    dread: {damage: 9, reproducibility: 8, exploitability: 7, affected_users: 8, discoverability: 6, average: 7.6}
+    disposition: mitigated
+    controls: [composite run and trial generations, compare-and-set terminal writes, immutable attempt keys]
+    owner: workspace-user
+  - id: TM-P0A-003
+    stride: Repudiation
+    scenario: A search result is replayed or reordered without an auditable lineage.
+    dread: {damage: 7, reproducibility: 8, exploitability: 6, affected_users: 7, discoverability: 5, average: 6.6}
+    disposition: mitigated
+    controls: [append-only event contract, result digests, deterministic ordered tell and replay]
+    owner: workspace-user
+  - id: TM-P0A-004
+    stride: Information Disclosure
+    scenario: Candidate work reads the locked final test or a sibling project's object prefix.
+    dread: {damage: 10, reproducibility: 8, exploitability: 7, affected_users: 9, discoverability: 6, average: 8.0}
+    disposition: mitigated
+    controls: [separate evaluator authority, provider claim binding, per-stage prefixes, final-allocation one-shot CAS]
+    owner: workspace-user
+  - id: TM-P0A-005
+    stride: Denial of Service
+    scenario: One run consumes all worker, head, spill, or provider capacity.
+    dread: {damage: 7, reproducibility: 8, exploitability: 7, affected_users: 8, discoverability: 7, average: 7.4}
+    disposition: mitigated
+    controls: [per-attempt clusters, resource vectors, 15-head proof, admission schedule, quota headroom]
+    owner: workspace-user
+  - id: TM-P0A-006
+    stride: Elevation of Privilege
+    scenario: A Ray identity gains wildcard IAM or Kubernetes workload-management authority.
+    dread: {damage: 10, reproducibility: 7, exploitability: 7, affected_users: 9, discoverability: 6, average: 7.8}
+    disposition: mitigated
+    controls: [data-plane-only IAM, no service wildcard, no privilege-escalation finding, stage-specific service accounts]
+    owner: workspace-user
+  - id: TM-P0A-007
+    stride: Information Disclosure
+    scenario: Ray dashboard Job API traffic is observed inside the attempt namespace.
+    dread: {damage: 7, reproducibility: 5, exploitability: 4, affected_users: 5, discoverability: 5, average: 5.2}
+    disposition: accepted_exception
+    controls: [no public service, default-deny NetworkPolicy, submitter/head allowlist, ephemeral namespace]
+    owner: workspace-user
+    approver: workspace-user
+    expires_at: "2026-11-13T23:59:59+02:00"
+gate:
+  high_risk_open_or_unapproved: 0
+  status: passed
+

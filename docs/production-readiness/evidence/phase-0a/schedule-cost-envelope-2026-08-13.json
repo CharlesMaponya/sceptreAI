@@ -1,0 +1,167 @@
+{
+  "cost_envelope": {
+    "aws-eks": {
+      "expected_usd": 56.41,
+      "inputs": {
+        "hourly_node_usd": 0.768,
+        "network_gib_usd": 0.09,
+        "node": {
+          "cpu": 16,
+          "ephemeral_gib": 150,
+          "gpu": 0,
+          "memory_gib": 64
+        },
+        "node_count": 10,
+        "object_storage_gib_usd": 0.023,
+        "provider": "aws-eks",
+        "quota_nodes": 12,
+        "request_million_usd": 5.0,
+        "telemetry_gib_usd": 0.5
+      },
+      "p90_usd": 76.15,
+      "worst_case_usd": 112.82
+    },
+    "azure-aks": {
+      "expected_usd": 53.58,
+      "inputs": {
+        "hourly_node_usd": 0.832,
+        "network_gib_usd": 0.087,
+        "node": {
+          "cpu": 16,
+          "ephemeral_gib": 150,
+          "gpu": 0,
+          "memory_gib": 64
+        },
+        "node_count": 10,
+        "object_storage_gib_usd": 0.018,
+        "provider": "azure-aks",
+        "quota_nodes": 12,
+        "request_million_usd": 5.0,
+        "telemetry_gib_usd": 0.5
+      },
+      "p90_usd": 72.33,
+      "worst_case_usd": 107.16
+    },
+    "gcp-gke": {
+      "expected_usd": 57.6,
+      "inputs": {
+        "hourly_node_usd": 0.76,
+        "network_gib_usd": 0.12,
+        "node": {
+          "cpu": 16,
+          "ephemeral_gib": 150,
+          "gpu": 0,
+          "memory_gib": 64
+        },
+        "node_count": 10,
+        "object_storage_gib_usd": 0.02,
+        "provider": "gcp-gke",
+        "quota_nodes": 12,
+        "request_million_usd": 5.0,
+        "telemetry_gib_usd": 0.5
+      },
+      "p90_usd": 77.76,
+      "worst_case_usd": 115.2
+    }
+  },
+  "deadline_seconds": 7200,
+  "headroom_factor": 1.2,
+  "runs": 15,
+  "schedules": [
+    {
+      "fit_seconds": {
+        "p50": 3706.8632828344107,
+        "p95": 4595.182970555299,
+        "p99": 4595.182970555299
+      },
+      "node_count": 10,
+      "provider": "aws-eks",
+      "quota_headroom_fraction": 0.5,
+      "quota_nodes": 12,
+      "recovery_seconds": {
+        "p50": 0.0,
+        "p95": 104.0,
+        "p99": 104.0
+      },
+      "required_nodes": 8,
+      "slots": 20,
+      "startup_seconds": {
+        "p50": 29.259922009485894,
+        "p95": 43.47026320143261,
+        "p99": 43.47026320143261
+      },
+      "unschedulable_placements": 0,
+      "wall_seconds": {
+        "maximum": 4858.562362027284,
+        "p50": 3976.1232048438965,
+        "p95": 4858.562362027284,
+        "p99": 4858.562362027284
+      },
+      "warm_slots": 15
+    },
+    {
+      "fit_seconds": {
+        "p50": 3434.51587736634,
+        "p95": 4194.922732749405,
+        "p99": 4194.922732749405
+      },
+      "node_count": 10,
+      "provider": "gcp-gke",
+      "quota_headroom_fraction": 0.5,
+      "quota_nodes": 12,
+      "recovery_seconds": {
+        "p50": 0.0,
+        "p95": 104.0,
+        "p99": 104.0
+      },
+      "required_nodes": 8,
+      "slots": 20,
+      "startup_seconds": {
+        "p50": 30.86326036255135,
+        "p95": 44.271066275273796,
+        "p99": 44.271066275273796
+      },
+      "unschedulable_placements": 0,
+      "wall_seconds": {
+        "maximum": 4465.105753691302,
+        "p50": 3704.9333085800163,
+        "p95": 4465.105753691302,
+        "p99": 4465.105753691302
+      },
+      "warm_slots": 15
+    },
+    {
+      "fit_seconds": {
+        "p50": 3708.7073127257913,
+        "p95": 4746.375442765735,
+        "p99": 4746.375442765735
+      },
+      "node_count": 10,
+      "provider": "azure-aks",
+      "quota_headroom_fraction": 0.5,
+      "quota_nodes": 12,
+      "recovery_seconds": {
+        "p50": 0.0,
+        "p95": 104.0,
+        "p99": 104.0
+      },
+      "required_nodes": 8,
+      "slots": 20,
+      "startup_seconds": {
+        "p50": 31.9722807099213,
+        "p95": 40.98106707350619,
+        "p99": 40.98106707350619
+      },
+      "unschedulable_placements": 0,
+      "wall_seconds": {
+        "maximum": 5017.79729267529,
+        "p50": 3981.1549127917388,
+        "p95": 5017.79729267529,
+        "p99": 5017.79729267529
+      },
+      "warm_slots": 15
+    }
+  ],
+  "seed": 42,
+  "status": "passed"
+}

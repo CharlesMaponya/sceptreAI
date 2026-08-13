@@ -7,7 +7,7 @@ import { Auth } from "./Auth";
 import { getSession, setSession } from "./api";
 
 describe("authentication experience", () => {
-  const renderAuth = () => render(<MemoryRouter><Auth /></MemoryRouter>);
+  const renderAuth = (entry = "/auth") => render(<MemoryRouter initialEntries={[entry]}><Auth /></MemoryRouter>);
   beforeEach(() => {
     setSession(null);
     vi.restoreAllMocks();
@@ -74,5 +74,69 @@ describe("authentication experience", () => {
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
       token: "development-reset-token-long-enough", new_password: "new-correct-horse",
     });
+  });
+
+  it("rejects mismatched registration passwords without sending a request", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    renderAuth("/auth?mode=register");
+
+    await user.type(screen.getByLabelText("Full name"), "Ada Lovelace");
+    await user.type(screen.getByLabelText("Work email"), "ada@example.com");
+    await user.type(screen.getByLabelText("Password"), "correct-horse");
+    await user.type(screen.getByLabelText("Confirm password"), "different-horse");
+    await user.click(screen.getByRole("button", { name: "Create account" }));
+
+    expect(await screen.findByText("The passwords do not match.")).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Back to sign in" }));
+    expect(screen.getByRole("heading", { name: "Sign in to Sceptre" })).toBeInTheDocument();
+  });
+
+  it("reports login failures and preserves the signed-out state", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      detail: "Invalid email or password",
+    }), { status: 401, headers: { "Content-Type": "application/json" } }));
+    renderAuth();
+
+    await user.type(screen.getByLabelText("Work email"), "ada@example.com");
+    await user.type(screen.getByLabelText("Password"), "incorrect");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(await screen.findByText("Invalid email or password")).toBeInTheDocument();
+    expect(getSession()).toBeNull();
+  });
+
+  it("handles a reset response without a development token", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      message: "If the account exists, instructions were sent.",
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    renderAuth("/auth?mode=forgot");
+
+    await user.type(screen.getByLabelText("Work email"), "ada@example.com");
+    await user.click(screen.getByRole("button", { name: /Send reset instructions/i }));
+
+    expect(await screen.findByText("If the account exists, instructions were sent.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Continue to reset password" })).not.toBeInTheDocument();
+  });
+
+  it("rejects incomplete and mismatched password-reset links", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    renderAuth("/auth?mode=reset");
+
+    await user.type(screen.getByLabelText("New password"), "new-correct-horse");
+    await user.type(screen.getByLabelText("Confirm password"), "different-horse");
+    await user.click(screen.getByRole("button", { name: /Update password/i }));
+    expect(await screen.findByText("The passwords do not match.")).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await user.clear(screen.getByLabelText("Confirm password"));
+    await user.type(screen.getByLabelText("Confirm password"), "new-correct-horse");
+    await user.click(screen.getByRole("button", { name: /Update password/i }));
+    expect(await screen.findByText("This reset link is incomplete. Request a new one.")).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

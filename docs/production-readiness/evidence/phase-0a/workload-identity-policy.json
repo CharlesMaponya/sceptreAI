@@ -1,0 +1,34 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AttemptScopedRead",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject"],
+      "Resource": [
+        "arn:aws:s3:::sceptre-production/project/${aws:PrincipalTag/project_id}/attempt/${aws:PrincipalTag/attempt_id}/input/*"
+      ]
+    },
+    {
+      "Sid": "AttemptScopedWrite",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject"],
+      "Resource": [
+        "arn:aws:s3:::sceptre-production/project/${aws:PrincipalTag/project_id}/attempt/${aws:PrincipalTag/attempt_id}/output/*"
+      ]
+    },
+    {
+      "Sid": "AttemptScopedList",
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket"],
+      "Resource": ["arn:aws:s3:::sceptre-production"],
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "project/${aws:PrincipalTag/project_id}/attempt/${aws:PrincipalTag/attempt_id}/*"
+          ]
+        }
+      }
+    }
+  ]
+}

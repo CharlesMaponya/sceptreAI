@@ -1,0 +1,74 @@
+schema_revision: sceptre-phase-0a-estimator-matrix-smoke-v1
+observed_at: "2026-08-12T22:46:06+02:00"
+status: partial_pass
+source:
+  git_sha: 710c327776f27f74ce2fd7b782eae2debd4a3f9a
+  worktree_clean: false
+guide:
+  path: docs/production-readiness/implementation-guide.md
+  sha256: 84896d560e5eda60a9bd1e059e0a44136aa87029b21eba739d0d81cbc42575d0
+runtime:
+  python: 3.12.13
+  ray: 2.56.1
+  polars: 1.43.2
+  pyarrow: 24.0.0
+  pandas: 2.3.3
+  scikit_learn: 1.9.0
+  scikit_optimize: 0.10.2
+  xgboost_cpu: 2.1.4
+  kuberay_operator: 1.6.2
+  k3s: 1.35.6+k3s1
+  image:
+    reference: sceptreai/ray-polars:2.56.1-1.43.2-local-11
+    digest: sha256:83005f15261321200be20accf15f49291336f6a3e8e51e8e36704da3cf0d9d35
+artifacts:
+  Dockerfile.ray.cpu: bc5ac9b9d1f54f1fc2a7ca74c1eb1c7f24c45c77588655e51017dd9261ebb50c
+  scripts/validate_estimator_matrix_runtime.py: ecf6b7ce604bc18bfde7c645c83825aa9e5a0c4ff987aff29f453543886cdb6f
+  infra/k3d/rayjob-estimator-matrix-smoke.yaml: 55ff07791c3756b299f5804fd1e19aaff99562b871c62231979323fdce40f0d3
+  pyproject.toml: 24dbc7f0f0f9e1326a8a2b038ba548f76ebb49f8529d8be36fc3621d3b989a20
+  requirements-training.txt: 3f9bc5bd426dfda8f4abf674604a9202f96c10a40669f50fb78eb0f8021377c2
+  requirements-inference.txt: 5fa36d87a06e2132ed41d97bee2f721e586d8a46e87f84d6fb4c770904cf4473
+matrix:
+  ordinary:
+    backend: single_process_sklearn
+    estimator: LogisticRegression
+    workers: 1
+    accuracy: 0.5703125
+  incremental:
+    backend: incremental_sklearn
+    estimator: SGDClassifier
+    state_owners: 1
+    checkpoint_restored: true
+    checkpoint_digest: dfc3dda662d1fc34209a989f581da779bb34a17e643d02e2dc9d926b542c1962
+    accuracy: 0.4296875
+  distributed_native_cpu:
+    backend: ray_train_xgboost
+    workers: 2
+    checkpoint_storage: seaweedfs_s3
+    checkpoint_restored: true
+    boosted_rounds: 4
+    train_logloss: 0.17130869172979146
+  deep_learning:
+    status: not_selected
+    reason: Phase 0A decision register has not selected a deep framework.
+run:
+  rayjob: ray-estimator-matrix-smoke
+  raycluster: ray-estimator-matrix-smoke-bvmgn
+  ray_job_id: ray-estimator-matrix-smoke-9m294
+  topology: kuberay_head_plus_two_workers
+  started_at: "2026-08-12T22:44:34+02:00"
+  finished_at: "2026-08-12T22:46:06+02:00"
+  ray_nodes: 3
+  status: passed
+negative_test:
+  local_only_checkpoint_storage: rejected
+  reason: Ray Train correctly rejected a head-local path that workers could not share.
+cleanup:
+  ephemeral_raycluster_removed_after_seconds: 60
+  isolated_namespace_removed: true
+limitations:
+  - Deep-learning support remains an explicit pending architecture and qualification decision.
+  - The fixture is a correctness smoke, not the pending full catalog, five-by-three CV, 15-run concurrency, or 10-GiB qualification workload.
+  - Worker/head/driver/operator/node loss and checkpoint-resume drills remain untested.
+  - Repository-wide backend and frontend coverage remain below 90.01%; CI remains intentionally fail-closed.
+  - ADR-005 and QLT-001 through QLT-009 remain pending, so Phase 0A cannot pass.

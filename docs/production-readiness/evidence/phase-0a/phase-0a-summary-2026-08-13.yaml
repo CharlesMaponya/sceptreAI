@@ -1,0 +1,94 @@
+schema_revision: sceptre-phase-0a-evidence-summary-v1
+status: passed
+observed_at: "2026-08-13T12:48:47+02:00"
+source:
+  git_sha: 710c327776f27f74ce2fd7b782eae2debd4a3f9a
+  worktree_clean: false
+  evidence_revision: phase-0a-local-2026-08-13
+guide:
+  path: docs/production-readiness/implementation-guide.md
+  sha256: 84896d560e5eda60a9bd1e059e0a44136aa87029b21eba739d0d81cbc42575d0
+runtime:
+  image: sceptreai/ray-polars:2.56.1-1.43.2-local-14
+  image_digest: sha256:34058b6be1dbe827b3e0050f14566af3b3604aad0b0d87b5aa97447be7850f94
+  python: 3.12.13
+  ray: 2.56.1
+  kuberay_operator: 1.6.2
+  polars: 1.43.2
+  pyarrow: 24.0.0
+  sklearn: 1.9.0
+  scikit_optimize: 0.10.2
+  pytorch: 2.9.1+cpu
+quality:
+  backend_tests: 688
+  backend_statement_coverage_percent: 96.138
+  backend_branch_coverage_percent: 90.074
+  frontend_tests: 131
+  frontend_branch_coverage_percent: 90.11
+  required_branch_coverage_percent: 90.01
+  lint: passed
+  compileall: passed
+  frontend_build: passed_with_plotly_chunk_advisory
+  helm_profiles: 10
+  helm_gate: passed
+  independent_dimension_gate: passed
+security:
+  secobserve_trivy_secret_findings: 0
+  secobserve_gitleaks_findings: 0
+  trivy_iac_findings: {high: 6, medium: 31, low: 49}
+  iac_disposition: advisory inputs to Phase 5 hardening; no Phase 0A credential leak
+  workload_identity_privilege_escalation_findings: 0
+  high_dread_open_or_unapproved: 0
+  tls_rotation_and_negative_tests: passed
+correctness:
+  row_set_digest: 6b7ca6414ae4a5ad78b2634b94f7516be997e6ff4126b9c6c90db9f59ce1eace
+  prepared_parquet_digest: d1d98b14343229dcd5e39f64cdb3823a71e3d02ecb80facbe6b08c5d42f17d1b
+  canonical_suggestion_log_digest: d85310feba1548cfdb7b633e8a314f7f210b73d500663548d0c2aa3614ed55a4
+  feature_recipe_digest: 8d9a316ea39f5b2d58e52fad06fe20a3860a5c2b97fa3d2229e2eefaf2616e77
+  provider_replay: passed
+  ordinary_incremental_xgboost_torch_matrix: passed
+recovery:
+  remote_checkpoint_rounds: {before_cluster_loss: 4, after_resubmission: 8}
+  remote_torch_checkpoint_restored: true
+  worker_node_loss: passed
+  operator_pod_loss_recovery_seconds: 44
+  whole_ephemeral_raycluster_resubmission_seconds: 104
+  disposable_kubernetes_cluster_recreation_seconds: 146
+  kubernetes_recreation_note: local k3d substitute; provider OpenTofu remains a Phase 5 and provider-phase gate
+capacity:
+  concurrent_heads_ready: 15
+  head_restarts: 0
+  kuberay_operator_cpu_millicores: 3
+  kuberay_operator_memory_mib: 37
+  local_profile: {cpus: 8, memory_limit_gb: 24, object_store_mib: 96}
+  local_spill_bytes: 335547860
+  local_peak_driver_rss_kib: 186312
+  temporary_k3d_agents_removed: 4
+  original_k3d_agents_ready: 2
+  live_application_rollouts_healthy: true
+schedule:
+  runs: 15
+  deadline_seconds: 7200
+  unschedulable_placements: 0
+  minimum_provider_quota_headroom_fraction: 0.5
+  maximum_wall_seconds:
+    aws_eks: 4858.562362027284
+    gcp_gke: 4465.105753691302
+    azure_aks: 5017.79729267529
+cost_envelope_usd:
+  aws_eks: {expected: 56.41, p90: 76.15, worst_case: 112.82}
+  gcp_gke: {expected: 57.60, p90: 77.76, worst_case: 115.20}
+  azure_aks: {expected: 53.58, p90: 72.33, worst_case: 107.16}
+  pricing_basis: conservative planning inputs; refresh through provider price APIs before any spend
+  approved_phase_1_through_4_external_spend: 0
+gates:
+  P0A-G01: passed
+  P0A-G02: passed
+  P0A-G03: passed
+  P0A-G04: passed
+  P0A-G05: passed
+  P0A-G06: passed
+  P0A-G07: passed
+  P0A-G08: passed
+  P0A-G09: passed
+  P0A-G10: passed

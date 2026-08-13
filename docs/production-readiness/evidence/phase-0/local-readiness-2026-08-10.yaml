@@ -1,0 +1,99 @@
+schema_revision: sceptre-phase-0-local-readiness-v1
+observed_at: "2026-08-10T11:15:31+02:00"
+status: blocked
+source:
+  git_sha: 710c327776f27f74ce2fd7b782eae2debd4a3f9a
+  branch: codex/production-readiness
+  worktree_clean: false
+  tracked_paths_changed: 19
+  untracked_paths: 28
+guide:
+  path: docs/production-readiness/implementation-guide.md
+  sha256: 84896d560e5eda60a9bd1e059e0a44136aa87029b21eba739d0d81cbc42575d0
+checks:
+  ruff:
+    command: .venv/bin/ruff check .
+    status: passed
+  compileall:
+    command: .venv/bin/python -m compileall -q apps packages alembic scripts tests
+    status: passed
+  backend_tests:
+    command: .venv/bin/pytest -q
+    status: passed_with_skips
+    passed: 242
+    skipped: 2
+    warnings: 12
+    unexplained_skip_gate_passed: false
+    skips:
+      - path: tests/test_routes.py
+        reason: Disabled pending stable FastAPI included-router introspection.
+      - path: tests/test_training_leaderboard.py
+        reason: Disabled pending stable cross-version historical estimator reconstruction.
+  ui:
+    runtime: node:24.18.0-alpine3.23
+    install: passed
+    tests:
+      status: passed
+      files: 9
+      passed: 36
+    lint: passed
+    build: passed_with_warning
+    plotly_minified_chunk_bytes: 4846590
+    dependency_audit:
+      status: failed
+      high: 2
+      critical: 0
+      advisories:
+        - package: brace-expansion
+          id: GHSA-rgw5-rvv9-x895
+          fix_available: true
+        - package: nanoid
+          id: GHSA-2v37-7h3g-55p8
+          fix_available: true
+  helm:
+    lint: passed
+    template: passed
+    kubectl_client_dry_run: passed
+  alembic:
+    repository_heads:
+      - 0004_resumable_dataset_uploads
+    configured_k3d_database_revision: 0004_resumable_dataset_uploads
+    current: passed
+    check: passed
+    recovery:
+      status: passed
+      source: Running k3d API image docker.io/maponyacharles/sceptreai:target-discovery-api-20260801.1
+      restored_exact_sha256:
+        alembic/versions/0003_security_controls.py: 5338af3fa17d6a4e185ee5b29a9e0334a49d2087160d1a3887bc3396b6da4578
+        alembic/versions/0004_resumable_dataset_uploads.py: 19d0f9bb08db6ad0e2dee0d8e0696431b6b68a989aec8aac8c22dae9d6c223ac
+      note: Matching model metadata was restored from the same deployed image before the check.
+  baseline_snapshots:
+    status: provisional
+    manifest: docs/production-readiness/snapshots/baseline-manifest.json
+    manifest_sha256: 19c526a34d72dee9aaf0a3fb5a9a085b429d5103ff5836396c2cde515788a635
+    generated:
+      - openapi.json
+      - database-metadata.json
+      - estimator-catalog.json
+      - python-dependencies.json
+  task_index:
+    status: draft
+    path: docs/production-readiness/task-index.yaml
+    sha256: f0caefe1824a604c57d46ef6b19790fdde7f5f23f8df24df04d5b7895d187704
+    immutable_ids: 420
+    generator_check: passed
+  release_identity_schemas:
+    status: draft_validated
+    artifact_manifest_sha256: 9d5b7fb2a8b559ee4f7c40eaaff5a2921b183a51fe597904984f4d941b4a979c
+    qualification_attestation_sha256: 6fedab924770de3fd9752f9cbea3a88098bdf939e75027db30b155cf0cbb9a70
+    release_channel_pointer_sha256: 3914b87077c4d79a962fdc43532cc2c7bd7818513c3ce96b2904b395c561ad1d
+    schema_tests: passed
+blockers:
+  - The worktree is not a reviewed, clean baseline.
+  - The deployed k3d API image still contains audit, security-control, SSO, and resumable-upload application sources absent from this checkout; only the exact migration and model metadata needed for schema coherence was recovered in this tranche.
+  - The two skipped backend tests need owners and removal gates or must be restored.
+  - The UI lock has two fixable high-severity transitive advisories.
+  - The Plotly route chunk exceeds the default 500-kB warning threshold and lacks a reviewed budget.
+  - OpenAPI, database, dependency, and catalog snapshots are provisional until a reviewed clean baseline exists.
+  - The draft artifact identity schemas still require release/security review and CI/signing integration.
+  - The draft task index still needs issue URLs, reviewers, repository paths, tests, evidence outputs, rollback, and requalification assignments before it can be frozen.

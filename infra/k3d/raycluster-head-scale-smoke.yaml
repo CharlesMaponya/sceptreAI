@@ -1,0 +1,31 @@
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: phase-0a-head-PLACEHOLDER
+  namespace: sceptre-ray-head-scale-smoke
+  labels:
+    app.kubernetes.io/name: phase-0a-ray-head-scale
+    app.kubernetes.io/part-of: sceptre
+spec:
+  rayVersion: "2.56.1"
+  enableInTreeAutoscaling: false
+  headGroupSpec:
+    rayStartParams:
+      dashboard-host: "0.0.0.0"
+      disable-usage-stats: "true"
+      num-cpus: "0"
+    template:
+      metadata:
+        labels:
+          app.kubernetes.io/name: phase-0a-ray-head-scale
+          app.kubernetes.io/part-of: sceptre
+      spec:
+        serviceAccountName: phase-0a-ray-head
+        automountServiceAccountToken: false
+        containers:
+          - name: ray-head
+            image: sceptreai/ray-polars:2.56.1-1.43.2-local-14
+            imagePullPolicy: IfNotPresent
+            resources:
+              requests: {cpu: 250m, memory: 512Mi}
+              limits: {cpu: "2", memory: 3Gi}

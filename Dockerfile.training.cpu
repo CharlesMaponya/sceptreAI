@@ -1,4 +1,4 @@
-FROM python:3.14.6-slim-trixie
+FROM python:3.12.13-slim-trixie@sha256:229a2c5bfa27522db7815ea81f9bed70af17ccb9de9fc7ad142b1877b5830d36
 
 ARG SCEPTRE_VERSION=0.0.0
 ENV PYTHONUNBUFFERED=1 \
@@ -13,7 +13,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     && apt-get install --no-install-recommends --yes libgomp1 \
     && rm -rf /var/lib/apt/lists/* \
     && python -m pip install --upgrade pip==26.1.2 \
-    && python -m pip install -r requirements-training.txt
+    && sed '/^torch==/d' requirements-training.txt > /tmp/requirements-training-cpu.txt \
+    && python -m pip install -r /tmp/requirements-training-cpu.txt \
+    && python -m pip install \
+       --index-url https://download.pytorch.org/whl/cpu \
+       torch==2.9.1
 
 COPY apps/api ./apps/api
 COPY packages ./packages

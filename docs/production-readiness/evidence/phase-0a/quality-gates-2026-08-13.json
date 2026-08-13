@@ -1,0 +1,34 @@
+{
+  "schema_revision": "sceptre-phase-0a-quality-gates-v1",
+  "observed_at": "2026-08-13T12:48:47+02:00",
+  "backend": {
+    "command": "scripts/test_backend.sh",
+    "tests_passed": 688,
+    "statements": {"covered": 8439, "total": 8778, "percent": 96.138},
+    "branches": {"covered": 1960, "total": 2176, "percent": 90.074},
+    "required_each_percent": 90.01,
+    "coverage_json_sha256": "24e2263c88e39a9a211b7a0089320b0e9baffa58fa09fe09dbc47f1f8a2ec06e",
+    "status": "passed"
+  },
+  "frontend": {
+    "command": "npm run test:coverage",
+    "tests_passed": 131,
+    "statements_percent": 94.97,
+    "branches_percent": 90.11,
+    "functions_percent": 92.91,
+    "lines_percent": 96.47,
+    "required_each_percent": 90.01,
+    "coverage_summary_sha256": "e63e60cbfb78aebb1828e81f75f62cc0c58e62efeeb5a3977cacff7a43e1481f",
+    "status": "passed"
+  },
+  "other": {
+    "ruff": "passed",
+    "compileall": "passed",
+    "frontend_lint": "passed",
+    "frontend_build": "passed_with_plotly_chunk_advisory",
+    "helm_profiles_rendered": 10,
+    "helm_lint": "passed",
+    "task_index_entries_validated": 420,
+    "guide_sha256": "84896d560e5eda60a9bd1e059e0a44136aa87029b21eba739d0d81cbc42575d0"
+  }
+}

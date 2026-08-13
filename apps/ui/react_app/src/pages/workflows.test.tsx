@@ -355,6 +355,91 @@ describe("core workflow integrations", () => {
     expect(logRequests).toBe(0);
   });
 
+  it("prepares missing SHAP evidence before downloading the PDF audit", async () => {
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:audit");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    let auditRequests = 0;
+    let explanationBody: unknown;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
+      const url = String(input);
+      if (url.endsWith("/training/runs")) return response([run]);
+      if (url.endsWith("/leaderboard")) return response({
+        run_id: "run-1", status: "succeeded", primary_metric: "balanced_accuracy",
+        winner: "RandomForestClassifier", metric_directions: { balanced_accuracy: "maximize" },
+        entries: [{
+          rank: 1, model: "RandomForestClassifier", status: "succeeded", cost_tier: "medium",
+          primary_score: .91, metrics: { balanced_accuracy: .91 }, diagnostics: {},
+          best_params: {}, duration_seconds: 10, error: null,
+        }],
+      });
+      if (url.endsWith("/resources")) return response({
+        run_id: "run-1", status: "succeeded", completed_candidates: 1,
+        total_candidates: 1, progress: 1, elapsed_seconds: 10,
+      });
+      if (url.endsWith("/audit-document")) {
+        auditRequests += 1;
+        return auditRequests === 1
+          ? response({ detail: { code: "AUDIT_SHAP_REQUIRED" } }, 409)
+          : Promise.resolve(new Response(new Blob(["pdf"]), { status: 200 }));
+      }
+      if (url.endsWith("/explanations") && options?.method === "POST") {
+        explanationBody = JSON.parse(String(options.body));
+        return response({ run: { ...run, id: "analysis-audit", status: "queued" } }, 202);
+      }
+      if (url.endsWith("/analyses/analysis-audit")) return response({
+        run_id: "analysis-audit", status: "succeeded", model_name: "RandomForestClassifier",
+        metrics: {}, diagnostics: {}, feature_importance: [], artifacts: [],
+      });
+      return response([]);
+    });
+
+    renderRoute(<RunsPage />, "/projects/project-1/runs");
+    await userEvent.click(await screen.findByRole("button", { name: /RandomForestClassifier/i }));
+    await userEvent.click(screen.getByRole("tab", { name: "Pipeline & features" }));
+    await userEvent.click(screen.getByRole("button", { name: "Download PDF audit" }));
+
+    await waitFor(() => expect(click).toHaveBeenCalled());
+    expect(explanationBody).toEqual({
+      model_name: "RandomForestClassifier", max_rows: 200, expected_minutes: 10, force: true,
+    });
+    expect(auditRequests).toBe(2);
+    expect(createObjectURL).toHaveBeenCalled();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:audit");
+  });
+
+  it("shows an actionable audit failure without creating a download", async () => {
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.endsWith("/training/runs")) return response([run]);
+      if (url.endsWith("/leaderboard")) return response({
+        run_id: "run-1", status: "succeeded", primary_metric: "balanced_accuracy",
+        winner: "RandomForestClassifier", metric_directions: {}, entries: [{
+          rank: 1, model: "RandomForestClassifier", status: "succeeded", cost_tier: "medium",
+          primary_score: .91, metrics: {}, diagnostics: {}, best_params: {},
+          duration_seconds: 10, error: null,
+        }],
+      });
+      if (url.endsWith("/resources")) return response({
+        run_id: "run-1", status: "succeeded", completed_candidates: 1,
+        total_candidates: 1, progress: 1, elapsed_seconds: 10,
+      });
+      if (url.endsWith("/audit-document")) {
+        return Promise.resolve(new Response("Audit renderer unavailable", { status: 503 }));
+      }
+      return response([]);
+    });
+
+    renderRoute(<RunsPage />, "/projects/project-1/runs");
+    await userEvent.click(await screen.findByRole("button", { name: /RandomForestClassifier/i }));
+    await userEvent.click(screen.getByRole("tab", { name: "Pipeline & features" }));
+    await userEvent.click(screen.getByRole("button", { name: "Download PDF audit" }));
+
+    expect(await screen.findByText("Audit renderer unavailable")).toBeInTheDocument();
+    expect(click).not.toHaveBeenCalled();
+  });
+
   it("renders SHAP features automatically when explainability completes", async () => {
     let resultRequests = 0;
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {

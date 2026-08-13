@@ -1,0 +1,709 @@
+
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Code coverage report for src/pages/TrainingPage.tsx</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../../prettify.css" />
+    <link rel="stylesheet" href="../../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../../favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+    
+<body>
+<div class='wrapper'>
+    <div class='pad1'>
+        <h1><a href="../../index.html">All files</a> / <a href="index.html">src/pages</a> TrainingPage.tsx</h1>
+        <div class='clearfix'>
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">95.42% </span>
+                <span class="quiet">Statements</span>
+                <span class='fraction'>146/153</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">96.81% </span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>152/157</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">95.45% </span>
+                <span class="quiet">Functions</span>
+                <span class='fraction'>63/66</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">100% </span>
+                <span class="quiet">Lines</span>
+                <span class='fraction'>91/91</span>
+            </div>
+        
+            
+        </div>
+        <p class="quiet">
+            Press <em>n</em> or <em>j</em> to go to the next uncovered block, <em>b</em>, <em>p</em> or <em>k</em> for the previous block.
+        </p>
+        <template id="filterTemplate">
+            <div class="quiet">
+                Filter:
+                <input type="search" id="fileSearch">
+            </div>
+        </template>
+    </div>
+    <div class='status-line high'></div>
+    <pre><table class="coverage">
+<tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
+<a name='L2'></a><a href='#L2'>2</a>
+<a name='L3'></a><a href='#L3'>3</a>
+<a name='L4'></a><a href='#L4'>4</a>
+<a name='L5'></a><a href='#L5'>5</a>
+<a name='L6'></a><a href='#L6'>6</a>
+<a name='L7'></a><a href='#L7'>7</a>
+<a name='L8'></a><a href='#L8'>8</a>
+<a name='L9'></a><a href='#L9'>9</a>
+<a name='L10'></a><a href='#L10'>10</a>
+<a name='L11'></a><a href='#L11'>11</a>
+<a name='L12'></a><a href='#L12'>12</a>
+<a name='L13'></a><a href='#L13'>13</a>
+<a name='L14'></a><a href='#L14'>14</a>
+<a name='L15'></a><a href='#L15'>15</a>
+<a name='L16'></a><a href='#L16'>16</a>
+<a name='L17'></a><a href='#L17'>17</a>
+<a name='L18'></a><a href='#L18'>18</a>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a>
+<a name='L38'></a><a href='#L38'>38</a>
+<a name='L39'></a><a href='#L39'>39</a>
+<a name='L40'></a><a href='#L40'>40</a>
+<a name='L41'></a><a href='#L41'>41</a>
+<a name='L42'></a><a href='#L42'>42</a>
+<a name='L43'></a><a href='#L43'>43</a>
+<a name='L44'></a><a href='#L44'>44</a>
+<a name='L45'></a><a href='#L45'>45</a>
+<a name='L46'></a><a href='#L46'>46</a>
+<a name='L47'></a><a href='#L47'>47</a>
+<a name='L48'></a><a href='#L48'>48</a>
+<a name='L49'></a><a href='#L49'>49</a>
+<a name='L50'></a><a href='#L50'>50</a>
+<a name='L51'></a><a href='#L51'>51</a>
+<a name='L52'></a><a href='#L52'>52</a>
+<a name='L53'></a><a href='#L53'>53</a>
+<a name='L54'></a><a href='#L54'>54</a>
+<a name='L55'></a><a href='#L55'>55</a>
+<a name='L56'></a><a href='#L56'>56</a>
+<a name='L57'></a><a href='#L57'>57</a>
+<a name='L58'></a><a href='#L58'>58</a>
+<a name='L59'></a><a href='#L59'>59</a>
+<a name='L60'></a><a href='#L60'>60</a>
+<a name='L61'></a><a href='#L61'>61</a>
+<a name='L62'></a><a href='#L62'>62</a>
+<a name='L63'></a><a href='#L63'>63</a>
+<a name='L64'></a><a href='#L64'>64</a>
+<a name='L65'></a><a href='#L65'>65</a>
+<a name='L66'></a><a href='#L66'>66</a>
+<a name='L67'></a><a href='#L67'>67</a>
+<a name='L68'></a><a href='#L68'>68</a>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a>
+<a name='L71'></a><a href='#L71'>71</a>
+<a name='L72'></a><a href='#L72'>72</a>
+<a name='L73'></a><a href='#L73'>73</a>
+<a name='L74'></a><a href='#L74'>74</a>
+<a name='L75'></a><a href='#L75'>75</a>
+<a name='L76'></a><a href='#L76'>76</a>
+<a name='L77'></a><a href='#L77'>77</a>
+<a name='L78'></a><a href='#L78'>78</a>
+<a name='L79'></a><a href='#L79'>79</a>
+<a name='L80'></a><a href='#L80'>80</a>
+<a name='L81'></a><a href='#L81'>81</a>
+<a name='L82'></a><a href='#L82'>82</a>
+<a name='L83'></a><a href='#L83'>83</a>
+<a name='L84'></a><a href='#L84'>84</a>
+<a name='L85'></a><a href='#L85'>85</a>
+<a name='L86'></a><a href='#L86'>86</a>
+<a name='L87'></a><a href='#L87'>87</a>
+<a name='L88'></a><a href='#L88'>88</a>
+<a name='L89'></a><a href='#L89'>89</a>
+<a name='L90'></a><a href='#L90'>90</a>
+<a name='L91'></a><a href='#L91'>91</a>
+<a name='L92'></a><a href='#L92'>92</a>
+<a name='L93'></a><a href='#L93'>93</a>
+<a name='L94'></a><a href='#L94'>94</a>
+<a name='L95'></a><a href='#L95'>95</a>
+<a name='L96'></a><a href='#L96'>96</a>
+<a name='L97'></a><a href='#L97'>97</a>
+<a name='L98'></a><a href='#L98'>98</a>
+<a name='L99'></a><a href='#L99'>99</a>
+<a name='L100'></a><a href='#L100'>100</a>
+<a name='L101'></a><a href='#L101'>101</a>
+<a name='L102'></a><a href='#L102'>102</a>
+<a name='L103'></a><a href='#L103'>103</a>
+<a name='L104'></a><a href='#L104'>104</a>
+<a name='L105'></a><a href='#L105'>105</a>
+<a name='L106'></a><a href='#L106'>106</a>
+<a name='L107'></a><a href='#L107'>107</a>
+<a name='L108'></a><a href='#L108'>108</a>
+<a name='L109'></a><a href='#L109'>109</a>
+<a name='L110'></a><a href='#L110'>110</a>
+<a name='L111'></a><a href='#L111'>111</a>
+<a name='L112'></a><a href='#L112'>112</a>
+<a name='L113'></a><a href='#L113'>113</a>
+<a name='L114'></a><a href='#L114'>114</a>
+<a name='L115'></a><a href='#L115'>115</a>
+<a name='L116'></a><a href='#L116'>116</a>
+<a name='L117'></a><a href='#L117'>117</a>
+<a name='L118'></a><a href='#L118'>118</a>
+<a name='L119'></a><a href='#L119'>119</a>
+<a name='L120'></a><a href='#L120'>120</a>
+<a name='L121'></a><a href='#L121'>121</a>
+<a name='L122'></a><a href='#L122'>122</a>
+<a name='L123'></a><a href='#L123'>123</a>
+<a name='L124'></a><a href='#L124'>124</a>
+<a name='L125'></a><a href='#L125'>125</a>
+<a name='L126'></a><a href='#L126'>126</a>
+<a name='L127'></a><a href='#L127'>127</a>
+<a name='L128'></a><a href='#L128'>128</a>
+<a name='L129'></a><a href='#L129'>129</a>
+<a name='L130'></a><a href='#L130'>130</a>
+<a name='L131'></a><a href='#L131'>131</a>
+<a name='L132'></a><a href='#L132'>132</a>
+<a name='L133'></a><a href='#L133'>133</a>
+<a name='L134'></a><a href='#L134'>134</a>
+<a name='L135'></a><a href='#L135'>135</a>
+<a name='L136'></a><a href='#L136'>136</a>
+<a name='L137'></a><a href='#L137'>137</a>
+<a name='L138'></a><a href='#L138'>138</a>
+<a name='L139'></a><a href='#L139'>139</a>
+<a name='L140'></a><a href='#L140'>140</a>
+<a name='L141'></a><a href='#L141'>141</a>
+<a name='L142'></a><a href='#L142'>142</a>
+<a name='L143'></a><a href='#L143'>143</a>
+<a name='L144'></a><a href='#L144'>144</a>
+<a name='L145'></a><a href='#L145'>145</a>
+<a name='L146'></a><a href='#L146'>146</a>
+<a name='L147'></a><a href='#L147'>147</a>
+<a name='L148'></a><a href='#L148'>148</a>
+<a name='L149'></a><a href='#L149'>149</a>
+<a name='L150'></a><a href='#L150'>150</a>
+<a name='L151'></a><a href='#L151'>151</a>
+<a name='L152'></a><a href='#L152'>152</a>
+<a name='L153'></a><a href='#L153'>153</a>
+<a name='L154'></a><a href='#L154'>154</a>
+<a name='L155'></a><a href='#L155'>155</a>
+<a name='L156'></a><a href='#L156'>156</a>
+<a name='L157'></a><a href='#L157'>157</a>
+<a name='L158'></a><a href='#L158'>158</a>
+<a name='L159'></a><a href='#L159'>159</a>
+<a name='L160'></a><a href='#L160'>160</a>
+<a name='L161'></a><a href='#L161'>161</a>
+<a name='L162'></a><a href='#L162'>162</a>
+<a name='L163'></a><a href='#L163'>163</a>
+<a name='L164'></a><a href='#L164'>164</a>
+<a name='L165'></a><a href='#L165'>165</a>
+<a name='L166'></a><a href='#L166'>166</a>
+<a name='L167'></a><a href='#L167'>167</a>
+<a name='L168'></a><a href='#L168'>168</a>
+<a name='L169'></a><a href='#L169'>169</a>
+<a name='L170'></a><a href='#L170'>170</a>
+<a name='L171'></a><a href='#L171'>171</a>
+<a name='L172'></a><a href='#L172'>172</a>
+<a name='L173'></a><a href='#L173'>173</a>
+<a name='L174'></a><a href='#L174'>174</a>
+<a name='L175'></a><a href='#L175'>175</a>
+<a name='L176'></a><a href='#L176'>176</a>
+<a name='L177'></a><a href='#L177'>177</a>
+<a name='L178'></a><a href='#L178'>178</a>
+<a name='L179'></a><a href='#L179'>179</a>
+<a name='L180'></a><a href='#L180'>180</a>
+<a name='L181'></a><a href='#L181'>181</a>
+<a name='L182'></a><a href='#L182'>182</a>
+<a name='L183'></a><a href='#L183'>183</a>
+<a name='L184'></a><a href='#L184'>184</a>
+<a name='L185'></a><a href='#L185'>185</a>
+<a name='L186'></a><a href='#L186'>186</a>
+<a name='L187'></a><a href='#L187'>187</a>
+<a name='L188'></a><a href='#L188'>188</a>
+<a name='L189'></a><a href='#L189'>189</a>
+<a name='L190'></a><a href='#L190'>190</a>
+<a name='L191'></a><a href='#L191'>191</a>
+<a name='L192'></a><a href='#L192'>192</a>
+<a name='L193'></a><a href='#L193'>193</a>
+<a name='L194'></a><a href='#L194'>194</a>
+<a name='L195'></a><a href='#L195'>195</a>
+<a name='L196'></a><a href='#L196'>196</a>
+<a name='L197'></a><a href='#L197'>197</a>
+<a name='L198'></a><a href='#L198'>198</a>
+<a name='L199'></a><a href='#L199'>199</a>
+<a name='L200'></a><a href='#L200'>200</a>
+<a name='L201'></a><a href='#L201'>201</a>
+<a name='L202'></a><a href='#L202'>202</a>
+<a name='L203'></a><a href='#L203'>203</a>
+<a name='L204'></a><a href='#L204'>204</a>
+<a name='L205'></a><a href='#L205'>205</a>
+<a name='L206'></a><a href='#L206'>206</a>
+<a name='L207'></a><a href='#L207'>207</a>
+<a name='L208'></a><a href='#L208'>208</a>
+<a name='L209'></a><a href='#L209'>209</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">16x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-yes">147x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">22x</span>
+<span class="cline-any cline-yes">22x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">22x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">20x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">20x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-yes">21x</span>
+<span class="cline-any cline-yes">21x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">9x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">32x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-yes">117x</span>
+<span class="cline-any cline-yes">115x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">114x</span>
+<span class="cline-any cline-yes">106x</span>
+<span class="cline-any cline-yes">105x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">104x</span>
+<span class="cline-any cline-yes">82x</span>
+<span class="cline-any cline-yes">80x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">76x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">100x</span>
+<span class="cline-any cline-yes">76x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">304x</span>
+<span class="cline-any cline-yes">144x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">88x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">436x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">121x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">304x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">187x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">20x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowRight, Check, Cpu, Database, Info, Sparkles, Zap } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router";
+import { api, json } from "../api";
+import { Button, Card, ErrorState, Loading, Metric, Notice, PageHeader } from "../components/ui";
+import { titleCase } from "../lib";
+import type { Dataset, DatasetVersion, Estimator, ProfileJob, TaskType, TrainingEstimate, TrainingPayload } from "../types";
+&nbsp;
+const PRIMARY_METRICS: Record&lt;TaskType, Array&lt;{ value: string; label: string }&gt;&gt; = {
+  classification: [
+    { value: "balanced_accuracy", label: "Balanced accuracy" },
+    { value: "accuracy", label: "Accuracy" },
+    { value: "f1_macro", label: "F1 macro" },
+    { value: "f1_weighted", label: "F1 weighted" },
+    { value: "roc_auc", label: "ROC AUC" },
+    { value: "log_loss", label: "Log loss" },
+  ],
+  regression: [
+    { value: "rmse", label: "RMSE" }, { value: "mae", label: "MAE" },
+    { value: "mse", label: "MSE" }, { value: "r2", label: "R²" },
+    { value: "explained_variance", label: "Explained variance" },
+  ],
+  time_series: [
+    { value: "rmse", label: "RMSE" }, { value: "mae", label: "MAE" },
+    { value: "mse", label: "MSE" }, { value: "r2", label: "R²" },
+    { value: "explained_variance", label: "Explained variance" },
+  ],
+  clustering: [
+    { value: "silhouette", label: "Silhouette" },
+    { value: "davies_bouldin", label: "Davies–Bouldin" },
+    { value: "calinski_harabasz", label: "Calinski–Harabasz" },
+  ],
+};
+&nbsp;
+interface TrainingProfileResult {
+  feature_profiles_json: Record&lt;string, {
+    distribution?: Array&lt;{ label: string; count: number }&gt;;
+  }&gt;;
+}
+&nbsp;
+export function TrainingPage() {
+  const { projectId = "" } = useParams();
+  const navigate = useNavigate();
+  const client = useQueryClient();
+  const [datasetId, setDatasetId] = useState("");
+  const [versionId, setVersionId] = useState("");
+  const [task, setTask] = useState&lt;TaskType&gt;("classification");
+  const [target, setTarget] = useState("");
+  const [positiveLabel, setPositiveLabel] = useState("");
+  const [primaryMetric, setPrimaryMetric] = useState("balanced_accuracy");
+  const [models, setModels] = useState&lt;string[]&gt;([]);
+  const [minutes, setMinutes] = useState(10);
+  const [folds, setFolds] = useState(3);
+  const [iterations, setIterations] = useState(5);
+  const [gpu, setGpu] = useState(true);
+  const [runName, setRunName] = useState("");
+&nbsp;
+  const datasets = useQuery({ queryKey: ["datasets", projectId], queryFn: () =&gt; api&lt;Dataset[]&gt;(`/projects/${projectId}/datasets`) });
+  useEffect(() =&gt; { if (!datasetId &amp;&amp; datasets.data?.length) setDatasetId(datasets.data[0].id); }, [datasets.data, datasetId]);
+  const versions = useQuery({ queryKey: ["versions", projectId, datasetId], enabled: Boolean(datasetId), queryFn: () =&gt; api&lt;DatasetVersion[]&gt;(`/projects/${projectId}/datasets/${datasetId}/versions`) });
+  useEffect(() =&gt; { if (versions.data?.length &amp;&amp; !versions.data.some((v) =&gt; v.id === versionId)) setVersionId(versions.data[0].id); }, [versions.data, versionId]);
+  const selectedDataset = datasets.data?.find((item) =&gt; item.id === datasetId);
+  const version = versions.data?.find((item) =&gt; item.id === versionId);
+  const columns = useMemo(
+    () =&gt; (version?.schema_json || version?.dataset_schema)?.columns?.map((column) =&gt; column.name) || [],
+    [version],
+  );
+  useEffect(() =&gt; { if (columns.length &amp;&amp; !columns.includes(target)) setTarget(columns[columns.length - 1]); }, [columns, target]);
+  useEffect(() =&gt; { if (selectedDataset &amp;&amp; version) setRunName(`${selectedDataset.name}-v${version.version_number}`); }, [selectedDataset, version]);
+  const latestProfile = useQuery({
+    queryKey: ["profile", versionId],
+    enabled: Boolean(versionId),
+    queryFn: () =&gt; api&lt;ProfileJob | null&gt;(`/projects/${projectId}/datasets/${datasetId}/versions/${versionId}/profile-jobs/latest`),
+    refetchInterval: (query) =&gt; query.state.data
+      &amp;&amp; ["queued", "precheck_running", "running"].includes(query.state.data.status) ? 2000 : false,
+  });
+  const profileResult = useQuery({
+    queryKey: ["profile-result", latestProfile.data?.id],
+    enabled: latestProfile.data?.status === "succeeded" &amp;&amp; Boolean(latestProfile.data.target_column),
+    queryFn: () =&gt; api&lt;TrainingProfileResult&gt;(
+      `/projects/${projectId}/datasets/${datasetId}/versions/${versionId}/profile-jobs/${latestProfile.data!.id}/result`,
+    ),
+  });
+  useEffect(() =&gt; {
+    const inferred = latestProfile.data?.overview_json?.task_inference?.task_type;
+    if (latestProfile.data?.target_column &amp;&amp; columns.includes(latestProfile.data.target_column)) {
+      setTarget(latestProfile.data.target_column);
+    }
+    if (inferred) setTask(inferred);
+  }, [latestProfile.data?.id, latestProfile.data?.target_column, latestProfile.data?.overview_json?.task_inference?.task_type, columns]);
+  const positiveOptions = useMemo(() =&gt; {
+    const distribution = target
+      ? profileResult.data?.feature_profiles_json?.[target]?.distribution || []
+      : [];
+    return distribution.length === 2 ? distribution : [];
+  }, [profileResult.data, target]);
+  useEffect(() =&gt; {
+    if (task !== "classification" || positiveOptions.length !== 2) {
+      setPositiveLabel("");
+      return;
+    }
+    if (positiveOptions.some((item) =&gt; item.label === positiveLabel)) return;
+    const ranked = [...positiveOptions].sort((left, right) =&gt; left.count - right.count);
+    setPositiveLabel(ranked[0].count &lt; ranked[1].count ? ranked[0].label : "");
+  }, [positiveLabel, positiveOptions, task]);
+  useEffect(() =&gt; {
+    if (!PRIMARY_METRICS[task].some((metric) =&gt; metric.value === primaryMetric)) {
+      setPrimaryMetric(PRIMARY_METRICS[task][0].value);
+    }
+  }, [task, primaryMetric]);
+&nbsp;
+  const estimators = useQuery({ queryKey: ["estimators", projectId, task], enabled: Boolean(projectId), queryFn: () =&gt; api&lt;Estimator[]&gt;(`/projects/${projectId}/training/estimators?task_type=${task}`) });
+  useEffect(() =&gt; { if (estimators.data) setModels(estimators.data.filter((item) =&gt; item.default_selected).map((item) =&gt; item.name)); }, [estimators.data]);
+  const payload = useMemo&lt;TrainingPayload&gt;(() =&gt; ({
+    dataset_version_id: versionId, target_column: task === "clustering" ? null : target,
+    positive_label: task === "classification" ? positiveLabel || null : null,
+    evaluation_column: null, task_type: task, primary_metric: primaryMetric,
+    prefer_gpu: gpu, expected_minutes: minutes,
+    candidate_limit: models.length, candidate_models: models, optimization_iterations: iterations, cv_folds: folds,
+  }), [versionId, target, positiveLabel, task, primaryMetric, gpu, minutes, models, iterations, folds]);
+  const estimate = useMutation({ mutationFn: () =&gt; api&lt;TrainingEstimate&gt;(`/projects/${projectId}/training/estimate`, json("POST", payload)) });
+  const launch = useMutation({
+    mutationFn: () =&gt; api(`/projects/${projectId}/training/runs`, json("POST", { ...payload, run_name: runName, params: {} })),
+    onSuccess: () =&gt; { client.invalidateQueries({ queryKey: ["runs", projectId] }); navigate(`/projects/${projectId}/runs`); },
+  });
+&nbsp;
+  if (datasets.isLoading) return &lt;Loading /&gt;;
+  if (datasets.error) return &lt;ErrorState error={datasets.error} retry={() =&gt; datasets.refetch()} /&gt;;
+  if (!datasets.data?.length) return &lt;&gt;&lt;PageHeader eyebrow="Model training" title="Train a model" description="Configure an evidence-led experiment with governed compute." /&gt;
+    &lt;Card&gt;&lt;div className="prerequisite"&gt;&lt;Database /&gt;&lt;h2&gt;Data comes first&lt;/h2&gt;&lt;p&gt;Upload and profile a dataset before configuring training.&lt;/p&gt;&lt;Button onClick={() =&gt; navigate(`/projects/${projectId}/data`)}&gt;Go to data&lt;ArrowRight size={16} /&gt;&lt;/Button&gt;&lt;/div&gt;&lt;/Card&gt;&lt;/&gt;;
+  if (versions.isLoading) return &lt;Loading label="Checking dataset versions…" /&gt;;
+  if (versions.error) return &lt;ErrorState error={versions.error} retry={() =&gt; versions.refetch()} /&gt;;
+  if (versions.data &amp;&amp; !versions.data.length) return &lt;&gt;
+    &lt;PageHeader eyebrow="Model training" title="Add a dataset version"
+      description="Training requires an available, profiled dataset version." /&gt;
+    &lt;Card&gt;&lt;div className="prerequisite"&gt;&lt;Database /&gt;&lt;h2&gt;No dataset version is available&lt;/h2&gt;
+      &lt;p&gt;Upload a dataset before configuring training.&lt;/p&gt;
+      &lt;Button onClick={() =&gt; navigate(`/projects/${projectId}/data`)}&gt;Go to data&lt;ArrowRight size={16} /&gt;&lt;/Button&gt;
+    &lt;/div&gt;&lt;/Card&gt;
+  &lt;/&gt;;
+  if (!versionId || latestProfile.isLoading) return &lt;Loading label="Checking training prerequisites…" /&gt;;
+  if (latestProfile.error) return &lt;ErrorState error={latestProfile.error} retry={() =&gt; latestProfile.refetch()} /&gt;;
+  if (!latestProfile.data || latestProfile.data.status !== "succeeded") return &lt;&gt;
+    &lt;PageHeader eyebrow="Model training" title="Profile data before training"
+      description="Training uses the target, task, and safeguards confirmed by a completed profile." /&gt;
+    &lt;Card&gt;&lt;div className="prerequisite"&gt;&lt;Database /&gt;&lt;h2&gt;Complete the data profile&lt;/h2&gt;
+      &lt;p&gt;{latestProfile.data &amp;&amp; ["queued", "precheck_running", "running"].includes(latestProfile.data.status)
+        ? "Profiling is still running. Return when it completes."
+        : "Choose a target and complete profiling before configuring this run."}&lt;/p&gt;
+      &lt;Button onClick={() =&gt; navigate(`/projects/${projectId}`)}&gt;Go to profile setup&lt;ArrowRight size={16} /&gt;&lt;/Button&gt;
+    &lt;/div&gt;&lt;/Card&gt;
+  &lt;/&gt;;
+  const profileMatchesConfiguration = task === "clustering"
+    ? latestProfile.data.target_column == null
+    : target === latestProfile.data.target_column;
+&nbsp;
+  return &lt;&gt;
+    &lt;PageHeader eyebrow="Model training" title="Configure training" description="Sceptre estimates resource needs before anything reaches the cluster." /&gt;
+    &lt;div className="training-layout"&gt;&lt;div className="training-form"&gt;
+      &lt;Card className="form-section"&gt;&lt;span className="step-number"&gt;1&lt;/span&gt;&lt;div className="form-section__body"&gt;&lt;h2&gt;Choose training data&lt;/h2&gt;&lt;p&gt;Select an immutable dataset version.&lt;/p&gt;
+        &lt;div className="form-grid"&gt;&lt;label&gt;Dataset&lt;select value={datasetId} onChange={<span class="fstat-no" title="function not covered" >(e</span>) =&gt; { <span class="cstat-no" title="statement not covered" >setDatasetId(e.target.value); <span class="cstat-no" title="statement not covered" >s</span>etVersionId(""); <span class="cstat-no" title="statement not covered" >e</span>stimate.reset(); }</span>}&gt;{datasets.data.map((item) =&gt; &lt;option value={item.id} key={item.id}&gt;{item.name}&lt;/option&gt;)}&lt;/select&gt;&lt;/label&gt;
+          &lt;label&gt;Version&lt;select value={versionId} onChange={<span class="fstat-no" title="function not covered" >(e</span>) =&gt; { <span class="cstat-no" title="statement not covered" >setVersionId(e.target.value); <span class="cstat-no" title="statement not covered" >e</span>stimate.reset(); }</span>}&gt;{versions.data?.map((item) =&gt; &lt;option value={item.id} key={item.id}&gt;Version {item.version_number} · {titleCase(item.status)}&lt;/option&gt;)}&lt;/select&gt;&lt;/label&gt;&lt;/div&gt;&lt;/div&gt;&lt;/Card&gt;
+      &lt;Card className="form-section"&gt;&lt;span className="step-number"&gt;2&lt;/span&gt;&lt;div className="form-section__body"&gt;&lt;h2&gt;Frame the problem&lt;/h2&gt;&lt;p&gt;Confirm what the model should learn.&lt;/p&gt;
+        &lt;div className="task-grid"&gt;{(["classification", "regression", "time_series", "clustering"] as TaskType[]).map((value) =&gt;
+          &lt;button key={value} className={task === value ? "active" : ""} onClick={() =&gt; { setTask(value); estimate.reset(); }}&gt;&lt;i&gt;{task === value &amp;&amp; &lt;Check size={13} /&gt;}&lt;/i&gt;&lt;b&gt;{titleCase(value)}&lt;/b&gt;&lt;/button&gt;)}&lt;/div&gt;
+        {task !== "clustering" &amp;&amp; &lt;label&gt;Target column&lt;select value={target} onChange={<span class="fstat-no" title="function not covered" >(e</span>) =&gt; { <span class="cstat-no" title="statement not covered" >setTarget(e.target.value); <span class="cstat-no" title="statement not covered" >e</span>stimate.reset(); }</span>}&gt;{columns.map((column) =&gt; &lt;option key={column}&gt;{column}&lt;/option&gt;)}&lt;/select&gt;&lt;small&gt;The outcome the model will predict.&lt;/small&gt;&lt;/label&gt;}
+        {task === "classification" &amp;&amp; positiveOptions.length === 2 &amp;&amp; &lt;label&gt;Positive class&lt;select required value={positiveLabel} onChange={(e) =&gt; { setPositiveLabel(e.target.value); estimate.reset(); }}&gt;
+          {!positiveLabel &amp;&amp; &lt;option value="" disabled&gt;Select the event of interest&lt;/option&gt;}
+          {positiveOptions.map((item) =&gt; &lt;option value={item.label} key={item.label}&gt;{item.label} · {item.count.toLocaleString()} rows&lt;/option&gt;)}&lt;/select&gt;
+          &lt;small&gt;{positiveOptions[0].count === positiveOptions[1].count
+            ? "These classes are balanced, so you must choose the event of interest."
+            : "The minority class is suggested; change it if your event of interest is different."}&lt;/small&gt;&lt;/label&gt;}
+        {!profileMatchesConfiguration &amp;&amp; &lt;Notice tone="danger"&gt;This target does not match the completed profile. Return to the project overview and reprofile before training.&lt;/Notice&gt;}
+        &lt;label&gt;Primary leaderboard metric&lt;select value={primaryMetric} onChange={(e) =&gt; { setPrimaryMetric(e.target.value); estimate.reset(); }}&gt;
+          {PRIMARY_METRICS[task].map((metric) =&gt; &lt;option value={metric.value} key={metric.value}&gt;{metric.label}&lt;/option&gt;)}&lt;/select&gt;&lt;small&gt;Models will be ranked by this metric.&lt;/small&gt;&lt;/label&gt;
+      &lt;/div&gt;&lt;/Card&gt;
+      &lt;Card className="form-section"&gt;&lt;span className="step-number"&gt;3&lt;/span&gt;&lt;div className="form-section__body"&gt;&lt;h2&gt;Select candidate models&lt;/h2&gt;&lt;p&gt;Start broad; Sceptre will rank compatible candidates with the right metrics.&lt;/p&gt;
+        {estimators.data?.length ? &lt;div className="selection-actions"&gt;&lt;Button variant="secondary" type="button"
+          onClick={() =&gt; { setModels(estimators.data.slice(0, 20).map((model) =&gt; model.name)); estimate.reset(); }}&gt;
+          Select all models&lt;/Button&gt;{models.length &gt; 0 &amp;&amp; &lt;Button variant="ghost" type="button"
+            onClick={() =&gt; { setModels([]); estimate.reset(); }}&gt;Clear selection&lt;/Button&gt;}&lt;/div&gt; : null}
+        {estimators.isLoading ? &lt;Loading label="Discovering compatible estimators…" /&gt;
+          : estimators.error ? &lt;ErrorState error={estimators.error} retry={() =&gt; estimators.refetch()} /&gt;
+            : estimators.data?.length ? &lt;div className="model-grid"&gt;{estimators.data.map((model) =&gt;
+              &lt;label className={models.includes(model.name) ? "model-option active" : "model-option"} key={model.name}&gt;&lt;input type="checkbox" checked={models.includes(model.name)} onChange={() =&gt; { setModels((current) =&gt; current.includes(model.name) ? current.filter((name) =&gt; name !== model.name) : current.length &lt; 20 ? [...current, model.name] : <span class="branch-1 cbranch-no" title="branch not covered" >current)</span>; estimate.reset(); }} /&gt;
+                &lt;span&gt;&lt;b&gt;{model.name}&lt;/b&gt;&lt;small&gt;{titleCase(model.cost_tier)} cost · {model.tunable ? "Tuned" : "Fixed"}&lt;/small&gt;&lt;/span&gt;&lt;i&gt;&lt;Check size={13} /&gt;&lt;/i&gt;&lt;/label&gt;)}&lt;/div&gt;
+              : &lt;Notice&gt;No compatible estimators were reported for this task.&lt;/Notice&gt;}
+        {!estimators.isLoading &amp;&amp; !estimators.error &amp;&amp; &lt;span className="selection-count"&gt;{models.length} of {Math.min(20, estimators.data?.length ?? <span class="branch-1 cbranch-no" title="branch not covered" >0)</span>} models selected&lt;/span&gt;}
+      &lt;/div&gt;&lt;/Card&gt;
+      &lt;Card className="form-section"&gt;&lt;span className="step-number"&gt;4&lt;/span&gt;&lt;div className="form-section__body"&gt;&lt;h2&gt;Set the experiment budget&lt;/h2&gt;&lt;p&gt;These limits shape the search without compromising cluster safeguards.&lt;/p&gt;
+        &lt;div className="form-grid form-grid--3"&gt;&lt;label&gt;Planned duration&lt;input type="number" min={1} max={120} value={minutes} onChange={(e) =&gt; { setMinutes(Number(e.target.value)); estimate.reset(); }} /&gt;&lt;small&gt;minutes&lt;/small&gt;&lt;/label&gt;
+          &lt;label&gt;Cross-validation folds&lt;select value={folds} onChange={(e) =&gt; { setFolds(Number(e.target.value)); estimate.reset(); }}&gt;{[2,3,4,5].map((n) =&gt; &lt;option key={n}&gt;{n}&lt;/option&gt;)}&lt;/select&gt;&lt;/label&gt;
+          &lt;label&gt;Search iterations&lt;input type="number" min={1} max={25} value={iterations} onChange={(e) =&gt; { setIterations(Number(e.target.value)); estimate.reset(); }} /&gt;&lt;/label&gt;&lt;/div&gt;
+        &lt;label className="toggle-row"&gt;&lt;span&gt;&lt;Zap /&gt;&lt;span&gt;&lt;b&gt;Prefer GPU&lt;/b&gt;&lt;small&gt;Falls back safely if unavailable.&lt;/small&gt;&lt;/span&gt;&lt;/span&gt;&lt;input type="checkbox" checked={gpu} onChange={(e) =&gt; { setGpu(e.target.checked); estimate.reset(); }} /&gt;&lt;/label&gt;
+      &lt;/div&gt;&lt;/Card&gt;
+    &lt;/div&gt;
+    &lt;aside className="launch-card"&gt;&lt;Card&gt;&lt;span className="eyebrow"&gt;Launch summary&lt;/span&gt;&lt;h2&gt;{runName || "New training run"}&lt;/h2&gt;
+      &lt;dl&gt;&lt;div&gt;&lt;dt&gt;Dataset&lt;/dt&gt;&lt;dd&gt;{selectedDataset?.name} · v{version?.version_number}&lt;/dd&gt;&lt;/div&gt;&lt;div&gt;&lt;dt&gt;Task&lt;/dt&gt;&lt;dd&gt;{titleCase(task)}&lt;/dd&gt;&lt;/div&gt;&lt;div&gt;&lt;dt&gt;Target&lt;/dt&gt;&lt;dd&gt;{task === "clustering" ? "Unsupervised" : target || <span class="branch-1 cbranch-no" title="branch not covered" >"—"}&lt;</span>/dd&gt;&lt;/div&gt;{task === "classification" &amp;&amp; &lt;div&gt;&lt;dt&gt;Positive class&lt;/dt&gt;&lt;dd&gt;{positiveLabel || "Auto · minority class"}&lt;/dd&gt;&lt;/div&gt;}&lt;div&gt;&lt;dt&gt;Ranking metric&lt;/dt&gt;&lt;dd&gt;{PRIMARY_METRICS[task].find((metric) =&gt; metric.value === primaryMetric)?.label}&lt;/dd&gt;&lt;/div&gt;&lt;div&gt;&lt;dt&gt;Models&lt;/dt&gt;&lt;dd&gt;{models.length} candidates&lt;/dd&gt;&lt;/div&gt;&lt;/dl&gt;
+      {!estimate.data ? &lt;&gt;&lt;Notice&gt;&lt;Info size={16} /&gt; Review compute requirements before launch.&lt;/Notice&gt;&lt;Button className="full" disabled={!versionId || !models.length || !profileMatchesConfiguration || (task !== "clustering" &amp;&amp; !target) || (task === "classification" &amp;&amp; positiveOptions.length === 2 &amp;&amp; !positiveLabel)} loading={estimate.isPending} onClick={() =&gt; estimate.mutate()}&gt;&lt;Cpu size={16} /&gt;Estimate resources&lt;/Button&gt;&lt;/&gt;
+        : &lt;div className="estimate"&gt;&lt;div className="estimate__metrics"&gt;&lt;Metric label="CPU" value={`${estimate.data.cpu_request_cores} cores`} /&gt;&lt;Metric label="Memory" value={`${estimate.data.memory_request_mb} MiB`} /&gt;&lt;/div&gt;&lt;div className="estimate__metrics"&gt;&lt;Metric label="Accelerator" value={estimate.data.gpu_requested ? titleCase(estimate.data.gpu_vendor || <span class="branch-1 cbranch-no" title="branch not covered" >"GPU")</span> : "CPU"} /&gt;&lt;Metric label="Node" value={estimate.data.selected_node || "Pending"} /&gt;&lt;/div&gt;&lt;div className="estimate__metrics"&gt;&lt;Metric label="Core-hours" value={estimate.data.estimated_core_hours} /&gt;&lt;Metric label="Free CPU" value={estimate.data.capacity.available_cpu_cores.toFixed(1)} /&gt;&lt;/div&gt;
+          {estimate.data.warnings.length &gt; 0 &amp;&amp; &lt;Notice&gt;{estimate.data.warnings.join(" ")}&lt;/Notice&gt;}{estimate.data.blockers.length &gt; 0 &amp;&amp; &lt;Notice tone="danger"&gt;{estimate.data.blockers.join(" ")}&lt;/Notice&gt;}
+          &lt;label&gt;Run name&lt;input value={runName} maxLength={255} onChange={(e) =&gt; setRunName(e.target.value)} /&gt;&lt;/label&gt;
+          {launch.error &amp;&amp; <span class="branch-1 cbranch-no" title="branch not covered" >&lt;Notice tone="danger"&gt;{launch.error.message}&lt;/Notice&gt;}&lt;</span>Button className="full" disabled={!estimate.data.can_launch} loading={launch.isPending} onClick={() =&gt; launch.mutate()}&gt;&lt;Sparkles size={16} /&gt;Launch training&lt;/Button&gt;
+          &lt;button className="text-button" onClick={() =&gt; estimate.reset()}&gt;Change configuration&lt;/button&gt;&lt;/div&gt;}&lt;/Card&gt;&lt;/aside&gt;
+    &lt;/div&gt;
+  &lt;/&gt;;
+}
+&nbsp;</pre></td></tr></table></pre>
+
+                <div class='push'></div><!-- for sticky footer -->
+            </div><!-- /wrapper -->
+            <div class='footer quiet pad2 space-top1 center small'>
+                Code coverage generated by
+                <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
+                at 2026-08-13T10:27:11.026Z
+            </div>
+        <script src="../../prettify.js"></script>
+        <script>
+            window.onload = function () {
+                prettyPrint();
+            };
+        </script>
+        <script src="../../sorter.js"></script>
+        <script src="../../block-navigation.js"></script>
+    </body>
+</html>
+    

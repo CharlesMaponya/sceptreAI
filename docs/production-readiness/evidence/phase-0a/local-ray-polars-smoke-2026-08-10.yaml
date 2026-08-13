@@ -1,0 +1,79 @@
+schema_revision: sceptre-phase-0a-ray-polars-smoke-v1
+observed_at: "2026-08-10T10:51:32+02:00"
+status: partial_pass
+source:
+  git_sha: 710c327776f27f74ce2fd7b782eae2debd4a3f9a
+  worktree_clean: false
+guide:
+  path: docs/production-readiness/implementation-guide.md
+  sha256: 84896d560e5eda60a9bd1e059e0a44136aa87029b21eba739d0d81cbc42575d0
+runtime:
+  python: 3.12.13
+  ray: 2.56.1
+  polars: 1.43.2
+  pyarrow: 24.0.0
+  kuberay_operator: 1.6.2
+  kuberay_image: quay.io/kuberay/operator:v1.6.2
+  k3d: 5.9.0
+  k3s: 1.35.6+k3s1
+  helm: 4.2.3
+  image:
+    reference: sceptreai/ray-polars:2.56.1-1.43.2-local-4
+    digest: sha256:8ce06f81c22cb89c743c7e4f55db2525ed63285511e98c8b8db4a33e63243ee9
+inputs:
+  storage: SeaweedFS S3-compatible object storage
+  fixture_rows: 1000
+  bounded_batch_rows: 128
+  ray_data_block_counts: [1, 4]
+  exact_duplicate_content_groups: 209
+  full_data_pandas_conversion: false
+artifacts:
+  Dockerfile.ray.cpu: 22d7184fae04cb5cbb79480ecabe41b9acaaf5932d8a6519ae496cbb131c31d7
+  scripts/validate_ray_polars_runtime.py: 64926c577828b6cc4686b5ddf459454139db55d0eca8a6050a3c8103dc141ca0
+  packages/automl_shared/data_identity.py: 1c14f4f69ce38155a1c51c61beabba0ee9de66172527b6681143f6ae1dff33ad
+  infra/k3d/rayjob-polars-smoke.yaml: 9613958cc28c718a2434c0f7b6d7ea68135ddc100524a8131a67ddf95acba5e5
+identity:
+  source_digest: aad3701102520dd1537e246bfd8d40d12571d7274e7f8b045b08cf34fbfa4170
+  row_id_revision: sha256-source-ordinal-v1
+  content_fingerprint_revision: sha256-typed-row-v1
+  split_revision: sha256-content-fingerprint-bps-v1
+  row_set_digest: 6b7ca6414ae4a5ad78b2634b94f7516be997e6ff4126b9c6c90db9f59ce1eace
+  split_counts:
+    train: 721
+    validation: 142
+    final_test: 137
+  split_digests:
+    train: c7008b91be241dc67f523dd8c9bad4b9a51f65b0a55031394ba6682714653819
+    validation: 025809db91b58b3f1c7be6ff44d1a78f1c7b787e78a5d2443019e32fb76f2535
+    final_test: 4c80bbd3c33ed9defc652822388e41a3fed6a23b4df273bb23575a16678fa10d
+  prepared_parquet_digest: d1d98b14343229dcd5e39f64cdb3823a71e3d02ecb80facbe6b08c5d42f17d1b
+  canonical_parquet_files: 1
+runs:
+  - topology: local_container
+    status: passed
+    identity_matches: true
+  - topology: kuberay_one_worker
+    ray_nodes: 2
+    ray_workers: 1
+    status: passed
+    identity_matches: true
+  - topology: kuberay_two_workers
+    ray_nodes: 3
+    ray_workers: 2
+    status: passed
+    identity_matches: true
+failure_injection_findings:
+  - finding: A worker could not read a fixture written to the Ray head's pod-local /tmp path.
+    resolution: Move fixture and canonical prepared output to shared S3-compatible object storage.
+    regression_status: passed
+cleanup:
+  object_prefix_objects_remaining: 0
+  ephemeral_raycluster_removed_after_seconds: 60
+warnings:
+  - Ray Data emitted transient insufficient-resource warnings before completing every operator.
+  - Ray Data autoscaling coordinator actor calls emitted infinite-retry warnings during executor shutdown although KubeRay in-tree autoscaling was disabled.
+limitations:
+  - This 1000-row correctness spike is not the pending 10-GiB systems-load proof.
+  - Tune, Train, checkpoint recovery, feature/training parity, one-shot evaluation, chaos, security, cost, and provider qualification remain untested.
+  - The k3d node profile is not the pending 8-core and 24-GB single-node qualification profile.
+  - ADR-005 and QLT-001 through QLT-009 remain pending, so Phase 0A cannot pass.

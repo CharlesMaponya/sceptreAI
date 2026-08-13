@@ -42,7 +42,9 @@ def detect_target_leakage(
             warnings=[f"Target column '{target_column}' was unavailable for leakage analysis."],
         )
 
-    sample = dataframe.head(LEAKAGE_SAMPLE_ROWS).copy()
+    # Crosstab aligns Series by index. Uploaded/concatenated frames can carry
+    # duplicate labels, so use a private positional index for analysis.
+    sample = dataframe.head(LEAKAGE_SAMPLE_ROWS).reset_index(drop=True).copy()
     analyzed_rows = len(sample)
     duplicate_count = int(sample.duplicated(keep="first").sum()) if analyzed_rows else 0
     findings: list[LeakageFindingRead] = []

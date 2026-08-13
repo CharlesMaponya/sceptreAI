@@ -1,0 +1,2930 @@
+{
+  "naming_convention": {
+    "ck": "ck_%(table_name)s_%(constraint_name)s",
+    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+    "ix": "ix_%(column_0_label)s",
+    "pk": "pk_%(table_name)s",
+    "uq": "uq_%(table_name)s_%(column_0_name)s"
+  },
+  "schema_revision": "sceptre-database-metadata-snapshot-v1",
+  "table_count": 16,
+  "tables": [
+    {
+      "columns": [
+        {
+          "name": "occurred_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "request_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(64)",
+          "unique": null
+        },
+        {
+          "name": "actor_user_id",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "event_type",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(96)",
+          "unique": null
+        },
+        {
+          "name": "method",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(12)",
+          "unique": null
+        },
+        {
+          "name": "route",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(512)",
+          "unique": null
+        },
+        {
+          "name": "status_code",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "INTEGER",
+          "unique": null
+        },
+        {
+          "name": "duration_ms",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "INTEGER",
+          "unique": null
+        },
+        {
+          "name": "client_hash",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(64)",
+          "unique": null
+        },
+        {
+          "name": "user_agent",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(256)",
+          "unique": null
+        },
+        {
+          "name": "details",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "'{}'::jsonb",
+          "type": "JSONB",
+          "unique": null
+        },
+        {
+          "name": "id",
+          "nullable": false,
+          "primary_key": true,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        }
+      ],
+      "constraints": [
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "pk_audit_events",
+          "type": "PrimaryKeyConstraint"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "actor_user_id",
+            "occurred_at"
+          ],
+          "name": "ix_audit_events_actor_occurred",
+          "unique": false
+        },
+        {
+          "columns": [
+            "actor_user_id"
+          ],
+          "name": "ix_audit_events_actor_user_id",
+          "unique": false
+        },
+        {
+          "columns": [
+            "event_type",
+            "occurred_at"
+          ],
+          "name": "ix_audit_events_event_occurred",
+          "unique": false
+        },
+        {
+          "columns": [
+            "occurred_at"
+          ],
+          "name": "ix_audit_events_occurred_at",
+          "unique": false
+        }
+      ],
+      "name": "audit_events"
+    },
+    {
+      "columns": [
+        {
+          "name": "project_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "created_by_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "dataset_name",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(220)",
+          "unique": null
+        },
+        {
+          "name": "description",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "TEXT",
+          "unique": null
+        },
+        {
+          "name": "tags",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "'{}'::jsonb",
+          "type": "JSONB",
+          "unique": null
+        },
+        {
+          "name": "original_filename",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(512)",
+          "unique": null
+        },
+        {
+          "name": "byte_size",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "BIGINT",
+          "unique": null
+        },
+        {
+          "name": "part_size",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "BIGINT",
+          "unique": null
+        },
+        {
+          "name": "total_parts",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "INTEGER",
+          "unique": null
+        },
+        {
+          "name": "object_key",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(1024)",
+          "unique": true
+        },
+        {
+          "name": "multipart_upload_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(1024)",
+          "unique": null
+        },
+        {
+          "name": "resume_key",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(128)",
+          "unique": null
+        },
+        {
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "pending",
+          "type": "VARCHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "expires_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "completed_at",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "dataset_id",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "dataset_version_id",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "id",
+          "nullable": false,
+          "primary_key": true,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        }
+      ],
+      "constraints": [
+        {
+          "columns": [
+            "created_by_id"
+          ],
+          "name": "fk_dataset_upload_sessions_created_by_id_users",
+          "references": [
+            {
+              "column": "created_by_id",
+              "ondelete": "CASCADE",
+              "onupdate": null,
+              "target": "users.id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "dataset_id"
+          ],
+          "name": "fk_dataset_upload_sessions_dataset_id_datasets",
+          "references": [
+            {
+              "column": "dataset_id",
+              "ondelete": "SET NULL",
+              "onupdate": null,
+              "target": "datasets.id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "dataset_version_id"
+          ],
+          "name": "fk_dataset_upload_sessions_dataset_version_id_dataset_versions",
+          "references": [
+            {
+              "column": "dataset_version_id",
+              "ondelete": "SET NULL",
+              "onupdate": null,
+              "target": "dataset_versions.id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "project_id"
+          ],
+          "name": "fk_dataset_upload_sessions_project_id_projects",
+          "references": [
+            {
+              "column": "project_id",
+              "ondelete": "CASCADE",
+              "onupdate": null,
+              "target": "projects.id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "pk_dataset_upload_sessions",
+          "type": "PrimaryKeyConstraint"
+        },
+        {
+          "columns": [
+            "object_key"
+          ],
+          "name": "uq_dataset_upload_sessions_object_key",
+          "type": "UniqueConstraint"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "expires_at",
+            "status"
+          ],
+          "name": "ix_dataset_upload_sessions_expires_status",
+          "unique": false
+        },
+        {
+          "columns": [
+            "created_by_id",
+            "status"
+          ],
+          "name": "ix_dataset_upload_sessions_owner_status",
+          "unique": false
+        },
+        {
+          "columns": [
+            "project_id",
+            "created_at"
+          ],
+          "name": "ix_dataset_upload_sessions_project_created",
+          "unique": false
+        }
+      ],
+      "name": "dataset_upload_sessions"
+    },
+    {
+      "columns": [
+        {
+          "name": "project_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "dataset_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "created_by_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "version_number",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "INTEGER",
+          "unique": null
+        },
+        {
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "uploaded",
+          "type": "VARCHAR(9)",
+          "unique": null
+        },
+        {
+          "name": "format",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(7)",
+          "unique": null
+        },
+        {
+          "name": "object_store_type",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "minio",
+          "type": "VARCHAR(5)",
+          "unique": null
+        },
+        {
+          "name": "object_uri",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(1024)",
+          "unique": null
+        },
+        {
+          "name": "original_filename",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(512)",
+          "unique": null
+        },
+        {
+          "name": "content_hash",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(128)",
+          "unique": null
+        },
+        {
+          "name": "byte_size",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "BIGINT",
+          "unique": null
+        },
+        {
+          "name": "row_count",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "BIGINT",
+          "unique": null
+        },
+        {
+          "name": "column_count",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "INTEGER",
+          "unique": null
+        },
+        {
+          "name": "schema_json",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "'{}'::jsonb",
+          "type": "JSONB",
+          "unique": null
+        },
+        {
+          "name": "inferred_types_json",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "'{}'::jsonb",
+          "type": "JSONB",
+          "unique": null
+        },
+        {
+          "name": "quality_report_json",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "'{}'::jsonb",
+          "type": "JSONB",
+          "unique": null
+        },
+        {
+          "name": "profile_artifact_uri",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(1024)",
+          "unique": null
+        },
+        {
+          "name": "id",
+          "nullable": false,
+          "primary_key": true,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        }
+      ],
+      "constraints": [
+        {
+          "columns": [
+            "created_by_id"
+          ],
+          "name": "fk_dataset_versions_created_by_id_users",
+          "references": [
+            {
+              "column": "created_by_id",
+              "ondelete": "RESTRICT",
+              "onupdate": null,
+              "target": "users.id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "dataset_id",
+            "project_id"
+          ],
+          "name": "fk_dataset_versions_dataset_project",
+          "references": [
+            {
+              "column": "dataset_id",
+              "ondelete": "CASCADE",
+              "onupdate": null,
+              "target": "datasets.id"
+            },
+            {
+              "column": "project_id",
+              "ondelete": "CASCADE",
+              "onupdate": null,
+              "target": "datasets.project_id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "project_id"
+          ],
+          "name": "fk_dataset_versions_project_id_projects",
+          "references": [
+            {
+              "column": "project_id",
+              "ondelete": "CASCADE",
+              "onupdate": null,
+              "target": "projects.id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "pk_dataset_versions",
+          "type": "PrimaryKeyConstraint"
+        },
+        {
+          "columns": [
+            "dataset_id",
+            "version_number"
+          ],
+          "name": "uq_dataset_versions_dataset_version",
+          "type": "UniqueConstraint"
+        },
+        {
+          "columns": [
+            "id",
+            "project_id"
+          ],
+          "name": "uq_dataset_versions_project_id_id",
+          "type": "UniqueConstraint"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "content_hash"
+          ],
+          "name": "ix_dataset_versions_content_hash",
+          "unique": false
+        },
+        {
+          "columns": [
+            "project_id",
+            "dataset_id"
+          ],
+          "name": "ix_dataset_versions_project_dataset",
+          "unique": false
+        }
+      ],
+      "name": "dataset_versions"
+    },
+    {
+      "columns": [
+        {
+          "name": "project_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "created_by_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "name",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(220)",
+          "unique": null
+        },
+        {
+          "name": "description",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "TEXT",
+          "unique": null
+        },
+        {
+          "name": "latest_version_number",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "0",
+          "type": "INTEGER",
+          "unique": null
+        },
+        {
+          "name": "tags",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "'{}'::jsonb",
+          "type": "JSONB",
+          "unique": null
+        },
+        {
+          "name": "id",
+          "nullable": false,
+          "primary_key": true,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        }
+      ],
+      "constraints": [
+        {
+          "columns": [
+            "created_by_id"
+          ],
+          "name": "fk_datasets_created_by_id_users",
+          "references": [
+            {
+              "column": "created_by_id",
+              "ondelete": "RESTRICT",
+              "onupdate": null,
+              "target": "users.id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "project_id"
+          ],
+          "name": "fk_datasets_project_id_projects",
+          "references": [
+            {
+              "column": "project_id",
+              "ondelete": "CASCADE",
+              "onupdate": null,
+              "target": "projects.id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "pk_datasets",
+          "type": "PrimaryKeyConstraint"
+        },
+        {
+          "columns": [
+            "id",
+            "project_id"
+          ],
+          "name": "uq_datasets_project_id_id",
+          "type": "UniqueConstraint"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "project_id",
+            "created_at"
+          ],
+          "name": "ix_datasets_project_created_at",
+          "unique": false
+        }
+      ],
+      "name": "datasets"
+    },
+    {
+      "columns": [
+        {
+          "name": "project_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "model_run_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "name",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(160)",
+          "unique": null
+        },
+        {
+          "name": "kind",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "performance",
+          "type": "VARCHAR(12)",
+          "unique": null
+        },
+        {
+          "name": "split",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "validation",
+          "type": "VARCHAR(10)",
+          "unique": null
+        },
+        {
+          "name": "value",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "FLOAT",
+          "unique": null
+        },
+        {
+          "name": "value_json",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "'{}'::jsonb",
+          "type": "JSONB",
+          "unique": null
+        },
+        {
+          "name": "higher_is_better",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "BOOLEAN",
+          "unique": null
+        },
+        {
+          "name": "step",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "0",
+          "type": "INTEGER",
+          "unique": null
+        },
+        {
+          "name": "recorded_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "id",
+          "nullable": false,
+          "primary_key": true,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        }
+      ],
+      "constraints": [
+        {
+          "columns": [
+            "model_run_id",
+            "project_id"
+          ],
+          "name": "fk_metrics_model_run_project",
+          "references": [
+            {
+              "column": "model_run_id",
+              "ondelete": "CASCADE",
+              "onupdate": null,
+              "target": "model_runs.id"
+            },
+            {
+              "column": "project_id",
+              "ondelete": "CASCADE",
+              "onupdate": null,
+              "target": "model_runs.project_id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "project_id"
+          ],
+          "name": "fk_metrics_project_id_projects",
+          "references": [
+            {
+              "column": "project_id",
+              "ondelete": "CASCADE",
+              "onupdate": null,
+              "target": "projects.id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "pk_metrics",
+          "type": "PrimaryKeyConstraint"
+        },
+        {
+          "columns": [
+            "model_run_id",
+            "name",
+            "split",
+            "step"
+          ],
+          "name": "uq_metrics_run_name_split_step",
+          "type": "UniqueConstraint"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "model_run_id"
+          ],
+          "name": "ix_metrics_model_run",
+          "unique": false
+        },
+        {
+          "columns": [
+            "project_id",
+            "kind"
+          ],
+          "name": "ix_metrics_project_kind",
+          "unique": false
+        }
+      ],
+      "name": "metrics"
+    },
+    {
+      "columns": [
+        {
+          "name": "project_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "model_run_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "model_artifact_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "stage",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "candidate",
+          "type": "VARCHAR(10)",
+          "unique": null
+        },
+        {
+          "name": "model_name",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(220)",
+          "unique": null
+        },
+        {
+          "name": "version",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "INTEGER",
+          "unique": null
+        },
+        {
+          "name": "feature_space_hash",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(128)",
+          "unique": null
+        },
+        {
+          "name": "champion_metric_name",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(160)",
+          "unique": null
+        },
+        {
+          "name": "champion_metric_value",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "FLOAT",
+          "unique": null
+        },
+        {
+          "name": "promoted_at",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "retired_at",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "registry_metadata",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "'{}'::jsonb",
+          "type": "JSONB",
+          "unique": null
+        },
+        {
+          "name": "id",
+          "nullable": false,
+          "primary_key": true,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        }
+      ],
+      "constraints": [
+        {
+          "columns": [
+            "model_artifact_id",
+            "project_id"
+          ],
+          "name": "fk_model_registry_entries_artifact_project",
+          "references": [
+            {
+              "column": "model_artifact_id",
+              "ondelete": "RESTRICT",
+              "onupdate": null,
+              "target": "run_artifacts.id"
+            },
+            {
+              "column": "project_id",
+              "ondelete": "RESTRICT",
+              "onupdate": null,
+              "target": "run_artifacts.project_id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "model_run_id",
+            "project_id"
+          ],
+          "name": "fk_model_registry_entries_model_run_project",
+          "references": [
+            {
+              "column": "model_run_id",
+              "ondelete": "CASCADE",
+              "onupdate": null,
+              "target": "model_runs.id"
+            },
+            {
+              "column": "project_id",
+              "ondelete": "CASCADE",
+              "onupdate": null,
+              "target": "model_runs.project_id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "project_id"
+          ],
+          "name": "fk_model_registry_entries_project_id_projects",
+          "references": [
+            {
+              "column": "project_id",
+              "ondelete": "CASCADE",
+              "onupdate": null,
+              "target": "projects.id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "pk_model_registry_entries",
+          "type": "PrimaryKeyConstraint"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "project_id",
+            "feature_space_hash"
+          ],
+          "name": "ix_model_registry_project_feature_hash",
+          "unique": false
+        },
+        {
+          "columns": [
+            "project_id",
+            "stage"
+          ],
+          "name": "ix_model_registry_project_stage",
+          "unique": false
+        }
+      ],
+      "name": "model_registry_entries"
+    },
+    {
+      "columns": [
+        {
+          "name": "project_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "dataset_version_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "created_by_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "run_kind",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "training",
+          "type": "VARCHAR(14)",
+          "unique": null
+        },
+        {
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "queued",
+          "type": "VARCHAR(16)",
+          "unique": null
+        },
+        {
+          "name": "task_type",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "unspecified",
+          "type": "VARCHAR(14)",
+          "unique": null
+        },
+        {
+          "name": "target_column",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(255)",
+          "unique": null
+        },
+        {
+          "name": "run_name",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(255)",
+          "unique": null
+        },
+        {
+          "name": "pipeline_name",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(255)",
+          "unique": null
+        },
+        {
+          "name": "mlflow_run_id",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(255)",
+          "unique": null
+        },
+        {
+          "name": "zenml_run_id",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(255)",
+          "unique": null
+        },
+        {
+          "name": "k8s_namespace",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(255)",
+          "unique": null
+        },
+        {
+          "name": "k8s_job_name",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(255)",
+          "unique": null
+        },
+        {
+          "name": "gpu_requested",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "false",
+          "type": "BOOLEAN",
+          "unique": null
+        },
+        {
+          "name": "cpu_request_cores",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "FLOAT",
+          "unique": null
+        },
+        {
+          "name": "memory_request_mb",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "INTEGER",
+          "unique": null
+        },
+        {
+          "name": "cpu_limit_cores",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "FLOAT",
+          "unique": null
+        },
+        {
+          "name": "memory_limit_mb",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "INTEGER",
+          "unique": null
+        },
+        {
+          "name": "estimated_core_hours",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "FLOAT",
+          "unique": null
+        },
+        {
+          "name": "params",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "'{}'::jsonb",
+          "type": "JSONB",
+          "unique": null
+        },
+        {
+          "name": "tags",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "'{}'::jsonb",
+          "type": "JSONB",
+          "unique": null
+        },
+        {
+          "name": "failure_code",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(120)",
+          "unique": null
+        },
+        {
+          "name": "failure_message",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "TEXT",
+          "unique": null
+        },
+        {
+          "name": "plain_english_failure",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "TEXT",
+          "unique": null
+        },
+        {
+          "name": "queued_at",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "started_at",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "finished_at",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "id",
+          "nullable": false,
+          "primary_key": true,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        }
+      ],
+      "constraints": [
+        {
+          "columns": [
+            "created_by_id"
+          ],
+          "name": "fk_model_runs_created_by_id_users",
+          "references": [
+            {
+              "column": "created_by_id",
+              "ondelete": "RESTRICT",
+              "onupdate": null,
+              "target": "users.id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "dataset_version_id",
+            "project_id"
+          ],
+          "name": "fk_model_runs_dataset_version_project",
+          "references": [
+            {
+              "column": "dataset_version_id",
+              "ondelete": "RESTRICT",
+              "onupdate": null,
+              "target": "dataset_versions.id"
+            },
+            {
+              "column": "project_id",
+              "ondelete": "RESTRICT",
+              "onupdate": null,
+              "target": "dataset_versions.project_id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "project_id"
+          ],
+          "name": "fk_model_runs_project_id_projects",
+          "references": [
+            {
+              "column": "project_id",
+              "ondelete": "CASCADE",
+              "onupdate": null,
+              "target": "projects.id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "pk_model_runs",
+          "type": "PrimaryKeyConstraint"
+        },
+        {
+          "columns": [
+            "id",
+            "project_id"
+          ],
+          "name": "uq_model_runs_project_id_id",
+          "type": "UniqueConstraint"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "mlflow_run_id"
+          ],
+          "name": "ix_model_runs_mlflow_run_id",
+          "unique": false
+        },
+        {
+          "columns": [
+            "project_id",
+            "created_at"
+          ],
+          "name": "ix_model_runs_project_created_at",
+          "unique": false
+        },
+        {
+          "columns": [
+            "project_id",
+            "status"
+          ],
+          "name": "ix_model_runs_project_status",
+          "unique": false
+        }
+      ],
+      "name": "model_runs"
+    },
+    {
+      "columns": [
+        {
+          "name": "user_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "token_hash",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(128)",
+          "unique": true
+        },
+        {
+          "name": "expires_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "used_at",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "id",
+          "nullable": false,
+          "primary_key": true,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        }
+      ],
+      "constraints": [
+        {
+          "columns": [
+            "user_id"
+          ],
+          "name": "fk_password_reset_tokens_user_id_users",
+          "references": [
+            {
+              "column": "user_id",
+              "ondelete": "CASCADE",
+              "onupdate": null,
+              "target": "users.id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "pk_password_reset_tokens",
+          "type": "PrimaryKeyConstraint"
+        },
+        {
+          "columns": [
+            "token_hash"
+          ],
+          "name": "uq_password_reset_tokens_token_hash",
+          "type": "UniqueConstraint"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "user_id",
+            "expires_at"
+          ],
+          "name": "ix_password_reset_tokens_user_expires",
+          "unique": false
+        }
+      ],
+      "name": "password_reset_tokens"
+    },
+    {
+      "columns": [
+        {
+          "name": "project_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "dataset_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "dataset_version_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "created_by_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "target_column",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(255)",
+          "unique": null
+        },
+        {
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "queued",
+          "type": "VARCHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "current_stage",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "overview",
+          "type": "VARCHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "progress",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "0",
+          "type": "FLOAT",
+          "unique": null
+        },
+        {
+          "name": "total_columns",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "0",
+          "type": "INTEGER",
+          "unique": null
+        },
+        {
+          "name": "completed_columns",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "0",
+          "type": "INTEGER",
+          "unique": null
+        },
+        {
+          "name": "row_count",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "BIGINT",
+          "unique": null
+        },
+        {
+          "name": "overview_json",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "'{}'::jsonb",
+          "type": "JSONB",
+          "unique": null
+        },
+        {
+          "name": "feature_profiles_json",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "'{}'::jsonb",
+          "type": "JSONB",
+          "unique": null
+        },
+        {
+          "name": "relationships_json",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "'[]'::jsonb",
+          "type": "JSONB",
+          "unique": null
+        },
+        {
+          "name": "preparation_json",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "'[]'::jsonb",
+          "type": "JSONB",
+          "unique": null
+        },
+        {
+          "name": "warnings_json",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "'[]'::jsonb",
+          "type": "JSONB",
+          "unique": null
+        },
+        {
+          "name": "artifact_uris_json",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "'{}'::jsonb",
+          "type": "JSONB",
+          "unique": null
+        },
+        {
+          "name": "failure_message",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "TEXT",
+          "unique": null
+        },
+        {
+          "name": "auto_started",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "false",
+          "type": "BOOLEAN",
+          "unique": null
+        },
+        {
+          "name": "started_at",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "finished_at",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "heartbeat_at",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "id",
+          "nullable": false,
+          "primary_key": true,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        }
+      ],
+      "constraints": [
+        {
+          "columns": [
+            "created_by_id"
+          ],
+          "name": "fk_profiling_jobs_created_by_id_users",
+          "references": [
+            {
+              "column": "created_by_id",
+              "ondelete": "RESTRICT",
+              "onupdate": null,
+              "target": "users.id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "dataset_version_id",
+            "project_id"
+          ],
+          "name": "fk_profiling_jobs_dataset_version_project",
+          "references": [
+            {
+              "column": "dataset_version_id",
+              "ondelete": "CASCADE",
+              "onupdate": null,
+              "target": "dataset_versions.id"
+            },
+            {
+              "column": "project_id",
+              "ondelete": "CASCADE",
+              "onupdate": null,
+              "target": "dataset_versions.project_id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "project_id"
+          ],
+          "name": "fk_profiling_jobs_project_id_projects",
+          "references": [
+            {
+              "column": "project_id",
+              "ondelete": "CASCADE",
+              "onupdate": null,
+              "target": "projects.id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "pk_profiling_jobs",
+          "type": "PrimaryKeyConstraint"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "project_id",
+            "dataset_version_id"
+          ],
+          "name": "ix_profiling_jobs_project_version",
+          "unique": false
+        },
+        {
+          "columns": [
+            "status",
+            "updated_at"
+          ],
+          "name": "ix_profiling_jobs_status_updated",
+          "unique": false
+        }
+      ],
+      "name": "profiling_jobs"
+    },
+    {
+      "columns": [
+        {
+          "name": "project_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "user_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "invited_by_id",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "role",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "viewer",
+          "type": "VARCHAR(6)",
+          "unique": null
+        },
+        {
+          "name": "permissions",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "'{}'::jsonb",
+          "type": "JSONB",
+          "unique": null
+        },
+        {
+          "name": "expires_at",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "accepted_at",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "id",
+          "nullable": false,
+          "primary_key": true,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        }
+      ],
+      "constraints": [
+        {
+          "columns": [
+            "invited_by_id"
+          ],
+          "name": "fk_project_memberships_invited_by_id_users",
+          "references": [
+            {
+              "column": "invited_by_id",
+              "ondelete": "SET NULL",
+              "onupdate": null,
+              "target": "users.id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "project_id"
+          ],
+          "name": "fk_project_memberships_project_id_projects",
+          "references": [
+            {
+              "column": "project_id",
+              "ondelete": "CASCADE",
+              "onupdate": null,
+              "target": "projects.id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "user_id"
+          ],
+          "name": "fk_project_memberships_user_id_users",
+          "references": [
+            {
+              "column": "user_id",
+              "ondelete": "CASCADE",
+              "onupdate": null,
+              "target": "users.id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "pk_project_memberships",
+          "type": "PrimaryKeyConstraint"
+        },
+        {
+          "columns": [
+            "project_id",
+            "user_id"
+          ],
+          "name": "uq_project_memberships_project_user",
+          "type": "UniqueConstraint"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "user_id",
+            "role"
+          ],
+          "name": "ix_project_memberships_user_role",
+          "unique": false
+        }
+      ],
+      "name": "project_memberships"
+    },
+    {
+      "columns": [
+        {
+          "name": "project_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "created_by_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "token_hash",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(128)",
+          "unique": true
+        },
+        {
+          "name": "role",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "viewer",
+          "type": "VARCHAR(6)",
+          "unique": null
+        },
+        {
+          "name": "permissions",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "'{}'::jsonb",
+          "type": "JSONB",
+          "unique": null
+        },
+        {
+          "name": "expires_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "max_uses",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "1",
+          "type": "INTEGER",
+          "unique": null
+        },
+        {
+          "name": "used_count",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "0",
+          "type": "INTEGER",
+          "unique": null
+        },
+        {
+          "name": "revoked_at",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "id",
+          "nullable": false,
+          "primary_key": true,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        }
+      ],
+      "constraints": [
+        {
+          "columns": [
+            "created_by_id"
+          ],
+          "name": "fk_project_share_links_created_by_id_users",
+          "references": [
+            {
+              "column": "created_by_id",
+              "ondelete": "CASCADE",
+              "onupdate": null,
+              "target": "users.id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "project_id"
+          ],
+          "name": "fk_project_share_links_project_id_projects",
+          "references": [
+            {
+              "column": "project_id",
+              "ondelete": "CASCADE",
+              "onupdate": null,
+              "target": "projects.id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "pk_project_share_links",
+          "type": "PrimaryKeyConstraint"
+        },
+        {
+          "columns": [
+            "token_hash"
+          ],
+          "name": "uq_project_share_links_token_hash",
+          "type": "UniqueConstraint"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "project_id",
+            "expires_at"
+          ],
+          "name": "ix_project_share_links_project_expires",
+          "unique": false
+        },
+        {
+          "columns": [
+            "token_hash"
+          ],
+          "name": "ix_project_share_links_token_hash",
+          "unique": false
+        }
+      ],
+      "name": "project_share_links"
+    },
+    {
+      "columns": [
+        {
+          "name": "owner_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "created_by_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "name",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(180)",
+          "unique": null
+        },
+        {
+          "name": "description",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "TEXT",
+          "unique": null
+        },
+        {
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "active",
+          "type": "VARCHAR(8)",
+          "unique": null
+        },
+        {
+          "name": "object_prefix",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(512)",
+          "unique": true
+        },
+        {
+          "name": "settings",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "'{}'::jsonb",
+          "type": "JSONB",
+          "unique": null
+        },
+        {
+          "name": "id",
+          "nullable": false,
+          "primary_key": true,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        }
+      ],
+      "constraints": [
+        {
+          "columns": [
+            "created_by_id"
+          ],
+          "name": "fk_projects_created_by_id_users",
+          "references": [
+            {
+              "column": "created_by_id",
+              "ondelete": "RESTRICT",
+              "onupdate": null,
+              "target": "users.id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "owner_id"
+          ],
+          "name": "fk_projects_owner_id_users",
+          "references": [
+            {
+              "column": "owner_id",
+              "ondelete": "RESTRICT",
+              "onupdate": null,
+              "target": "users.id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "pk_projects",
+          "type": "PrimaryKeyConstraint"
+        },
+        {
+          "columns": [
+            "object_prefix"
+          ],
+          "name": "uq_projects_object_prefix",
+          "type": "UniqueConstraint"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "created_by_id"
+          ],
+          "name": "ix_projects_created_by",
+          "unique": false
+        },
+        {
+          "columns": [
+            "owner_id",
+            "status"
+          ],
+          "name": "ix_projects_owner_status",
+          "unique": false
+        }
+      ],
+      "name": "projects"
+    },
+    {
+      "columns": [
+        {
+          "name": "scope",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(64)",
+          "unique": null
+        },
+        {
+          "name": "key_hash",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(64)",
+          "unique": null
+        },
+        {
+          "name": "window_started_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "hit_count",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "1",
+          "type": "INTEGER",
+          "unique": null
+        },
+        {
+          "name": "id",
+          "nullable": false,
+          "primary_key": true,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        }
+      ],
+      "constraints": [
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "pk_rate_limit_buckets",
+          "type": "PrimaryKeyConstraint"
+        },
+        {
+          "columns": [
+            "key_hash",
+            "scope",
+            "window_started_at"
+          ],
+          "name": "uq_rate_limit_bucket_window",
+          "type": "UniqueConstraint"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "window_started_at"
+          ],
+          "name": "ix_rate_limit_buckets_window",
+          "unique": false
+        }
+      ],
+      "name": "rate_limit_buckets"
+    },
+    {
+      "columns": [
+        {
+          "name": "user_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "token_hash",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(128)",
+          "unique": true
+        },
+        {
+          "name": "family_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "issued_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "expires_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "rotated_at",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "revoked_at",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "user_agent",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "TEXT",
+          "unique": null
+        },
+        {
+          "name": "ip_address",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(64)",
+          "unique": null
+        },
+        {
+          "name": "id",
+          "nullable": false,
+          "primary_key": true,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        }
+      ],
+      "constraints": [
+        {
+          "columns": [
+            "user_id"
+          ],
+          "name": "fk_refresh_tokens_user_id_users",
+          "references": [
+            {
+              "column": "user_id",
+              "ondelete": "CASCADE",
+              "onupdate": null,
+              "target": "users.id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "pk_refresh_tokens",
+          "type": "PrimaryKeyConstraint"
+        },
+        {
+          "columns": [
+            "token_hash"
+          ],
+          "name": "uq_refresh_tokens_token_hash",
+          "type": "UniqueConstraint"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "family_id"
+          ],
+          "name": "ix_refresh_tokens_family",
+          "unique": false
+        },
+        {
+          "columns": [
+            "user_id",
+            "expires_at"
+          ],
+          "name": "ix_refresh_tokens_user_expires",
+          "unique": false
+        }
+      ],
+      "name": "refresh_tokens"
+    },
+    {
+      "columns": [
+        {
+          "name": "project_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "model_run_id",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "kind",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(17)",
+          "unique": null
+        },
+        {
+          "name": "name",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(220)",
+          "unique": null
+        },
+        {
+          "name": "object_uri",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(1024)",
+          "unique": null
+        },
+        {
+          "name": "content_hash",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(128)",
+          "unique": null
+        },
+        {
+          "name": "byte_size",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "INTEGER",
+          "unique": null
+        },
+        {
+          "name": "artifact_metadata",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "'{}'::jsonb",
+          "type": "JSONB",
+          "unique": null
+        },
+        {
+          "name": "id",
+          "nullable": false,
+          "primary_key": true,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        }
+      ],
+      "constraints": [
+        {
+          "columns": [
+            "model_run_id",
+            "project_id"
+          ],
+          "name": "fk_run_artifacts_model_run_project",
+          "references": [
+            {
+              "column": "model_run_id",
+              "ondelete": "CASCADE",
+              "onupdate": null,
+              "target": "model_runs.id"
+            },
+            {
+              "column": "project_id",
+              "ondelete": "CASCADE",
+              "onupdate": null,
+              "target": "model_runs.project_id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "project_id"
+          ],
+          "name": "fk_run_artifacts_project_id_projects",
+          "references": [
+            {
+              "column": "project_id",
+              "ondelete": "CASCADE",
+              "onupdate": null,
+              "target": "projects.id"
+            }
+          ],
+          "type": "ForeignKeyConstraint"
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "pk_run_artifacts",
+          "type": "PrimaryKeyConstraint"
+        },
+        {
+          "columns": [
+            "id",
+            "project_id"
+          ],
+          "name": "uq_run_artifacts_project_id_id",
+          "type": "UniqueConstraint"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "project_id",
+            "kind"
+          ],
+          "name": "ix_run_artifacts_project_kind",
+          "unique": false
+        }
+      ],
+      "name": "run_artifacts"
+    },
+    {
+      "columns": [
+        {
+          "name": "email",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(320)",
+          "unique": true
+        },
+        {
+          "name": "full_name",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(200)",
+          "unique": null
+        },
+        {
+          "name": "password_hash",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "TEXT",
+          "unique": null
+        },
+        {
+          "name": "sso_issuer",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(512)",
+          "unique": null
+        },
+        {
+          "name": "sso_subject",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "VARCHAR(512)",
+          "unique": true
+        },
+        {
+          "name": "auth_provider",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "simple",
+          "type": "VARCHAR(6)",
+          "unique": null
+        },
+        {
+          "name": "global_role",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "member",
+          "type": "VARCHAR(6)",
+          "unique": null
+        },
+        {
+          "name": "is_active",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "true",
+          "type": "BOOLEAN",
+          "unique": null
+        },
+        {
+          "name": "is_verified",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "false",
+          "type": "BOOLEAN",
+          "unique": null
+        },
+        {
+          "name": "token_version",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "1",
+          "type": "INTEGER",
+          "unique": null
+        },
+        {
+          "name": "last_login_at",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null,
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "preferences",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "'{}'::jsonb",
+          "type": "JSONB",
+          "unique": null
+        },
+        {
+          "name": "id",
+          "nullable": false,
+          "primary_key": true,
+          "server_default": null,
+          "type": "CHAR(32)",
+          "unique": null
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "now()",
+          "type": "DATETIME",
+          "unique": null
+        }
+      ],
+      "constraints": [
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "pk_users",
+          "type": "PrimaryKeyConstraint"
+        },
+        {
+          "columns": [
+            "sso_subject"
+          ],
+          "name": "uq_users_sso_subject",
+          "type": "UniqueConstraint"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "email"
+          ],
+          "name": "ix_users_email",
+          "unique": true
+        }
+      ],
+      "name": "users"
+    }
+  ]
+}

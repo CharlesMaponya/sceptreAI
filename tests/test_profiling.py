@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
-import dask.dataframe as dd
+import automl_api.services.ray_polars_profiling as ray_profiler
 import pandas as pd
+import pyarrow as pa
+import pytest
+import ray
 from automl_api.models.enums import DatasetFormat, TaskType
 from automl_api.schemas.profiling import ColumnProfileRead
-from automl_api.services.dask_profiling import _profile_column as _profile_dask_column
 from automl_api.services.leakage import detect_target_leakage
 from automl_api.services.profiling import (
     _build_preparation_plan,
@@ -15,9 +18,23 @@ from automl_api.services.profiling import (
     _infer_task,
     _load_csv_rows,
     _relationships_against_target,
-    _should_use_dask,
+    _should_use_ray,
     _statistics_for_values,
 )
+from automl_api.services.ray_polars_profiling import (
+    _profile_column as _profile_ray_column,
+)
+from automl_api.services.ray_polars_profiling import _summarize_column_batch
+
+
+@pytest.fixture(scope="module", autouse=True)
+def local_ray_runtime():
+    started_here = not ray.is_initialized()
+    if started_here:
+        ray.init(num_cpus=2, include_dashboard=False, log_to_driver=False)
+    yield
+    if started_here:
+        ray.shutdown()
 
 
 def test_infer_task_without_target_defaults_to_clustering() -> None:
@@ -300,33 +317,94 @@ def test_csv_loader_profiles_every_row() -> None:
     assert rows[-1]["value"] == "5"
 
 
-def test_memory_risk_switches_csv_to_dask() -> None:
+def test_memory_risk_switches_csv_to_ray() -> None:
     version = SimpleNamespace(
         format=DatasetFormat.CSV,
         original_filename="large.csv",
         byte_size=100 * 1024 * 1024,
     )
 
-    assert _should_use_dask(version, available_memory_bytes=1024 * 1024 * 1024)
+    assert _should_use_ray(version, available_memory_bytes=1024 * 1024 * 1024)
 
 
-def test_small_csv_stays_on_exact_in_memory_path() -> None:
+def test_small_csv_uses_primary_ray_path() -> None:
     version = SimpleNamespace(
         format=DatasetFormat.CSV,
         original_filename="small.csv",
         byte_size=10 * 1024 * 1024,
     )
 
-    assert not _should_use_dask(version, available_memory_bytes=8 * 1024 * 1024 * 1024)
+    assert _should_use_ray(version, available_memory_bytes=8 * 1024 * 1024 * 1024)
 
 
-def test_dask_profile_aggregates_all_partitions() -> None:
-    dataframe = dd.from_pandas(
-        pd.DataFrame({"amount": list(range(1, 101))}),
-        npartitions=7,
+def test_non_line_delimited_json_uses_compatibility_path() -> None:
+    version = SimpleNamespace(
+        format=DatasetFormat.JSON,
+        original_filename="records.json",
+        byte_size=10 * 1024 * 1024,
     )
 
-    profile = _profile_dask_column(dataframe["amount"], "amount", 100)
+    assert not _should_use_ray(version)
+
+
+def test_polars_batch_summary_is_bounded_and_preserves_counts() -> None:
+    batch = pa.table({"value": [str(index % 17) for index in range(10_000)]})
+
+    result = _summarize_column_batch(batch, column="value")
+    summary = json.loads(result.column("summary_json")[0].as_py())
+
+    assert result.num_rows == 1
+    assert summary["row_count"] == 10_000
+    assert summary["present_count"] == 10_000
+    assert len(summary["distinct_hashes"]) == 17
+
+
+def test_ray_loader_reads_delimited_csv_from_object_store(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "records.csv"
+    source.write_text('name;amount\n"alpha";1\n"beta";2\n', encoding="utf-8")
+    store = SimpleNamespace(
+        dataframe_source=lambda _uri: (str(source), {}),
+        read_head=lambda _uri: source.read_bytes(),
+    )
+    monkeypatch.setattr(ray_profiler, "get_object_store", lambda: store)
+
+    dataset = ray_profiler._load_dataset(
+        SimpleNamespace(format=DatasetFormat.CSV, object_uri="minio://test/records.csv")
+    )
+
+    assert [dict(row) for row in dataset.take_all()] == [
+        {"name": "alpha", "amount": 1},
+        {"name": "beta", "amount": 2},
+    ]
+
+
+def test_ray_loader_reads_line_delimited_json_from_object_store(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "records.jsonl"
+    source.write_text('{"name":"alpha"}\n{"name":"beta"}\n', encoding="utf-8")
+    store = SimpleNamespace(
+        dataframe_source=lambda _uri: (str(source), {}),
+        read_head=lambda _uri: source.read_bytes(),
+    )
+    monkeypatch.setattr(ray_profiler, "get_object_store", lambda: store)
+
+    dataset = ray_profiler._load_dataset(
+        SimpleNamespace(format=DatasetFormat.JSON, object_uri="minio://test/records.jsonl")
+    )
+
+    assert [dict(row) for row in dataset.take_all()] == [
+        {"name": "alpha"},
+        {"name": "beta"},
+    ]
+
+
+def test_ray_polars_profile_aggregates_all_blocks() -> None:
+    dataset = ray.data.from_arrow(pa.table({"amount": list(range(1, 101))})).repartition(7)
+
+    profile = _profile_ray_column(dataset, "amount", 100)
 
     assert profile.statistics["count"] == 100
     assert profile.statistics["min"] == 1
@@ -334,9 +412,9 @@ def test_dask_profile_aggregates_all_partitions() -> None:
     assert sum(bucket["count"] for bucket in profile.distribution) == 100
 
 
-def test_dask_profile_detects_unix_seconds() -> None:
-    dataframe = dd.from_pandas(
-        pd.DataFrame(
+def test_ray_polars_profile_detects_unix_seconds() -> None:
+    dataset = ray.data.from_arrow(
+        pa.table(
             {
                 "event_epoch": [
                     1_704_067_200,
@@ -344,12 +422,11 @@ def test_dask_profile_detects_unix_seconds() -> None:
                     1_704_240_000,
                 ]
             }
-        ),
-        npartitions=2,
+        )
     )
 
-    profile = _profile_dask_column(
-        dataframe["event_epoch"],
+    profile = _profile_ray_column(
+        dataset,
         "event_epoch",
         3,
     )
@@ -359,9 +436,9 @@ def test_dask_profile_detects_unix_seconds() -> None:
     assert profile.statistics["min"].startswith("2024-01-01")
 
 
-def test_dask_text_profile_includes_word_cloud_frequencies() -> None:
-    dataframe = dd.from_pandas(
-        pd.DataFrame(
+def test_ray_polars_text_profile_includes_word_cloud_frequencies() -> None:
+    dataset = ray.data.from_arrow(
+        pa.table(
             {
                 "tweet": [
                     "Players love the smooth Borderlands gameplay update today",
@@ -370,11 +447,10 @@ def test_dask_text_profile_includes_word_cloud_frequencies() -> None:
                 ]
                 * 4
             }
-        ),
-        npartitions=3,
+        )
     )
 
-    profile = _profile_dask_column(dataframe["tweet"], "tweet", 12)
+    profile = _profile_ray_column(dataset, "tweet", 12)
 
     frequencies = {
         item["word"]: item["count"]

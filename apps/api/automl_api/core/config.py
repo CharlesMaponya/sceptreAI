@@ -119,7 +119,7 @@ class Settings:
     inference_ingress_host_template: str | None = None
     inference_ingress_tls_secret_name: str | None = None
     training_active_deadline_seconds: int = 6 * 60 * 60
-    training_max_active_deadline_seconds: int = 24 * 60 * 60
+    training_max_active_deadline_seconds: int = 7 * 24 * 60 * 60
     training_deadline_multiplier: int = 6
 
     @property

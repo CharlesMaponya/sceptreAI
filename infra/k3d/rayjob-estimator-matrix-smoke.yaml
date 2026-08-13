@@ -1,0 +1,82 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sceptre-ray-estimator-smoke
+---
+apiVersion: ray.io/v1
+kind: RayJob
+metadata:
+  name: ray-estimator-matrix-smoke
+  namespace: sceptre-ray-estimator-smoke
+spec:
+  entrypoint: python /home/ray/app/validate_estimator_matrix_runtime.py
+  shutdownAfterJobFinishes: true
+  ttlSecondsAfterFinished: 600
+  activeDeadlineSeconds: 900
+  submitterConfig:
+    backoffLimit: 0
+  rayClusterSpec:
+    rayVersion: "2.56.1"
+    enableInTreeAutoscaling: false
+    headGroupSpec:
+      rayStartParams: {dashboard-host: "0.0.0.0", num-cpus: "0"}
+      template:
+        spec:
+          containers:
+            - name: ray-head
+              image: sceptreai/ray-polars:2.56.1-1.43.2-local-14
+              imagePullPolicy: IfNotPresent
+              envFrom:
+                - secretRef:
+                    name: sceptre-ray-estimator-object-store
+              env:
+                - name: AWS_DEFAULT_REGION
+                  value: us-east-1
+                - name: AWS_EC2_METADATA_DISABLED
+                  value: "true"
+                - name: SCEPTRE_TRAIN_STORAGE_PATH
+                  value: automl/phase-0a/estimator-matrix
+                - name: SCEPTRE_TRAIN_S3_ENDPOINT
+                  value: sceptre-seaweedfs.sceptre.svc.cluster.local:8333
+                - name: SCEPTRE_TRAIN_RUN_NAME
+                  value: phase-0a-estimator-matrix
+                - name: SCEPTRE_EXPECT_PRIOR_ROUNDS
+                  value: "0"
+                - name: SCEPTRE_TRAIN_START_DELAY_SECONDS
+                  value: "0"
+              resources:
+                requests: {cpu: "2", memory: 1536Mi}
+                limits: {cpu: "4", memory: 3Gi}
+    workerGroupSpecs:
+      - groupName: cpu
+        replicas: 2
+        minReplicas: 2
+        maxReplicas: 2
+        rayStartParams: {num-cpus: "1"}
+        template:
+          spec:
+            containers:
+              - name: ray-worker
+                image: sceptreai/ray-polars:2.56.1-1.43.2-local-14
+                imagePullPolicy: IfNotPresent
+                envFrom:
+                  - secretRef:
+                      name: sceptre-ray-estimator-object-store
+                env:
+                  - name: AWS_DEFAULT_REGION
+                    value: us-east-1
+                  - name: AWS_EC2_METADATA_DISABLED
+                    value: "true"
+                  - name: SCEPTRE_TRAIN_STORAGE_PATH
+                    value: automl/phase-0a/estimator-matrix
+                  - name: SCEPTRE_TRAIN_S3_ENDPOINT
+                    value: sceptre-seaweedfs.sceptre.svc.cluster.local:8333
+                  - name: SCEPTRE_TRAIN_RUN_NAME
+                    value: phase-0a-estimator-matrix
+                  - name: SCEPTRE_EXPECT_PRIOR_ROUNDS
+                    value: "0"
+                  - name: SCEPTRE_TRAIN_START_DELAY_SECONDS
+                    value: "0"
+                resources:
+                  requests: {cpu: 500m, memory: 768Mi}
+                  limits: {cpu: "1", memory: 1536Mi}

@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import sys
 import uuid
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import automl_api.services.validation as validation_service
@@ -10,7 +11,10 @@ import joblib
 import numpy as np
 import pandas as pd
 import pytest
-from automl_api.models.enums import RunStatus, TaskType
+from automl_api.models.enums import ArtifactKind, RunKind, RunStatus, TaskType
+from automl_api.models.runs import ModelRun, RunArtifact
+from automl_api.schemas.training import ClusterCapacityRead, TrainingEstimateRead
+from automl_api.schemas.validation import ExplainabilityLaunchRequest, ValidationLaunchRequest
 from automl_api.services.validation import _reusable_explainability_run
 from automl_api.training import analysis, pipeline
 from fastapi import HTTPException
@@ -201,9 +205,11 @@ def test_explainability_result_includes_global_and_sample_percentages(
         }
     )
     monkeypatch.setitem(sys.modules, "shap", SimpleNamespace(Explainer=Explainer))
-    monkeypatch.setattr(analysis, "_load_model", lambda *_: SimpleNamespace(
-        predict=lambda values: values["first"].to_numpy()
-    ))
+    monkeypatch.setattr(
+        analysis,
+        "_load_model",
+        lambda *_: SimpleNamespace(predict=lambda values: values["first"].to_numpy()),
+    )
     monkeypatch.setattr(analysis, "_load_dataframe", lambda _: frame.copy())
     run = SimpleNamespace(
         target_column="target",
@@ -274,12 +280,18 @@ def test_failed_training_run_allows_shap_for_successful_candidate(monkeypatch) -
 
 
 def test_external_validation_rejects_missing_training_columns() -> None:
-    source = SimpleNamespace(dataset_version=SimpleNamespace(schema_json={
-        "columns": [{"name": "age"}, {"name": "income"}, {"name": "target"}],
-    }))
-    external = SimpleNamespace(schema_json={
-        "columns": [{"name": "age"}, {"name": "target"}],
-    })
+    source = SimpleNamespace(
+        dataset_version=SimpleNamespace(
+            schema_json={
+                "columns": [{"name": "age"}, {"name": "income"}, {"name": "target"}],
+            }
+        )
+    )
+    external = SimpleNamespace(
+        schema_json={
+            "columns": [{"name": "age"}, {"name": "target"}],
+        }
+    )
 
     with pytest.raises(HTTPException, match="Missing columns: income"):
         validation_service._require_matching_validation_columns(source, external)
@@ -305,3 +317,326 @@ def test_non_predictive_cluster_model_uses_fitted_centroids() -> None:
 
     assert len(predictions) == len(features)
     assert len(set(predictions)) == 2
+
+
+def _source_run() -> ModelRun:
+    now = datetime.now(UTC)
+    return ModelRun(
+        id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        dataset_version_id=uuid.uuid4(),
+        created_by_id=uuid.uuid4(),
+        run_kind=RunKind.TRAINING,
+        status=RunStatus.SUCCEEDED,
+        task_type=TaskType.CLASSIFICATION,
+        target_column="target",
+        mlflow_run_id="winner-run",
+        params={"positive_label": "yes"},
+        tags={
+            "winner": "LogisticRegression",
+            "leaderboard": [
+                {
+                    "model": "LogisticRegression",
+                    "status": "succeeded",
+                    "model_artifact_uri": "s3://models/model.joblib",
+                }
+            ],
+        },
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def _estimate(*, can_launch: bool = True) -> TrainingEstimateRead:
+    return TrainingEstimateRead(
+        capacity=ClusterCapacityRead(
+            connected=True,
+            source="test",
+            total_cpu_cores=4,
+            requested_cpu_cores=0,
+            available_cpu_cores=4,
+            total_memory_mb=8192,
+            requested_memory_mb=0,
+            available_memory_mb=8192,
+            ready_nodes=1,
+            gpu_available=False,
+            active_training_jobs=0,
+        ),
+        estimated_working_set_mb=256,
+        cpu_request_cores=1,
+        cpu_limit_cores=2,
+        memory_request_mb=512,
+        memory_limit_mb=1024,
+        gpu_requested=False,
+        expected_minutes=5,
+        active_deadline_seconds=600,
+        estimated_core_hours=0.1,
+        max_concurrent_jobs=15,
+        can_launch=can_launch,
+        blockers=[] if can_launch else ["capacity"],
+    )
+
+
+class _AnalysisDB:
+    def __init__(self):
+        self.added = []
+        self.flushes = 0
+
+    def add(self, value):
+        now = datetime.now(UTC)
+        value.id = value.id or uuid.uuid4()
+        value.created_at = value.created_at or now
+        value.updated_at = value.updated_at or now
+        self.added.append(value)
+
+    def flush(self):
+        self.flushes += 1
+
+
+class _AnalysisClient:
+    def __init__(self, *, error: Exception | None = None):
+        self.settings = SimpleNamespace(training_namespace="analysis")
+        self.error = error
+        self.created = []
+
+    def build_job_manifest(self, *, run_id, project_id, estimate):
+        return {"metadata": {"name": f"analysis-{run_id}"}}
+
+    def create_job(self, manifest):
+        if self.error:
+            raise self.error
+        self.created.append(manifest)
+
+
+def test_analysis_launch_persists_and_submits_isolated_job(monkeypatch) -> None:
+    source = _source_run()
+    version = SimpleNamespace(id=uuid.uuid4())
+    db = _AnalysisDB()
+    client = _AnalysisClient()
+    monkeypatch.setattr(validation_service, "_lock_training_admission", lambda *_: None)
+    monkeypatch.setattr(validation_service, "estimate_training_run", lambda *_: _estimate())
+
+    result = validation_service._launch_analysis_run(
+        db,
+        SimpleNamespace(id=uuid.uuid4()),
+        source,
+        version,
+        source.tags["leaderboard"][0],
+        RunKind.VALIDATION,
+        expected_minutes=5,
+        extra_params={"evaluation_column": None},
+        client=client,
+    )
+
+    assert result.run.status == RunStatus.QUEUED
+    assert result.run.params["model_mlflow_run_id"] == "winner-run"
+    assert result.manifest["metadata"]["name"].startswith("analysis-")
+    assert client.created == [result.manifest]
+
+
+def test_analysis_launch_rejects_precheck_and_records_submission_failure(monkeypatch) -> None:
+    source = _source_run()
+    version = SimpleNamespace(id=uuid.uuid4())
+    monkeypatch.setattr(validation_service, "_lock_training_admission", lambda *_: None)
+    monkeypatch.setattr(
+        validation_service, "estimate_training_run", lambda *_: _estimate(can_launch=False)
+    )
+    with pytest.raises(HTTPException, match="Analysis precheck failed"):
+        validation_service._launch_analysis_run(
+            _AnalysisDB(),
+            SimpleNamespace(id=uuid.uuid4()),
+            source,
+            version,
+            source.tags["leaderboard"][0],
+            RunKind.VALIDATION,
+            expected_minutes=5,
+            extra_params={},
+            client=_AnalysisClient(),
+        )
+
+    monkeypatch.setattr(validation_service, "estimate_training_run", lambda *_: _estimate())
+    db = _AnalysisDB()
+    with pytest.raises(HTTPException, match="could not start"):
+        validation_service._launch_analysis_run(
+            db,
+            SimpleNamespace(id=uuid.uuid4()),
+            source,
+            version,
+            source.tags["leaderboard"][0],
+            RunKind.EXPLAINABILITY,
+            expected_minutes=5,
+            extra_params={},
+            client=_AnalysisClient(error=RuntimeError("cluster rejected")),
+        )
+    assert db.added[0].status == RunStatus.FAILED
+    assert db.added[0].failure_code == "KUBERNETES_JOB_CREATE_FAILED"
+
+
+def test_validation_launch_enforces_target_and_evaluation_columns(monkeypatch) -> None:
+    source = _source_run()
+    entry = source.tags["leaderboard"][0]
+    missing_target = SimpleNamespace(id=uuid.uuid4(), schema_json={"columns": [{"name": "x"}]})
+    monkeypatch.setattr(validation_service, "_source_model", lambda *_: (source, entry))
+    monkeypatch.setattr(validation_service, "_dataset_version", lambda *_: missing_target)
+    monkeypatch.setattr(validation_service, "_require_matching_validation_columns", lambda *_: None)
+    request = ValidationLaunchRequest(
+        model_name="LogisticRegression",
+        dataset_version_id=missing_target.id,
+    )
+    with pytest.raises(HTTPException, match="does not contain target"):
+        validation_service.launch_validation_run(
+            SimpleNamespace(), SimpleNamespace(), source.project_id, source.id, request
+        )
+
+    source.target_column = None
+    request.evaluation_column = "segment"
+    with pytest.raises(HTTPException, match="evaluation column is missing"):
+        validation_service.launch_validation_run(
+            SimpleNamespace(), SimpleNamespace(), source.project_id, source.id, request
+        )
+
+
+def test_analysis_queries_are_source_scoped(monkeypatch) -> None:
+    source = _source_run()
+    matching = SimpleNamespace(tags={"source_training_run_id": str(source.id)})
+    foreign = SimpleNamespace(tags={"source_training_run_id": str(uuid.uuid4())})
+    db = SimpleNamespace(
+        scalars=lambda _: SimpleNamespace(all=lambda: [matching, foreign]),
+        scalar=lambda _: None,
+    )
+    monkeypatch.setattr(validation_service, "require_project_role", lambda *_: None)
+    monkeypatch.setattr(validation_service, "_training_run", lambda *_: source)
+    monkeypatch.setattr(validation_service, "_leaderboard_parent", lambda _, run: run)
+
+    assert validation_service.list_analysis_runs(
+        db, SimpleNamespace(), source.project_id, source.id
+    ) == [matching]
+    with pytest.raises(HTTPException, match="run not found"):
+        validation_service.get_analysis_result(
+            db, SimpleNamespace(), source.project_id, source.id, uuid.uuid4()
+        )
+
+
+def test_analysis_result_normalizes_features_and_artifacts(monkeypatch) -> None:
+    source = _source_run()
+    now = datetime.now(UTC)
+    run = ModelRun(
+        id=uuid.uuid4(),
+        project_id=source.project_id,
+        dataset_version_id=source.dataset_version_id,
+        created_by_id=source.created_by_id,
+        run_kind=RunKind.EXPLAINABILITY,
+        status=RunStatus.SUCCEEDED,
+        task_type=source.task_type,
+        params={"model_name": "LogisticRegression"},
+        tags={
+            "source_training_run_id": str(source.id),
+            "metrics": {"accuracy": 0.9},
+            "feature_importance": [{"feature": "x", "mean_absolute_shap": 2.0}],
+        },
+        created_at=now,
+        updated_at=now,
+    )
+    artifact = RunArtifact(
+        id=uuid.uuid4(),
+        project_id=run.project_id,
+        model_run_id=run.id,
+        kind=ArtifactKind.SHAP_VALUES,
+        name="shap.json",
+        object_uri="s3://analysis/shap.json",
+        artifact_metadata={},
+        created_at=now,
+        updated_at=now,
+    )
+
+    class DB:
+        def scalar(self, _):
+            return run
+
+        def scalars(self, _):
+            return SimpleNamespace(all=lambda: [artifact])
+
+    monkeypatch.setattr(validation_service, "require_project_role", lambda *_: None)
+    monkeypatch.setattr(validation_service, "_training_run", lambda *_: source)
+    monkeypatch.setattr(validation_service, "_leaderboard_parent", lambda _, value: value)
+
+    result = validation_service.get_analysis_result(
+        DB(), SimpleNamespace(), source.project_id, source.id, run.id
+    )
+    assert result.model_name == "LogisticRegression"
+    assert result.feature_importance[0]["contribution_percent"] == 100.0
+    assert result.artifacts[0].name == "shap.json"
+
+
+def test_validation_lookup_helpers_fail_closed(monkeypatch) -> None:
+    project_id, item_id = uuid.uuid4(), uuid.uuid4()
+    db = SimpleNamespace(scalar=lambda _: None)
+    with pytest.raises(HTTPException, match="Training run not found"):
+        validation_service._training_run(db, project_id, item_id)
+    with pytest.raises(HTTPException, match="Dataset version not found"):
+        validation_service._dataset_version(db, project_id, item_id)
+
+    version = SimpleNamespace(id=item_id, object_uri="s3://missing", schema_json={})
+    monkeypatch.setattr(
+        validation_service, "get_object_store", lambda: SimpleNamespace(exists=lambda _: False)
+    )
+    with pytest.raises(HTTPException, match="missing from object storage"):
+        validation_service._dataset_version(
+            SimpleNamespace(scalar=lambda _: version), project_id, item_id
+        )
+
+
+def test_source_model_rejects_incomplete_missing_and_unpersisted_candidates(monkeypatch) -> None:
+    source = _source_run()
+    monkeypatch.setattr(validation_service, "require_project_role", lambda *_: None)
+    monkeypatch.setattr(validation_service, "_training_run", lambda *_: source)
+    monkeypatch.setattr(validation_service, "_leaderboard_parent", lambda _, run: run)
+    source.status = RunStatus.RUNNING
+    with pytest.raises(HTTPException, match="must be complete"):
+        validation_service._source_model(
+            SimpleNamespace(), SimpleNamespace(), source.project_id, source.id, "missing"
+        )
+
+    source.status = RunStatus.SUCCEEDED
+    with pytest.raises(HTTPException, match="completed successfully"):
+        validation_service._source_model(
+            SimpleNamespace(), SimpleNamespace(), source.project_id, source.id, "missing"
+        )
+
+    source.tags["leaderboard"][0].pop("model_artifact_uri")
+    source.mlflow_run_id = None
+    with pytest.raises(HTTPException, match="no persisted artifact"):
+        validation_service._source_model(
+            SimpleNamespace(),
+            SimpleNamespace(),
+            source.project_id,
+            source.id,
+            "LogisticRegression",
+        )
+
+
+def test_explainability_launch_reuses_active_attempt(monkeypatch) -> None:
+    source = _source_run()
+    existing = _source_run()
+    existing.run_kind = RunKind.EXPLAINABILITY
+    existing.status = RunStatus.RUNNING
+    existing.gpu_requested = False
+    entry = source.tags["leaderboard"][0]
+    monkeypatch.setattr(
+        validation_service,
+        "_source_model",
+        lambda *_args, **_kwargs: (source, entry),
+    )
+    monkeypatch.setattr(validation_service, "_lock_training_admission", lambda *_: None)
+    monkeypatch.setattr(validation_service, "_reusable_explainability_run", lambda *_: existing)
+
+    result = validation_service.launch_explainability_run(
+        SimpleNamespace(),
+        SimpleNamespace(),
+        source.project_id,
+        source.id,
+        ExplainabilityLaunchRequest(model_name="LogisticRegression", force=True),
+    )
+
+    assert result.cached is True
+    assert result.run.id == existing.id

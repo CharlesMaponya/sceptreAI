@@ -85,8 +85,7 @@ def register_model(
         (
             entry
             for entry in parent.tags.get("leaderboard", [])
-            if entry.get("model") == request.model_name
-            and entry.get("status") == "succeeded"
+            if entry.get("model") == request.model_name and entry.get("status") == "succeeded"
         ),
         None,
     )
@@ -136,21 +135,20 @@ def register_model(
     db.add(artifact)
     db.flush()
 
-    version_number = int(
-        db.scalar(
-            select(func.max(ModelRegistryEntry.version)).where(
-                ModelRegistryEntry.project_id == project_id,
-                ModelRegistryEntry.model_name == request.model_name,
+    version_number = (
+        int(
+            db.scalar(
+                select(func.max(ModelRegistryEntry.version)).where(
+                    ModelRegistryEntry.project_id == project_id,
+                    ModelRegistryEntry.model_name == request.model_name,
+                )
             )
+            or 0
         )
-        or 0
-    ) + 1
-    primary_metric = parent.tags.get("leaderboard_primary_metric")
-    metric_value = (
-        candidate.get("metrics", {}).get(primary_metric)
-        if primary_metric
-        else None
+        + 1
     )
+    primary_metric = parent.tags.get("leaderboard_primary_metric")
+    metric_value = candidate.get("metrics", {}).get(primary_metric) if primary_metric else None
     entry = ModelRegistryEntry(
         project_id=project_id,
         model_run_id=artifact_run.id,
@@ -244,8 +242,7 @@ def update_registry_stage(
         "stage_updated_by_id": str(user.id),
         "stage_updated_at": now.isoformat(),
         "fallback": bool(
-            entry.registry_metadata.get("fallback")
-            and target_stage == ModelStage.STAGING
+            entry.registry_metadata.get("fallback") and target_stage == ModelStage.STAGING
         ),
     }
     db.flush()
@@ -298,9 +295,7 @@ def launch_drift_check(
             ),
         )
     excluded_columns = {
-        value
-        for value in (source.target_column, source.params.get("evaluation_column"))
-        if value
+        value for value in (source.target_column, source.params.get("evaluation_column")) if value
     }
     excluded_columns.update(source.params.get("excluded_leakage_columns") or [])
     required_columns = {
@@ -382,6 +377,7 @@ def launch_drift_check(
         run_name=f"Drift - {entry.model_name} v{entry.version}",
         pipeline_name="evidently_drift_v1",
         k8s_namespace=k8s.settings.training_namespace,
+        gpu_requested=False,
         cpu_request_cores=estimate.cpu_request_cores,
         memory_request_mb=estimate.memory_request_mb,
         cpu_limit_cores=estimate.cpu_limit_cores,
@@ -396,11 +392,7 @@ def launch_drift_check(
         },
         tags={
             "registry_entry_id": str(entry.id),
-            **(
-                {"deployment_run_id": str(linked_deployment.id)}
-                if linked_deployment
-                else {}
-            ),
+            **({"deployment_run_id": str(linked_deployment.id)} if linked_deployment else {}),
         },
         queued_at=datetime.now(UTC),
     )
@@ -541,6 +533,7 @@ def deploy_registered_model(
         run_name=f"Deploy - {entry.model_name} v{entry.version}",
         pipeline_name="kubernetes_model_deployment_v1",
         k8s_namespace=k8s.settings.training_namespace,
+        gpu_requested=False,
         params={
             "registry_entry_id": str(entry.id),
             "replicas": request.replicas,
@@ -576,10 +569,7 @@ def deploy_registered_model(
         registry_entry_id=entry.id,
     )
     stored = get_object_store().put_bytes(
-        (
-            f"projects/{project_id}/deployments/{deployment_run.id}/"
-            "Dockerfile"
-        ),
+        (f"projects/{project_id}/deployments/{deployment_run.id}/Dockerfile"),
         dockerfile.encode("utf-8"),
     )
     db.add(
@@ -647,9 +637,7 @@ def _platform_model_deployment_urls(
     project_id: uuid.UUID,
     run_id: uuid.UUID,
 ) -> dict[str, str]:
-    base_url = (
-        f"/api/v1/projects/{project_id}/operations/deployments/{run_id}/inference"
-    )
+    base_url = f"/api/v1/projects/{project_id}/operations/deployments/{run_id}/inference"
     return {
         "platform_endpoint": f"{base_url}/v1/predict",
         "platform_online_endpoint": f"{base_url}/v1/predict/online",
@@ -784,11 +772,11 @@ def list_drift_runs(
     )
     k8s = client or KubernetesTrainingClient()
     for run in runs:
-        if (
-            run.k8s_job_name
-            and run.status
-            in {RunStatus.QUEUED, RunStatus.PRECHECK_RUNNING, RunStatus.RUNNING}
-        ):
+        if run.k8s_job_name and run.status in {
+            RunStatus.QUEUED,
+            RunStatus.PRECHECK_RUNNING,
+            RunStatus.RUNNING,
+        }:
             try:
                 _sync_run_status(db, run, k8s)
             except ApiException:
@@ -919,9 +907,7 @@ def cleanup_project_resources(
     deleted_jobs: list[str] = []
     if not request.dry_run and request.cleanup_finished_jobs:
         try:
-            deleted_jobs = (client or KubernetesTrainingClient()).cleanup_finished_jobs(
-                project_id
-            )
+            deleted_jobs = (client or KubernetesTrainingClient()).cleanup_finished_jobs(project_id)
         except Exception as exc:
             errors.append(f"Kubernetes cleanup: {exc}")
     db.flush()
@@ -1100,8 +1086,7 @@ def _generated_model_dockerfile(
         "ai.sceptre.registry-entry-id": str(registry_entry_id),
     }
     label_text = " \\\n".join(
-        f"      {json.dumps(name)}={json.dumps(value)}"
-        for name, value in labels.items()
+        f"      {json.dumps(name)}={json.dumps(value)}" for name, value in labels.items()
     )
     return (
         f"FROM {base_image}\n"

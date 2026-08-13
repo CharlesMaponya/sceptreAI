@@ -599,11 +599,11 @@ production certification:
 
 ```bash
 ruff check apps packages alembic scripts tests
-pytest tests/ -v --tb=short --cov --cov-fail-under=40
+scripts/test_backend.sh
 python -m compileall apps packages alembic scripts tests
 
 npm --prefix apps/ui/react_app ci
-npm --prefix apps/ui/react_app test -- --run
+npm --prefix apps/ui/react_app run test:coverage
 npm --prefix apps/ui/react_app run lint
 npm --prefix apps/ui/react_app run build
 

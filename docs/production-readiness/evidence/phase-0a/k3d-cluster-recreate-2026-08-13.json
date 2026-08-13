@@ -1,0 +1,9 @@
+{
+  "cluster": "sceptre-phase0a-recreate",
+  "first_create_seconds": 176,
+  "recreate_seconds": 146,
+  "crd_set_digest": "d30aad6eacc9cbf8df6391f7025ea3088f12e6e0ec0f9bd60f6dcfc014e49ad7",
+  "operator_state_digest": "7c1385fe02defbd50ddc47b247d98781fc8eeb5d63cb10049a24b83675079b29",
+  "status": "passed",
+  "scope": "disposable_local_k3d_substitute_for_future_provider_opentofu"
+}

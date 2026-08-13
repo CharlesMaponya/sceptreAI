@@ -1,0 +1,56 @@
+schema_revision: sceptre-phase-0a-go-no-go-v1
+decision: go
+scope: authorize Phase 1 durable-state implementation; no cloud spend authorized
+decided_at: "2026-08-13T12:48:47+02:00"
+approver: workspace-user
+approval_source: >-
+  The workspace user accepted the Polars-and-Ray pathway, excluded Dask, required
+  Phase 0A to continue until every gate was green, and authorized progression to
+  the next implementation phase once that condition was met.
+source:
+  git_sha: 710c327776f27f74ce2fd7b782eae2debd4a3f9a
+  worktree_clean: false
+  note: The signed decision binds the enumerated evidence digests, not an uncommitted worktree state.
+bindings:
+  implementation_guide:
+    path: docs/production-readiness/implementation-guide.md
+    sha256: 84896d560e5eda60a9bd1e059e0a44136aa87029b21eba739d0d81cbc42575d0
+  decision_register:
+    path: docs/production-readiness/decision-register.yaml
+    sha256: 5106c3e1c634a1bdcbd59a1579861c1818ea500fa2c4c655b5f4b21e85d499e0
+  task_index:
+    path: docs/production-readiness/task-index.yaml
+    sha256: 863b05ba94c5df3d374ffaff394deb0bea7de6e22f0be191dd9a84fdf62e2c4e
+  evidence_summary:
+    path: docs/production-readiness/evidence/phase-0a/phase-0a-summary-2026-08-13.yaml
+    sha256: 8d94a0e4277580cc6788840416aa96059c58169c11b448c93f06267a563195d5
+  quality_gates:
+    path: docs/production-readiness/evidence/phase-0a/quality-gates-2026-08-13.json
+    sha256: 6df17bfcecb7c08ae562e13d73a1b6af52d68b391693dd4e94547f4f19c78821
+gate_status:
+  P0A-G01: passed
+  P0A-G02: passed
+  P0A-G03: passed
+  P0A-G04: passed
+  P0A-G05: passed
+  P0A-G06: passed
+  P0A-G07: passed
+  P0A-G08: passed
+  P0A-G09: passed
+  P0A-G10: passed
+quality:
+  backend_tests: 688
+  backend_statement_coverage_percent: 96.138
+  backend_branch_coverage_percent: 90.074
+  frontend_tests: 131
+  frontend_branch_coverage_percent: 90.11
+  independent_minimum_percent: 90.01
+constraints:
+  dask_allowed: false
+  phase_1_through_4_external_spend_usd: 0
+  provider_campaign_requires_new_signed_budget_approval: true
+  local_provider_replay_is_not_managed_provider_qualification: true
+  cloud_opentofu_and_real_iam_conformance_remain_later_provider_gates: true
+rollback: >-
+  Stop Phase 1, preserve non-secret evidence, and re-enter Phase 0A if any listed
+  runtime, topology, qualification target, or evidence binding changes.

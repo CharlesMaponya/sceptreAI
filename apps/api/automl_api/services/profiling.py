@@ -7,11 +7,9 @@ import math
 import statistics
 import uuid
 from collections import Counter
-from pathlib import Path
 from typing import Any
 
 import pandas as pd
-import psutil
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -51,8 +49,8 @@ def build_dataset_profile(
     target_column = payload.target_column.strip() if payload.target_column else None
 
     rows: list[dict[str, Any]] = []
-    if _should_use_dask(version):
-        from automl_api.services.dask_profiling import profile_dataset_with_dask
+    if _should_use_ray(version):
+        from automl_api.services.ray_polars_profiling import profile_dataset_with_ray
 
         (
             row_count,
@@ -60,7 +58,7 @@ def build_dataset_profile(
             relationships,
             leakage_analysis,
             warnings,
-        ) = profile_dataset_with_dask(version, target_column)
+        ) = profile_dataset_with_ray(version, target_column)
         columns = [profile.name for profile in column_profiles]
     else:
         rows, warnings = _load_rows(version)
@@ -107,42 +105,17 @@ def build_dataset_profile(
     )
 
 
-def _should_use_dask(
+def _should_use_ray(
     version: DatasetVersion,
     available_memory_bytes: int | None = None,
 ) -> bool:
+    del available_memory_bytes
     if version.format == DatasetFormat.CSV:
-        supported = True
-    elif version.format == DatasetFormat.JSON:
+        return True
+    if version.format == DatasetFormat.JSON:
         filename = (version.original_filename or "").lower()
-        supported = filename.endswith((".jsonl", ".ndjson"))
-    else:
-        supported = False
-    if not supported or not version.byte_size:
-        return False
-
-    available_memory_bytes = available_memory_bytes or _available_memory_bytes()
-    projected_memory_bytes = version.byte_size * 12
-    return (
-        version.byte_size >= 256 * 1024 * 1024
-        or projected_memory_bytes > available_memory_bytes * 0.35
-    )
-
-
-def _available_memory_bytes() -> int:
-    available = int(psutil.virtual_memory().available)
-    cgroup_limit_path = Path("/sys/fs/cgroup/memory.max")
-    cgroup_usage_path = Path("/sys/fs/cgroup/memory.current")
-    try:
-        raw_limit = cgroup_limit_path.read_text(encoding="ascii").strip()
-        if raw_limit != "max":
-            cgroup_available = int(raw_limit) - int(
-                cgroup_usage_path.read_text(encoding="ascii").strip()
-            )
-            available = min(available, max(1, cgroup_available))
-    except (OSError, ValueError):
-        pass
-    return available
+        return filename.endswith((".jsonl", ".ndjson"))
+    return False
 
 
 def _get_project_dataset_version(
@@ -519,7 +492,10 @@ def _relationships_against_target(
                     source_column=column,
                     target_column=target_column,
                     method=(
-                        "pearson" if profile.semantic_type.startswith("numerical") else "cramers_v"
+                        "pearson"
+                        if profile.semantic_type.startswith("numerical")
+                        and target_profile.semantic_type.startswith("numerical")
+                        else "cramers_v"
                     ),
                     value=round(value, 6),
                 )

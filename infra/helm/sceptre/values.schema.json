@@ -58,6 +58,9 @@
       "type": "object",
       "properties": {
         "maxConcurrentJobs": {"type": "integer", "minimum": 1},
+        "activeDeadlineSeconds": {"type": "integer", "minimum": 60, "maximum": 604800},
+        "maxActiveDeadlineSeconds": {"type": "integer", "minimum": 60, "maximum": 604800},
+        "deadlineMultiplier": {"type": "integer", "minimum": 1},
         "imagePullPolicy": {"enum": ["Always", "IfNotPresent", "Never"]},
         "cpu": {
           "type": "object",

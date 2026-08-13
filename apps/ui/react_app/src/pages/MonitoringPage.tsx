@@ -10,6 +10,7 @@ import {
   PageHeader,
 } from "../components/ui";
 import { formatDate, titleCase } from "../lib";
+import { formatMetric } from "./presentation";
 
 const PlotlyChart = lazy(() => import("../components/PlotlyChart"));
 
@@ -320,12 +321,4 @@ async function downloadGovernance(path: string, filename: string) {
   const url = URL.createObjectURL(await response.blob());
   const anchor = document.createElement("a"); anchor.href = url; anchor.download = filename; anchor.click();
   URL.revokeObjectURL(url);
-}
-
-function formatMetric(name: string, value: number) {
-  if (name.includes("rate") || name.includes("share") || name.includes("accuracy") || name.includes("f1")) {
-    return `${(value * 100).toFixed(1)}%`;
-  }
-  if (name.includes("latency") || name.endsWith("_ms")) return `${value.toFixed(0)} ms`;
-  return value.toLocaleString(undefined, { maximumFractionDigits: 4 });
 }

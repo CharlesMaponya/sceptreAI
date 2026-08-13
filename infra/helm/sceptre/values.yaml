@@ -150,7 +150,7 @@ mlflow:
 training:
   maxConcurrentJobs: 2
   activeDeadlineSeconds: 21600
-  maxActiveDeadlineSeconds: 86400
+  maxActiveDeadlineSeconds: 604800
   deadlineMultiplier: 6
   jobTtlSeconds: 300
   imagePullPolicy: IfNotPresent

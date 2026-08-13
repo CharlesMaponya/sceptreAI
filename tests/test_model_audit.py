@@ -4,6 +4,7 @@ import copy
 import io
 import re
 
+import pytest
 from automl_api.api.routes.training import router
 from automl_api.models.enums import TaskType
 from automl_api.services.model_audit import (
@@ -24,10 +25,9 @@ from reportlab.pdfgen import canvas
 
 
 def test_audit_download_route_is_model_scoped() -> None:
-    assert (
-        "/projects/{project_id}/training/runs/{run_id}/models/"
-        "{model_name}/audit-document"
-    ) in {route.path for route in router.routes}
+    assert ("/projects/{project_id}/training/runs/{run_id}/models/{model_name}/audit-document") in {
+        route.path for route in router.routes
+    }
 
 
 def test_pipeline_records_naive_bayes_processing_and_completed_stages() -> None:
@@ -40,9 +40,7 @@ def test_pipeline_records_naive_bayes_processing_and_completed_stages() -> None:
 
     assert all(stage["status"] == "completed" for stage in pipeline["stages"])
     assert pipeline["feature_processing"]["branch"] == "categorical_naive_bayes"
-    assert "discretization" in " ".join(
-        pipeline["feature_processing"]["numeric_features"]
-    ).lower()
+    assert "discretization" in " ".join(pipeline["feature_processing"]["numeric_features"]).lower()
     assert "1 detected leakage" in pipeline["stages"][1]["summary"]
     assert pipeline["diagram"]["transformer"]["type"] == "ColumnTransformer"
     assert pipeline["diagram"]["correlation_filter"]["type"] == "CorrelatedFeatureFilter"
@@ -61,6 +59,106 @@ def test_non_negative_nb_contract_and_random_forest_maths_are_specific() -> None
     assert "[0, 1]" in contract["numeric_features"][1]
     assert maths["family"] == "Bagged decision-tree ensemble"
     assert "Σ" in maths["equation"]
+
+
+@pytest.mark.parametrize(
+    ("model_name", "task_type", "family"),
+    [
+        ("LogisticRegression", TaskType.CLASSIFICATION, "Generalized linear classifier"),
+        ("RidgeCV", TaskType.REGRESSION, "L2-regularized linear model"),
+        ("Lasso", TaskType.REGRESSION, "L1-regularized linear model"),
+        ("ElasticNet", TaskType.REGRESSION, "Elastic-net linear model"),
+        ("HuberRegressor", TaskType.REGRESSION, "Linear regression family"),
+        ("XGBClassifier", TaskType.CLASSIFICATION, "Gradient-boosted decision trees"),
+        ("AdaBoostClassifier", TaskType.CLASSIFICATION, "Adaptive boosting ensemble"),
+        ("ExtraTreesClassifier", TaskType.CLASSIFICATION, "Bagged decision-tree ensemble"),
+        ("DecisionTreeRegressor", TaskType.REGRESSION, "Decision tree"),
+        ("GaussianNB", TaskType.CLASSIFICATION, "Naive Bayes classifier"),
+        ("KNeighborsRegressor", TaskType.REGRESSION, "Nearest-neighbour method"),
+        ("LinearSVC", TaskType.CLASSIFICATION, "Support-vector machine"),
+        (
+            "LinearDiscriminantAnalysis",
+            TaskType.CLASSIFICATION,
+            "Discriminant analysis",
+        ),
+        ("MLPClassifier", TaskType.CLASSIFICATION, "Feed-forward neural network"),
+        ("KMeans", TaskType.CLUSTERING, "Centroid clustering"),
+        ("DBSCAN", TaskType.CLUSTERING, "Density-based clustering"),
+        ("AgglomerativeClustering", TaskType.CLUSTERING, "Structure-based clustering"),
+        ("BayesianGaussianMixture", TaskType.CLUSTERING, "Probabilistic mixture model"),
+        ("CustomEstimator", TaskType.REGRESSION, "Estimator-specific predictive model"),
+    ],
+)
+def test_model_mathematics_covers_every_estimator_family(
+    model_name,
+    task_type,
+    family,
+) -> None:
+    contract = model_mathematics(model_name, task_type)
+
+    assert contract["family"] == family
+    assert all(contract[key] for key in ("equation", "training_objective", "prediction_rule"))
+
+
+@pytest.mark.parametrize(
+    ("state", "phase", "expected"),
+    [
+        ("succeeded", None, ["completed"] * 8),
+        (
+            "failed",
+            None,
+            [
+                "completed",
+                "completed",
+                "review",
+                "review",
+                "review",
+                "failed",
+                "not_run",
+                "not_run",
+            ],
+        ),
+        (
+            "cancelled",
+            None,
+            [
+                "completed",
+                "completed",
+                "review",
+                "review",
+                "review",
+                "cancelled",
+                "not_run",
+                "not_run",
+            ],
+        ),
+        ("running", "evaluating", ["completed"] * 6 + ["running", "planned"]),
+        ("running", "saving_model", ["completed"] * 7 + ["running"]),
+        ("queued", None, ["ready"] + ["planned"] * 7),
+    ],
+)
+def test_pipeline_statuses_are_phase_and_terminal_aware(state, phase, expected) -> None:
+    pipeline = build_model_pipeline(
+        "Ridge",
+        TaskType.REGRESSION,
+        state,
+        current_phase=phase,
+    )
+
+    assert [stage["status"] for stage in pipeline["stages"]] == expected
+
+
+def test_clustering_pipeline_omits_supervised_selector() -> None:
+    pipeline = build_model_pipeline(
+        "KMeans",
+        TaskType.CLUSTERING,
+        "queued",
+        parameters={"n_clusters": 3},
+    )
+
+    assert pipeline["diagram"]["selector"] is None
+    assert pipeline["parameters"] == {"n_clusters": 3}
+    assert "stability evaluation" in pipeline["stages"][2]["summary"]
 
 
 def test_waterfall_preserves_direction_and_normalizes_magnitude() -> None:
@@ -154,9 +252,7 @@ def test_classification_governance_visuals_match_leaderboard_evidence() -> None:
         "confusion_matrix": [[18, 2], [3, 17]],
         "roc_curves": [{"label": "positive", "points": []}],
         "precision_recall_curves": [{"label": "positive", "points": []}],
-        "classification_report": {
-            "negative": {"precision": 0.86, "recall": 0.9, "f1-score": 0.88}
-        },
+        "classification_report": {"negative": {"precision": 0.86, "recall": 0.9, "f1-score": 0.88}},
     }
 
     specs = _diagnostic_chart_specs("classification", diagnostics)
@@ -217,7 +313,7 @@ def test_audit_pdf_is_branded_and_contains_complete_model_evidence() -> None:
                 "statistics": {"median": 50},
                 "distribution_type": "histogram",
                 "distribution": [{"label": "0–10", "count": 4}],
-            }
+            },
         },
         "feature_processing": {
             "executable_training_contract": feature_processing_contract("Ridge"),
@@ -264,9 +360,7 @@ def test_audit_pdf_is_branded_and_contains_complete_model_evidence() -> None:
             },
         },
         "feature_contributions": {
-            "global_normalized_contributions": [
-                {"feature": "hours", "contribution_percent": 100}
-            ],
+            "global_normalized_contributions": [{"feature": "hours", "contribution_percent": 100}],
             "waterfall": {
                 "status": "available",
                 "base_value": 0.4,

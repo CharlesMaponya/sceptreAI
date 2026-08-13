@@ -1,0 +1,78 @@
+schema_revision: sceptre-phase-0a-transport-security-v1
+status: accepted_for_phase_0a
+runtime:
+  ray: 2.56.1
+  kuberay_operator: 1.6.2
+trusted_boundary:
+  name: per-attempt-ray-namespace
+  controls:
+    - one project-and-stage-bound namespace and Kubernetes service account per attempt
+    - default-deny ingress and egress with explicit DNS, object-store, database, telemetry, and Ray pod peers
+    - no ingress, LoadBalancer, NodePort, Ray Client, or public dashboard endpoint
+    - API clients cannot reach Ray submission, dashboard, GCS, or worker ports
+    - encrypted provider network and node volumes; namespace and object-prefix deletion after reconciliation
+protocols:
+  ray_job_submission:
+    transport: HTTPS with workload mTLS at the reconciler-to-Kubernetes API boundary
+    peer_validation: Kubernetes API server CA and service-account identity
+    rotation: projected service-account token and control-plane certificate rotation
+    status: technically_supported
+  ray_dashboard_job_api:
+    transport: plaintext HTTP inside the attempt namespace
+    public_exposure: prohibited
+    compensating_control: KubeRay submitter and head only; NetworkPolicy pod-selector allowlist
+    status: explicit_exception_accepted
+  ray_gcs_control:
+    transport: Ray TLS when production certificates are mounted
+    peer_validation: Ray cluster CA and node certificate
+    rotation: new attempt and cluster after certificate rotation
+    status: technically_supported_requires_phase5_implementation
+  ray_inter_node_data:
+    transport: Ray TLS when production certificates are mounted
+    peer_validation: Ray cluster CA and node certificate
+    rotation: new attempt and cluster after certificate rotation
+    status: technically_supported_requires_phase5_implementation
+  postgresql:
+    transport: TLS 1.2 or newer; verify-full
+    peer_validation: service DNS SAN and approved CA
+    rotation: overlapping trust bundle followed by leaf rotation
+    status: technically_supported_requires_phase5_implementation
+  object_store:
+    transport: HTTPS TLS 1.2 or newer
+    peer_validation: provider endpoint SAN and approved CA
+    rotation: provider-managed leaf rotation plus workload trust-bundle rollout
+    status: technically_supported_requires_phase5_implementation
+  mlflow:
+    transport: HTTPS with workload mTLS
+    peer_validation: service DNS SAN and workload identity
+    rotation: overlapping trust bundle followed by leaf rotation
+    status: technically_supported_requires_phase5_implementation
+  registry:
+    transport: HTTPS TLS 1.2 or newer
+    peer_validation: registry SAN, approved CA, and signed digest verification
+    rotation: provider-managed or overlapping CA rollout
+    status: technically_supported_requires_phase5_implementation
+  telemetry:
+    transport: OTLP over mTLS
+    peer_validation: collector DNS SAN and workload identity
+    rotation: overlapping trust bundle followed by leaf rotation
+    status: technically_supported_requires_phase5_implementation
+negative_tests_required_in_phase5:
+  - unknown certificate authority is rejected
+  - wrong DNS SAN or workload identity is rejected
+  - expired certificate is rejected
+  - plaintext downgrade is rejected for every endpoint marked TLS or mTLS
+  - old trust root is rejected after the overlap window
+acceptance:
+  owner: workspace-user
+  approver: workspace-user
+  accepted_at: "2026-08-13T11:50:00+02:00"
+  expires_at: "2026-11-13T23:59:59+02:00"
+  rationale: >-
+    Accept the dashboard Job API plaintext exception only inside a disposable,
+    project-and-attempt-bound namespace with no public service and an explicit
+    submitter/head allowlist. Ray GCS and inter-node TLS remain mandatory Phase 5
+    implementation gates and this exception does not waive them.
+  evidence:
+    tls_rotation_and_negative_tests: /tmp/phase0a-tls-current.json
+    workload_identity_privilege_scan: /tmp/phase0a-workload-identity-privilege.json

@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sceptre.ai/schemas/release-channel-pointer-v1.json",
+  "title": "Sceptre mutable release-channel pointer",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_revision",
+    "channel",
+    "sequence",
+    "qualification_attestation_digest",
+    "published_at",
+    "publisher",
+    "signatures"
+  ],
+  "properties": {
+    "schema_revision": {"const": "sceptre-release-channel-pointer-v1"},
+    "channel": {"enum": ["stable", "candidate", "rollback"]},
+    "sequence": {"type": "integer", "minimum": 1},
+    "qualification_attestation_digest": {"$ref": "#/$defs/digest"},
+    "previous_pointer_digest": {
+      "oneOf": [
+        {"$ref": "#/$defs/digest"},
+        {"type": "null"}
+      ]
+    },
+    "published_at": {"type": "string", "format": "date-time"},
+    "publisher": {"type": "string", "minLength": 1},
+    "publication_receipt": {"type": ["string", "null"]},
+    "signatures": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["issuer", "subject", "bundle_digest"],
+        "properties": {
+          "issuer": {"type": "string", "minLength": 1},
+          "subject": {"type": "string", "minLength": 1},
+          "bundle_digest": {"$ref": "#/$defs/digest"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

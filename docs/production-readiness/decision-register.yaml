@@ -1,0 +1,180 @@
+schema_revision: sceptre-production-decision-register-v1
+revision: 2
+status: accepted
+frozen: true
+guide:
+  path: docs/production-readiness/implementation-guide.md
+  sha256: 84896d560e5eda60a9bd1e059e0a44136aa87029b21eba739d0d81cbc42575d0
+updated_at: "2026-08-13T11:50:00+02:00"
+approval_source: >-
+  The workspace user accepted the reviewed Polars-and-Ray pathway and instructed
+  implementation to continue until the current phase was entirely green. The
+  workspace user is the accountable product, business, security-exception, and
+  budget approver for this local Phase 0A decision snapshot.
+budget_policy:
+  currency: USD
+  phase_1_through_4_external_spend_ceiling: 0
+  preflight_rule: >-
+    No billable cloud resource may be created unless an accountable budget owner
+    replaces the zero-dollar ceiling with a signed provider-specific authorization
+    whose remaining balance is at least the provider worst-case estimate plus 20%.
+  stop_authority: workspace-user
+  overrun_action: stop new submissions, cancel work that has not opened a locked test, and preserve evidence
+  calibration_requirement: Phase 4 and provider calibration must replace estimates with an exact approved ledger
+decisions:
+  - id: ADR-001
+    kind: architecture
+    decision: Use Polars and Ray as the only production data pathway and exclude Dask.
+    status: accepted
+    source: User decision recorded in the implementation guide.
+    owner: workspace-user
+    approver: workspace-user
+    decision_date: "2026-08-09"
+    rationale: Remove Dask from code, dependencies, CI, Helm, tests, scripts, and documentation.
+    supersedes: [Dask production or fallback execution]
+  - id: ADR-002
+    kind: architecture
+    decision: Use KubeRay, with Ray scaling workers and the Kubernetes node autoscaler scaling nodes.
+    status: accepted
+    source: Phase 0A local KubeRay and recovery evidence.
+    owner: workspace-user
+    approver: workspace-user
+    decision_date: "2026-08-13"
+    rationale: Prevent KEDA, HPA, or another controller from competing for Ray worker counts.
+    supersedes: [KEDA or HPA ownership of Ray worker replicas]
+  - id: ADR-003
+    kind: architecture
+    decision: Use immutable benchmark data, row-set, target, and split revisions for comparable experiments.
+    status: accepted
+    source: Phase 0A exact digest and provider-replay evidence.
+    owner: workspace-user
+    approver: workspace-user
+    decision_date: "2026-08-13"
+    rationale: Trials vary recipes and parameters, not physical dataset copies or split rows.
+    supersedes: []
+  - id: ADR-004
+    kind: architecture
+    decision: Keep PostgreSQL and object storage durable and treat Ray execution state as disposable.
+    status: accepted
+    source: Phase 0A remote checkpoint, cluster-loss, and composite-fencing evidence.
+    owner: workspace-user
+    approver: workspace-user
+    decision_date: "2026-08-13"
+    rationale: Every logical attempt requires fencing and remote checkpoint lineage.
+    supersedes: [Ray ObjectRefs or pod-local spill as durable state]
+  - id: ADR-005
+    kind: architecture
+    decision: Use one ephemeral project-and-stage-bound Ray cluster per workflow attempt.
+    status: accepted
+    source: Phase 0A 15-head, recovery, identity, security, cleanup, schedule, and cost evidence.
+    owner: workspace-user
+    approver: workspace-user
+    decision_date: "2026-08-13"
+    rationale: Enforce raw/test, identity, spill, quota, and cleanup isolation.
+    supersedes: [Shared multi-project Ray clusters for production qualification]
+    cost_ceiling:
+      phase_1_through_4_external_usd: 0
+      provider_campaign: requires_new_signed_approval
+    security_exception:
+      scope: Ray dashboard Job API is plaintext only inside the attempt namespace
+      compensating_controls: no external service, default-deny policy, submitter/head allowlist, ephemeral cluster
+      owner: workspace-user
+      approver: workspace-user
+      expires_at: "2026-11-13T23:59:59+02:00"
+  - id: QLT-001
+    kind: qualification_target
+    decision: Admit 15 concurrent runs.
+    status: accepted
+    source: Phase 0A 15-head capacity and discrete-schedule evidence.
+    owner: workspace-user
+    approver: workspace-user
+    decision_date: "2026-08-13"
+    rationale: Qualify production concurrency, fairness, placement, and quota behavior.
+    supersedes: []
+    cost_ceiling: {phase_1_through_4_external_usd: 0}
+  - id: QLT-002
+    kind: qualification_target
+    decision: Use exactly 10 GiB for each systems-load fixture.
+    status: accepted
+    source: User acceptance of the production-readiness plan.
+    owner: workspace-user
+    approver: workspace-user
+    decision_date: "2026-08-13"
+    rationale: Use an unambiguous binary-size systems corpus while keeping ML fixtures separate.
+    supersedes: []
+  - id: QLT-003
+    kind: qualification_target
+    decision: Qualify classification, regression, time-series, and clustering.
+    status: accepted
+    source: User acceptance of the production-readiness plan.
+    owner: workspace-user
+    approver: workspace-user
+    decision_date: "2026-08-13"
+    rationale: Cover every proposed task family with task-specific fixtures and metrics.
+    supersedes: []
+  - id: QLT-004
+    kind: qualification_target
+    decision: Preserve an 8-core and 24-GB local evaluation profile.
+    status: accepted
+    source: Phase 0A bounded 8-core spill evidence; host exposed 22 GiB usable RAM.
+    owner: workspace-user
+    approver: workspace-user
+    decision_date: "2026-08-13"
+    rationale: Preserve a bounded local evaluation path independent of production deadlines.
+    supersedes: []
+  - id: QLT-005
+    kind: qualification_target
+    decision: Execute every supported task-applicable estimator.
+    status: accepted
+    source: User acceptance plus Phase 0A estimator-strategy matrix evidence.
+    owner: workspace-user
+    approver: workspace-user
+    decision_date: "2026-08-13"
+    rationale: Ensure the qualified catalog covers every approved task-applicable estimator.
+    supersedes: []
+    cost_ceiling: {phase_1_through_4_external_usd: 0}
+  - id: QLT-006
+    kind: qualification_target
+    decision: Run five search suggestions per estimator.
+    status: accepted
+    source: User acceptance plus deterministic Tune search evidence.
+    owner: workspace-user
+    approver: workspace-user
+    decision_date: "2026-08-13"
+    rationale: Establish a fixed qualification search-strength workload without claiming convergence.
+    supersedes: []
+    cost_ceiling: {phase_1_through_4_external_usd: 0}
+  - id: QLT-007
+    kind: qualification_target
+    decision: Evaluate each configuration with three task-correct inner folds.
+    status: accepted
+    source: User acceptance of the production-readiness plan.
+    owner: workspace-user
+    approver: workspace-user
+    decision_date: "2026-08-13"
+    rationale: Make comparisons use feature-contract-owned group/time/gap-aware folds.
+    supersedes: []
+  - id: QLT-008
+    kind: qualification_target
+    decision: Finish each approved qualification group within 7200 seconds.
+    status: accepted
+    source: Phase 0A discrete-schedule evidence.
+    owner: workspace-user
+    approver: workspace-user
+    decision_date: "2026-08-13"
+    rationale: Bound qualification wall time including finalization work.
+    supersedes: []
+    cost_ceiling: {phase_1_through_4_external_usd: 0}
+  - id: QLT-009
+    kind: qualification_target
+    decision: Qualify every required stage independently on EKS, GKE, and AKS.
+    status: accepted
+    source: User acceptance; provider execution remains a later provider-phase gate.
+    owner: workspace-user
+    approver: workspace-user
+    decision_date: "2026-08-13"
+    rationale: Prevent one managed provider from standing in for another provider's platform behavior.
+    supersedes: []
+    cost_ceiling:
+      current_external_usd: 0
+      provider_campaign: requires_new_signed_approval

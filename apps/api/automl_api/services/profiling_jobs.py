@@ -36,7 +36,7 @@ from automl_api.services.projects import require_project_role
 from automl_api.storage.object_store import get_object_store
 
 FEATURE_BATCH_SIZE = 5
-PROFILE_ALGORITHM_VERSION = 3
+PROFILE_ALGORITHM_VERSION = 4
 TERMINAL_STATUSES = {"succeeded", "failed", "cancelled"}
 
 _executor = ThreadPoolExecutor(
@@ -313,10 +313,11 @@ def _run_profiling_job(job_id: uuid.UUID) -> None:
 
 
 def _run_partitioned_stages(job_id: uuid.UUID) -> None:
-    from automl_api.services.dask_profiling import (
-        _load_dataframe,
+    from automl_api.services.ray_polars_profiling import (
+        _load_dataset,
         _profile_column,
         _relationships,
+        _sample_rows,
     )
 
     session_factory = get_session_factory()
@@ -325,9 +326,9 @@ def _run_partitioned_stages(job_id: uuid.UUID) -> None:
         assert job is not None
         version = db.get(DatasetVersion, job.dataset_version_id)
         assert version is not None
-        dataframe = _load_dataframe(version)
-        row_count = job.row_count or int(dataframe.shape[0].compute())
-        columns = [str(column) for column in dataframe.columns]
+        dataset = _load_dataset(version)
+        row_count = job.row_count or dataset.count()
+        columns = [str(column) for column in dataset.schema().names]
         existing_profiles = dict(job.feature_profiles_json)
         job.row_count = row_count
         job.total_columns = len(columns)
@@ -340,7 +341,7 @@ def _run_partitioned_stages(job_id: uuid.UUID) -> None:
             if current_status == "cancelled":
                 return
         batch = pending_columns[batch_start : batch_start + FEATURE_BATCH_SIZE]
-        batch_profiles = [_profile_column(dataframe[column], column, row_count) for column in batch]
+        batch_profiles = [_profile_column(dataset, column, row_count) for column in batch]
         with session_factory() as db:
             job = db.get(ProfilingJob, job_id)
             assert job is not None
@@ -387,12 +388,12 @@ def _run_partitioned_stages(job_id: uuid.UUID) -> None:
         db.commit()
 
     relationships, relationship_warnings = _relationships(
-        dataframe,
+        dataset,
         profiles,
         job.target_column,
     )
     leakage_analysis = detect_target_leakage(
-        dataframe.head(LEAKAGE_SAMPLE_ROWS, npartitions=-1),
+        pd.DataFrame(_sample_rows(dataset, LEAKAGE_SAMPLE_ROWS)),
         job.target_column,
     )
     with session_factory() as db:

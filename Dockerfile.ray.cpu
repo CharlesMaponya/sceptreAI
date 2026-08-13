@@ -1,0 +1,36 @@
+FROM python:3.12.13-slim-trixie@sha256:229a2c5bfa27522db7815ea81f9bed70af17ccb9de9fc7ad142b1877b5830d36
+
+ARG RAY_VERSION=2.56.1
+ARG POLARS_VERSION=1.43.2
+ARG PYARROW_VERSION=24.0.0
+
+RUN apt-get update \
+    && apt-get install --no-install-recommends --yes procps \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --uid 10001 --gid users ray
+RUN python -m pip install --no-cache-dir \
+    "ray[data,default,train,tune]==${RAY_VERSION}" \
+    "pandas==2.3.3" \
+    "polars==${POLARS_VERSION}" \
+    "pyarrow==${PYARROW_VERSION}" \
+    "scikit-learn==1.9.0" \
+    "scikit-optimize==0.10.2" \
+    "xgboost-cpu==2.1.4"
+RUN python -m pip install --no-cache-dir \
+    --index-url https://download.pytorch.org/whl/cpu \
+    "torch==2.9.1"
+
+COPY --chown=ray:users scripts/validate_ray_polars_runtime.py \
+    /home/ray/app/validate_ray_polars_runtime.py
+COPY --chown=ray:users scripts/validate_tune_search_runtime.py \
+    /home/ray/app/validate_tune_search_runtime.py
+COPY --chown=ray:users scripts/validate_feature_recipe_runtime.py \
+    /home/ray/app/validate_feature_recipe_runtime.py
+COPY --chown=ray:users scripts/validate_estimator_matrix_runtime.py \
+    /home/ray/app/validate_estimator_matrix_runtime.py
+COPY --chown=ray:users packages/automl_shared /home/ray/app/automl_shared
+
+USER ray
+WORKDIR /home/ray/app
+
+CMD ["python", "/home/ray/app/validate_ray_polars_runtime.py"]

@@ -1,0 +1,56 @@
+{
+  "generator": {
+    "path": "scripts/generate_phase0_snapshots.py",
+    "sha256": "cddf9d95d31f7a3e08959994005ffbe6a6ab6d069d367dc6d084dc2498c872c9"
+  },
+  "inputs": {
+    "apps/ui/react_app/package-lock.json": {
+      "bytes": 285372,
+      "sha256": "e780b7b889296a590d72367c8371e01fd3df7b07e6c38c910343a3558c0a90a1"
+    },
+    "docs/production-readiness/implementation-guide.md": {
+      "bytes": 212975,
+      "sha256": "84896d560e5eda60a9bd1e059e0a44136aa87029b21eba739d0d81cbc42575d0"
+    },
+    "infra/helm/sceptre/Chart.yaml": {
+      "bytes": 2009,
+      "sha256": "95f5d0d71bf5d6e262bc1475d3449156129fa6eb941e46baa51b690da762b3dd"
+    },
+    "infra/helm/sceptre/values.schema.json": {
+      "bytes": 2620,
+      "sha256": "0d9eaeaa704499a0a908e53efccb0daa277fc6929d2b7117f9f1e695ba461e00"
+    },
+    "pyproject.toml": {
+      "bytes": 1996,
+      "sha256": "3d2e97623bc6dda9c818f4ade00a1cdf18f18bb980cc69939af247da845bc6b6"
+    },
+    "requirements-training.txt": {
+      "bytes": 316,
+      "sha256": "34403d7f3122660ba5f4ac0419cacf643f71fc36c69dee6042cf752ca4c52504"
+    }
+  },
+  "schema_revision": "sceptre-phase-0-baseline-manifest-v1",
+  "snapshots": {
+    "database-metadata.json": {
+      "bytes": 73018,
+      "sha256": "38c318b76377e376428efab841f7fe93465b85fc221cb31f1f8c5dd3b4a05af8"
+    },
+    "estimator-catalog.json": {
+      "bytes": 141961,
+      "sha256": "709f6d6fd360d5d13514cc253be99be92d8968b2613322aa2caa068b38529ad1"
+    },
+    "openapi.json": {
+      "bytes": 230704,
+      "sha256": "475aa29a03d01bc1737bd531d0a3fc1bfd75e9216cfb987e7d6fe709b1759408"
+    },
+    "python-dependencies.json": {
+      "bytes": 13774,
+      "sha256": "99cc46ec09ac1b45e8304c417b52330c7acbe3374f695e53fa5ae9a023a72341"
+    }
+  },
+  "source": {
+    "git_sha": "710c327776f27f74ce2fd7b782eae2debd4a3f9a",
+    "worktree_clean": false
+  },
+  "status": "provisional"
+}

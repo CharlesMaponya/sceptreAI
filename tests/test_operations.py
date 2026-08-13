@@ -22,8 +22,14 @@ from automl_api.models.enums import (
     RunStatus,
     TaskType,
 )
-from automl_api.models.runs import ModelRun
-from automl_api.schemas.operations import ArtifactCleanupRequest, DriftLaunchRequest
+from automl_api.models.runs import ModelRun, RunArtifact
+from automl_api.schemas.operations import (
+    ArtifactCleanupRequest,
+    DriftLaunchRequest,
+    ModelDeploymentRequest,
+    RegistryCreateRequest,
+)
+from automl_api.schemas.training import ClusterCapacityRead, TrainingEstimateRead
 from automl_api.services.kubernetes_training import KubernetesTrainingClient
 from automl_api.services.operations import (
     _adaptive_inference_memory,
@@ -110,9 +116,11 @@ def test_drift_rejects_external_data_missing_training_features(monkeypatch) -> N
         dataset_version_id=source_version_id,
         target_column="target",
         params={},
-        dataset_version=SimpleNamespace(schema_json={
-            "columns": [{"name": "age"}, {"name": "income"}, {"name": "target"}],
-        }),
+        dataset_version=SimpleNamespace(
+            schema_json={
+                "columns": [{"name": "age"}, {"name": "income"}, {"name": "target"}],
+            }
+        ),
     )
     monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
     monkeypatch.setattr(
@@ -142,9 +150,7 @@ def test_generated_model_dockerfile_is_pinned_to_supplied_runtime() -> None:
         registry_entry_id=entry_id,
     )
 
-    assert dockerfile.startswith(
-        "FROM registry.example/inference@sha256:abc123\n"
-    )
+    assert dockerfile.startswith("FROM registry.example/inference@sha256:abc123\n")
     assert f'ai.sceptre.registry-entry-id"="{entry_id}' in dockerfile
     assert 'ENV MODEL_NAME="Approved Model"' in dockerfile
     assert 'ENV PROJECT_NAME="Credit Risk"' in dockerfile
@@ -263,6 +269,69 @@ def test_inference_offline_upload_rejects_unknown_file_type(
     assert "Unsupported file type" in exc_info.value.detail
 
 
+def test_inference_model_load_and_error_contracts(monkeypatch) -> None:
+    inference_app._load_model.cache_clear()
+    monkeypatch.delenv("MODEL_URI", raising=False)
+    with pytest.raises(RuntimeError, match="MODEL_URI is required"):
+        inference_app._load_model()
+
+    app = inference_app.create_app()
+    monkeypatch.setattr(
+        inference_app,
+        "_load_model",
+        lambda: (_ for _ in ()).throw(RuntimeError("artifact unavailable")),
+    )
+    with pytest.raises(HTTPException) as ready_error:
+        _endpoint(app, "/health/ready", "GET")()
+    assert ready_error.value.status_code == 503
+
+    with pytest.raises(HTTPException, match="Prediction failed") as online_error:
+        _endpoint(app, "/v1/predict/online", "POST")(
+            PointPredictionRequest(record={"feature": 1})
+        )
+    assert online_error.value.status_code == 422
+    with pytest.raises(HTTPException, match="Prediction failed"):
+        _endpoint(app, "/v1/predict", "POST")(
+            PredictionRequest(records=[{"feature": 1}])
+        )
+
+
+def test_inference_uploaded_json_formats_empty_limit_and_probabilities(tmp_path) -> None:
+    json_upload = UploadFile(
+        filename="rows.json", file=io.BytesIO(b'[{"feature":1},{"feature":2}]')
+    )
+    frames = list(inference_app._uploaded_frames(json_upload, 10))
+    assert frames[0]["feature"].tolist() == [1, 2]
+
+    jsonl_upload = UploadFile(
+        filename="rows.ndjson", file=io.BytesIO(b'{"feature":1}\n{"feature":2}\n')
+    )
+    assert sum(len(frame) for frame in inference_app._uploaded_frames(jsonl_upload, 1)) == 2
+
+    class ProbabilityModel:
+        def predict(self, frame):
+            return np.ones(len(frame), dtype=int)
+
+        def predict_proba(self, frame):
+            return np.asarray([[0.25, 0.75]] * len(frame))
+
+    output = inference_app._prediction_output_frame(
+        ProbabilityModel(), pd.DataFrame({"feature": [1]}), include_probabilities=True
+    )
+    assert output[["probability_0", "probability_1"]].iloc[0].tolist() == [0.25, 0.75]
+
+    empty = UploadFile(filename="empty.csv", file=io.BytesIO(b"feature\n"))
+    with pytest.raises(ValueError, match="contains no rows"):
+        inference_app.create_offline_prediction_file(
+            ProbabilityModel(), empty, include_probabilities=False
+        )
+    oversized = UploadFile(filename="rows.csv", file=io.BytesIO(b"feature\n1\n2\n"))
+    with pytest.raises(ValueError, match="exceeds"):
+        inference_app.create_offline_prediction_file(
+            ProbabilityModel(), oversized, include_probabilities=False, max_rows=1
+        )
+
+
 def test_inference_docs_use_project_and_environment_not_platform_name(
     monkeypatch,
 ) -> None:
@@ -311,11 +380,7 @@ def test_model_deployment_manifest_is_isolated_and_probe_enabled() -> None:
     assert pod_spec["imagePullSecrets"] == [{"name": "registry"}]
     assert container["image"] == "automl-inference@sha256:abc"
     assert container["startupProbe"]["httpGet"]["path"] == "/health/ready"
-    environment = {
-        item["name"]: item["value"]
-        for item in container["env"]
-        if "value" in item
-    }
+    environment = {item["name"]: item["value"] for item in container["env"] if "value" in item}
     assert environment["PROJECT_NAME"] == "Credit Risk"
     assert environment["DEPLOYMENT_ENVIRONMENT"] == "staging"
     assert manifests["service"]["spec"]["type"] == "ClusterIP"
@@ -342,16 +407,8 @@ class _FakeDeploymentApps:
 
 class _FakeDeploymentCore:
     def __init__(self, waiting_reason=None, previous_reason=None):
-        waiting = (
-            SimpleNamespace(reason=waiting_reason)
-            if waiting_reason
-            else None
-        )
-        previous = (
-            SimpleNamespace(reason=previous_reason)
-            if previous_reason
-            else None
-        )
+        waiting = SimpleNamespace(reason=waiting_reason) if waiting_reason else None
+        previous = SimpleNamespace(reason=previous_reason) if previous_reason else None
         self.pods = [
             SimpleNamespace(
                 status=SimpleNamespace(
@@ -465,9 +522,7 @@ def test_internal_model_deployment_urls_use_portable_service_dns() -> None:
 def test_platform_model_deployment_urls_use_authenticated_api_paths() -> None:
     project_id = uuid.UUID("11111111-1111-1111-1111-111111111111")
     run_id = uuid.UUID("22222222-2222-2222-2222-222222222222")
-    base_url = (
-        f"/api/v1/projects/{project_id}/operations/deployments/{run_id}/inference"
-    )
+    base_url = f"/api/v1/projects/{project_id}/operations/deployments/{run_id}/inference"
 
     assert _platform_model_deployment_urls(project_id, run_id) == {
         "platform_endpoint": f"{base_url}/v1/predict",
@@ -502,10 +557,7 @@ def test_model_ingress_url_is_reported_only_after_admission() -> None:
         memory_request="1Gi",
     )
     assert manifests["ingress"]["spec"]["ingressClassName"] == "nginx"
-    assert (
-        manifests["ingress"]["spec"]["rules"][0]["host"]
-        == "automl-model-11111111.models.local"
-    )
+    assert manifests["ingress"]["spec"]["rules"][0]["host"] == "automl-model-11111111.models.local"
     client.core = SimpleNamespace(
         read_namespaced_service=lambda **_: SimpleNamespace(
             spec=SimpleNamespace(
@@ -516,13 +568,9 @@ def test_model_ingress_url_is_reported_only_after_admission() -> None:
     )
     ingress = SimpleNamespace(
         status=SimpleNamespace(load_balancer=SimpleNamespace(ingress=None)),
-        spec=SimpleNamespace(
-            rules=[SimpleNamespace(host="automl-model-11111111.models.local")]
-        ),
+        spec=SimpleNamespace(rules=[SimpleNamespace(host="automl-model-11111111.models.local")]),
     )
-    client.networking = SimpleNamespace(
-        read_namespaced_ingress_status=lambda **_: ingress
-    )
+    client.networking = SimpleNamespace(read_namespaced_ingress_status=lambda **_: ingress)
 
     assert client.model_deployment_urls("automl-model-11111111") is None
     ingress.status.load_balancer.ingress = [SimpleNamespace(ip="127.0.0.1")]
@@ -680,17 +728,10 @@ def test_ready_deployment_reports_internal_and_external_access_metadata(
     assert deployment.internal_openapi_url == (
         "http://automl-model-1234.sceptre.svc:8080/openapi.json"
     )
-    platform_base = (
-        f"/api/v1/projects/{run.project_id}/operations/deployments/"
-        f"{run.id}/inference"
-    )
+    platform_base = f"/api/v1/projects/{run.project_id}/operations/deployments/{run.id}/inference"
     assert deployment.platform_endpoint == f"{platform_base}/v1/predict"
-    assert deployment.platform_online_endpoint == (
-        f"{platform_base}/v1/predict/online"
-    )
-    assert deployment.platform_offline_endpoint == (
-        f"{platform_base}/v1/predict/offline"
-    )
+    assert deployment.platform_online_endpoint == (f"{platform_base}/v1/predict/online")
+    assert deployment.platform_offline_endpoint == (f"{platform_base}/v1/predict/offline")
     assert deployment.platform_metadata_url == f"{platform_base}/v1/metadata"
     assert deployment.platform_docs_url == f"{platform_base}/docs"
     assert deployment.platform_openapi_url == f"{platform_base}/openapi.json"
@@ -816,3 +857,627 @@ def test_cleanup_preview_protects_active_deployment_artifacts() -> None:
     assert result.artifact_ids == [eligible.id]
     assert result.artifact_bytes == 30
     assert not db.deleted
+
+
+def test_register_model_persists_artifact_and_version(monkeypatch) -> None:
+    project_id = uuid.uuid4()
+    user = SimpleNamespace(id=uuid.uuid4())
+    parent = SimpleNamespace(
+        id=uuid.uuid4(),
+        status=RunStatus.SUCCEEDED,
+        project_id=project_id,
+        target_column="target",
+        task_type=TaskType.CLASSIFICATION,
+        params={},
+        dataset_version=SimpleNamespace(
+            schema_json={"columns": [{"name": "x"}, {"name": "target"}]}
+        ),
+    )
+    parent.tags = {
+        "leaderboard_primary_metric": "accuracy",
+        "leaderboard": [
+            {
+                "model": "LogisticRegression",
+                "status": "succeeded",
+                "model_artifact_uri": "s3://models/model.joblib",
+                "metrics": {"accuracy": 0.91},
+            }
+        ],
+    }
+
+    class DB:
+        calls = 0
+        added = []
+
+        def scalar(self, _):
+            self.calls += 1
+            return None if self.calls == 1 else 2
+
+        def add(self, value):
+            value.id = value.id or uuid.uuid4()
+            now = datetime.now(UTC)
+            value.created_at = value.created_at or now
+            value.updated_at = value.updated_at or now
+            self.added.append(value)
+
+        def flush(self):
+            pass
+
+    db = DB()
+    monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
+    monkeypatch.setattr(operations_service, "_lock_training_admission", lambda *_: None)
+    monkeypatch.setattr(operations_service, "_training_run", lambda *_: parent)
+    monkeypatch.setattr(operations_service, "_leaderboard_parent", lambda *_: parent)
+    monkeypatch.setattr(operations_service, "_candidate_run", lambda *_: parent)
+    monkeypatch.setattr(
+        operations_service,
+        "get_object_store",
+        lambda: SimpleNamespace(size=lambda _: 123),
+    )
+
+    entry = operations_service.register_model(
+        db,
+        user,
+        project_id,
+        RegistryCreateRequest(training_run_id=parent.id, model_name="LogisticRegression"),
+    )
+
+    assert entry.version == 3
+    assert entry.champion_metric_value == 0.91
+    assert entry.stage == ModelStage.CANDIDATE
+    assert isinstance(db.added[0], RunArtifact)
+    assert db.added[0].byte_size == 123
+
+
+@pytest.mark.parametrize(
+    ("parent_status", "leaderboard", "message"),
+    [
+        (RunStatus.RUNNING, [], "must succeed"),
+        (RunStatus.SUCCEEDED, [], "not found"),
+        (
+            RunStatus.SUCCEEDED,
+            [{"model": "M", "status": "succeeded"}],
+            "durable model artifact",
+        ),
+    ],
+)
+def test_register_model_rejects_invalid_source(
+    monkeypatch, parent_status, leaderboard, message
+) -> None:
+    parent = SimpleNamespace(status=parent_status, tags={"leaderboard": leaderboard})
+    monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
+    monkeypatch.setattr(operations_service, "_lock_training_admission", lambda *_: None)
+    monkeypatch.setattr(operations_service, "_training_run", lambda *_: parent)
+    monkeypatch.setattr(operations_service, "_leaderboard_parent", lambda *_: parent)
+    monkeypatch.setattr(
+        operations_service,
+        "_candidate_run",
+        lambda *_: SimpleNamespace(id=uuid.uuid4()),
+    )
+    with pytest.raises(HTTPException, match=message):
+        operations_service.register_model(
+            SimpleNamespace(scalar=lambda _: None),
+            SimpleNamespace(),
+            uuid.uuid4(),
+            RegistryCreateRequest(training_run_id=uuid.uuid4(), model_name="M"),
+        )
+
+
+def test_registry_stage_and_fallback_transitions_fail_closed(monkeypatch) -> None:
+    entry = SimpleNamespace(
+        stage=ModelStage.CANDIDATE,
+        registry_metadata={},
+        feature_space_hash="x",
+    )
+    db = SimpleNamespace(flush=lambda: None)
+    monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
+    monkeypatch.setattr(operations_service, "_lock_training_admission", lambda *_: None)
+    monkeypatch.setattr(operations_service, "_registry_entry", lambda *_: entry)
+    with pytest.raises(HTTPException, match="Cannot move"):
+        operations_service.update_registry_stage(
+            db, SimpleNamespace(), uuid.uuid4(), uuid.uuid4(), ModelStage.PRODUCTION
+        )
+    with pytest.raises(HTTPException, match="Only a staging model"):
+        operations_service.set_registry_fallback(db, SimpleNamespace(), uuid.uuid4(), uuid.uuid4())
+
+    entry.stage = ModelStage.STAGING
+    monkeypatch.setattr(operations_service, "_clear_fallbacks", lambda *_args, **_kwargs: None)
+    selected = operations_service.set_registry_fallback(
+        db, SimpleNamespace(id=uuid.uuid4()), uuid.uuid4(), uuid.uuid4()
+    )
+    assert selected.registry_metadata["fallback"] is True
+
+
+def test_operation_lookup_helpers_and_candidate_extension() -> None:
+    project_id, item_id = uuid.uuid4(), uuid.uuid4()
+    missing = SimpleNamespace(scalar=lambda _: None)
+    for helper, message in (
+        (operations_service._registry_entry, "Registry entry not found"),
+        (operations_service._training_run, "Training run not found"),
+        (operations_service._dataset_version, "Dataset version not found"),
+    ):
+        with pytest.raises(HTTPException, match=message):
+            helper(missing, project_id, item_id)
+
+    parent = SimpleNamespace(project_id=project_id)
+    assert operations_service._candidate_run(missing, parent, {}) is parent
+    assert (
+        operations_service._candidate_run(
+            SimpleNamespace(get=lambda *_: None), parent, {"extension_run_id": "bad"}
+        )
+        is parent
+    )
+
+
+def test_stop_deployment_is_idempotent_for_kubernetes_404(monkeypatch) -> None:
+    run = _deployment_run()
+    db = SimpleNamespace(scalar=lambda _: run, flush=lambda: None)
+
+    def missing(_):
+        raise operations_service.ApiException(status=404)
+
+    monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
+    stopped = operations_service.stop_model_deployment(
+        db,
+        SimpleNamespace(),
+        run.project_id,
+        run.id,
+        SimpleNamespace(delete_model_deployment=missing),
+    )
+    assert stopped.status == RunStatus.CANCELLED
+    assert stopped.finished_at is not None
+
+
+def test_cleanup_executes_object_and_job_deletion_with_error_capture(monkeypatch) -> None:
+    project_id = uuid.uuid4()
+    good = SimpleNamespace(
+        id=uuid.uuid4(),
+        model_run_id=uuid.uuid4(),
+        registry_entries=[],
+        byte_size=10,
+        object_uri="s3://good",
+        created_at=datetime.now(UTC) - timedelta(days=90),
+    )
+    bad = SimpleNamespace(
+        id=uuid.uuid4(),
+        model_run_id=uuid.uuid4(),
+        registry_entries=[],
+        byte_size=None,
+        object_uri="s3://bad",
+        created_at=datetime.now(UTC) - timedelta(days=90),
+    )
+    db = _SequenceSession(scalars=[[], [good, bad]])
+
+    class Store:
+        def delete(self, uri):
+            if uri.endswith("bad"):
+                raise RuntimeError("denied")
+
+    monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
+    monkeypatch.setattr(operations_service, "get_object_store", Store)
+    result = cleanup_project_resources(
+        db,
+        SimpleNamespace(),
+        project_id,
+        ArtifactCleanupRequest(dry_run=False),
+        SimpleNamespace(cleanup_finished_jobs=lambda _: ["job-1"]),
+    )
+    assert result.deleted_object_uris == ["s3://good"]
+    assert result.deleted_kubernetes_jobs == ["job-1"]
+    assert "denied" in result.errors[0]
+    assert db.deleted == [good]
+
+
+def _operations_estimate(*, can_launch=True):
+    return TrainingEstimateRead(
+        capacity=ClusterCapacityRead(
+            connected=True,
+            source="test",
+            total_cpu_cores=8,
+            requested_cpu_cores=0,
+            available_cpu_cores=8,
+            total_memory_mb=16384,
+            requested_memory_mb=0,
+            available_memory_mb=16384,
+            ready_nodes=2,
+            gpu_available=False,
+            active_training_jobs=0,
+        ),
+        estimated_working_set_mb=256,
+        cpu_request_cores=1,
+        cpu_limit_cores=2,
+        memory_request_mb=1024,
+        memory_limit_mb=2048,
+        gpu_requested=False,
+        expected_minutes=10,
+        active_deadline_seconds=900,
+        estimated_core_hours=0.2,
+        max_concurrent_jobs=15,
+        can_launch=can_launch,
+        blockers=[] if can_launch else ["capacity"],
+    )
+
+
+def test_drift_launch_submits_a_resource_bounded_job(monkeypatch) -> None:
+    project_id = uuid.uuid4()
+    source_version_id = uuid.uuid4()
+    source = SimpleNamespace(
+        id=uuid.uuid4(),
+        dataset_version_id=source_version_id,
+        target_column="target",
+        task_type=TaskType.CLASSIFICATION,
+        params={"excluded_leakage_columns": ["leak"]},
+        dataset_version=SimpleNamespace(
+            schema_json={
+                "columns": [
+                    {"name": "x"},
+                    {"name": "target"},
+                    {"name": "leak"},
+                ]
+            }
+        ),
+    )
+    entry = SimpleNamespace(id=uuid.uuid4(), model_run=source, model_name="M", version=1)
+    current = SimpleNamespace(id=uuid.uuid4(), schema_json={"columns": [{"name": "x"}]})
+    added = []
+
+    class DB:
+        def scalars(self, _):
+            return SimpleNamespace(all=lambda: [])
+
+        def add(self, value):
+            value.id = uuid.uuid4()
+            now = datetime.now(UTC)
+            value.created_at = now
+            value.updated_at = now
+            added.append(value)
+
+        def flush(self):
+            pass
+
+    class Client:
+        settings = SimpleNamespace(training_namespace="ray-jobs")
+        created = []
+
+        def build_job_manifest(self, **kwargs):
+            return {"metadata": {"name": f"drift-{kwargs['run_id']}"}}
+
+        def create_job(self, manifest):
+            self.created.append(manifest)
+
+    client = Client()
+    monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
+    monkeypatch.setattr(operations_service, "_registry_entry", lambda *_: entry)
+    monkeypatch.setattr(operations_service, "_dataset_version", lambda *_: current)
+    monkeypatch.setattr(
+        operations_service, "estimate_training_run", lambda *_: _operations_estimate()
+    )
+
+    result = operations_service.launch_drift_check(
+        DB(),
+        SimpleNamespace(id=uuid.uuid4()),
+        project_id,
+        entry.id,
+        DriftLaunchRequest(dataset_version_id=current.id),
+        client,
+    )
+
+    assert result.run.status == RunStatus.QUEUED
+    assert result.run.gpu_requested is False
+    assert result.run.params["monitoring_resource_class"] == "standard"
+    assert client.created == [result.manifest]
+    assert added[0].run_kind == RunKind.DRIFT
+
+
+def test_drift_launch_rejects_same_dataset_and_failed_precheck(monkeypatch) -> None:
+    project_id = uuid.uuid4()
+    version = SimpleNamespace(id=uuid.uuid4(), schema_json={"columns": []})
+    source = SimpleNamespace(
+        dataset_version_id=version.id,
+        target_column=None,
+        task_type=TaskType.CLUSTERING,
+        params={},
+        dataset_version=version,
+    )
+    entry = SimpleNamespace(id=uuid.uuid4(), model_run=source)
+    monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
+    monkeypatch.setattr(operations_service, "_registry_entry", lambda *_: entry)
+    monkeypatch.setattr(operations_service, "_dataset_version", lambda *_: version)
+    with pytest.raises(HTTPException, match="different from"):
+        operations_service.launch_drift_check(
+            SimpleNamespace(),
+            SimpleNamespace(),
+            project_id,
+            entry.id,
+            DriftLaunchRequest(dataset_version_id=version.id),
+        )
+
+    source.dataset_version_id = uuid.uuid4()
+    monkeypatch.setattr(
+        operations_service,
+        "estimate_training_run",
+        lambda *_: _operations_estimate(can_launch=False),
+    )
+    db = SimpleNamespace(scalars=lambda _: SimpleNamespace(all=lambda: []))
+    with pytest.raises(HTTPException, match="Drift precheck failed"):
+        operations_service.launch_drift_check(
+            db,
+            SimpleNamespace(),
+            project_id,
+            entry.id,
+            DriftLaunchRequest(dataset_version_id=version.id),
+            SimpleNamespace(settings=SimpleNamespace(training_namespace="ray")),
+        )
+
+
+def _deployable_entry(project_id):
+    source = SimpleNamespace(
+        dataset_version_id=uuid.uuid4(),
+        task_type=TaskType.CLASSIFICATION,
+        target_column="target",
+    )
+    artifact = SimpleNamespace(
+        object_uri="s3://models/model.joblib",
+        byte_size=1024,
+    )
+    return SimpleNamespace(
+        id=uuid.uuid4(),
+        stage=ModelStage.STAGING,
+        model_name="LogisticRegression",
+        version=1,
+        model_run=source,
+        model_artifact=artifact,
+        model_artifact_id=uuid.uuid4(),
+        project_id=project_id,
+    )
+
+
+class _DeploymentDB:
+    def __init__(self, project, active=None):
+        self.project = project
+        self.active = active or []
+        self.added = []
+
+    def scalars(self, _):
+        return SimpleNamespace(all=lambda: self.active)
+
+    def get(self, *_):
+        return self.project
+
+    def add(self, value):
+        value.id = value.id or uuid.uuid4()
+        now = datetime.now(UTC)
+        value.created_at = value.created_at or now
+        value.updated_at = value.updated_at or now
+        self.added.append(value)
+
+    def flush(self):
+        pass
+
+
+class _DeploymentClient:
+    def __init__(self, error=None):
+        self.error = error
+        self.created = []
+        self.settings = Settings(
+            training_namespace="models",
+            environment="local",
+            inference_image="inference@sha256:abc",
+        )
+
+    def build_model_deployment_manifest(self, **_):
+        return {
+            "deployment": {"metadata": {"name": "model-deployment"}},
+            "service": {"metadata": {"name": "model-service"}},
+        }
+
+    def create_model_deployment(self, manifests):
+        if self.error:
+            raise self.error
+        self.created.append(manifests)
+
+    def model_deployment_urls(self, _):
+        return {"endpoint": "https://model.test/v1/predict"}
+
+
+def test_deploy_registered_model_persists_manifest_and_dockerfile(monkeypatch) -> None:
+    project_id = uuid.uuid4()
+    project = SimpleNamespace(id=project_id, name="Risk")
+    entry = _deployable_entry(project_id)
+    db = _DeploymentDB(project)
+    client = _DeploymentClient()
+    monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
+    monkeypatch.setattr(operations_service, "_lock_training_admission", lambda *_: None)
+    monkeypatch.setattr(operations_service, "_registry_entry", lambda *_: entry)
+    monkeypatch.setattr(
+        operations_service,
+        "get_object_store",
+        lambda: SimpleNamespace(
+            put_bytes=lambda key, data: SimpleNamespace(uri=f"s3://artifacts/{key}")
+        ),
+    )
+
+    result = operations_service.deploy_registered_model(
+        db,
+        SimpleNamespace(id=uuid.uuid4()),
+        project_id,
+        entry.id,
+        ModelDeploymentRequest(),
+        client,
+    )
+
+    assert result.run.status == RunStatus.RUNNING
+    assert result.run.gpu_requested is False
+    assert result.run.tags["service_name"] == "model-service"
+    assert result.run.tags["endpoint"] == "https://model.test/v1/predict"
+    assert result.dockerfile_uri.startswith("s3://artifacts/projects/")
+    assert client.created == [result.manifests]
+    assert any(isinstance(item, RunArtifact) for item in db.added)
+
+
+def test_deployment_rejects_stage_duplicate_project_and_cluster_failure(monkeypatch) -> None:
+    project_id = uuid.uuid4()
+    entry = _deployable_entry(project_id)
+    monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
+    monkeypatch.setattr(operations_service, "_lock_training_admission", lambda *_: None)
+    monkeypatch.setattr(operations_service, "_registry_entry", lambda *_: entry)
+
+    entry.stage = ModelStage.CANDIDATE
+    with pytest.raises(HTTPException, match="staging or production"):
+        operations_service.deploy_registered_model(
+            _DeploymentDB(SimpleNamespace()),
+            SimpleNamespace(),
+            project_id,
+            entry.id,
+            ModelDeploymentRequest(),
+            _DeploymentClient(),
+        )
+
+    entry.stage = ModelStage.STAGING
+    active = SimpleNamespace(tags={"registry_entry_id": str(entry.id)})
+    with pytest.raises(HTTPException, match="already has an active deployment"):
+        operations_service.deploy_registered_model(
+            _DeploymentDB(SimpleNamespace(), [active]),
+            SimpleNamespace(),
+            project_id,
+            entry.id,
+            ModelDeploymentRequest(),
+            _DeploymentClient(),
+        )
+
+    with pytest.raises(HTTPException, match="Project not found"):
+        operations_service.deploy_registered_model(
+            _DeploymentDB(None),
+            SimpleNamespace(),
+            project_id,
+            entry.id,
+            ModelDeploymentRequest(),
+            _DeploymentClient(),
+        )
+
+    db = _DeploymentDB(SimpleNamespace(id=project_id, name="Risk"))
+    monkeypatch.setattr(
+        operations_service,
+        "get_object_store",
+        lambda: SimpleNamespace(
+            put_bytes=lambda *_: SimpleNamespace(uri="s3://artifacts/Dockerfile")
+        ),
+    )
+    with pytest.raises(HTTPException, match="rejected the model deployment"):
+        operations_service.deploy_registered_model(
+            db,
+            SimpleNamespace(id=uuid.uuid4()),
+            project_id,
+            entry.id,
+            ModelDeploymentRequest(),
+            _DeploymentClient(RuntimeError("rejected")),
+        )
+    deployment = next(item for item in db.added if isinstance(item, ModelRun))
+    assert deployment.status == RunStatus.FAILED
+    assert deployment.failure_code == "KUBERNETES_DEPLOYMENT_CREATE_FAILED"
+
+
+def test_platform_health_reports_each_unavailable_dependency(monkeypatch) -> None:
+    capacity = ClusterCapacityRead(
+        connected=False,
+        source="unavailable",
+        total_cpu_cores=0,
+        requested_cpu_cores=0,
+        available_cpu_cores=0,
+        total_memory_mb=0,
+        requested_memory_mb=0,
+        available_memory_mb=0,
+        ready_nodes=0,
+        gpu_available=False,
+        active_training_jobs=0,
+    )
+    snapshot = SimpleNamespace(
+        capacity=capacity,
+        pvc_ready=False,
+        priority_class_ready=False,
+        runtime_dependencies_ready=False,
+    )
+    monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
+    monkeypatch.setattr(
+        operations_service,
+        "get_object_store",
+        lambda: SimpleNamespace(healthcheck=lambda: (_ for _ in ()).throw(RuntimeError("down"))),
+    )
+
+    result = operations_service.platform_health(
+        SimpleNamespace(scalar=lambda _: 2),
+        SimpleNamespace(),
+        uuid.uuid4(),
+        SimpleNamespace(capacity_snapshot=lambda: snapshot),
+    )
+
+    assert result.active_deployments == 2
+    assert set(result.components.values()) == {"ok", "unavailable"}
+    assert result.components["object_store"] == "unavailable"
+
+
+@pytest.mark.parametrize(
+    ("runtime_state", "expected_code"),
+    [
+        ("missing", "KUBERNETES_DEPLOYMENT_MISSING"),
+        ("image_pull_error", "INFERENCE_IMAGE_PULL_FAILED"),
+        ("crash_loop", "INFERENCE_CONTAINER_CRASH_LOOP"),
+        ("configuration_error", "INFERENCE_CONTAINER_CONFIGURATION_FAILED"),
+        ("out_of_memory", "INFERENCE_CONTAINER_OUT_OF_MEMORY"),
+    ],
+)
+def test_deployment_listing_persists_terminal_runtime_failures(
+    monkeypatch,
+    runtime_state,
+    expected_code,
+) -> None:
+    run = _deployment_run()
+    db = _SequenceSession(scalars=[[run]])
+    client = SimpleNamespace(
+        settings=Settings(training_namespace="fallback"),
+        model_deployment_state=lambda _: runtime_state,
+    )
+    monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
+
+    result = list_model_deployments(db, SimpleNamespace(), run.project_id, client)
+
+    assert result[0].status == RunStatus.FAILED
+    assert run.failure_code == expected_code
+
+
+def test_deployment_listing_degrades_when_cluster_lookup_fails(monkeypatch) -> None:
+    run = _deployment_run()
+    db = _SequenceSession(scalars=[[run]])
+    client = SimpleNamespace(
+        settings=Settings(training_namespace="fallback"),
+        model_deployment_state=lambda _: (_ for _ in ()).throw(RuntimeError("down")),
+    )
+    monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
+
+    result = list_model_deployments(db, SimpleNamespace(), run.project_id, client)
+
+    assert result[0].runtime_state == "unavailable"
+    assert result[0].status == RunStatus.RUNNING
+
+
+def test_drift_listing_syncs_active_runs_and_stops_after_api_failure(monkeypatch) -> None:
+    active = _deployment_run(status=RunStatus.RUNNING)
+    active.run_kind = RunKind.DRIFT
+    queued = _deployment_run(status=RunStatus.QUEUED)
+    queued.run_kind = RunKind.DRIFT
+    db = _SequenceSession(scalars=[[active, queued]])
+    calls = []
+
+    def fail_first(_db, run, _client):
+        calls.append(run.id)
+        raise operations_service.ApiException(status=503)
+
+    monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
+    monkeypatch.setattr(operations_service, "_sync_run_status", fail_first)
+
+    result = operations_service.list_drift_runs(
+        db, SimpleNamespace(), active.project_id, SimpleNamespace()
+    )
+
+    assert result == [active, queued]
+    assert calls == [active.id]

@@ -49,4 +49,72 @@ describe("profile and security", () => {
     expect(getSession()?.user.full_name).toBe("Ada Byron");
     expect(getSession()?.tokens.access_token).toBe("renewed-access");
   });
+
+  it("validates matching passwords before calling the API", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    render(<AccountPage />);
+
+    await user.type(screen.getByLabelText("Current password"), "current-pass");
+    await user.type(screen.getByLabelText("New password"), "new-password");
+    await user.type(screen.getByLabelText("Confirm new password"), "different-password");
+    await user.click(screen.getByRole("button", { name: "Change password" }));
+
+    expect(await screen.findByText("The new passwords do not match.")).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("changes the password, renews the session, and clears the form", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      user: session.user,
+      tokens: { ...session.tokens, access_token: "password-renewed" },
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    render(<AccountPage />);
+
+    const current = screen.getByLabelText("Current password");
+    await user.type(current, "current-pass");
+    await user.type(screen.getByLabelText("New password"), "new-password");
+    await user.type(screen.getByLabelText("Confirm new password"), "new-password");
+    await user.click(screen.getByRole("button", { name: "Change password" }));
+
+    expect(await screen.findByText(/Password changed/)).toBeInTheDocument();
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/auth/password/change");
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
+    expect(current).toHaveValue("");
+    expect(getSession()?.tokens.access_token).toBe("password-renewed");
+  });
+
+  it("reports profile and password API errors", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({ detail: "Email is already registered" }), {
+        status: 409, headers: { "Content-Type": "application/json" },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ detail: "Current password is incorrect" }), {
+        status: 400, headers: { "Content-Type": "application/json" },
+      }));
+    render(<AccountPage />);
+
+    await user.click(screen.getByRole("button", { name: "Save profile" }));
+    expect(await screen.findByText("Email is already registered")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Current password"), "wrong-pass");
+    await user.type(screen.getByLabelText("New password"), "new-password");
+    await user.type(screen.getByLabelText("Confirm new password"), "new-password");
+    await user.click(screen.getByRole("button", { name: "Change password" }));
+    expect(await screen.findByText("Current password is incorrect")).toBeInTheDocument();
+  });
+
+  it("renders inactive, unverified, and unnamed account states", () => {
+    setSession({
+      ...session,
+      user: { ...session.user, full_name: "", is_active: false, is_verified: false },
+    });
+    render(<AccountPage />);
+
+    expect(screen.getByText("Disabled")).toBeInTheDocument();
+    expect(screen.getByText("Not verified")).toBeInTheDocument();
+    expect(screen.getByLabelText("Full name")).toHaveValue("");
+  });
 });

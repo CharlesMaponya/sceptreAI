@@ -1,0 +1,22 @@
+replicas: 1
+
+image:
+  repository: quay.io/kuberay/operator
+  tag: v1.6.2
+  pullPolicy: IfNotPresent
+
+leaderElectionEnabled: true
+reconcileConcurrency: 1
+
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: false
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

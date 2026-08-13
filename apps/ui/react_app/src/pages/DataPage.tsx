@@ -6,6 +6,7 @@ import { Badge, Button, Card, EmptyState, ErrorState, Loading, Metric, Modal, No
 import { formatBytes, titleCase } from "../lib";
 import type { Dataset, DatasetVersion, LeakageAnalysis, LeakageFinding, ProfileJob } from "../types";
 import { useNavigate, useParams } from "react-router";
+import { buildWordCloudTrace, formatStatistic } from "./presentation";
 
 type ProfileResult = ProfileJob & {
   feature_profiles_json: Record<string, {
@@ -228,72 +229,6 @@ function FeatureDistribution({ column }: { column: FeatureColumn }) {
   return <Suspense fallback={<Loading label="Loading visualization…" />}><PlotlyChart className={`feature-plot${isText ? " feature-word-cloud" : ""}`} data={chart} layout={{ autosize: true, height: 260, margin: isText ? { l: 8, r: 8, t: 8, b: 8 } : { l: 45, r: 10, t: 10, b: 65 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: isText ? "rgba(0,0,0,0)" : "#f8f9fc", showlegend: false, hovermode: "closest", xaxis: isText ? cloudAxis : { visible: true, automargin: true }, yaxis: isText ? { ...cloudAxis, range: [-120, 120] } : { visible: true, automargin: true }, font: { family: "Inter, system-ui, sans-serif", size: 10, color: "#4e5870" } }} config={{ displayModeBar: false, responsive: true }} useResizeHandler style={{ width: "100%" }} /></Suspense>;
 }
 
-type CloudWord = { word: string; count: number };
-type PlacedCloudWord = CloudWord & { x: number; y: number; size: number; color: string };
-
-function buildWordCloudTrace(words: CloudWord[]) {
-  const palette = ["#173b82", "#3159e8", "#5f78d8", "#176b78", "#7048a8", "#2360a8"];
-  const candidates = words
-    .filter((item) => item.word?.trim() && Number.isFinite(item.count) && item.count > 0)
-    .sort((left, right) => right.count - left.count)
-    .slice(0, 40);
-  const logarithms = candidates.map((item) => Math.log1p(item.count));
-  const minimum = Math.min(...logarithms);
-  const maximum = Math.max(...logarithms);
-  const boxes: Array<{ left: number; right: number; top: number; bottom: number }> = [];
-  const placed: PlacedCloudWord[] = [];
-
-  candidates.forEach((item, index) => {
-    const scale = maximum === minimum ? 0.5 : (Math.log1p(item.count) - minimum) / (maximum - minimum);
-    const requestedSize = 14 + scale * 34;
-    const size = Math.max(13, Math.min(requestedSize, 570 / Math.max(1, item.word.length * 0.56)));
-    const width = Math.max(size * 1.4, item.word.length * size * 0.56);
-    const height = size * 1.12;
-    const seed = wordHash(item.word);
-
-    for (let attempt = 0; attempt < 700; attempt += 1) {
-      const angle = attempt * 0.53 + (seed % 360) * (Math.PI / 180);
-      const radius = attempt === 0 ? 0 : 7 * Math.sqrt(attempt);
-      const x = Math.cos(angle) * radius * 1.65;
-      const y = Math.sin(angle) * radius * 0.62;
-      const box = {
-        left: x - width / 2 - 3,
-        right: x + width / 2 + 3,
-        top: y + height / 2 + 2,
-        bottom: y - height / 2 - 2,
-      };
-      const inBounds = box.left >= -330 && box.right <= 330 && box.bottom >= -112 && box.top <= 112;
-      const overlaps = boxes.some((existing) => !(box.right < existing.left || box.left > existing.right || box.top < existing.bottom || box.bottom > existing.top));
-      if (!inBounds || overlaps) continue;
-      boxes.push(box);
-      placed.push({ ...item, x, y, size, color: palette[(index + seed) % palette.length] });
-      break;
-    }
-  });
-
-  return {
-    type: "scatter" as const,
-    mode: "text" as const,
-    x: placed.map((item) => item.x),
-    y: placed.map((item) => item.y),
-    text: placed.map((item) => item.word),
-    customdata: placed.map((item) => item.count),
-    textfont: {
-      family: "Manrope Variable, Inter, system-ui, sans-serif",
-      size: placed.map((item) => item.size),
-      color: placed.map((item) => item.color),
-    },
-    hovertemplate: "<b>%{text}</b><br>Frequency: %{customdata:,}<extra></extra>",
-    cliponaxis: false,
-  };
-}
-
-function wordHash(value: string) {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
-  return Math.abs(hash);
-}
-
 function StatisticsTable({ statistics }: { statistics: Record<string, unknown> }) {
   const preferred = ["count", "min", "q1", "median", "q3", "max", "mean", "stddev", "variance", "skewness", "kurtosis", "avg_length", "max_length"];
   const rows = preferred.filter((key) => key in statistics);
@@ -302,10 +237,4 @@ function StatisticsTable({ statistics }: { statistics: Record<string, unknown> }
     {rows.length ? <dl className="statistics-table">{rows.map((key) => <div key={key}><dt>{titleCase(key)}</dt><dd>{formatStatistic(statistics[key])}</dd></div>)}</dl> : null}
     {topValues.length ? <div className="statistics-table statistics-table--top-values">{topValues.slice(0, 10).map((item, index) => <div key={`${String(item.value)}-${index}`}><span>{formatStatistic(item.value)}</span><b>{formatStatistic(item.count)}</b></div>)}</div> : null}
   </> : <p className="muted">No descriptive statistics available.</p>;
-}
-
-function formatStatistic(value: unknown) {
-  if (value == null) return "—";
-  if (typeof value === "number") return value.toLocaleString(undefined, { maximumFractionDigits: 4 });
-  return String(value);
 }

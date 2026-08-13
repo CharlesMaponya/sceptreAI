@@ -1,0 +1,1 @@
+{"polars": "1.43.2", "pyarrow": "24.0.0", "python": "3.12.13", "ray": "2.56.1", "sklearn": "1.9.0", "skopt": "0.10.2", "torch": "2.9.1+cpu", "xgboost": "2.1.4"}

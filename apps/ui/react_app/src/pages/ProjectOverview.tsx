@@ -5,20 +5,16 @@ import { Link, useParams } from "react-router";
 import { api, json } from "../api";
 import { Badge, Button, Card, ErrorState, Loading, Metric, Notice, PageHeader } from "../components/ui";
 import { formatDate, titleCase } from "../lib";
-import type { Dataset, DatasetColumnPreview, DatasetVersion, ModelRun, ProfileJob, Project, TaskType } from "../types";
+import type { Dataset, DatasetVersion, ModelRun, ProfileJob, Project } from "../types";
+import {
+  formatTargetStatistic, inferPreviewTask, previewColumnProfile, previewTaskRationale,
+} from "./presentation";
+import type { TargetColumnProfile } from "./presentation";
 
 const NO_TARGET = "No target";
 const TERMINAL_PROFILE_STATUSES = ["succeeded", "failed", "cancelled"];
 const PlotlyChart = lazy(() => import("../components/PlotlyChart"));
 
-type TargetColumnProfile = {
-  name: string;
-  semantic_type: string;
-  statistics: Record<string, string | number | null>;
-  distribution: Array<{ label: string; count: number }>;
-  preview_values?: Array<string | number>;
-  preview_distribution?: Array<{ label: string; count: number }>;
-};
 type CompletedProfile = ProfileJob & {
   feature_profiles_json: Record<string, TargetColumnProfile>;
 };
@@ -232,46 +228,4 @@ function TargetVisualization({ task, profile, preview }: {
       <div><span>Latest</span><strong>{formatTargetStatistic(profile.statistics.max)}</strong></div>
     </div>}
   </section>;
-}
-
-function inferPreviewTask(target: string | null, column?: DatasetColumnPreview): TaskType {
-  if (!target) return "clustering";
-  if (column?.semantic_type === "temporal") return "time_series";
-  if (column?.semantic_type === "numerical_continuous") return "regression";
-  return "classification";
-}
-
-function previewTaskRationale(task: TaskType, target: string | null) {
-  if (!target) return "No target is selected, so the provisional task is unsupervised clustering.";
-  if (task === "regression") return "The selected target is continuous numeric, indicating regression.";
-  if (task === "time_series") return "The selected target is temporal, indicating time-series analysis.";
-  return "The selected target is categorical, text-like, or low-cardinality numeric, indicating classification.";
-}
-
-function previewColumnProfile(column: DatasetColumnPreview): TargetColumnProfile {
-  const fallbackValues = column.sample_values || [];
-  const previewValues = column.preview_values?.length
-    ? column.preview_values
-    : column.semantic_type === "numerical_continuous"
-      ? fallbackValues.map(Number).filter(Number.isFinite)
-      : column.semantic_type === "temporal" ? fallbackValues : [];
-  const fallbackCounts = fallbackValues.reduce<Record<string, number>>((counts, value) => {
-    counts[value] = (counts[value] || 0) + 1;
-    return counts;
-  }, {});
-  return {
-    name: column.name,
-    semantic_type: column.semantic_type || "unknown",
-    statistics: column.statistics || {},
-    distribution: [],
-    preview_values: previewValues,
-    preview_distribution: column.preview_distribution?.length
-      ? column.preview_distribution
-      : Object.entries(fallbackCounts).map(([label, count]) => ({ label, count })),
-  };
-}
-
-function formatTargetStatistic(value: string | number | null | undefined) {
-  if (value == null) return "—";
-  return typeof value === "number" ? value.toLocaleString(undefined, { maximumFractionDigits: 3 }) : value;
 }

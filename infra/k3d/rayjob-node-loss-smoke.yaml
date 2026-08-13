@@ -1,0 +1,82 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sceptre-ray-node-loss-smoke
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: node-loss-script
+  namespace: sceptre-ray-node-loss-smoke
+data:
+  validate_node_loss.py: |
+    import json
+    import socket
+    import time
+
+    import ray
+
+
+    @ray.remote(max_retries=3)
+    def survive_node_loss(slot: int) -> dict[str, object]:
+        hostname = socket.gethostname()
+        print(f"TASK_START slot={slot} hostname={hostname}", flush=True)
+        time.sleep(120)
+        return {"hostname": hostname, "slot": slot}
+
+
+    ray.init(address="auto")
+    results = ray.get([survive_node_loss.remote(slot) for slot in range(2)])
+    print(json.dumps({"results": results, "status": "passed"}, sort_keys=True))
+---
+apiVersion: ray.io/v1
+kind: RayJob
+metadata:
+  name: ray-node-loss-smoke
+  namespace: sceptre-ray-node-loss-smoke
+spec:
+  entrypoint: python /opt/sceptre-smoke/validate_node_loss.py
+  shutdownAfterJobFinishes: true
+  ttlSecondsAfterFinished: 600
+  activeDeadlineSeconds: 600
+  submitterConfig:
+    backoffLimit: 0
+  rayClusterSpec:
+    rayVersion: "2.56.1"
+    enableInTreeAutoscaling: false
+    headGroupSpec:
+      rayStartParams: {dashboard-host: "0.0.0.0", num-cpus: "0"}
+      template:
+        spec:
+          containers:
+            - name: ray-head
+              image: sceptreai/ray-polars:2.56.1-1.43.2-local-14
+              imagePullPolicy: IfNotPresent
+              resources:
+                requests: {cpu: "2", memory: 1536Mi}
+                limits: {cpu: "4", memory: 3Gi}
+              volumeMounts:
+                - {name: script, mountPath: /opt/sceptre-smoke, readOnly: true}
+          volumes:
+            - name: script
+              configMap: {name: node-loss-script}
+    workerGroupSpecs:
+      - groupName: cpu
+        replicas: 2
+        minReplicas: 2
+        maxReplicas: 2
+        rayStartParams: {num-cpus: "1"}
+        template:
+          spec:
+            containers:
+              - name: ray-worker
+                image: sceptreai/ray-polars:2.56.1-1.43.2-local-14
+                imagePullPolicy: IfNotPresent
+                resources:
+                  requests: {cpu: 500m, memory: 768Mi}
+                  limits: {cpu: "1", memory: 1536Mi}
+                volumeMounts:
+                  - {name: script, mountPath: /opt/sceptre-smoke, readOnly: true}
+            volumes:
+              - name: script
+                configMap: {name: node-loss-script}

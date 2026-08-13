@@ -15,6 +15,9 @@ import { formatBytes, formatDate, titleCase } from "../lib";
 import type {
   Dataset, DatasetVersion, Estimator, Leaderboard, ModelRun, TaskType, TrainingResourceUsage,
 } from "../types";
+import {
+  fallbackPipeline, fallbackPipelineDiagram, formatDuration, formatNumber,
+} from "./presentation";
 
 type Analysis = ModelRun & { run_name: string | null };
 interface AnalysisResult {
@@ -305,39 +308,6 @@ function PipelineDiagram({ diagram, modelName }: {
   </div>;
 }
 
-function fallbackPipeline(entry: LeaderboardEntry, task: TaskType) {
-  const completed = entry.status === "succeeded";
-  const planned = completed ? "completed" : entry.status === "running" ? "running" : "planned";
-  return [
-    { key: "data", label: "Immutable data", status: completed ? "completed" : "ready", summary: "Load the selected dataset version." },
-    { key: "leakage", label: "Leakage gate", status: planned, summary: "Remove profiling-confirmed leakage features." },
-    { key: "split", label: "Validation design", status: planned, summary: task === "time_series" ? "Ordered holdout and time-series folds." : "Task-aware holdout and cross-validation." },
-    { key: "processing", label: "Feature processing", status: planned, summary: "Impute and encode the fitted feature contract." },
-    { key: "selection", label: "Feature selection", status: planned, summary: task === "clustering" ? "Remove correlated numeric features using completeness." : "Remove correlated numeric features, then keep the top 80% by mutual information." },
-    { key: "fit", label: "Tune & fit", status: planned, summary: `Fit ${entry.model} with recorded parameters.` },
-    { key: "evaluate", label: "Evaluate", status: planned, summary: "Calculate task-aware metrics and diagnostics." },
-    { key: "persist", label: "Persist evidence", status: planned, summary: "Store the fitted pipeline and MLflow evidence." },
-  ];
-}
-
-function fallbackPipelineDiagram(entry: LeaderboardEntry, task: TaskType) {
-  return {
-    input_gates: ["Immutable dataset version", "Leakage gate", "Temporal normalization"],
-    correlation_filter: {
-      name: "Correlation filter", type: "CorrelatedFeatureFilter",
-      summary: "Remove numeric pairs at |r| ≥ 0.90 using task-aware training evidence.",
-    },
-    transformer: { name: "preprocessor", type: "ColumnTransformer", branches: [
-      { key: "numeric", label: "Numeric", steps: ["Median imputation", "Standard scaling"] },
-      { key: "categorical", label: "Categorical & text", steps: ["Most-frequent imputation", "Ordinal encoding"] },
-    ] },
-    selector: task === "clustering" ? null : {
-      name: "Feature selection", type: "SelectPercentile", summary: "Keep the top 80% by mutual information.",
-    },
-    estimator: { name: "estimator", type: entry.model },
-  };
-}
-
 type CorrelationMatrix = { columns?: string[]; values?: number[][] };
 type CorrelationRemoval = {
   feature: string; kept_feature: string; correlation: number; score: number; kept_score: number;
@@ -541,12 +511,6 @@ function ResourceMeter({ icon, label, current, detail, percent, hideProgress = f
   return <section className="resource-meter"><div>{icon}<span><small>{label}</small><b>{current}</b></span></div>
     {!hideProgress && <progress max={100} value={Math.min(100, Math.max(0, percent))} />}
     <small>{detail}</small></section>;
-}
-
-function formatNumber(value: number | null, suffix: string) { return value == null ? "—" : `${value.toLocaleString()}${suffix}`; }
-function formatDuration(seconds: number) {
-  const minutes = Math.floor(seconds / 60); const remainder = Math.round(seconds % 60);
-  return minutes ? `${minutes}m ${remainder}s` : `${remainder}s`;
 }
 
 function ModelDiagnosticCharts({ diagnostics, task }: {

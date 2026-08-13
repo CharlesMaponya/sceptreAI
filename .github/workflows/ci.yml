@@ -96,13 +96,7 @@ jobs:
         env:
           DATABASE_URL: postgresql+psycopg://automl:automl@localhost:5432/automl_test
           JWT_SECRET_KEY: test-secret-key
-        run: |
-          pytest tests/ -v --tb=short \
-            --cov \
-            --cov-report=term-missing \
-            --cov-report=xml \
-            --cov-report=html \
-            --cov-fail-under=40
+        run: scripts/test_backend.sh
 
       - name: Upload coverage reports
         if: ${{ always() && hashFiles('coverage.xml') != '' }}
@@ -131,7 +125,16 @@ jobs:
           cache-dependency-path: apps/ui/react_app/package-lock.json
 
       - run: npm ci
-      - run: npm test -- --run
+      - run: npm run test:coverage
+
+      - name: Upload frontend coverage
+        if: ${{ always() && hashFiles('apps/ui/react_app/coverage/coverage-summary.json') != '' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: frontend-coverage-report
+          path: apps/ui/react_app/coverage/
+          if-no-files-found: error
+          retention-days: 14
       - run: npm run lint
       - run: npm run build
 

@@ -121,7 +121,7 @@ attached to the model throughout its lifecycle.
 | --- | --- |
 | Control access | Registration, 24-hour access sessions, refresh-token rotation, project RBAC, and share links |
 | Ingest and version data | CSV, Parquet, Excel, JSON, and JSONL ingestion; immutable versions; content hashes; S3-compatible object persistence |
-| Profile every dataset | Full-dataset statistics, five-number summaries, distributions, missingness, quality flags, temporal inference, relationships, and Dask fallback |
+| Profile every dataset | Full-dataset statistics, five-number summaries, distributions, missingness, quality flags, temporal inference, and bounded Ray Data/Polars execution |
 | Frame the ML problem | Classification, regression, clustering, and time-series inference with target reprofiling and reusable feature statistics |
 | Train efficiently | Up to 20 models per run, dynamic scikit-learn discovery, Bayesian tuning, adaptive resource requests, and isolated Kubernetes Jobs |
 | Select with evidence | Progressive results, task-specific metrics, diagnostics, ranking, and new candidates without retraining completed models |
@@ -205,8 +205,9 @@ Sceptre is built for shared clusters:
   unsupported operations retain the CPU fallback.
 - PriorityClass support is optional and omitted by default.
 - Stale database state is reconciled against Kubernetes before admission.
-- Planned duration drives cost estimates; the safety deadline ranges from six to
-  24 hours and is displayed separately.
+- Planned duration drives cost estimates; the operational safety deadline scales
+  from a six-hour floor up to a seven-day cap and is displayed separately. It is
+  a stale-workload guardrail, not a training-completion SLA.
 - Completed Kubernetes Jobs are removed automatically.
 
 Increasing `MAX_CONCURRENT_JOBS` permits more application-level parallelism;
@@ -806,7 +807,7 @@ The most important operational settings are:
 | `TRAINING_MEMORY_REQUEST_MB` | `1024` | Minimum requested memory per training Job |
 | `TRAINING_MEMORY_LIMIT_MB` | `4096` | Maximum memory and preflight working-set ceiling |
 | `TRAINING_ACTIVE_DEADLINE_SECONDS` | `21600` | Minimum Job safety deadline |
-| `TRAINING_MAX_ACTIVE_DEADLINE_SECONDS` | `86400` | Maximum Job safety deadline |
+| `TRAINING_MAX_ACTIVE_DEADLINE_SECONDS` | `604800` | Maximum Job safety deadline (seven days) |
 | `TRAINING_DEADLINE_MULTIPLIER` | `6` | Planned-duration safety multiplier |
 | `JWT_ACCESS_TOKEN_MINUTES` | `1440` | Access-token lifetime |
 | `PUBLIC_APP_URL` | `http://localhost:8080` | Browser URL used in password-reset links |
@@ -830,9 +831,9 @@ Pull requests and pushes to `main` or `dev` must pass all CI gates:
 | Gate | Command | Purpose |
 | --- | --- | --- |
 | Ruff | `ruff check apps packages alembic scripts tests` | Correctness, imports, modernization, and style |
-| Tests and coverage | `pytest tests/ -v --tb=short --cov --cov-fail-under=40` | Behavioral, API, UI, training, and analysis verification |
+| Tests and coverage | `scripts/test_backend.sh` | Behavioral, API, training, and analysis verification with branch coverage above 90% |
 | Syntax | `python -m compileall apps packages alembic scripts tests` | Python 3.12 syntax and import compilation |
-| React | `npm test -- --run && npm run lint && npm run build` | UI workflows, types, lint, and production bundle |
+| React | `npm run test:coverage && npm run lint && npm run build` | UI workflows with coverage above 90%, types, lint, and production bundle |
 | Helm | `helm lint` plus all profile renders | Portable packaging and manifest regressions |
 | Security | Pinned SecObserve Scanner containers running Trivy and Gitleaks | Dependency, infrastructure, credential, image, and release-gate findings |
 
@@ -846,7 +847,7 @@ with a fixable vulnerability or embedded secret.
 Published chart releases expose their available security metadata through the
 [Sceptre security report on Artifact Hub](https://artifacthub.io/packages/helm/sceptreai/sceptre?modal=security-report).
 
-The suite covers ingestion, temporal inference, exact and Dask profiling,
+The suite covers ingestion, temporal inference, exact and Ray/Polars profiling,
 authentication, route contracts, React workflows, Kubernetes resource
 estimation, adaptive deadlines, task metrics, estimator discovery, leaderboards,
 external validation, object-store model recovery, historical reconstruction, SHAP
@@ -857,12 +858,9 @@ Run the complete local quality suite:
 
 ```bash
 ruff check apps packages alembic scripts tests
-pytest tests/ -v --tb=short \
-  --cov \
-  --cov-report=term-missing \
-  --cov-report=html \
-  --cov-fail-under=40
+scripts/test_backend.sh
 python -m compileall apps packages alembic scripts tests
+npm --prefix apps/ui/react_app run test:coverage
 ```
 
 ## Repository Structure
@@ -886,7 +884,7 @@ docs/                  Architecture, schema, and decision records
 - Multi-gigabyte datasets may exceed the configured Job memory limit even when
   the raw file fits on disk.
 - Horizontal model training requires additional Kubernetes nodes and a
-  distributed backend such as Dask or Ray; an HPA cannot divide one in-memory
+  Ray Data execution; an HPA cannot divide one in-memory
   scikit-learn fit across nodes.
 - Historical models created before object-store mirroring are reconstructed from the
   immutable source dataset and saved parameters before explainability runs.

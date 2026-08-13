@@ -1,0 +1,2833 @@
+
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Code coverage report for src/pages/RunsPage.tsx</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../../prettify.css" />
+    <link rel="stylesheet" href="../../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../../favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+    
+<body>
+<div class='wrapper'>
+    <div class='pad1'>
+        <h1><a href="../../index.html">All files</a> / <a href="index.html">src/pages</a> RunsPage.tsx</h1>
+        <div class='clearfix'>
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">92.2% </span>
+                <span class="quiet">Statements</span>
+                <span class='fraction'>355/385</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">83.11% </span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>438/527</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">91.06% </span>
+                <span class="quiet">Functions</span>
+                <span class='fraction'>163/179</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">93.61% </span>
+                <span class="quiet">Lines</span>
+                <span class='fraction'>293/313</span>
+            </div>
+        
+            
+        </div>
+        <p class="quiet">
+            Press <em>n</em> or <em>j</em> to go to the next uncovered block, <em>b</em>, <em>p</em> or <em>k</em> for the previous block.
+        </p>
+        <template id="filterTemplate">
+            <div class="quiet">
+                Filter:
+                <input type="search" id="fileSearch">
+            </div>
+        </template>
+    </div>
+    <div class='status-line high'></div>
+    <pre><table class="coverage">
+<tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
+<a name='L2'></a><a href='#L2'>2</a>
+<a name='L3'></a><a href='#L3'>3</a>
+<a name='L4'></a><a href='#L4'>4</a>
+<a name='L5'></a><a href='#L5'>5</a>
+<a name='L6'></a><a href='#L6'>6</a>
+<a name='L7'></a><a href='#L7'>7</a>
+<a name='L8'></a><a href='#L8'>8</a>
+<a name='L9'></a><a href='#L9'>9</a>
+<a name='L10'></a><a href='#L10'>10</a>
+<a name='L11'></a><a href='#L11'>11</a>
+<a name='L12'></a><a href='#L12'>12</a>
+<a name='L13'></a><a href='#L13'>13</a>
+<a name='L14'></a><a href='#L14'>14</a>
+<a name='L15'></a><a href='#L15'>15</a>
+<a name='L16'></a><a href='#L16'>16</a>
+<a name='L17'></a><a href='#L17'>17</a>
+<a name='L18'></a><a href='#L18'>18</a>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a>
+<a name='L38'></a><a href='#L38'>38</a>
+<a name='L39'></a><a href='#L39'>39</a>
+<a name='L40'></a><a href='#L40'>40</a>
+<a name='L41'></a><a href='#L41'>41</a>
+<a name='L42'></a><a href='#L42'>42</a>
+<a name='L43'></a><a href='#L43'>43</a>
+<a name='L44'></a><a href='#L44'>44</a>
+<a name='L45'></a><a href='#L45'>45</a>
+<a name='L46'></a><a href='#L46'>46</a>
+<a name='L47'></a><a href='#L47'>47</a>
+<a name='L48'></a><a href='#L48'>48</a>
+<a name='L49'></a><a href='#L49'>49</a>
+<a name='L50'></a><a href='#L50'>50</a>
+<a name='L51'></a><a href='#L51'>51</a>
+<a name='L52'></a><a href='#L52'>52</a>
+<a name='L53'></a><a href='#L53'>53</a>
+<a name='L54'></a><a href='#L54'>54</a>
+<a name='L55'></a><a href='#L55'>55</a>
+<a name='L56'></a><a href='#L56'>56</a>
+<a name='L57'></a><a href='#L57'>57</a>
+<a name='L58'></a><a href='#L58'>58</a>
+<a name='L59'></a><a href='#L59'>59</a>
+<a name='L60'></a><a href='#L60'>60</a>
+<a name='L61'></a><a href='#L61'>61</a>
+<a name='L62'></a><a href='#L62'>62</a>
+<a name='L63'></a><a href='#L63'>63</a>
+<a name='L64'></a><a href='#L64'>64</a>
+<a name='L65'></a><a href='#L65'>65</a>
+<a name='L66'></a><a href='#L66'>66</a>
+<a name='L67'></a><a href='#L67'>67</a>
+<a name='L68'></a><a href='#L68'>68</a>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a>
+<a name='L71'></a><a href='#L71'>71</a>
+<a name='L72'></a><a href='#L72'>72</a>
+<a name='L73'></a><a href='#L73'>73</a>
+<a name='L74'></a><a href='#L74'>74</a>
+<a name='L75'></a><a href='#L75'>75</a>
+<a name='L76'></a><a href='#L76'>76</a>
+<a name='L77'></a><a href='#L77'>77</a>
+<a name='L78'></a><a href='#L78'>78</a>
+<a name='L79'></a><a href='#L79'>79</a>
+<a name='L80'></a><a href='#L80'>80</a>
+<a name='L81'></a><a href='#L81'>81</a>
+<a name='L82'></a><a href='#L82'>82</a>
+<a name='L83'></a><a href='#L83'>83</a>
+<a name='L84'></a><a href='#L84'>84</a>
+<a name='L85'></a><a href='#L85'>85</a>
+<a name='L86'></a><a href='#L86'>86</a>
+<a name='L87'></a><a href='#L87'>87</a>
+<a name='L88'></a><a href='#L88'>88</a>
+<a name='L89'></a><a href='#L89'>89</a>
+<a name='L90'></a><a href='#L90'>90</a>
+<a name='L91'></a><a href='#L91'>91</a>
+<a name='L92'></a><a href='#L92'>92</a>
+<a name='L93'></a><a href='#L93'>93</a>
+<a name='L94'></a><a href='#L94'>94</a>
+<a name='L95'></a><a href='#L95'>95</a>
+<a name='L96'></a><a href='#L96'>96</a>
+<a name='L97'></a><a href='#L97'>97</a>
+<a name='L98'></a><a href='#L98'>98</a>
+<a name='L99'></a><a href='#L99'>99</a>
+<a name='L100'></a><a href='#L100'>100</a>
+<a name='L101'></a><a href='#L101'>101</a>
+<a name='L102'></a><a href='#L102'>102</a>
+<a name='L103'></a><a href='#L103'>103</a>
+<a name='L104'></a><a href='#L104'>104</a>
+<a name='L105'></a><a href='#L105'>105</a>
+<a name='L106'></a><a href='#L106'>106</a>
+<a name='L107'></a><a href='#L107'>107</a>
+<a name='L108'></a><a href='#L108'>108</a>
+<a name='L109'></a><a href='#L109'>109</a>
+<a name='L110'></a><a href='#L110'>110</a>
+<a name='L111'></a><a href='#L111'>111</a>
+<a name='L112'></a><a href='#L112'>112</a>
+<a name='L113'></a><a href='#L113'>113</a>
+<a name='L114'></a><a href='#L114'>114</a>
+<a name='L115'></a><a href='#L115'>115</a>
+<a name='L116'></a><a href='#L116'>116</a>
+<a name='L117'></a><a href='#L117'>117</a>
+<a name='L118'></a><a href='#L118'>118</a>
+<a name='L119'></a><a href='#L119'>119</a>
+<a name='L120'></a><a href='#L120'>120</a>
+<a name='L121'></a><a href='#L121'>121</a>
+<a name='L122'></a><a href='#L122'>122</a>
+<a name='L123'></a><a href='#L123'>123</a>
+<a name='L124'></a><a href='#L124'>124</a>
+<a name='L125'></a><a href='#L125'>125</a>
+<a name='L126'></a><a href='#L126'>126</a>
+<a name='L127'></a><a href='#L127'>127</a>
+<a name='L128'></a><a href='#L128'>128</a>
+<a name='L129'></a><a href='#L129'>129</a>
+<a name='L130'></a><a href='#L130'>130</a>
+<a name='L131'></a><a href='#L131'>131</a>
+<a name='L132'></a><a href='#L132'>132</a>
+<a name='L133'></a><a href='#L133'>133</a>
+<a name='L134'></a><a href='#L134'>134</a>
+<a name='L135'></a><a href='#L135'>135</a>
+<a name='L136'></a><a href='#L136'>136</a>
+<a name='L137'></a><a href='#L137'>137</a>
+<a name='L138'></a><a href='#L138'>138</a>
+<a name='L139'></a><a href='#L139'>139</a>
+<a name='L140'></a><a href='#L140'>140</a>
+<a name='L141'></a><a href='#L141'>141</a>
+<a name='L142'></a><a href='#L142'>142</a>
+<a name='L143'></a><a href='#L143'>143</a>
+<a name='L144'></a><a href='#L144'>144</a>
+<a name='L145'></a><a href='#L145'>145</a>
+<a name='L146'></a><a href='#L146'>146</a>
+<a name='L147'></a><a href='#L147'>147</a>
+<a name='L148'></a><a href='#L148'>148</a>
+<a name='L149'></a><a href='#L149'>149</a>
+<a name='L150'></a><a href='#L150'>150</a>
+<a name='L151'></a><a href='#L151'>151</a>
+<a name='L152'></a><a href='#L152'>152</a>
+<a name='L153'></a><a href='#L153'>153</a>
+<a name='L154'></a><a href='#L154'>154</a>
+<a name='L155'></a><a href='#L155'>155</a>
+<a name='L156'></a><a href='#L156'>156</a>
+<a name='L157'></a><a href='#L157'>157</a>
+<a name='L158'></a><a href='#L158'>158</a>
+<a name='L159'></a><a href='#L159'>159</a>
+<a name='L160'></a><a href='#L160'>160</a>
+<a name='L161'></a><a href='#L161'>161</a>
+<a name='L162'></a><a href='#L162'>162</a>
+<a name='L163'></a><a href='#L163'>163</a>
+<a name='L164'></a><a href='#L164'>164</a>
+<a name='L165'></a><a href='#L165'>165</a>
+<a name='L166'></a><a href='#L166'>166</a>
+<a name='L167'></a><a href='#L167'>167</a>
+<a name='L168'></a><a href='#L168'>168</a>
+<a name='L169'></a><a href='#L169'>169</a>
+<a name='L170'></a><a href='#L170'>170</a>
+<a name='L171'></a><a href='#L171'>171</a>
+<a name='L172'></a><a href='#L172'>172</a>
+<a name='L173'></a><a href='#L173'>173</a>
+<a name='L174'></a><a href='#L174'>174</a>
+<a name='L175'></a><a href='#L175'>175</a>
+<a name='L176'></a><a href='#L176'>176</a>
+<a name='L177'></a><a href='#L177'>177</a>
+<a name='L178'></a><a href='#L178'>178</a>
+<a name='L179'></a><a href='#L179'>179</a>
+<a name='L180'></a><a href='#L180'>180</a>
+<a name='L181'></a><a href='#L181'>181</a>
+<a name='L182'></a><a href='#L182'>182</a>
+<a name='L183'></a><a href='#L183'>183</a>
+<a name='L184'></a><a href='#L184'>184</a>
+<a name='L185'></a><a href='#L185'>185</a>
+<a name='L186'></a><a href='#L186'>186</a>
+<a name='L187'></a><a href='#L187'>187</a>
+<a name='L188'></a><a href='#L188'>188</a>
+<a name='L189'></a><a href='#L189'>189</a>
+<a name='L190'></a><a href='#L190'>190</a>
+<a name='L191'></a><a href='#L191'>191</a>
+<a name='L192'></a><a href='#L192'>192</a>
+<a name='L193'></a><a href='#L193'>193</a>
+<a name='L194'></a><a href='#L194'>194</a>
+<a name='L195'></a><a href='#L195'>195</a>
+<a name='L196'></a><a href='#L196'>196</a>
+<a name='L197'></a><a href='#L197'>197</a>
+<a name='L198'></a><a href='#L198'>198</a>
+<a name='L199'></a><a href='#L199'>199</a>
+<a name='L200'></a><a href='#L200'>200</a>
+<a name='L201'></a><a href='#L201'>201</a>
+<a name='L202'></a><a href='#L202'>202</a>
+<a name='L203'></a><a href='#L203'>203</a>
+<a name='L204'></a><a href='#L204'>204</a>
+<a name='L205'></a><a href='#L205'>205</a>
+<a name='L206'></a><a href='#L206'>206</a>
+<a name='L207'></a><a href='#L207'>207</a>
+<a name='L208'></a><a href='#L208'>208</a>
+<a name='L209'></a><a href='#L209'>209</a>
+<a name='L210'></a><a href='#L210'>210</a>
+<a name='L211'></a><a href='#L211'>211</a>
+<a name='L212'></a><a href='#L212'>212</a>
+<a name='L213'></a><a href='#L213'>213</a>
+<a name='L214'></a><a href='#L214'>214</a>
+<a name='L215'></a><a href='#L215'>215</a>
+<a name='L216'></a><a href='#L216'>216</a>
+<a name='L217'></a><a href='#L217'>217</a>
+<a name='L218'></a><a href='#L218'>218</a>
+<a name='L219'></a><a href='#L219'>219</a>
+<a name='L220'></a><a href='#L220'>220</a>
+<a name='L221'></a><a href='#L221'>221</a>
+<a name='L222'></a><a href='#L222'>222</a>
+<a name='L223'></a><a href='#L223'>223</a>
+<a name='L224'></a><a href='#L224'>224</a>
+<a name='L225'></a><a href='#L225'>225</a>
+<a name='L226'></a><a href='#L226'>226</a>
+<a name='L227'></a><a href='#L227'>227</a>
+<a name='L228'></a><a href='#L228'>228</a>
+<a name='L229'></a><a href='#L229'>229</a>
+<a name='L230'></a><a href='#L230'>230</a>
+<a name='L231'></a><a href='#L231'>231</a>
+<a name='L232'></a><a href='#L232'>232</a>
+<a name='L233'></a><a href='#L233'>233</a>
+<a name='L234'></a><a href='#L234'>234</a>
+<a name='L235'></a><a href='#L235'>235</a>
+<a name='L236'></a><a href='#L236'>236</a>
+<a name='L237'></a><a href='#L237'>237</a>
+<a name='L238'></a><a href='#L238'>238</a>
+<a name='L239'></a><a href='#L239'>239</a>
+<a name='L240'></a><a href='#L240'>240</a>
+<a name='L241'></a><a href='#L241'>241</a>
+<a name='L242'></a><a href='#L242'>242</a>
+<a name='L243'></a><a href='#L243'>243</a>
+<a name='L244'></a><a href='#L244'>244</a>
+<a name='L245'></a><a href='#L245'>245</a>
+<a name='L246'></a><a href='#L246'>246</a>
+<a name='L247'></a><a href='#L247'>247</a>
+<a name='L248'></a><a href='#L248'>248</a>
+<a name='L249'></a><a href='#L249'>249</a>
+<a name='L250'></a><a href='#L250'>250</a>
+<a name='L251'></a><a href='#L251'>251</a>
+<a name='L252'></a><a href='#L252'>252</a>
+<a name='L253'></a><a href='#L253'>253</a>
+<a name='L254'></a><a href='#L254'>254</a>
+<a name='L255'></a><a href='#L255'>255</a>
+<a name='L256'></a><a href='#L256'>256</a>
+<a name='L257'></a><a href='#L257'>257</a>
+<a name='L258'></a><a href='#L258'>258</a>
+<a name='L259'></a><a href='#L259'>259</a>
+<a name='L260'></a><a href='#L260'>260</a>
+<a name='L261'></a><a href='#L261'>261</a>
+<a name='L262'></a><a href='#L262'>262</a>
+<a name='L263'></a><a href='#L263'>263</a>
+<a name='L264'></a><a href='#L264'>264</a>
+<a name='L265'></a><a href='#L265'>265</a>
+<a name='L266'></a><a href='#L266'>266</a>
+<a name='L267'></a><a href='#L267'>267</a>
+<a name='L268'></a><a href='#L268'>268</a>
+<a name='L269'></a><a href='#L269'>269</a>
+<a name='L270'></a><a href='#L270'>270</a>
+<a name='L271'></a><a href='#L271'>271</a>
+<a name='L272'></a><a href='#L272'>272</a>
+<a name='L273'></a><a href='#L273'>273</a>
+<a name='L274'></a><a href='#L274'>274</a>
+<a name='L275'></a><a href='#L275'>275</a>
+<a name='L276'></a><a href='#L276'>276</a>
+<a name='L277'></a><a href='#L277'>277</a>
+<a name='L278'></a><a href='#L278'>278</a>
+<a name='L279'></a><a href='#L279'>279</a>
+<a name='L280'></a><a href='#L280'>280</a>
+<a name='L281'></a><a href='#L281'>281</a>
+<a name='L282'></a><a href='#L282'>282</a>
+<a name='L283'></a><a href='#L283'>283</a>
+<a name='L284'></a><a href='#L284'>284</a>
+<a name='L285'></a><a href='#L285'>285</a>
+<a name='L286'></a><a href='#L286'>286</a>
+<a name='L287'></a><a href='#L287'>287</a>
+<a name='L288'></a><a href='#L288'>288</a>
+<a name='L289'></a><a href='#L289'>289</a>
+<a name='L290'></a><a href='#L290'>290</a>
+<a name='L291'></a><a href='#L291'>291</a>
+<a name='L292'></a><a href='#L292'>292</a>
+<a name='L293'></a><a href='#L293'>293</a>
+<a name='L294'></a><a href='#L294'>294</a>
+<a name='L295'></a><a href='#L295'>295</a>
+<a name='L296'></a><a href='#L296'>296</a>
+<a name='L297'></a><a href='#L297'>297</a>
+<a name='L298'></a><a href='#L298'>298</a>
+<a name='L299'></a><a href='#L299'>299</a>
+<a name='L300'></a><a href='#L300'>300</a>
+<a name='L301'></a><a href='#L301'>301</a>
+<a name='L302'></a><a href='#L302'>302</a>
+<a name='L303'></a><a href='#L303'>303</a>
+<a name='L304'></a><a href='#L304'>304</a>
+<a name='L305'></a><a href='#L305'>305</a>
+<a name='L306'></a><a href='#L306'>306</a>
+<a name='L307'></a><a href='#L307'>307</a>
+<a name='L308'></a><a href='#L308'>308</a>
+<a name='L309'></a><a href='#L309'>309</a>
+<a name='L310'></a><a href='#L310'>310</a>
+<a name='L311'></a><a href='#L311'>311</a>
+<a name='L312'></a><a href='#L312'>312</a>
+<a name='L313'></a><a href='#L313'>313</a>
+<a name='L314'></a><a href='#L314'>314</a>
+<a name='L315'></a><a href='#L315'>315</a>
+<a name='L316'></a><a href='#L316'>316</a>
+<a name='L317'></a><a href='#L317'>317</a>
+<a name='L318'></a><a href='#L318'>318</a>
+<a name='L319'></a><a href='#L319'>319</a>
+<a name='L320'></a><a href='#L320'>320</a>
+<a name='L321'></a><a href='#L321'>321</a>
+<a name='L322'></a><a href='#L322'>322</a>
+<a name='L323'></a><a href='#L323'>323</a>
+<a name='L324'></a><a href='#L324'>324</a>
+<a name='L325'></a><a href='#L325'>325</a>
+<a name='L326'></a><a href='#L326'>326</a>
+<a name='L327'></a><a href='#L327'>327</a>
+<a name='L328'></a><a href='#L328'>328</a>
+<a name='L329'></a><a href='#L329'>329</a>
+<a name='L330'></a><a href='#L330'>330</a>
+<a name='L331'></a><a href='#L331'>331</a>
+<a name='L332'></a><a href='#L332'>332</a>
+<a name='L333'></a><a href='#L333'>333</a>
+<a name='L334'></a><a href='#L334'>334</a>
+<a name='L335'></a><a href='#L335'>335</a>
+<a name='L336'></a><a href='#L336'>336</a>
+<a name='L337'></a><a href='#L337'>337</a>
+<a name='L338'></a><a href='#L338'>338</a>
+<a name='L339'></a><a href='#L339'>339</a>
+<a name='L340'></a><a href='#L340'>340</a>
+<a name='L341'></a><a href='#L341'>341</a>
+<a name='L342'></a><a href='#L342'>342</a>
+<a name='L343'></a><a href='#L343'>343</a>
+<a name='L344'></a><a href='#L344'>344</a>
+<a name='L345'></a><a href='#L345'>345</a>
+<a name='L346'></a><a href='#L346'>346</a>
+<a name='L347'></a><a href='#L347'>347</a>
+<a name='L348'></a><a href='#L348'>348</a>
+<a name='L349'></a><a href='#L349'>349</a>
+<a name='L350'></a><a href='#L350'>350</a>
+<a name='L351'></a><a href='#L351'>351</a>
+<a name='L352'></a><a href='#L352'>352</a>
+<a name='L353'></a><a href='#L353'>353</a>
+<a name='L354'></a><a href='#L354'>354</a>
+<a name='L355'></a><a href='#L355'>355</a>
+<a name='L356'></a><a href='#L356'>356</a>
+<a name='L357'></a><a href='#L357'>357</a>
+<a name='L358'></a><a href='#L358'>358</a>
+<a name='L359'></a><a href='#L359'>359</a>
+<a name='L360'></a><a href='#L360'>360</a>
+<a name='L361'></a><a href='#L361'>361</a>
+<a name='L362'></a><a href='#L362'>362</a>
+<a name='L363'></a><a href='#L363'>363</a>
+<a name='L364'></a><a href='#L364'>364</a>
+<a name='L365'></a><a href='#L365'>365</a>
+<a name='L366'></a><a href='#L366'>366</a>
+<a name='L367'></a><a href='#L367'>367</a>
+<a name='L368'></a><a href='#L368'>368</a>
+<a name='L369'></a><a href='#L369'>369</a>
+<a name='L370'></a><a href='#L370'>370</a>
+<a name='L371'></a><a href='#L371'>371</a>
+<a name='L372'></a><a href='#L372'>372</a>
+<a name='L373'></a><a href='#L373'>373</a>
+<a name='L374'></a><a href='#L374'>374</a>
+<a name='L375'></a><a href='#L375'>375</a>
+<a name='L376'></a><a href='#L376'>376</a>
+<a name='L377'></a><a href='#L377'>377</a>
+<a name='L378'></a><a href='#L378'>378</a>
+<a name='L379'></a><a href='#L379'>379</a>
+<a name='L380'></a><a href='#L380'>380</a>
+<a name='L381'></a><a href='#L381'>381</a>
+<a name='L382'></a><a href='#L382'>382</a>
+<a name='L383'></a><a href='#L383'>383</a>
+<a name='L384'></a><a href='#L384'>384</a>
+<a name='L385'></a><a href='#L385'>385</a>
+<a name='L386'></a><a href='#L386'>386</a>
+<a name='L387'></a><a href='#L387'>387</a>
+<a name='L388'></a><a href='#L388'>388</a>
+<a name='L389'></a><a href='#L389'>389</a>
+<a name='L390'></a><a href='#L390'>390</a>
+<a name='L391'></a><a href='#L391'>391</a>
+<a name='L392'></a><a href='#L392'>392</a>
+<a name='L393'></a><a href='#L393'>393</a>
+<a name='L394'></a><a href='#L394'>394</a>
+<a name='L395'></a><a href='#L395'>395</a>
+<a name='L396'></a><a href='#L396'>396</a>
+<a name='L397'></a><a href='#L397'>397</a>
+<a name='L398'></a><a href='#L398'>398</a>
+<a name='L399'></a><a href='#L399'>399</a>
+<a name='L400'></a><a href='#L400'>400</a>
+<a name='L401'></a><a href='#L401'>401</a>
+<a name='L402'></a><a href='#L402'>402</a>
+<a name='L403'></a><a href='#L403'>403</a>
+<a name='L404'></a><a href='#L404'>404</a>
+<a name='L405'></a><a href='#L405'>405</a>
+<a name='L406'></a><a href='#L406'>406</a>
+<a name='L407'></a><a href='#L407'>407</a>
+<a name='L408'></a><a href='#L408'>408</a>
+<a name='L409'></a><a href='#L409'>409</a>
+<a name='L410'></a><a href='#L410'>410</a>
+<a name='L411'></a><a href='#L411'>411</a>
+<a name='L412'></a><a href='#L412'>412</a>
+<a name='L413'></a><a href='#L413'>413</a>
+<a name='L414'></a><a href='#L414'>414</a>
+<a name='L415'></a><a href='#L415'>415</a>
+<a name='L416'></a><a href='#L416'>416</a>
+<a name='L417'></a><a href='#L417'>417</a>
+<a name='L418'></a><a href='#L418'>418</a>
+<a name='L419'></a><a href='#L419'>419</a>
+<a name='L420'></a><a href='#L420'>420</a>
+<a name='L421'></a><a href='#L421'>421</a>
+<a name='L422'></a><a href='#L422'>422</a>
+<a name='L423'></a><a href='#L423'>423</a>
+<a name='L424'></a><a href='#L424'>424</a>
+<a name='L425'></a><a href='#L425'>425</a>
+<a name='L426'></a><a href='#L426'>426</a>
+<a name='L427'></a><a href='#L427'>427</a>
+<a name='L428'></a><a href='#L428'>428</a>
+<a name='L429'></a><a href='#L429'>429</a>
+<a name='L430'></a><a href='#L430'>430</a>
+<a name='L431'></a><a href='#L431'>431</a>
+<a name='L432'></a><a href='#L432'>432</a>
+<a name='L433'></a><a href='#L433'>433</a>
+<a name='L434'></a><a href='#L434'>434</a>
+<a name='L435'></a><a href='#L435'>435</a>
+<a name='L436'></a><a href='#L436'>436</a>
+<a name='L437'></a><a href='#L437'>437</a>
+<a name='L438'></a><a href='#L438'>438</a>
+<a name='L439'></a><a href='#L439'>439</a>
+<a name='L440'></a><a href='#L440'>440</a>
+<a name='L441'></a><a href='#L441'>441</a>
+<a name='L442'></a><a href='#L442'>442</a>
+<a name='L443'></a><a href='#L443'>443</a>
+<a name='L444'></a><a href='#L444'>444</a>
+<a name='L445'></a><a href='#L445'>445</a>
+<a name='L446'></a><a href='#L446'>446</a>
+<a name='L447'></a><a href='#L447'>447</a>
+<a name='L448'></a><a href='#L448'>448</a>
+<a name='L449'></a><a href='#L449'>449</a>
+<a name='L450'></a><a href='#L450'>450</a>
+<a name='L451'></a><a href='#L451'>451</a>
+<a name='L452'></a><a href='#L452'>452</a>
+<a name='L453'></a><a href='#L453'>453</a>
+<a name='L454'></a><a href='#L454'>454</a>
+<a name='L455'></a><a href='#L455'>455</a>
+<a name='L456'></a><a href='#L456'>456</a>
+<a name='L457'></a><a href='#L457'>457</a>
+<a name='L458'></a><a href='#L458'>458</a>
+<a name='L459'></a><a href='#L459'>459</a>
+<a name='L460'></a><a href='#L460'>460</a>
+<a name='L461'></a><a href='#L461'>461</a>
+<a name='L462'></a><a href='#L462'>462</a>
+<a name='L463'></a><a href='#L463'>463</a>
+<a name='L464'></a><a href='#L464'>464</a>
+<a name='L465'></a><a href='#L465'>465</a>
+<a name='L466'></a><a href='#L466'>466</a>
+<a name='L467'></a><a href='#L467'>467</a>
+<a name='L468'></a><a href='#L468'>468</a>
+<a name='L469'></a><a href='#L469'>469</a>
+<a name='L470'></a><a href='#L470'>470</a>
+<a name='L471'></a><a href='#L471'>471</a>
+<a name='L472'></a><a href='#L472'>472</a>
+<a name='L473'></a><a href='#L473'>473</a>
+<a name='L474'></a><a href='#L474'>474</a>
+<a name='L475'></a><a href='#L475'>475</a>
+<a name='L476'></a><a href='#L476'>476</a>
+<a name='L477'></a><a href='#L477'>477</a>
+<a name='L478'></a><a href='#L478'>478</a>
+<a name='L479'></a><a href='#L479'>479</a>
+<a name='L480'></a><a href='#L480'>480</a>
+<a name='L481'></a><a href='#L481'>481</a>
+<a name='L482'></a><a href='#L482'>482</a>
+<a name='L483'></a><a href='#L483'>483</a>
+<a name='L484'></a><a href='#L484'>484</a>
+<a name='L485'></a><a href='#L485'>485</a>
+<a name='L486'></a><a href='#L486'>486</a>
+<a name='L487'></a><a href='#L487'>487</a>
+<a name='L488'></a><a href='#L488'>488</a>
+<a name='L489'></a><a href='#L489'>489</a>
+<a name='L490'></a><a href='#L490'>490</a>
+<a name='L491'></a><a href='#L491'>491</a>
+<a name='L492'></a><a href='#L492'>492</a>
+<a name='L493'></a><a href='#L493'>493</a>
+<a name='L494'></a><a href='#L494'>494</a>
+<a name='L495'></a><a href='#L495'>495</a>
+<a name='L496'></a><a href='#L496'>496</a>
+<a name='L497'></a><a href='#L497'>497</a>
+<a name='L498'></a><a href='#L498'>498</a>
+<a name='L499'></a><a href='#L499'>499</a>
+<a name='L500'></a><a href='#L500'>500</a>
+<a name='L501'></a><a href='#L501'>501</a>
+<a name='L502'></a><a href='#L502'>502</a>
+<a name='L503'></a><a href='#L503'>503</a>
+<a name='L504'></a><a href='#L504'>504</a>
+<a name='L505'></a><a href='#L505'>505</a>
+<a name='L506'></a><a href='#L506'>506</a>
+<a name='L507'></a><a href='#L507'>507</a>
+<a name='L508'></a><a href='#L508'>508</a>
+<a name='L509'></a><a href='#L509'>509</a>
+<a name='L510'></a><a href='#L510'>510</a>
+<a name='L511'></a><a href='#L511'>511</a>
+<a name='L512'></a><a href='#L512'>512</a>
+<a name='L513'></a><a href='#L513'>513</a>
+<a name='L514'></a><a href='#L514'>514</a>
+<a name='L515'></a><a href='#L515'>515</a>
+<a name='L516'></a><a href='#L516'>516</a>
+<a name='L517'></a><a href='#L517'>517</a>
+<a name='L518'></a><a href='#L518'>518</a>
+<a name='L519'></a><a href='#L519'>519</a>
+<a name='L520'></a><a href='#L520'>520</a>
+<a name='L521'></a><a href='#L521'>521</a>
+<a name='L522'></a><a href='#L522'>522</a>
+<a name='L523'></a><a href='#L523'>523</a>
+<a name='L524'></a><a href='#L524'>524</a>
+<a name='L525'></a><a href='#L525'>525</a>
+<a name='L526'></a><a href='#L526'>526</a>
+<a name='L527'></a><a href='#L527'>527</a>
+<a name='L528'></a><a href='#L528'>528</a>
+<a name='L529'></a><a href='#L529'>529</a>
+<a name='L530'></a><a href='#L530'>530</a>
+<a name='L531'></a><a href='#L531'>531</a>
+<a name='L532'></a><a href='#L532'>532</a>
+<a name='L533'></a><a href='#L533'>533</a>
+<a name='L534'></a><a href='#L534'>534</a>
+<a name='L535'></a><a href='#L535'>535</a>
+<a name='L536'></a><a href='#L536'>536</a>
+<a name='L537'></a><a href='#L537'>537</a>
+<a name='L538'></a><a href='#L538'>538</a>
+<a name='L539'></a><a href='#L539'>539</a>
+<a name='L540'></a><a href='#L540'>540</a>
+<a name='L541'></a><a href='#L541'>541</a>
+<a name='L542'></a><a href='#L542'>542</a>
+<a name='L543'></a><a href='#L543'>543</a>
+<a name='L544'></a><a href='#L544'>544</a>
+<a name='L545'></a><a href='#L545'>545</a>
+<a name='L546'></a><a href='#L546'>546</a>
+<a name='L547'></a><a href='#L547'>547</a>
+<a name='L548'></a><a href='#L548'>548</a>
+<a name='L549'></a><a href='#L549'>549</a>
+<a name='L550'></a><a href='#L550'>550</a>
+<a name='L551'></a><a href='#L551'>551</a>
+<a name='L552'></a><a href='#L552'>552</a>
+<a name='L553'></a><a href='#L553'>553</a>
+<a name='L554'></a><a href='#L554'>554</a>
+<a name='L555'></a><a href='#L555'>555</a>
+<a name='L556'></a><a href='#L556'>556</a>
+<a name='L557'></a><a href='#L557'>557</a>
+<a name='L558'></a><a href='#L558'>558</a>
+<a name='L559'></a><a href='#L559'>559</a>
+<a name='L560'></a><a href='#L560'>560</a>
+<a name='L561'></a><a href='#L561'>561</a>
+<a name='L562'></a><a href='#L562'>562</a>
+<a name='L563'></a><a href='#L563'>563</a>
+<a name='L564'></a><a href='#L564'>564</a>
+<a name='L565'></a><a href='#L565'>565</a>
+<a name='L566'></a><a href='#L566'>566</a>
+<a name='L567'></a><a href='#L567'>567</a>
+<a name='L568'></a><a href='#L568'>568</a>
+<a name='L569'></a><a href='#L569'>569</a>
+<a name='L570'></a><a href='#L570'>570</a>
+<a name='L571'></a><a href='#L571'>571</a>
+<a name='L572'></a><a href='#L572'>572</a>
+<a name='L573'></a><a href='#L573'>573</a>
+<a name='L574'></a><a href='#L574'>574</a>
+<a name='L575'></a><a href='#L575'>575</a>
+<a name='L576'></a><a href='#L576'>576</a>
+<a name='L577'></a><a href='#L577'>577</a>
+<a name='L578'></a><a href='#L578'>578</a>
+<a name='L579'></a><a href='#L579'>579</a>
+<a name='L580'></a><a href='#L580'>580</a>
+<a name='L581'></a><a href='#L581'>581</a>
+<a name='L582'></a><a href='#L582'>582</a>
+<a name='L583'></a><a href='#L583'>583</a>
+<a name='L584'></a><a href='#L584'>584</a>
+<a name='L585'></a><a href='#L585'>585</a>
+<a name='L586'></a><a href='#L586'>586</a>
+<a name='L587'></a><a href='#L587'>587</a>
+<a name='L588'></a><a href='#L588'>588</a>
+<a name='L589'></a><a href='#L589'>589</a>
+<a name='L590'></a><a href='#L590'>590</a>
+<a name='L591'></a><a href='#L591'>591</a>
+<a name='L592'></a><a href='#L592'>592</a>
+<a name='L593'></a><a href='#L593'>593</a>
+<a name='L594'></a><a href='#L594'>594</a>
+<a name='L595'></a><a href='#L595'>595</a>
+<a name='L596'></a><a href='#L596'>596</a>
+<a name='L597'></a><a href='#L597'>597</a>
+<a name='L598'></a><a href='#L598'>598</a>
+<a name='L599'></a><a href='#L599'>599</a>
+<a name='L600'></a><a href='#L600'>600</a>
+<a name='L601'></a><a href='#L601'>601</a>
+<a name='L602'></a><a href='#L602'>602</a>
+<a name='L603'></a><a href='#L603'>603</a>
+<a name='L604'></a><a href='#L604'>604</a>
+<a name='L605'></a><a href='#L605'>605</a>
+<a name='L606'></a><a href='#L606'>606</a>
+<a name='L607'></a><a href='#L607'>607</a>
+<a name='L608'></a><a href='#L608'>608</a>
+<a name='L609'></a><a href='#L609'>609</a>
+<a name='L610'></a><a href='#L610'>610</a>
+<a name='L611'></a><a href='#L611'>611</a>
+<a name='L612'></a><a href='#L612'>612</a>
+<a name='L613'></a><a href='#L613'>613</a>
+<a name='L614'></a><a href='#L614'>614</a>
+<a name='L615'></a><a href='#L615'>615</a>
+<a name='L616'></a><a href='#L616'>616</a>
+<a name='L617'></a><a href='#L617'>617</a>
+<a name='L618'></a><a href='#L618'>618</a>
+<a name='L619'></a><a href='#L619'>619</a>
+<a name='L620'></a><a href='#L620'>620</a>
+<a name='L621'></a><a href='#L621'>621</a>
+<a name='L622'></a><a href='#L622'>622</a>
+<a name='L623'></a><a href='#L623'>623</a>
+<a name='L624'></a><a href='#L624'>624</a>
+<a name='L625'></a><a href='#L625'>625</a>
+<a name='L626'></a><a href='#L626'>626</a>
+<a name='L627'></a><a href='#L627'>627</a>
+<a name='L628'></a><a href='#L628'>628</a>
+<a name='L629'></a><a href='#L629'>629</a>
+<a name='L630'></a><a href='#L630'>630</a>
+<a name='L631'></a><a href='#L631'>631</a>
+<a name='L632'></a><a href='#L632'>632</a>
+<a name='L633'></a><a href='#L633'>633</a>
+<a name='L634'></a><a href='#L634'>634</a>
+<a name='L635'></a><a href='#L635'>635</a>
+<a name='L636'></a><a href='#L636'>636</a>
+<a name='L637'></a><a href='#L637'>637</a>
+<a name='L638'></a><a href='#L638'>638</a>
+<a name='L639'></a><a href='#L639'>639</a>
+<a name='L640'></a><a href='#L640'>640</a>
+<a name='L641'></a><a href='#L641'>641</a>
+<a name='L642'></a><a href='#L642'>642</a>
+<a name='L643'></a><a href='#L643'>643</a>
+<a name='L644'></a><a href='#L644'>644</a>
+<a name='L645'></a><a href='#L645'>645</a>
+<a name='L646'></a><a href='#L646'>646</a>
+<a name='L647'></a><a href='#L647'>647</a>
+<a name='L648'></a><a href='#L648'>648</a>
+<a name='L649'></a><a href='#L649'>649</a>
+<a name='L650'></a><a href='#L650'>650</a>
+<a name='L651'></a><a href='#L651'>651</a>
+<a name='L652'></a><a href='#L652'>652</a>
+<a name='L653'></a><a href='#L653'>653</a>
+<a name='L654'></a><a href='#L654'>654</a>
+<a name='L655'></a><a href='#L655'>655</a>
+<a name='L656'></a><a href='#L656'>656</a>
+<a name='L657'></a><a href='#L657'>657</a>
+<a name='L658'></a><a href='#L658'>658</a>
+<a name='L659'></a><a href='#L659'>659</a>
+<a name='L660'></a><a href='#L660'>660</a>
+<a name='L661'></a><a href='#L661'>661</a>
+<a name='L662'></a><a href='#L662'>662</a>
+<a name='L663'></a><a href='#L663'>663</a>
+<a name='L664'></a><a href='#L664'>664</a>
+<a name='L665'></a><a href='#L665'>665</a>
+<a name='L666'></a><a href='#L666'>666</a>
+<a name='L667'></a><a href='#L667'>667</a>
+<a name='L668'></a><a href='#L668'>668</a>
+<a name='L669'></a><a href='#L669'>669</a>
+<a name='L670'></a><a href='#L670'>670</a>
+<a name='L671'></a><a href='#L671'>671</a>
+<a name='L672'></a><a href='#L672'>672</a>
+<a name='L673'></a><a href='#L673'>673</a>
+<a name='L674'></a><a href='#L674'>674</a>
+<a name='L675'></a><a href='#L675'>675</a>
+<a name='L676'></a><a href='#L676'>676</a>
+<a name='L677'></a><a href='#L677'>677</a>
+<a name='L678'></a><a href='#L678'>678</a>
+<a name='L679'></a><a href='#L679'>679</a>
+<a name='L680'></a><a href='#L680'>680</a>
+<a name='L681'></a><a href='#L681'>681</a>
+<a name='L682'></a><a href='#L682'>682</a>
+<a name='L683'></a><a href='#L683'>683</a>
+<a name='L684'></a><a href='#L684'>684</a>
+<a name='L685'></a><a href='#L685'>685</a>
+<a name='L686'></a><a href='#L686'>686</a>
+<a name='L687'></a><a href='#L687'>687</a>
+<a name='L688'></a><a href='#L688'>688</a>
+<a name='L689'></a><a href='#L689'>689</a>
+<a name='L690'></a><a href='#L690'>690</a>
+<a name='L691'></a><a href='#L691'>691</a>
+<a name='L692'></a><a href='#L692'>692</a>
+<a name='L693'></a><a href='#L693'>693</a>
+<a name='L694'></a><a href='#L694'>694</a>
+<a name='L695'></a><a href='#L695'>695</a>
+<a name='L696'></a><a href='#L696'>696</a>
+<a name='L697'></a><a href='#L697'>697</a>
+<a name='L698'></a><a href='#L698'>698</a>
+<a name='L699'></a><a href='#L699'>699</a>
+<a name='L700'></a><a href='#L700'>700</a>
+<a name='L701'></a><a href='#L701'>701</a>
+<a name='L702'></a><a href='#L702'>702</a>
+<a name='L703'></a><a href='#L703'>703</a>
+<a name='L704'></a><a href='#L704'>704</a>
+<a name='L705'></a><a href='#L705'>705</a>
+<a name='L706'></a><a href='#L706'>706</a>
+<a name='L707'></a><a href='#L707'>707</a>
+<a name='L708'></a><a href='#L708'>708</a>
+<a name='L709'></a><a href='#L709'>709</a>
+<a name='L710'></a><a href='#L710'>710</a>
+<a name='L711'></a><a href='#L711'>711</a>
+<a name='L712'></a><a href='#L712'>712</a>
+<a name='L713'></a><a href='#L713'>713</a>
+<a name='L714'></a><a href='#L714'>714</a>
+<a name='L715'></a><a href='#L715'>715</a>
+<a name='L716'></a><a href='#L716'>716</a>
+<a name='L717'></a><a href='#L717'>717</a>
+<a name='L718'></a><a href='#L718'>718</a>
+<a name='L719'></a><a href='#L719'>719</a>
+<a name='L720'></a><a href='#L720'>720</a>
+<a name='L721'></a><a href='#L721'>721</a>
+<a name='L722'></a><a href='#L722'>722</a>
+<a name='L723'></a><a href='#L723'>723</a>
+<a name='L724'></a><a href='#L724'>724</a>
+<a name='L725'></a><a href='#L725'>725</a>
+<a name='L726'></a><a href='#L726'>726</a>
+<a name='L727'></a><a href='#L727'>727</a>
+<a name='L728'></a><a href='#L728'>728</a>
+<a name='L729'></a><a href='#L729'>729</a>
+<a name='L730'></a><a href='#L730'>730</a>
+<a name='L731'></a><a href='#L731'>731</a>
+<a name='L732'></a><a href='#L732'>732</a>
+<a name='L733'></a><a href='#L733'>733</a>
+<a name='L734'></a><a href='#L734'>734</a>
+<a name='L735'></a><a href='#L735'>735</a>
+<a name='L736'></a><a href='#L736'>736</a>
+<a name='L737'></a><a href='#L737'>737</a>
+<a name='L738'></a><a href='#L738'>738</a>
+<a name='L739'></a><a href='#L739'>739</a>
+<a name='L740'></a><a href='#L740'>740</a>
+<a name='L741'></a><a href='#L741'>741</a>
+<a name='L742'></a><a href='#L742'>742</a>
+<a name='L743'></a><a href='#L743'>743</a>
+<a name='L744'></a><a href='#L744'>744</a>
+<a name='L745'></a><a href='#L745'>745</a>
+<a name='L746'></a><a href='#L746'>746</a>
+<a name='L747'></a><a href='#L747'>747</a>
+<a name='L748'></a><a href='#L748'>748</a>
+<a name='L749'></a><a href='#L749'>749</a>
+<a name='L750'></a><a href='#L750'>750</a>
+<a name='L751'></a><a href='#L751'>751</a>
+<a name='L752'></a><a href='#L752'>752</a>
+<a name='L753'></a><a href='#L753'>753</a>
+<a name='L754'></a><a href='#L754'>754</a>
+<a name='L755'></a><a href='#L755'>755</a>
+<a name='L756'></a><a href='#L756'>756</a>
+<a name='L757'></a><a href='#L757'>757</a>
+<a name='L758'></a><a href='#L758'>758</a>
+<a name='L759'></a><a href='#L759'>759</a>
+<a name='L760'></a><a href='#L760'>760</a>
+<a name='L761'></a><a href='#L761'>761</a>
+<a name='L762'></a><a href='#L762'>762</a>
+<a name='L763'></a><a href='#L763'>763</a>
+<a name='L764'></a><a href='#L764'>764</a>
+<a name='L765'></a><a href='#L765'>765</a>
+<a name='L766'></a><a href='#L766'>766</a>
+<a name='L767'></a><a href='#L767'>767</a>
+<a name='L768'></a><a href='#L768'>768</a>
+<a name='L769'></a><a href='#L769'>769</a>
+<a name='L770'></a><a href='#L770'>770</a>
+<a name='L771'></a><a href='#L771'>771</a>
+<a name='L772'></a><a href='#L772'>772</a>
+<a name='L773'></a><a href='#L773'>773</a>
+<a name='L774'></a><a href='#L774'>774</a>
+<a name='L775'></a><a href='#L775'>775</a>
+<a name='L776'></a><a href='#L776'>776</a>
+<a name='L777'></a><a href='#L777'>777</a>
+<a name='L778'></a><a href='#L778'>778</a>
+<a name='L779'></a><a href='#L779'>779</a>
+<a name='L780'></a><a href='#L780'>780</a>
+<a name='L781'></a><a href='#L781'>781</a>
+<a name='L782'></a><a href='#L782'>782</a>
+<a name='L783'></a><a href='#L783'>783</a>
+<a name='L784'></a><a href='#L784'>784</a>
+<a name='L785'></a><a href='#L785'>785</a>
+<a name='L786'></a><a href='#L786'>786</a>
+<a name='L787'></a><a href='#L787'>787</a>
+<a name='L788'></a><a href='#L788'>788</a>
+<a name='L789'></a><a href='#L789'>789</a>
+<a name='L790'></a><a href='#L790'>790</a>
+<a name='L791'></a><a href='#L791'>791</a>
+<a name='L792'></a><a href='#L792'>792</a>
+<a name='L793'></a><a href='#L793'>793</a>
+<a name='L794'></a><a href='#L794'>794</a>
+<a name='L795'></a><a href='#L795'>795</a>
+<a name='L796'></a><a href='#L796'>796</a>
+<a name='L797'></a><a href='#L797'>797</a>
+<a name='L798'></a><a href='#L798'>798</a>
+<a name='L799'></a><a href='#L799'>799</a>
+<a name='L800'></a><a href='#L800'>800</a>
+<a name='L801'></a><a href='#L801'>801</a>
+<a name='L802'></a><a href='#L802'>802</a>
+<a name='L803'></a><a href='#L803'>803</a>
+<a name='L804'></a><a href='#L804'>804</a>
+<a name='L805'></a><a href='#L805'>805</a>
+<a name='L806'></a><a href='#L806'>806</a>
+<a name='L807'></a><a href='#L807'>807</a>
+<a name='L808'></a><a href='#L808'>808</a>
+<a name='L809'></a><a href='#L809'>809</a>
+<a name='L810'></a><a href='#L810'>810</a>
+<a name='L811'></a><a href='#L811'>811</a>
+<a name='L812'></a><a href='#L812'>812</a>
+<a name='L813'></a><a href='#L813'>813</a>
+<a name='L814'></a><a href='#L814'>814</a>
+<a name='L815'></a><a href='#L815'>815</a>
+<a name='L816'></a><a href='#L816'>816</a>
+<a name='L817'></a><a href='#L817'>817</a>
+<a name='L818'></a><a href='#L818'>818</a>
+<a name='L819'></a><a href='#L819'>819</a>
+<a name='L820'></a><a href='#L820'>820</a>
+<a name='L821'></a><a href='#L821'>821</a>
+<a name='L822'></a><a href='#L822'>822</a>
+<a name='L823'></a><a href='#L823'>823</a>
+<a name='L824'></a><a href='#L824'>824</a>
+<a name='L825'></a><a href='#L825'>825</a>
+<a name='L826'></a><a href='#L826'>826</a>
+<a name='L827'></a><a href='#L827'>827</a>
+<a name='L828'></a><a href='#L828'>828</a>
+<a name='L829'></a><a href='#L829'>829</a>
+<a name='L830'></a><a href='#L830'>830</a>
+<a name='L831'></a><a href='#L831'>831</a>
+<a name='L832'></a><a href='#L832'>832</a>
+<a name='L833'></a><a href='#L833'>833</a>
+<a name='L834'></a><a href='#L834'>834</a>
+<a name='L835'></a><a href='#L835'>835</a>
+<a name='L836'></a><a href='#L836'>836</a>
+<a name='L837'></a><a href='#L837'>837</a>
+<a name='L838'></a><a href='#L838'>838</a>
+<a name='L839'></a><a href='#L839'>839</a>
+<a name='L840'></a><a href='#L840'>840</a>
+<a name='L841'></a><a href='#L841'>841</a>
+<a name='L842'></a><a href='#L842'>842</a>
+<a name='L843'></a><a href='#L843'>843</a>
+<a name='L844'></a><a href='#L844'>844</a>
+<a name='L845'></a><a href='#L845'>845</a>
+<a name='L846'></a><a href='#L846'>846</a>
+<a name='L847'></a><a href='#L847'>847</a>
+<a name='L848'></a><a href='#L848'>848</a>
+<a name='L849'></a><a href='#L849'>849</a>
+<a name='L850'></a><a href='#L850'>850</a>
+<a name='L851'></a><a href='#L851'>851</a>
+<a name='L852'></a><a href='#L852'>852</a>
+<a name='L853'></a><a href='#L853'>853</a>
+<a name='L854'></a><a href='#L854'>854</a>
+<a name='L855'></a><a href='#L855'>855</a>
+<a name='L856'></a><a href='#L856'>856</a>
+<a name='L857'></a><a href='#L857'>857</a>
+<a name='L858'></a><a href='#L858'>858</a>
+<a name='L859'></a><a href='#L859'>859</a>
+<a name='L860'></a><a href='#L860'>860</a>
+<a name='L861'></a><a href='#L861'>861</a>
+<a name='L862'></a><a href='#L862'>862</a>
+<a name='L863'></a><a href='#L863'>863</a>
+<a name='L864'></a><a href='#L864'>864</a>
+<a name='L865'></a><a href='#L865'>865</a>
+<a name='L866'></a><a href='#L866'>866</a>
+<a name='L867'></a><a href='#L867'>867</a>
+<a name='L868'></a><a href='#L868'>868</a>
+<a name='L869'></a><a href='#L869'>869</a>
+<a name='L870'></a><a href='#L870'>870</a>
+<a name='L871'></a><a href='#L871'>871</a>
+<a name='L872'></a><a href='#L872'>872</a>
+<a name='L873'></a><a href='#L873'>873</a>
+<a name='L874'></a><a href='#L874'>874</a>
+<a name='L875'></a><a href='#L875'>875</a>
+<a name='L876'></a><a href='#L876'>876</a>
+<a name='L877'></a><a href='#L877'>877</a>
+<a name='L878'></a><a href='#L878'>878</a>
+<a name='L879'></a><a href='#L879'>879</a>
+<a name='L880'></a><a href='#L880'>880</a>
+<a name='L881'></a><a href='#L881'>881</a>
+<a name='L882'></a><a href='#L882'>882</a>
+<a name='L883'></a><a href='#L883'>883</a>
+<a name='L884'></a><a href='#L884'>884</a>
+<a name='L885'></a><a href='#L885'>885</a>
+<a name='L886'></a><a href='#L886'>886</a>
+<a name='L887'></a><a href='#L887'>887</a>
+<a name='L888'></a><a href='#L888'>888</a>
+<a name='L889'></a><a href='#L889'>889</a>
+<a name='L890'></a><a href='#L890'>890</a>
+<a name='L891'></a><a href='#L891'>891</a>
+<a name='L892'></a><a href='#L892'>892</a>
+<a name='L893'></a><a href='#L893'>893</a>
+<a name='L894'></a><a href='#L894'>894</a>
+<a name='L895'></a><a href='#L895'>895</a>
+<a name='L896'></a><a href='#L896'>896</a>
+<a name='L897'></a><a href='#L897'>897</a>
+<a name='L898'></a><a href='#L898'>898</a>
+<a name='L899'></a><a href='#L899'>899</a>
+<a name='L900'></a><a href='#L900'>900</a>
+<a name='L901'></a><a href='#L901'>901</a>
+<a name='L902'></a><a href='#L902'>902</a>
+<a name='L903'></a><a href='#L903'>903</a>
+<a name='L904'></a><a href='#L904'>904</a>
+<a name='L905'></a><a href='#L905'>905</a>
+<a name='L906'></a><a href='#L906'>906</a>
+<a name='L907'></a><a href='#L907'>907</a>
+<a name='L908'></a><a href='#L908'>908</a>
+<a name='L909'></a><a href='#L909'>909</a>
+<a name='L910'></a><a href='#L910'>910</a>
+<a name='L911'></a><a href='#L911'>911</a>
+<a name='L912'></a><a href='#L912'>912</a>
+<a name='L913'></a><a href='#L913'>913</a>
+<a name='L914'></a><a href='#L914'>914</a>
+<a name='L915'></a><a href='#L915'>915</a>
+<a name='L916'></a><a href='#L916'>916</a>
+<a name='L917'></a><a href='#L917'>917</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">45x</span>
+<span class="cline-any cline-yes">45x</span>
+<span class="cline-any cline-yes">45x</span>
+<span class="cline-any cline-yes">45x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">112x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">45x</span>
+<span class="cline-any cline-yes">44x</span>
+<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">45x</span>
+<span class="cline-any cline-yes">45x</span>
+<span class="cline-any cline-yes">31x</span>
+<span class="cline-any cline-yes">30x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">32x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">49x</span>
+<span class="cline-any cline-yes">49x</span>
+<span class="cline-any cline-yes">49x</span>
+<span class="cline-any cline-yes">49x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">49x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">49x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">49x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">49x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">49x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">49x</span>
+<span class="cline-any cline-yes">49x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">43x</span>
+<span class="cline-any cline-yes">43x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">24x</span>
+<span class="cline-any cline-yes">24x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">16x</span>
+<span class="cline-any cline-yes">16x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">80x</span>
+<span class="cline-any cline-yes">10x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">56x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">21x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">14x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">28x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">43x</span>
+<span class="cline-any cline-yes">29x</span>
+<span class="cline-any cline-yes">28x</span>
+<span class="cline-any cline-yes">28x</span>
+<span class="cline-any cline-yes">28x</span>
+<span class="cline-any cline-yes">43x</span>
+<span class="cline-any cline-yes">43x</span>
+<span class="cline-any cline-yes">43x</span>
+<span class="cline-any cline-yes">43x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">43x</span>
+<span class="cline-any cline-yes">43x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">43x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">43x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">17x</span>
+<span class="cline-any cline-yes">17x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">17x</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">17x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">17x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">19x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">34x</span>
+<span class="cline-any cline-yes">11x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-yes">17x</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-yes">28x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-yes">12x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">12x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">12x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">11x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">34x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">34x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">16x</span>
+<span class="cline-any cline-yes">16x</span>
+<span class="cline-any cline-yes">16x</span>
+<span class="cline-any cline-yes">16x</span>
+<span class="cline-any cline-yes">16x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">40x</span>
+<span class="cline-any cline-yes">16x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">16x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">26x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Activity, BarChart3, BrainCircuit, ChevronDown, ChevronRight, CircleStop, Cpu,
+  Download, FileCheck2, FileSpreadsheet, FileText, Gauge, GitBranch, MemoryStick, Play,
+  Plus, RefreshCw, Rocket, TerminalSquare, Trophy, Upload,
+} from "lucide-react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import { Link, useParams } from "react-router";
+import { api, getSession, json, uploadFormData } from "../api";
+import {
+  Badge, Button, Card, EmptyState, ErrorState, Loading, Modal, Notice, PageHeader,
+} from "../components/ui";
+import { formatBytes, formatDate, titleCase } from "../lib";
+import type {
+  Dataset, DatasetVersion, Estimator, Leaderboard, ModelRun, TaskType, TrainingResourceUsage,
+} from "../types";
+import {
+  fallbackPipeline, fallbackPipelineDiagram, formatDuration, formatNumber,
+} from "./presentation";
+&nbsp;
+type Analysis = ModelRun &amp; { run_name: string | null };
+interface AnalysisResult {
+  run_id: string; status: string; model_name: string; metrics: Record&lt;string, number&gt;;
+  diagnostics: Record&lt;string, unknown&gt;;
+  feature_importance: Array&lt;{ feature: string; mean_absolute_shap?: number; contribution_percent?: number }&gt;;
+  artifacts: Array&lt;{ id: string; name: string; kind: string; byte_size: number | null }&gt;;
+}
+interface Logs { run_id: string; status: string; lines: string[] }
+interface VersionOption { id: string; label: string; columns: string[] }
+interface DatasetUploadResult { dataset: Dataset; version: DatasetVersion }
+const PlotlyChart = lazy(() =&gt; import("../components/PlotlyChart"));
+&nbsp;
+export function RunsPage() {
+  const { projectId = "" } = useParams();
+  const client = useQueryClient();
+  const [selectedId, setSelectedId] = useState("");
+  const runs = useQuery({
+    queryKey: ["runs", projectId],
+    queryFn: () =&gt; api&lt;ModelRun[]&gt;(`/projects/${projectId}/training/runs`),
+    refetchInterval: (query) =&gt;
+      query.state.data?.some((run) =&gt; ["queued", "precheck_running", "running"].includes(run.status))
+        ? 3000 : false,
+  });
+  useEffect(() =&gt; {
+    if (runs.data?.length &amp;&amp; !runs.data.some((run) =&gt; run.id === selectedId)) {
+      setSelectedId(runs.data[0].id);
+    }
+  }, [runs.data, selectedId]);
+  const selected = runs.data?.find((run) =&gt; run.id === selectedId);
+  if (runs.isLoading) return &lt;Loading /&gt;;
+  if (runs.error) return &lt;ErrorState error={runs.error} retry={() =&gt; runs.refetch()} /&gt;;
+  return &lt;&gt;
+    &lt;PageHeader eyebrow="Evidence workspace" title="Results &amp; validation"
+      description="Compare candidates, inspect diagnostics, and challenge a model before promotion." /&gt;
+    {!runs.data?.length
+      ? &lt;Card&gt;&lt;EmptyState icon={&lt;BarChart3 /&gt;} title="No experiment results yet"
+          description="Launch a training run to compare model candidates and build an evidence trail."
+          action={&lt;Link className="button button--primary" to={`/projects/${projectId}/training`}&gt;&lt;Play size={15} /&gt;Configure training&lt;/Link&gt;} /&gt;&lt;/Card&gt;
+      : &lt;div className="runs-layout"&gt;
+          &lt;Card className="run-list"&gt;
+            &lt;div className="run-list__head"&gt;&lt;b&gt;Training runs&lt;/b&gt;&lt;span&gt;{runs.data.length}&lt;/span&gt;&lt;/div&gt;
+            {runs.data.map((run) =&gt; &lt;button key={run.id}
+              className={selectedId === run.id ? "active" : ""} onClick={() =&gt; setSelectedId(run.id)}&gt;
+              &lt;span&gt;&lt;b&gt;{run.run_name || <span class="branch-1 cbranch-no" title="branch not covered" >run.id.slice(0, 8)}&lt;</span>/b&gt;
+                &lt;small&gt;{titleCase(run.task_type)} · {formatDate(run.created_at)}&lt;/small&gt;&lt;/span&gt;
+              &lt;Badge status={run.status} /&gt;&lt;ChevronRight size={16} /&gt;
+            &lt;/button&gt;)}
+          &lt;/Card&gt;
+          {selected &amp;&amp; &lt;RunDetail projectId={projectId} run={selected}
+            invalidate={() =&gt; client.invalidateQueries({ queryKey: ["runs", projectId] })} /&gt;}
+        &lt;/div&gt;}
+  &lt;/&gt;;
+}
+&nbsp;
+function RunDetail({ projectId, run, invalidate }: {
+  projectId: string; run: ModelRun; invalidate: () =&gt; void;
+}) {
+  const client = useQueryClient();
+  const [tab, setTab] = useState&lt;"leaderboard" | "features" | "analysis" | "logs"&gt;("leaderboard");
+  const [showAdd, setShowAdd] = useState(false);
+  const leaderboard = useQuery({
+    queryKey: ["leaderboard", projectId, run.id],
+    queryFn: () =&gt; api&lt;Leaderboard&gt;(`/projects/${projectId}/training/runs/${run.id}/leaderboard`),
+    refetchInterval: ["queued", "precheck_running", "running"].includes(run.status) ? 3000 : false,
+  });
+  const resources = useQuery({
+    queryKey: ["run-resources", projectId, run.id],
+    queryFn: () =&gt; api&lt;TrainingResourceUsage&gt;(`/projects/${projectId}/training/runs/${run.id}/resources`),
+    refetchInterval: ["queued", "precheck_running", "running"].includes(run.status) ? 2000 : false,
+  });
+  const logs = useQuery({
+    queryKey: ["logs", run.id],
+    queryFn: () =&gt; api&lt;Logs&gt;(`/projects/${projectId}/training/runs/${run.id}/logs`),
+    enabled: tab === "logs",
+    refetchInterval: ["queued", "precheck_running", "running"].includes(run.status) ? 2000 : false,
+  });
+  const refreshRunEvidence = () =&gt; {
+    invalidate();
+    void Promise.all([
+      client.invalidateQueries({ queryKey: ["leaderboard", projectId, run.id] }),
+      client.invalidateQueries({ queryKey: ["run-resources", projectId, run.id] }),
+      client.invalidateQueries({ queryKey: ["logs", run.id] }),
+    ]);
+  };
+  const cancel = useMutation({
+    mutationFn: () =&gt; api(`/projects/${projectId}/training/runs/${run.id}/cancel`, json("POST")),
+    onSuccess: refreshRunEvidence,
+  });
+  const restart = useMutation({
+    mutationFn: () =&gt; api(`/projects/${projectId}/training/runs/${run.id}/restart`, json("POST")),
+    onSuccess: refreshRunEvidence,
+  });
+  const winner = leaderboard.data?.entries.find((entry) =&gt; entry.model === leaderboard.data?.winner);
+  return &lt;div className="run-detail"&gt;
+    &lt;Card className="run-summary"&gt;
+      &lt;div className="section-heading"&gt;&lt;div&gt;&lt;span className="eyebrow"&gt;Training run&lt;/span&gt;
+        &lt;h2&gt;{run.run_name || <span class="branch-1 cbranch-no" title="branch not covered" >run.id.slice(0, 8)}&lt;</span>/h2&gt;
+        &lt;p&gt;{titleCase(run.task_type)} · Created {formatDate(run.created_at)}&lt;/p&gt;&lt;/div&gt;
+        &lt;Badge status={run.status} /&gt;
+      &lt;/div&gt;
+      {run.plain_english_failure &amp;&amp; &lt;Notice tone="danger"&gt;{run.plain_english_failure}&lt;/Notice&gt;}
+      {run.failure_message &amp;&amp; &lt;details className="run-failure"&gt;&lt;summary&gt;Technical failure details&lt;/summary&gt;&lt;pre&gt;{run.failure_message}&lt;/pre&gt;&lt;/details&gt;}
+      &lt;dl className="run-evidence-strip"&gt;
+        &lt;div&gt;&lt;dt&gt;Candidates&lt;/dt&gt;&lt;dd&gt;{leaderboard.data?.entries.length || "—"}&lt;/dd&gt;&lt;/div&gt;
+        &lt;div&gt;&lt;dt&gt;Winner&lt;/dt&gt;&lt;dd&gt;{leaderboard.data?.winner || "Pending"}&lt;/dd&gt;&lt;/div&gt;
+        &lt;div&gt;&lt;dt&gt;Primary metric&lt;/dt&gt;&lt;dd&gt;{titleCase(leaderboard.data?.primary_metric || "Pending")}&lt;/dd&gt;&lt;/div&gt;
+        &lt;div&gt;&lt;dt&gt;Finished&lt;/dt&gt;&lt;dd&gt;{formatDate(run.finished_at)}&lt;/dd&gt;&lt;/div&gt;
+      &lt;/dl&gt;
+      &lt;div className="button-row run-actions"&gt;
+        {run.status === "succeeded" &amp;&amp; &lt;Button variant="secondary" onClick={() =&gt; setShowAdd(true)}&gt;
+          &lt;Plus size={16} /&gt;Add models&lt;/Button&gt;}
+        {["queued", "precheck_running", "running"].includes(run.status) &amp;&amp;
+          &lt;Button variant="danger" loading={cancel.isPending} onClick={() =&gt; cancel.mutate()}&gt;
+            &lt;CircleStop size={16} /&gt;Cancel run&lt;/Button&gt;}
+        {["failed", "cancelled", "preempted"].includes(run.status) &amp;&amp;
+          &lt;Button variant="secondary" loading={restart.isPending} onClick={() =&gt; restart.mutate()}&gt;
+            &lt;RefreshCw size={16} /&gt;Restart run&lt;/Button&gt;}
+      &lt;/div&gt;
+    &lt;/Card&gt;
+    &lt;div className="tabs" role="tablist" aria-label="Run detail"&gt;
+      &lt;button role="tab" aria-selected={tab === "leaderboard"} className={tab === "leaderboard" ? "active" : ""}
+        onClick={() =&gt; setTab("leaderboard")}&gt;Leaderboard&lt;/button&gt;
+      &lt;button role="tab" aria-selected={tab === "features"} className={tab === "features" ? "active" : ""}
+        onClick={() =&gt; setTab("features")}&gt;Feature selection&lt;/button&gt;
+      &lt;button role="tab" aria-selected={tab === "analysis"} className={tab === "analysis" ? "active" : ""}
+        onClick={() =&gt; setTab("analysis")}&gt;Validate &amp; explain&lt;/button&gt;
+      &lt;button role="tab" aria-selected={tab === "logs"} className={tab === "logs" ? "active" : ""}
+        onClick={() =&gt; setTab("logs")}&gt;Logs&lt;/button&gt;
+    &lt;/div&gt;
+    {tab === "leaderboard" &amp;&amp; &lt;LeaderboardPanel projectId={projectId} leaderboard={leaderboard} winner={winner}
+      task={run.task_type} resources={resources} openFeatureSelection={() =&gt; setTab("features")} /&gt;}
+    {tab === "features" &amp;&amp; &lt;FeatureSelectionPanel leaderboard={leaderboard} winner={winner} /&gt;}
+    {tab === "analysis" &amp;&amp; &lt;AnalysisPanel projectId={projectId} run={run}
+      successfulModels={leaderboard.data?.entries.filter((entry) =&gt; entry.status === "succeeded").map((entry) =&gt; entry.model) || <span class="branch-1 cbranch-no" title="branch not covered" >[]} /</span>&gt;}
+    {tab === "logs" &amp;&amp; &lt;LogsPanel logs={logs} /&gt;}
+    {showAdd &amp;&amp; &lt;AddModelsModal projectId={projectId} run={run}
+      completed={new Set(leaderboard.data?.entries.map((entry) =&gt; entry.model))}
+      close={<span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >s</span>etShowAdd(false)} d</span>one={() =&gt; { setShowAdd(false); refreshRunEvidence(); }} /&gt;}
+  &lt;/div&gt;;
+}
+&nbsp;
+function LeaderboardPanel({ projectId, leaderboard, winner, task, resources, openFeatureSelection }: {
+  projectId: string;
+  leaderboard: ReturnType&lt;typeof useQuery&lt;Leaderboard&gt;&gt;;
+  winner: Leaderboard["entries"][number] | undefined;
+  task: TaskType;
+  resources: ReturnType&lt;typeof useQuery&lt;TrainingResourceUsage&gt;&gt;;
+  openFeatureSelection: () =&gt; void;
+}) {
+  const [expanded, setExpanded] = useState&lt;string | null&gt;(null);
+  return &lt;Card className="section-card"&gt;
+    &lt;LiveTrainingSummary resources={resources} /&gt;
+    {leaderboard.isLoading ? &lt;Loading label="Loading model evidence…" /&gt;
+      : leaderboard.error ? &lt;ErrorState error={leaderboard.error} retry={() =&gt; leaderboard.refetch()} /&gt;
+      : leaderboard.data?.entries.length ? &lt;&gt;
+        &lt;div className="winner-banner"&gt;&lt;Trophy /&gt;&lt;div&gt;&lt;span&gt;Top candidate&lt;/span&gt;
+          &lt;b&gt;{leaderboard.data.winner || "Ranking in progress"}&lt;/b&gt;
+          &lt;small&gt;{winner?.primary_score != null
+            ? `${titleCase(leaderboard.data.primary_metric || <span class="branch-1 cbranch-no" title="branch not covered" >"score")</span>}: ${winner.primary_score.toFixed(4)}`
+            : "Results are still being collected"}&lt;/small&gt;&lt;/div&gt;
+          {leaderboard.data.winner &amp;&amp; &lt;Link className="button button--primary"
+            to={`/projects/${projectId}/operations?trainingRunId=${leaderboard.data.run_id}&amp;model=${encodeURIComponent(leaderboard.data.winner)}`}&gt;
+            &lt;Rocket size={15} /&gt;Deploy model&lt;/Link&gt;}&lt;/div&gt;
+        &lt;div className="leaderboard-accordion" role="table" aria-label="Model leaderboard"&gt;
+          &lt;div className="leaderboard-accordion__head" role="row"&gt;&lt;span&gt;Rank&lt;/span&gt;&lt;span&gt;Model&lt;/span&gt;&lt;span&gt;Status&lt;/span&gt;
+            &lt;span&gt;{titleCase(leaderboard.data.primary_metric || <span class="branch-1 cbranch-no" title="branch not covered" >"Score")</span>}&lt;/span&gt;&lt;span&gt;Duration&lt;/span&gt;&lt;span /&gt;&lt;/div&gt;
+          {leaderboard.data.entries.map((entry) =&gt; {
+            const open = expanded === entry.model;
+            return &lt;article className={`leaderboard-model${open ? " leaderboard-model--open" : ""}`} key={entry.model}&gt;
+              &lt;button type="button" className="leaderboard-model__trigger" aria-expanded={open}
+                onClick={() =&gt; setExpanded(open ? <span class="branch-0 cbranch-no" title="branch not covered" >null : e</span>ntry.model)}&gt;
+                &lt;span className="rank"&gt;{entry.rank || "—"}&lt;/span&gt;&lt;span&gt;&lt;b&gt;{entry.model}&lt;/b&gt;&lt;small&gt;{titleCase(entry.cost_tier)} cost&lt;/small&gt;&lt;/span&gt;
+                &lt;Badge status={entry.status} /&gt;&lt;span className="score"&gt;{entry.primary_score?.toFixed(4) || "—"}&lt;/span&gt;
+                &lt;span&gt;{entry.duration_seconds ? `${entry.duration_seconds.toFixed(1)}s` : "—"}&lt;/span&gt;&lt;ChevronDown size={17} /&gt;
+              &lt;/button&gt;
+              {entry.error &amp;&amp; &lt;small className="cell-error leaderboard-model__error"&gt;{entry.error}&lt;/small&gt;}
+              {open &amp;&amp; &lt;ModelEvidence projectId={projectId} runId={leaderboard.data.run_id}
+                entry={entry} task={task} metricDirections={leaderboard.data.metric_directions}
+                resources={resources} openFeatureSelection={openFeatureSelection} /&gt;}
+            &lt;/article&gt;;
+          })}
+        &lt;/div&gt;
+      &lt;/&gt; : &lt;EmptyState title="Results are on their way"
+        description="Candidates appear progressively as training completes." /&gt;}
+  &lt;/Card&gt;;
+}
+&nbsp;
+type LeaderboardEntry = Leaderboard["entries"][number];
+type Curve = { label: string; points: Array&lt;Record&lt;string, number | null&gt;&gt; };
+type PredictionSample = { order: number; actual: number; predicted: number; residual: number };
+&nbsp;
+function ModelEvidence({ projectId, runId, entry, task, metricDirections, resources, openFeatureSelection }: {
+  projectId: string;
+  runId: string;
+  entry: LeaderboardEntry;
+  task: TaskType;
+  metricDirections: Record&lt;string, string&gt;;
+  resources: ReturnType&lt;typeof useQuery&lt;TrainingResourceUsage&gt;&gt;;
+  openFeatureSelection: () =&gt; void;
+}) {
+  const [tab, setTab] = useState&lt;"metrics" | "diagnostics" | "resources" | "parameters" | "pipeline"&gt;("metrics");
+  return &lt;div className="leaderboard-model__body"&gt;
+    &lt;div className="model-tabs" role="tablist" aria-label={`${entry.model} evidence`}&gt;
+      {(["metrics", "diagnostics", "resources", "parameters", "pipeline"] as const).map((name) =&gt;
+        &lt;button key={name} role="tab" aria-selected={tab === name} className={tab === name ? "active" : ""}
+          onClick={() =&gt; setTab(name)}&gt;{name === "pipeline" ? "Pipeline &amp; features" : titleCase(name)}&lt;/button&gt;)}
+    &lt;/div&gt;
+    {tab === "metrics" &amp;&amp; &lt;section&gt;&lt;h3&gt;Metrics&lt;/h3&gt;&lt;div className="metric-pills"&gt;
+      {Object.entries(entry.metrics).map(([name, value]) =&gt; &lt;span key={name}&gt;
+        &lt;small&gt;{titleCase(name)} · {metricDirections[name] || "review"}&lt;/small&gt;&lt;b&gt;{value.toFixed(4)}&lt;/b&gt;&lt;/span&gt;)}&lt;/div&gt;&lt;/section&gt;}
+    {tab === "diagnostics" &amp;&amp; &lt;ModelDiagnosticCharts diagnostics={entry.diagnostics} task={task} /&gt;}
+    {tab === "resources" &amp;&amp; &lt;ResourcePanel resources={resources} /&gt;}
+    {tab === "parameters" &amp;&amp; &lt;pre className="model-parameters-json"&gt;{JSON.stringify(entry.best_params, null, 2)}&lt;/pre&gt;}
+    {tab === "pipeline" &amp;&amp; &lt;ModelPipeline projectId={projectId} runId={runId} entry={entry} task={task}
+      openFeatureSelection={openFeatureSelection} /&gt;}
+  &lt;/div&gt;;
+}
+&nbsp;
+function ModelPipeline({ projectId, runId, entry, task, openFeatureSelection }: {
+  projectId: string; runId: string; entry: LeaderboardEntry; task: TaskType;
+  openFeatureSelection: () =&gt; void;
+}) {
+  const [downloadError, setDownloadError] = useState("");
+  const [downloadStatus, setDownloadStatus] = useState("");
+  const diagram = entry.pipeline?.diagram || fallbackPipelineDiagram(entry, task);
+  const stages = entry.pipeline?.stages || fallbackPipeline(entry, task);
+  const download = async () =&gt; {
+    setDownloadStatus("Preparing audit evidence…"); setDownloadError("");
+    try {
+      await downloadModelAudit(projectId, runId, entry.model, setDownloadStatus);
+    } catch (error) {
+      setDownloadError(error instanceof Error ? error.message : <span class="branch-1 cbranch-no" title="branch not covered" >"The audit document could not be downloaded.")</span>;
+    } finally {
+      setDownloadStatus("");
+    }
+  };
+  return &lt;section className="model-pipeline-evidence"&gt;
+    &lt;header&gt;&lt;div&gt;&lt;span className="eyebrow"&gt;Fitted estimator graph&lt;/span&gt;&lt;h3&gt;Training pipeline&lt;/h3&gt;
+      &lt;p&gt;The preprocessing branches that transform each feature family before they converge into this estimator.&lt;/p&gt;&lt;/div&gt;
+      &lt;div className="model-audit-actions"&gt;
+        &lt;Button variant="secondary" onClick={openFeatureSelection}&gt;
+          &lt;GitBranch size={14} /&gt;View feature selection&lt;/Button&gt;
+        &lt;Button variant="secondary" loading={Boolean(downloadStatus)} onClick={download}&gt;
+          &lt;Download size={14} /&gt;Download PDF audit&lt;/Button&gt;
+      &lt;/div&gt;&lt;/header&gt;
+    {downloadError &amp;&amp; &lt;Notice tone="danger"&gt;{downloadError}&lt;/Notice&gt;}
+    {downloadStatus &amp;&amp; &lt;Notice&gt;{downloadStatus}&lt;/Notice&gt;}
+    &lt;PipelineDiagram diagram={diagram} modelName={entry.model} /&gt;
+    &lt;details className="pipeline-lifecycle"&gt;&lt;summary&gt;Execution evidence&lt;/summary&gt;&lt;ol&gt;
+      {stages.map((stage) =&gt; &lt;li key={stage.key} data-status={stage.status}&gt;
+        &lt;i className={`timeline-dot timeline-dot--${stage.status}`} /&gt;&lt;span&gt;&lt;b&gt;{stage.label}&lt;/b&gt;&lt;small&gt;{stage.summary}&lt;/small&gt;&lt;/span&gt;
+        &lt;Badge status={stage.status} /&gt;&lt;/li&gt;)}&lt;/ol&gt;&lt;/details&gt;
+    &lt;div className="pipeline-footnote"&gt;&lt;FileCheck2 size={15} /&gt;&lt;p&gt;&lt;b&gt;Audit scope&lt;/b&gt;
+      The PDF includes project context, UI-consistent target evidence, every recorded preparation step,
+      all model metrics, tabular diagnostics, and a required model-specific SHAP waterfall.&lt;/p&gt;&lt;/div&gt;
+  &lt;/section&gt;;
+}
+&nbsp;
+function PipelineDiagram({ diagram, modelName }: {
+  diagram: NonNullable&lt;NonNullable&lt;Leaderboard["entries"][number]["pipeline"]&gt;["diagram"]&gt;;
+  modelName: string;
+}) {
+  const transformer = diagram.transformer;
+  const branches = transformer?.branches || <span class="branch-1 cbranch-no" title="branch not covered" >[];</span>
+  return &lt;div className="pipeline-diagram" aria-label={`${modelName} fitted pipeline`}&gt;
+    &lt;div className="pipeline-gates"&gt;{(diagram.input_gates || <span class="branch-1 cbranch-no" title="branch not covered" >[]).m</span>ap((gate) =&gt; &lt;span key={gate}&gt;{gate}&lt;/span&gt;)}&lt;/div&gt;
+    {diagram.correlation_filter &amp;&amp; &lt;&gt;&lt;div className="pipeline-node pipeline-node--selector"&gt;&lt;span&gt;
+      &lt;small&gt;{diagram.correlation_filter.name}&lt;/small&gt;&lt;b&gt;{diagram.correlation_filter.type}&lt;/b&gt;
+      &lt;em&gt;{diagram.correlation_filter.summary}&lt;/em&gt;&lt;/span&gt;&lt;/div&gt;
+      &lt;i className="pipeline-connector pipeline-connector--down" /&gt;&lt;/&gt;}
+    &lt;div className="pipeline-node pipeline-node--root"&gt;&lt;GitBranch /&gt;&lt;span&gt;&lt;small&gt;Pipeline step&lt;/small&gt;&lt;b&gt;Feature preprocessing&lt;/b&gt;&lt;/span&gt;&lt;/div&gt;
+    &lt;i className="pipeline-connector pipeline-connector--down" /&gt;
+    &lt;section className="pipeline-transformer"&gt;
+      &lt;header&gt;&lt;ChevronDown /&gt;&lt;span&gt;&lt;small&gt;{transformer?.name || <span class="branch-1 cbranch-no" title="branch not covered" >"preprocessor"}&lt;</span>/small&gt;&lt;b&gt;{transformer?.type || <span class="branch-1 cbranch-no" title="branch not covered" >"ColumnTransformer"}&lt;</span>/b&gt;&lt;/span&gt;&lt;/header&gt;
+      &lt;div className="pipeline-branches"&gt;{branches.map((branch) =&gt; &lt;article key={branch.key}&gt;
+        &lt;h4&gt;&lt;GitBranch /&gt;{branch.label}&lt;/h4&gt;&lt;ol&gt;{branch.steps.map((step, index) =&gt;
+          &lt;li key={`${step}-${index}`}&gt;&lt;span&gt;{index + 1}&lt;/span&gt;&lt;b&gt;{step}&lt;/b&gt;&lt;/li&gt;)}&lt;/ol&gt;
+      &lt;/article&gt;)}&lt;/div&gt;
+      &lt;div className="pipeline-convergence" aria-hidden&gt;&lt;i /&gt;&lt;i /&gt;&lt;b /&gt;&lt;/div&gt;
+    &lt;/section&gt;
+    {diagram.selector &amp;&amp; &lt;&gt;&lt;i className="pipeline-connector pipeline-connector--down" /&gt;
+      &lt;div className="pipeline-node pipeline-node--selector"&gt;&lt;span&gt;&lt;small&gt;{diagram.selector.name}&lt;/small&gt;
+        &lt;b&gt;{diagram.selector.type}&lt;/b&gt;&lt;em&gt;{diagram.selector.summary}&lt;/em&gt;&lt;/span&gt;&lt;/div&gt;&lt;/&gt;}
+    &lt;i className="pipeline-connector pipeline-connector--down" /&gt;
+    &lt;div className="pipeline-node pipeline-node--estimator"&gt;&lt;Gauge /&gt;&lt;span&gt;&lt;small&gt;{diagram.estimator?.name || <span class="branch-1 cbranch-no" title="branch not covered" >"estimator"}&lt;</span>/small&gt;
+      &lt;b&gt;{diagram.estimator?.type || <span class="branch-1 cbranch-no" title="branch not covered" >modelName}&lt;</span>/b&gt;&lt;/span&gt;&lt;/div&gt;
+  &lt;/div&gt;;
+}
+&nbsp;
+type CorrelationMatrix = { columns?: string[]; values?: number[][] };
+type CorrelationRemoval = {
+  feature: string; kept_feature: string; correlation: number; score: number; kept_score: number;
+};
+type CorrelationDiagnostics = {
+  threshold?: number; score_method?: string; numeric_feature_count?: number; heatmap_truncated?: boolean;
+  removed_features?: CorrelationRemoval[]; before?: CorrelationMatrix; after?: CorrelationMatrix;
+};
+&nbsp;
+function FeatureSelectionPanel({ leaderboard, winner }: {
+  leaderboard: ReturnType&lt;typeof useQuery&lt;Leaderboard&gt;&gt;;
+  winner: LeaderboardEntry | undefined;
+}) {
+  const entry = winner || <span class="branch-1 cbranch-no" title="branch not covered" >leaderboard.data?.entries.find(<span class="fstat-no" title="function not covered" >(c</span>andidate) =&gt; <span class="cstat-no" title="statement not covered" >candidate.status === "succeeded")</span>;</span>
+  return &lt;Card className="section-card feature-selection-card"&gt;
+    {leaderboard.isLoading ? <span class="branch-0 cbranch-no" title="branch not covered" >&lt;Loading label="Loading feature-selection evidence…" /&gt;</span>
+      : leaderboard.error ? <span class="branch-0 cbranch-no" title="branch not covered" >&lt;ErrorState error={leaderboard.error} retry={<span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >l</span>eaderboard.refetch()} /</span>&gt;</span>
+      : entry ? &lt;CorrelationEvidence diagnostics={entry.diagnostics} /&gt;
+      : <span class="branch-1 cbranch-no" title="branch not covered" >&lt;EmptyState title="Feature-selection evidence is not ready"</span>
+          description="It appears after the first model candidate finishes." /&gt;}
+  &lt;/Card&gt;;
+}
+&nbsp;
+function CorrelationEvidence({ diagnostics }: { diagnostics: Record&lt;string, unknown&gt; }) {
+  const evidence = diagnostics.correlated_features as CorrelationDiagnostics | undefined;
+  const before = evidence?.before;
+  const after = evidence?.after;
+  if (!before?.columns?.length || !before.values?.length) {
+    return &lt;Notice&gt;Correlation heatmaps are unavailable for this model. Retrain it to capture feature-selection evidence.&lt;/Notice&gt;;
+  }
+  const removals = evidence?.removed_features || <span class="branch-1 cbranch-no" title="branch not covered" >[];</span>
+  const beforeColumns = before.columns || <span class="branch-1 cbranch-no" title="branch not covered" >[];</span>
+  const afterColumns = after?.columns || <span class="branch-1 cbranch-no" title="branch not covered" >[];</span>
+  const numericFeatureCount = evidence?.numeric_feature_count ?? <span class="branch-1 cbranch-no" title="branch not covered" >beforeColumns.length;</span>
+  const retainedFeatureCount = Math.max(0, numericFeatureCount - removals.length);
+  const shown = (count: number, total: number) =&gt;
+    count === total ? `${total} features` : <span class="branch-1 cbranch-no" title="branch not covered" >`${count} of ${total} shown`;</span>
+  const removed = new Set(removals.map((item) =&gt; item.feature));
+  const labels = beforeColumns.map((column) =&gt; removed.has(column) ? `✕ ${column}` : column);
+  const afterIndex = new Map(afterColumns.map((column, index) =&gt; [column, index]));
+  const retainedValues = beforeColumns.map((row) =&gt; beforeColumns.map((column) =&gt; {
+    const rowIndex = afterIndex.get(row);
+    const columnIndex = afterIndex.get(column);
+    return rowIndex == null || columnIndex == null ? null : after?.values?.[rowIndex]?.[columnIndex] ?? <span class="branch-1 cbranch-no" title="branch not covered" >null;</span>
+  }));
+  const heatmap = (values: Array&lt;Array&lt;number | null&gt;&gt;) =&gt; [{
+    type: "heatmap", z: values, x: labels, y: labels,
+    zmin: -1, zmax: 1, colorscale: "RdBu", reversescale: true,
+    hoverongaps: false,
+    hovertemplate: "%{y} × %{x}&lt;br&gt;r = %{z:.3f}&lt;extra&gt;&lt;/extra&gt;",
+  }];
+  return &lt;section className="correlation-evidence"&gt;
+    &lt;header&gt;&lt;div&gt;&lt;span className="eyebrow"&gt;Feature selection evidence&lt;/span&gt;
+      &lt;h3&gt;Correlated-feature removal&lt;/h3&gt;
+      &lt;p&gt;Applied before every estimator · threshold |r| ≥ {Number(evidence?.threshold || <span class="branch-1 cbranch-no" title="branch not covered" >.9)</span>.toFixed(2)}
+        {" "}· {titleCase(evidence?.score_method || <span class="branch-1 cbranch-no" title="branch not covered" >"task aware score")</span>}&lt;/p&gt;
+    &lt;/div&gt;{evidence?.heatmap_truncated &amp;&amp; <span class="branch-1 cbranch-no" title="branch not covered" >&lt;Badge status="truncated" /&gt;}&lt;</span>/header&gt;
+    &lt;dl className="correlation-summary" aria-label="Feature removal summary"&gt;
+      &lt;div&gt;&lt;dt&gt;Numeric features&lt;/dt&gt;&lt;dd&gt;{numericFeatureCount}&lt;/dd&gt;&lt;/div&gt;
+      &lt;div&gt;&lt;dt&gt;Retained&lt;/dt&gt;&lt;dd&gt;{retainedFeatureCount}&lt;/dd&gt;&lt;/div&gt;
+      &lt;div&gt;&lt;dt&gt;Removed&lt;/dt&gt;&lt;dd&gt;{removals.length}&lt;/dd&gt;&lt;/div&gt;
+    &lt;/dl&gt;
+    &lt;div className="model-evidence-grid"&gt;
+      &lt;EvidenceChart title={`Before filtering · ${shown(beforeColumns.length, numericFeatureCount)}`}
+        data={heatmap((before.values || <span class="branch-1 cbranch-no" title="branch not covered" >[]) as number[][])</span>} /&gt;
+      {afterColumns.length &gt; 0 &amp;&amp; after?.values?.length
+        ? &lt;EvidenceChart title={`Retained features · ${afterColumns.length === retainedFeatureCount
+            ? `${retainedFeatureCount} of ${numericFeatureCount} kept`
+            : <span class="branch-1 cbranch-no" title="branch not covered" >`${afterColumns.length} of ${retainedFeatureCount} shown`}</span>`}
+            data={heatmap(retainedValues)} /&gt; : <span class="branch-1 cbranch-no" title="branch not covered" >null}</span>
+    &lt;/div&gt;
+    &lt;p className="correlation-explanation"&gt;The retained correlations do not change when columns are removed.
+      Blank rows and columns marked “✕” show the removed features.&lt;/p&gt;
+    {removals.length ? &lt;div className="table-scroll"&gt;&lt;table&gt;&lt;thead&gt;&lt;tr&gt;
+      &lt;th&gt;Removed&lt;/th&gt;&lt;th&gt;Retained&lt;/th&gt;&lt;th&gt;Correlation&lt;/th&gt;&lt;th&gt;Removed score&lt;/th&gt;&lt;th&gt;Retained score&lt;/th&gt;
+    &lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;{removals.map((item) =&gt; &lt;tr key={item.feature}&gt;
+      &lt;td&gt;{item.feature}&lt;/td&gt;&lt;td&gt;{item.kept_feature}&lt;/td&gt;&lt;td&gt;{item.correlation.toFixed(4)}&lt;/td&gt;
+      &lt;td&gt;{item.score.toFixed(4)}&lt;/td&gt;&lt;td&gt;{item.kept_score.toFixed(4)}&lt;/td&gt;
+    &lt;/tr&gt;)}&lt;/tbody&gt;&lt;/table&gt;&lt;/div&gt;
+      : <span class="branch-1 cbranch-no" title="branch not covered" >&lt;Notice&gt;No numeric feature pairs crossed the configured threshold.&lt;/Notice&gt;}</span>
+  &lt;/section&gt;;
+}
+&nbsp;
+async function downloadModelAudit(
+  projectId: string,
+  runId: string,
+  modelName: string,
+  updateStatus: (status: string) =&gt; void,
+) {
+  const path = `/api/v1/projects/${projectId}/training/runs/${runId}/models/${encodeURIComponent(modelName)}/audit-document`;
+  const fetchAudit = () =&gt; {
+    const token = getSession()?.tokens.access_token;
+    return fetch(path, { headers: token ? <span class="branch-0 cbranch-no" title="branch not covered" >{ Authorization: `Bearer ${token}` } : {</span>} });
+  };
+  let response = await fetchAudit();
+  if (response.status === 409) {
+    const body = await response.json().catch(<span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >n</span>ull)</span> as { detail?: { code?: string; message?: string } } | null;
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (body?.detail?.code !== "AUDIT_SHAP_REQUIRED") {
+<span class="cstat-no" title="statement not covered" >      throw new Error(body?.detail?.message || `Audit preparation failed (${response.status}).`);</span>
+    }
+    updateStatus("Calculating the required representative SHAP waterfall…");
+    const launched = await api&lt;{ run: Analysis }&gt;(`/projects/${projectId}/training/runs/${runId}/explanations`,
+      json("POST", { model_name: modelName, max_rows: 200, expected_minutes: 10, force: true }));
+    await waitForAuditExplanation(projectId, runId, launched.run.id, updateStatus);
+    updateStatus("Rendering the verified PDF evidence package…");
+    response = await fetchAudit();
+  }
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(detail || <span class="branch-1 cbranch-no" title="branch not covered" >`Audit download failed (${response.status}).`)</span>;
+  }
+  const url = URL.createObjectURL(await response.blob());
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${modelName.replace(/[^A-Za-z0-9_.-]+/g, "-")}-audit.pdf`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+&nbsp;
+async function waitForAuditExplanation(
+  projectId: string, runId: string, analysisRunId: string,
+  updateStatus: (status: string) =&gt; void,
+) {
+  for (let attempt = 0; attempt &lt; 300; attempt += 1) {
+    const result = await api&lt;AnalysisResult&gt;(
+      `/projects/${projectId}/training/runs/${runId}/analyses/${analysisRunId}`,
+    );
+    <span class="missing-if-branch" title="else path not taken" >E</span>if (result.status === "succeeded") return;
+<span class="cstat-no" title="statement not covered" >    if (["failed", "cancelled", "preempted"].includes(result.status)) {</span>
+<span class="cstat-no" title="statement not covered" >      throw new Error("SHAP preparation did not complete, so the audit PDF was not generated.");</span>
+    }
+<span class="cstat-no" title="statement not covered" >    updateStatus(`Calculating SHAP evidence · ${titleCase(result.status)}`);</span>
+<span class="cstat-no" title="statement not covered" >    await new Promise(<span class="fstat-no" title="function not covered" >(r</span>esolve) =&gt; <span class="cstat-no" title="statement not covered" >window.setTimeout(resolve, 2000))</span>;</span>
+  }
+<span class="cstat-no" title="statement not covered" >  throw new Error("SHAP preparation timed out before the audit PDF could be generated.");</span>
+}
+&nbsp;
+function LiveTrainingSummary({ resources }: {
+  resources: ReturnType&lt;typeof useQuery&lt;TrainingResourceUsage&gt;&gt;;
+}) {
+  if (resources.isLoading) return &lt;Loading label="Loading training progress…" /&gt;;
+  if (resources.error) return &lt;ErrorState error={resources.error} retry={() =&gt; resources.refetch()} /&gt;;
+  const value = resources.data;
+  <span class="missing-if-branch" title="if path not taken" >I</span>if (!value) <span class="cstat-no" title="statement not covered" >return null;</span>
+  const total = value.total_candidates || <span class="branch-1 cbranch-no" title="branch not covered" >0;</span>
+  const completed = value.completed_candidates || <span class="branch-1 cbranch-no" title="branch not covered" >0;</span>
+  const progress = Number.isFinite(value.progress) ? value.progress : <span class="branch-1 cbranch-no" title="branch not covered" >0;</span>
+  const terminal = ["succeeded", "failed", "cancelled", "preempted"].includes(value.status);
+  const displayedCandidate = terminal
+    ? (value.last_candidate || value.current_candidate)
+    : value.current_candidate;
+  const candidateNumber = Math.min(completed + (displayedCandidate ? 1 : 0), total);
+  const candidateCopy = value.status === "cancelled"
+    ? (displayedCandidate
+      ? `Stopped on candidate ${candidateNumber} of ${total}`
+      : <span class="branch-1 cbranch-no" title="branch not covered" >`${completed} of ${total} candidates completed`)</span>
+    : `Candidate ${candidateNumber} of ${total}`;
+  const progressCopy = value.status === "cancelled"
+    ? `${Math.round(progress * 100)}% completed before cancellation`
+    : `${Math.round(progress * 100)}% complete`;
+  return &lt;div className="live-training-summary"&gt;
+    &lt;div&gt;&lt;Activity size={18} /&gt;&lt;span&gt;&lt;small&gt;{terminal ? "Last active model" : "Active model"}&lt;/small&gt;
+      &lt;b&gt;{displayedCandidate || (terminal ? "No model active" : <span class="branch-1 cbranch-no" title="branch not covered" >"Waiting for candidate")}&lt;</span>/b&gt;&lt;/span&gt;&lt;/div&gt;
+    &lt;div&gt;&lt;Gauge size={18} /&gt;&lt;span&gt;&lt;small&gt;Current phase&lt;/small&gt;&lt;b&gt;{titleCase(value.current_phase || value.pod_phase || value.status || <span class="branch-3 cbranch-no" title="branch not covered" >"waiting")</span>}&lt;/b&gt;&lt;/span&gt;&lt;/div&gt;
+    &lt;div className="live-training-summary__progress"&gt;&lt;span&gt;
+      &lt;b&gt;{candidateCopy}&lt;/b&gt;
+      &lt;small&gt;{progressCopy}&lt;/small&gt;&lt;/span&gt;
+      &lt;progress max={1} value={progress} /&gt;&lt;/div&gt;
+  &lt;/div&gt;;
+}
+&nbsp;
+function ResourcePanel({ resources }: { resources: ReturnType&lt;typeof useQuery&lt;TrainingResourceUsage&gt;&gt; }) {
+  <span class="missing-if-branch" title="if path not taken" >I</span>if (resources.isLoading) <span class="cstat-no" title="statement not covered" >return &lt;Loading label="Loading resource telemetry…" /&gt;;</span>
+  <span class="missing-if-branch" title="if path not taken" >I</span>if (resources.error) <span class="cstat-no" title="statement not covered" >return &lt;ErrorState error={resources.error} retry={<span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >r</span>esources.refetch()} /</span>&gt;;</span>
+  const value = resources.data;
+  <span class="missing-if-branch" title="if path not taken" >I</span>if (!value) <span class="cstat-no" title="statement not covered" >return null;</span>
+  const cpuPercent = value.cpu_limit_cores ? (value.cpu_usage_cores || <span class="branch-1 cbranch-no" title="branch not covered" >0) / v</span>alue.cpu_limit_cores * 100 : 0;
+  const memoryPercent = value.memory_limit_mb ? (value.memory_usage_mb || <span class="branch-1 cbranch-no" title="branch not covered" >0) / v</span>alue.memory_limit_mb * 100 : 0;
+  return &lt;div className="resource-panel"&gt;
+    &lt;div className="resource-cards"&gt;
+      &lt;ResourceMeter icon={&lt;Cpu /&gt;} label="CPU" current={value.cpu_usage_cores == null ? "Unavailable" : `${value.cpu_usage_cores.toFixed(2)} cores`}
+        detail={`Peak ${formatNumber(value.peak_cpu_usage_cores, " cores")} · limit ${formatNumber(value.cpu_limit_cores, " cores")}`} percent={cpuPercent} /&gt;
+      &lt;ResourceMeter icon={&lt;MemoryStick /&gt;} label="Memory" current={value.memory_usage_mb == null ? "Unavailable" : `${value.memory_usage_mb.toLocaleString()} MB`}
+        detail={`Peak ${formatNumber(value.peak_memory_usage_mb, " MB")} · limit ${formatNumber(value.memory_limit_mb, " MB")}`} percent={memoryPercent} /&gt;
+      &lt;ResourceMeter icon={&lt;Gauge /&gt;} label="Accelerator"
+        current={value.gpu_count ? `${titleCase(value.gpu_vendor || <span class="branch-1 cbranch-no" title="branch not covered" >"GPU")</span>} × ${value.gpu_count}` : "CPU"}
+        detail={value.gpu_resource || "No GPU allocated"} percent={value.gpu_utilization_percent || 0} hideProgress={!value.gpu_telemetry_available} /&gt;
+    &lt;/div&gt;
+    &lt;div className="resource-meta"&gt;&lt;span&gt;Pod &lt;b&gt;{value.pod_name || "Expired"}&lt;/b&gt;&lt;/span&gt;
+      &lt;span&gt;Node &lt;b&gt;{value.node_name || "—"}&lt;/b&gt;&lt;/span&gt;&lt;span&gt;Restarts &lt;b&gt;{value.restart_count}&lt;/b&gt;&lt;/span&gt;
+      &lt;span&gt;Elapsed &lt;b&gt;{formatDuration(value.elapsed_seconds)}&lt;/b&gt;&lt;/span&gt;
+      &lt;span&gt;Remaining &lt;b&gt;{value.estimated_remaining_seconds == null ? "Estimating…" : formatDuration(value.estimated_remaining_seconds)}&lt;/b&gt;&lt;/span&gt;&lt;/div&gt;
+    {!value.telemetry_available &amp;&amp; &lt;Notice&gt;Live CPU and memory require Kubernetes Metrics Server. Peak and last-known values remain visible after the pod expires.&lt;/Notice&gt;}
+    {value.gpu_count &gt; 0 &amp;&amp; !value.gpu_telemetry_available &amp;&amp; &lt;Notice&gt;GPU allocation is confirmed, but utilization and VRAM require NVIDIA DCGM or Intel GPU telemetry.&lt;/Notice&gt;}
+  &lt;/div&gt;;
+}
+&nbsp;
+function ResourceMeter({ icon, label, current, detail, percent, hideProgress = false }: {
+  icon: ReactNode; label: string; current: string; detail: string; percent: number; hideProgress?: boolean;
+}) {
+  return &lt;section className="resource-meter"&gt;&lt;div&gt;{icon}&lt;span&gt;&lt;small&gt;{label}&lt;/small&gt;&lt;b&gt;{current}&lt;/b&gt;&lt;/span&gt;&lt;/div&gt;
+    {!hideProgress &amp;&amp; &lt;progress max={100} value={Math.min(100, Math.max(0, percent))} /&gt;}
+    &lt;small&gt;{detail}&lt;/small&gt;&lt;/section&gt;;
+}
+&nbsp;
+function ModelDiagnosticCharts({ diagnostics, task }: {
+  diagnostics: Record&lt;string, unknown&gt;;
+  task: TaskType;
+}) {
+  const learning = diagnostics.learning_curve as { scoring?: string; points?: Array&lt;Record&lt;string, number&gt;&gt; } | undefined;
+  const crossValidation = diagnostics.cross_validation as Record&lt;string, unknown&gt; | undefined;
+  return &lt;div className="model-evidence-grid"&gt;
+    {task === "classification" &amp;&amp; &lt;ClassificationCharts diagnostics={diagnostics} /&gt;}
+    {(task === "regression" || task === "time_series") &amp;&amp; &lt;RegressionCharts diagnostics={diagnostics} timeSeries={task === "time_series"} /&gt;}
+    {task === "clustering" &amp;&amp; &lt;ClusteringCharts diagnostics={diagnostics} /&gt;}
+    {learning?.points?.length ? &lt;EvidenceChart title={`Learning curve · ${titleCase(learning.scoring || <span class="branch-1 cbranch-no" title="branch not covered" >"score")</span>}`}
+      data={[
+        { type: "scatter", mode: "lines+markers", name: "Training", x: learning.points.map((point) =&gt; point.training_rows), y: learning.points.map((point) =&gt; point.training_mean), line: { color: "#3159e8" } },
+        { type: "scatter", mode: "lines+markers", name: "Validation", x: learning.points.map((point) =&gt; point.training_rows), y: learning.points.map((point) =&gt; point.validation_mean), line: { color: "#e08835" } },
+      ]} xTitle="Training rows" yTitle={titleCase(learning.scoring || <span class="branch-1 cbranch-no" title="branch not covered" >"score")</span>} /&gt; : null}
+    {crossValidation &amp;&amp; typeof crossValidation.mean === "number" ? &lt;EvidenceChart title="Cross-validation stability"
+      data={[{ type: "bar", x: ["Mean", "Standard deviation"], y: [crossValidation.mean, Number(crossValidation.standard_deviation || <span class="branch-1 cbranch-no" title="branch not covered" >0)</span>], marker: { color: ["#3159e8", "#9aa7d8"] } }]} /&gt; : null}
+  &lt;/div&gt;;
+}
+&nbsp;
+function ClassificationCharts({ diagnostics }: { diagnostics: Record&lt;string, unknown&gt; }) {
+  const [showPercentages, setShowPercentages] = useState(false);
+  const labels = Array.isArray(diagnostics.labels) ? diagnostics.labels.map(String) : <span class="branch-1 cbranch-no" title="branch not covered" >[];</span>
+  const matrix = Array.isArray(diagnostics.confusion_matrix) ? diagnostics.confusion_matrix as number[][] : <span class="branch-1 cbranch-no" title="branch not covered" >[];</span>
+  const percentages = matrix.map((row) =&gt; {
+    const total = row.reduce((sum, value) =&gt; sum + value, 0);
+    return row.map((value) =&gt; total ? (value / total) * 100 : 0);
+  });
+  const rocCurves = Array.isArray(diagnostics.roc_curves) ? diagnostics.roc_curves as Curve[] : [];
+  const precisionRecall = Array.isArray(diagnostics.precision_recall_curves) ? diagnostics.precision_recall_curves as Curve[] : [];
+  const positiveLabel = typeof diagnostics.positive_label === "string"
+    ? <span class="branch-0 cbranch-no" title="branch not covered" >diagnostics.positive_label</span>
+    : rocCurves.length === 1 ? rocCurves[0].label : "";
+  const positiveLabelSource = typeof diagnostics.positive_label_source === "string"
+    ? <span class="branch-0 cbranch-no" title="branch not covered" >diagnostics.positive_label_source</span>
+    : positiveLabel ? "legacy_class_order" : "";
+  const binary = labels.length === 2 &amp;&amp; labels.includes(positiveLabel);
+  const outcomes = matrix.map((row, actualIndex) =&gt; row.map((_, predictedIndex) =&gt; {
+    if (!binary) return { short: "", label: "" };
+    const actualPositive = labels[actualIndex] === positiveLabel;
+    const predictedPositive = labels[predictedIndex] === positiveLabel;
+    if (actualPositive &amp;&amp; predictedPositive) return { short: "TP", label: "True positive" };
+    if (actualPositive) return { short: "FN", label: "False negative" };
+    if (predictedPositive) return { short: "FP", label: "False positive" };
+    return { short: "TN", label: "True negative" };
+  }));
+  const customdata = matrix.map((row, rowIndex) =&gt; row.map((count, columnIndex) =&gt; [
+    count, percentages[rowIndex]?.[columnIndex] || 0, outcomes[rowIndex]?.[columnIndex]?.label || "",
+  ]));
+  const cellText = (values: number[][], percentage: boolean) =&gt; values.map((row, rowIndex) =&gt;
+    row.map((value, columnIndex) =&gt; [
+      outcomes[rowIndex]?.[columnIndex]?.short,
+      percentage ? `${value.toFixed(1)}%` : value.toLocaleString(),
+    ].filter(Boolean).join("&lt;br&gt;")));
+  const report = diagnostics.classification_report as Record&lt;string, Record&lt;string, number&gt;&gt; | undefined;
+  const reportLabels = report ? Object.keys(report).filter((label) =&gt; typeof report[label] === "object" &amp;&amp; "precision" in report[label]) : [];
+  return &lt;&gt;
+    {matrix.length ? &lt;EvidenceChart title="Confusion matrix" action={&lt;div className="confusion-controls"&gt;
+      {positiveLabel &amp;&amp; &lt;span className="positive-class"&gt;Positive class: &lt;b&gt;{positiveLabel}&lt;/b&gt;
+        {positiveLabelSource === "legacy_class_order" ? " · legacy default" : <span class="branch-1 cbranch-no" title="branch not covered" >""}&lt;</span>/span&gt;}
+      &lt;div className="chart-toggle" role="group" aria-label="Confusion matrix values"&gt;
+        &lt;button type="button" aria-pressed={!showPercentages} onClick={<span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >s</span>etShowPercentages(false)}&gt;C</span>ounts&lt;/button&gt;
+        &lt;button type="button" aria-pressed={showPercentages} onClick={() =&gt; setShowPercentages(true)}&gt;Row %&lt;/button&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;} data={[showPercentages
+      ? { type: "heatmap", z: percentages, x: labels, y: labels, zmin: 0, zmax: 100,
+          colorscale: "Blues", xgap: 1, ygap: 1, customdata, text: cellText(percentages, true),
+          texttemplate: "%{text}", colorbar: { title: { text: "Row %" } },
+          hovertemplate: binary
+            ? "&lt;b&gt;%{customdata[2]}&lt;/b&gt;&lt;br&gt;Actual: %{y}&lt;br&gt;Predicted: %{x}&lt;br&gt;Row share: %{customdata[1]:.1f}%&lt;br&gt;Cases: %{customdata[0]:,}&lt;extra&gt;&lt;/extra&gt;"
+            : <span class="branch-1 cbranch-no" title="branch not covered" >"Actual: %{y}&lt;br&gt;Predicted: %{x}&lt;br&gt;Row share: %{customdata[1]:.1f}%&lt;br&gt;Cases: %{customdata[0]:,}&lt;extra&gt;&lt;/extra&gt;" }</span>
+      : { type: "heatmap", z: matrix, x: labels, y: labels, colorscale: "Blues", xgap: 1, ygap: 1,
+          customdata, text: cellText(matrix, false), texttemplate: "%{text}",
+          colorbar: { title: { text: "Cases" } }, hovertemplate: binary
+            ? "&lt;b&gt;%{customdata[2]}&lt;/b&gt;&lt;br&gt;Actual: %{y}&lt;br&gt;Predicted: %{x}&lt;br&gt;Cases: %{customdata[0]:,}&lt;br&gt;Row share: %{customdata[1]:.1f}%&lt;extra&gt;&lt;/extra&gt;"
+            : "Actual: %{y}&lt;br&gt;Predicted: %{x}&lt;br&gt;Cases: %{customdata[0]:,}&lt;br&gt;Row share: %{customdata[1]:.1f}%&lt;extra&gt;&lt;/extra&gt;" }]}
+      xTitle="Predicted class" yTitle="Actual class" reverseY
+      caption={showPercentages
+        ? "Row percentages: each actual class totals 100%. Hover a cell for its case count."
+        : "Counts show cases. Hover a cell for its share of that actual class."} /&gt; : <span class="branch-1 cbranch-no" title="branch not covered" >null}</span>
+    {rocCurves.length ? &lt;EvidenceChart title="ROC curve" data={[
+      ...rocCurves.map((curve) =&gt; ({ type: "scatter", mode: "lines", name: curve.label, x: curve.points.map((point) =&gt; point.false_positive_rate), y: curve.points.map((point) =&gt; point.true_positive_rate) })),
+      { type: "scatter", mode: "lines", name: "Random", x: [0, 1], y: [0, 1], line: { dash: "dash", color: "#9aa1b2" } },
+    ]} xTitle="False positive rate" yTitle="True positive rate" /&gt; : null}
+    {precisionRecall.length ? &lt;EvidenceChart title="Precision–recall curve" data={precisionRecall.map((curve) =&gt; ({ type: "scatter", mode: "lines", name: curve.label, x: curve.points.map((point) =&gt; point.recall), y: curve.points.map((point) =&gt; point.precision) }))} xTitle="Recall" yTitle="Precision" /&gt; : null}
+    {reportLabels.length ? &lt;EvidenceChart title="Per-class quality" data={["precision", "recall", "f1-score"].map((metric) =&gt; ({ type: "bar", name: titleCase(metric), x: reportLabels, y: reportLabels.map((label) =&gt; Number(report?.[label]?.[metric] || 0)) }))} yTitle="Score" /&gt; : null}
+  &lt;/&gt;;
+}
+&nbsp;
+function RegressionCharts({ diagnostics, timeSeries }: { diagnostics: Record&lt;string, unknown&gt;; timeSeries: boolean }) {
+  const samples = Array.isArray(diagnostics.prediction_samples) ? diagnostics.prediction_samples as PredictionSample[] : <span class="branch-1 cbranch-no" title="branch not covered" >[];</span>
+  <span class="missing-if-branch" title="if path not taken" >I</span>if (!samples.length) <span class="cstat-no" title="statement not covered" >return null;</span>
+  const minimum = Math.min(...samples.flatMap((item) =&gt; [item.actual, item.predicted]));
+  const maximum = Math.max(...samples.flatMap((item) =&gt; [item.actual, item.predicted]));
+  return &lt;&gt;
+    &lt;EvidenceChart title="Actual vs predicted" data={[
+      { type: "scatter", mode: "markers", name: "Predictions", x: samples.map((item) =&gt; item.actual), y: samples.map((item) =&gt; item.predicted), marker: { color: "#3159e8", opacity: .65 } },
+      { type: "scatter", mode: "lines", name: "Ideal", x: [minimum, maximum], y: [minimum, maximum], line: { dash: "dash", color: "#e08835" } },
+    ]} xTitle="Actual" yTitle="Predicted" /&gt;
+    &lt;EvidenceChart title="Residual distribution" data={[{ type: "histogram", x: samples.map((item) =&gt; item.residual), marker: { color: "#3159e8" } }]} xTitle="Residual" yTitle="Rows" /&gt;
+    {timeSeries ? &lt;EvidenceChart title="Chronological holdout" data={[
+      { type: "scatter", mode: "lines", name: "Actual", x: samples.map((item) =&gt; item.order), y: samples.map((item) =&gt; item.actual) },
+      { type: "scatter", mode: "lines", name: "Predicted", x: samples.map((item) =&gt; item.order), y: samples.map((item) =&gt; item.predicted) },
+    ]} xTitle="Holdout order" yTitle="Target" /&gt; : <span class="branch-1 cbranch-no" title="branch not covered" >null}</span>
+  &lt;/&gt;;
+}
+&nbsp;
+function ClusteringCharts({ diagnostics }: { diagnostics: Record&lt;string, unknown&gt; }) {
+  const sizes = diagnostics.cluster_sizes as Record&lt;string, number&gt; | undefined;
+  const crossValidation = diagnostics.cross_validation as { fold_metrics?: Array&lt;Record&lt;string, number&gt;&gt; } | undefined;
+  const foldMetrics = crossValidation?.fold_metrics || <span class="branch-1 cbranch-no" title="branch not covered" >[];</span>
+  const metricNames = [...new Set(foldMetrics.flatMap((fold) =&gt; Object.keys(fold)))];
+  return &lt;&gt;
+    {sizes &amp;&amp; Object.keys(sizes).length ? &lt;EvidenceChart title="Cluster sizes" data={[{ type: "bar", x: Object.keys(sizes), y: Object.values(sizes), marker: { color: "#3159e8" } }]} xTitle="Cluster" yTitle="Rows" /&gt; : <span class="branch-1 cbranch-no" title="branch not covered" >null}</span>
+    {foldMetrics.length ? &lt;EvidenceChart title="Cross-validation by fold" data={metricNames.map((metric) =&gt; ({ type: "scatter", mode: "lines+markers", name: titleCase(metric), x: foldMetrics.map((_, index) =&gt; index + 1), y: foldMetrics.map((fold) =&gt; fold[metric]) }))} xTitle="Fold" yTitle="Metric" /&gt; : <span class="branch-1 cbranch-no" title="branch not covered" >null}</span>
+  &lt;/&gt;;
+}
+&nbsp;
+function EvidenceChart({ title, data, xTitle, yTitle, action, reverseY = false, caption }: {
+  title: string;
+  data: Array&lt;Record&lt;string, unknown&gt;&gt;;
+  xTitle?: string;
+  yTitle?: string;
+  action?: ReactNode;
+  reverseY?: boolean;
+  caption?: ReactNode;
+}) {
+  return &lt;section className="model-evidence-chart"&gt;&lt;header className="model-evidence-chart__header"&gt;&lt;h3&gt;{title}&lt;/h3&gt;{action}&lt;/header&gt;&lt;Suspense fallback={&lt;Loading label="Loading visualization…" /&gt;}&gt;
+    &lt;PlotlyChart data={data} layout={{ autosize: true, height: 310, margin: { l: 55, r: 15, t: 15, b: 55 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "#f8f9fc", barmode: "group", xaxis: { title: { text: xTitle }, automargin: true }, yaxis: { title: { text: yTitle }, automargin: true, autorange: reverseY ? "reversed" : true }, legend: { orientation: "h", y: 1.12 }, font: { family: "Inter, system-ui, sans-serif", size: 10, color: "#4e5870" } }} config={{ displayModeBar: false, responsive: true }} useResizeHandler style={{ width: "100%" }} /&gt;
+  &lt;/Suspense&gt;{caption &amp;&amp; &lt;p className="evidence-chart-caption"&gt;{caption}&lt;/p&gt;}&lt;/section&gt;;
+}
+&nbsp;
+function AnalysisPanel({ projectId, run, successfulModels }: {
+  projectId: string; run: ModelRun; successfulModels: string[];
+}) {
+  const client = useQueryClient();
+  const [model, setModel] = useState("");
+  const [evaluationColumn, setEvaluationColumn] = useState("");
+  const [validationFile, setValidationFile] = useState&lt;File | null&gt;(null);
+  const [validationUploadProgress, setValidationUploadProgress] = useState(0);
+  const [uploadedValidation, setUploadedValidation] = useState&lt;DatasetUploadResult | null&gt;(null);
+  const [maxRows, setMaxRows] = useState(200);
+  const [selectedAnalysis, setSelectedAnalysis] = useState("");
+  const [analysisTab, setAnalysisTab] = useState&lt;"validation" | "explainability"&gt;("validation");
+  const analyses = useQuery({
+    queryKey: ["analyses", run.id], enabled: successfulModels.length &gt; 0,
+    queryFn: () =&gt; api&lt;Analysis[]&gt;(`/projects/${projectId}/training/runs/${run.id}/analyses`),
+    refetchInterval: (query) =&gt; query.state.data?.some((item) =&gt;
+      ["queued", "precheck_running", "running"].includes(item.status)) ? 5000 : false,
+  });
+  const versions = useQuery({
+    queryKey: ["all-versions", projectId],
+    queryFn: async () =&gt; {
+      const datasets = await api&lt;Dataset[]&gt;(`/projects/${projectId}/datasets`);
+      const groups = await Promise.all(datasets.map(async (dataset) =&gt; ({
+        dataset,
+        versions: await api&lt;DatasetVersion[]&gt;(`/projects/${projectId}/datasets/${dataset.id}/versions`),
+      })));
+      return groups.flatMap(({ dataset, versions: items }): VersionOption[] =&gt; items.map((version) =&gt; ({
+        id: version.id, label: `${dataset.name} · v${version.version_number}`,
+        columns: (version.schema_json || <span class="branch-1 cbranch-no" title="branch not covered" >version.dataset_schema)?.c</span>olumns?.map((column) =&gt; column.name) || <span class="branch-1 cbranch-no" title="branch not covered" >[],</span>
+      })));
+    },
+  });
+  useEffect(() =&gt; {
+    if (successfulModels.length &amp;&amp; !successfulModels.includes(model)) setModel(successfulModels[0]);
+  }, [successfulModels, model]);
+  const trainingColumns = versions.data?.find((item) =&gt; item.id === run.dataset_version_id)?.columns || [];
+  const uploadedValidationColumns = (uploadedValidation?.version.schema_json
+    || uploadedValidation?.version.dataset_schema)?.columns?.map((column) =&gt; column.name) || [];
+  const missingValidationColumns = trainingColumns.filter(
+    (column) =&gt; !uploadedValidationColumns.includes(column),
+  );
+  const validationSchemaReady = trainingColumns.length &gt; 0;
+  const visibleAnalyses = useMemo(() =&gt; (analyses.data || []).filter((item) =&gt;
+    item.run_kind === analysisTab &amp;&amp; item.params.model_name === model),
+  [analyses.data, analysisTab, model]);
+  const completedExplanation = useMemo(() =&gt; (analyses.data || []).find((item) =&gt;
+    item.run_kind === "explainability" &amp;&amp; item.status === "succeeded"
+    &amp;&amp; <span class="branch-2 cbranch-no" title="branch not covered" >item.params.model_name === model)</span>, [analyses.data, model]);
+  useEffect(() =&gt; {
+    const preferred = analysisTab === "explainability" &amp;&amp; completedExplanation
+      ? <span class="branch-0 cbranch-no" title="branch not covered" >completedExplanation : v</span>isibleAnalyses[0];
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (completedExplanation &amp;&amp; <span class="branch-1 cbranch-no" title="branch not covered" >analysisTab === "explainability"</span>
+      &amp;&amp; <span class="branch-2 cbranch-no" title="branch not covered" >selectedAnalysis !== completedExplanation.id) {</span>
+<span class="cstat-no" title="statement not covered" >      setSelectedAnalysis(completedExplanation.id);</span>
+    } else if (preferred &amp;&amp; !visibleAnalyses.some((item) =&gt; item.id === selectedAnalysis)) {
+      setSelectedAnalysis(preferred.id);
+    } else if (!preferred &amp;&amp; selectedAnalysis) {
+      setSelectedAnalysis("");
+    }
+  }, [analysisTab, completedExplanation, selectedAnalysis, visibleAnalyses]);
+  const explain = useMutation({
+    mutationFn: <span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >() =&gt; a</span>pi&lt;{ run: Analysis }&gt;(`/projects/${projectId}/training/runs/${run.id}/explanations`,</span>
+      json("POST", { model_name: model, max_rows: maxRows, expected_minutes: 10 })),
+    onSuccess: <span class="fstat-no" title="function not covered" >({</span> run: launched }) =&gt; {
+<span class="cstat-no" title="statement not covered" >      setSelectedAnalysis(launched.id);</span>
+<span class="cstat-no" title="statement not covered" >      client.removeQueries({ queryKey: ["analysis-result", run.id, launched.id] });</span>
+<span class="cstat-no" title="statement not covered" >      analyses.refetch();</span>
+    },
+  });
+  const uploadValidation = useMutation({
+    mutationFn: async (file: File) =&gt; {
+      const body = new FormData();
+      body.set("dataset_name", `External validation · ${file.name}`.slice(0, 220));
+      body.set("description", `Uploaded to validate ${run.run_name || <span class="branch-1 cbranch-no" title="branch not covered" >run.id}</span>`);
+      body.set("tags", JSON.stringify({ purpose: "external_validation", source_run_id: run.id }));
+      body.set("file", file, file.name);
+      return uploadFormData&lt;DatasetUploadResult&gt;(
+        `/projects/${projectId}/datasets/upload`, body, setValidationUploadProgress,
+      );
+    },
+    onSuccess: (uploaded) =&gt; {
+      setUploadedValidation(uploaded);
+      setEvaluationColumn("");
+      client.invalidateQueries({ queryKey: ["datasets", projectId] });
+    },
+  });
+  const validate = useMutation({
+    mutationFn: () =&gt; api&lt;{ run: Analysis }&gt;(`/projects/${projectId}/training/runs/${run.id}/validations`,
+      json("POST", {
+        model_name: model, dataset_version_id: uploadedValidation!.version.id,
+        evaluation_column: run.task_type === "clustering" ? <span class="branch-0 cbranch-no" title="branch not covered" >evaluationColumn || null : n</span>ull,
+        expected_minutes: 5,
+      })),
+    onSuccess: ({ run: launched }) =&gt; {
+      setSelectedAnalysis(launched.id);
+      client.removeQueries({ queryKey: ["analysis-result", run.id, launched.id] });
+      analyses.refetch();
+    },
+  });
+  const result = useQuery({
+    queryKey: ["analysis-result", run.id, selectedAnalysis], enabled: Boolean(selectedAnalysis),
+    queryFn: () =&gt; api&lt;AnalysisResult&gt;(
+      `/projects/${projectId}/training/runs/${run.id}/analyses/${selectedAnalysis}`),
+    refetchInterval: (query) =&gt; ["queued", "precheck_running", "running"].includes(
+      query.state.data?.status || "",
+    ) ? 2000 : false,
+  });
+  const selectedRun = visibleAnalyses.find((item) =&gt; item.id === selectedAnalysis);
+  const explanationSucceeded = analysisTab === "explainability"
+    &amp;&amp; selectedRun?.run_kind === "explainability"
+    &amp;&amp; result.data?.status === "succeeded";
+  return &lt;Card className="analysis-card"&gt;
+    &lt;div&gt;&lt;BrainCircuit /&gt;&lt;span&gt;&lt;h2&gt;Challenge a candidate&lt;/h2&gt;
+      &lt;p&gt;Test on an external dataset or calculate feature contributions before promotion.&lt;/p&gt;&lt;/span&gt;&lt;/div&gt;
+    {!successfulModels.length ? &lt;Notice&gt;Successful model candidates are required before analysis.&lt;/Notice&gt; : &lt;&gt;
+      &lt;label&gt;Candidate model&lt;select value={model} onChange={(event) =&gt; setModel(event.target.value)}&gt;
+        {successfulModels.map((name) =&gt; &lt;option key={name}&gt;{name}&lt;/option&gt;)}&lt;/select&gt;&lt;/label&gt;
+      &lt;div className="analysis-mode-tabs" role="tablist" aria-label="Model analysis type"&gt;
+        &lt;button role="tab" aria-selected={analysisTab === "validation"}
+          className={analysisTab === "validation" ? "active" : ""}
+          onClick={<span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >s</span>etAnalysisTab("validation")}&gt;E</span>xternal validation&lt;/button&gt;
+        &lt;button role="tab" aria-selected={analysisTab === "explainability"}
+          className={analysisTab === "explainability" ? "active" : ""}
+          onClick={() =&gt; setAnalysisTab("explainability")}&gt;SHAP explainability&lt;/button&gt;
+      &lt;/div&gt;
+      {analysisTab === "validation" &amp;&amp; &lt;div className="analysis-actions analysis-actions--single"&gt;
+        &lt;section&gt;&lt;FileCheck2 /&gt;&lt;h3&gt;Validate on external data&lt;/h3&gt;
+          &lt;p&gt;Upload an external dataset. Its columns are checked against the training data before validation can start.&lt;/p&gt;
+          &lt;label className="dropzone analysis-upload"&gt;&lt;input type="file"
+            accept=".csv,.parquet,.xlsx,.xls,.json,.jsonl" onChange={(event) =&gt; {
+              setValidationFile(event.target.files?.[0] || <span class="branch-1 cbranch-no" title="branch not covered" >null)</span>;
+              setUploadedValidation(null);
+              setValidationUploadProgress(0);
+              uploadValidation.reset();
+            }} /&gt;
+            &lt;FileSpreadsheet /&gt;&lt;b&gt;{validationFile?.name || "Choose an external dataset"}&lt;/b&gt;
+            &lt;span&gt;CSV, Parquet, Excel, JSON, or JSONL&lt;/span&gt;&lt;/label&gt;
+          {validationFile &amp;&amp; !uploadedValidation &amp;&amp; &lt;Button variant="secondary"
+            loading={uploadValidation.isPending} onClick={() =&gt; uploadValidation.mutate(validationFile)}&gt;
+            &lt;Upload size={15} /&gt;Upload and inspect&lt;/Button&gt;}
+          {uploadValidation.isPending &amp;&amp; &lt;div className="progress-panel"&gt;&lt;div&gt;&lt;b&gt;Uploading external dataset&lt;/b&gt;
+            &lt;span&gt;{validationUploadProgress}%&lt;/span&gt;&lt;/div&gt;&lt;progress value={validationUploadProgress} max={100} /&gt;&lt;/div&gt;}
+          {uploadValidation.error &amp;&amp; <span class="branch-1 cbranch-no" title="branch not covered" >&lt;Notice tone="danger"&gt;{uploadValidation.error.message}&lt;/Notice&gt;}</span>
+          {uploadedValidation &amp;&amp; !validationSchemaReady &amp;&amp; <span class="branch-2 cbranch-no" title="branch not covered" >&lt;Notice&gt;</span>
+            Loading the training schema before validation can start.
+          &lt;/Notice&gt;}
+          {uploadedValidation &amp;&amp; validationSchemaReady &amp;&amp; missingValidationColumns.length &gt; 0 &amp;&amp; &lt;Notice tone="danger"&gt;
+            This file cannot be validated. Missing training columns: {missingValidationColumns.join(", ")}.
+          &lt;/Notice&gt;}
+          {uploadedValidation &amp;&amp; validationSchemaReady &amp;&amp; missingValidationColumns.length === 0 &amp;&amp; &lt;Notice tone="success"&gt;
+            Schema matched: all {trainingColumns.length} training columns are present.
+          &lt;/Notice&gt;}
+          {run.task_type === "clustering" &amp;&amp; <span class="branch-1 cbranch-no" title="branch not covered" >&lt;label&gt;Reference label &lt;span className="optional"&gt;Optional&lt;/span&gt;</span>
+            &lt;select value={evaluationColumn} onChange={<span class="fstat-no" title="function not covered" >(e</span>vent) =&gt; <span class="cstat-no" title="statement not covered" >setEvaluationColumn(event.target.value)}&gt;</span>
+              &lt;option value=""&gt;No reference label&lt;/option&gt;
+              {uploadedValidationColumns.map(<span class="fstat-no" title="function not covered" >(c</span>olumn) =&gt; <span class="cstat-no" title="statement not covered" >&lt;option key={column}&gt;{column}&lt;/option&gt;)</span>}
+            &lt;/select&gt;&lt;/label&gt;}
+          &lt;Button disabled={!uploadedValidation || !validationSchemaReady || missingValidationColumns.length &gt; 0}
+            loading={validate.isPending} onClick={() =&gt; validate.mutate()}&gt;
+            &lt;Play size={15} /&gt;Run validation&lt;/Button&gt;
+          {validate.error &amp;&amp; <span class="branch-1 cbranch-no" title="branch not covered" >&lt;Notice tone="danger"&gt;{validate.error.message}&lt;/Notice&gt;}</span>
+        &lt;/section&gt;
+      &lt;/div&gt;}
+      {analysisTab === "explainability" &amp;&amp; !explanationSucceeded &amp;&amp;
+        &lt;div className="analysis-actions analysis-actions--single"&gt;&lt;section&gt;&lt;BrainCircuit /&gt;&lt;h3&gt;Explain with SHAP&lt;/h3&gt;
+          &lt;p&gt;Quantify which features contributed most to this model's decisions.&lt;/p&gt;
+          &lt;label&gt;Sample rows&lt;input type="number" min={20} max={1000} step={20}
+            value={maxRows} onChange={<span class="fstat-no" title="function not covered" >(e</span>vent) =&gt; <span class="cstat-no" title="statement not covered" >setMaxRows(Number(event.target.value))} /</span>&gt;&lt;/label&gt;
+          &lt;Button loading={explain.isPending} onClick={<span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >e</span>xplain.mutate()}&gt;</span>
+            &lt;Play size={15} /&gt;Calculate SHAP&lt;/Button&gt;
+          {explain.error &amp;&amp; <span class="branch-1 cbranch-no" title="branch not covered" >&lt;Notice tone="danger"&gt;{explain.error.message}&lt;/Notice&gt;}</span>
+        &lt;/section&gt;&lt;/div&gt;}
+    &lt;/&gt;}
+    {!explanationSucceeded &amp;&amp; &lt;h3&gt;{analysisTab === "validation" ? "Validation history" : "Explainability history"}&lt;/h3&gt;}
+    {visibleAnalyses.length ? &lt;&gt;
+      {!explanationSucceeded &amp;&amp; &lt;div className="analysis-history"&gt;{visibleAnalyses.map((item) =&gt;
+        &lt;button className={selectedAnalysis === item.id ? "active" : ""} key={item.id}
+          onClick={<span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >s</span>etSelectedAnalysis(item.id)}&gt;</span>
+          &lt;span&gt;&lt;b&gt;{item.run_name || <span class="branch-1 cbranch-no" title="branch not covered" >item.id.slice(0, 8)}&lt;</span>/b&gt;&lt;small&gt;{titleCase(item.run_kind)}&lt;/small&gt;&lt;/span&gt;
+          &lt;Badge status={item.status} /&gt;
+        &lt;/button&gt;)}&lt;/div&gt;}
+      {selectedRun &amp;&amp; (result.isLoading ? &lt;Loading label="Loading analysis result…" /&gt;
+        : result.data &amp;&amp; &lt;AnalysisResultPanel result={result.data} /&gt;)}
+    &lt;/&gt; : &lt;p className="muted"&gt;No {analysisTab === "validation" ? "validation" : "explainability"} jobs yet.&lt;/p&gt;}
+  &lt;/Card&gt;;
+}
+&nbsp;
+function AnalysisResultPanel({ result }: { result: AnalysisResult }) {
+  const importance = [...result.feature_importance].map((item) =&gt; ({
+    ...item, weight: Math.abs(Number(item.mean_absolute_shap ?? <span class="branch-1 cbranch-no" title="branch not covered" >item.contribution_percent ?? <span class="branch-2 cbranch-no" title="branch not covered" >0</span>)</span>),
+  })).sort(<span class="fstat-no" title="function not covered" >(a</span>, b) =&gt; <span class="cstat-no" title="statement not covered" >b.weight - a.weight)</span>;
+  const total = importance.reduce((sum, item) =&gt; sum + item.weight, 0);
+  return &lt;div className="analysis-result"&gt;
+    &lt;div className="section-heading"&gt;&lt;div&gt;&lt;h3&gt;{result.model_name}&lt;/h3&gt;
+      &lt;p&gt;Persisted analysis evidence&lt;/p&gt;&lt;/div&gt;&lt;Badge status={result.status} /&gt;&lt;/div&gt;
+    {["queued", "precheck_running", "running"].includes(result.status) &amp;&amp;
+      &lt;Notice&gt;Explainability is still running. Feature contributions will appear here automatically.&lt;/Notice&gt;}
+    {Object.keys(result.metrics).length &gt; 0 &amp;&amp; &lt;div className="metric-pills"&gt;
+      {Object.entries(result.metrics).map(([name, value]) =&gt;
+        &lt;span key={name}&gt;&lt;small&gt;{titleCase(name)}&lt;/small&gt;&lt;b&gt;{value.toFixed(4)}&lt;/b&gt;&lt;/span&gt;)}&lt;/div&gt;}
+    {importance.length &gt; 0 &amp;&amp; &lt;div className="importance"&gt;&lt;h3&gt;Feature contribution&lt;/h3&gt;
+      {importance.slice(0, 20).map((item) =&gt; {
+        const percent = total ? item.weight / total * 100 : <span class="branch-1 cbranch-no" title="branch not covered" >0;</span>
+        return &lt;div key={item.feature}&gt;&lt;span&gt;{item.feature}&lt;/span&gt;&lt;i&gt;&lt;b style={{ width: `${percent}%` }} /&gt;&lt;/i&gt;
+          &lt;strong&gt;{percent.toFixed(1)}%&lt;/strong&gt;&lt;/div&gt;;
+      })}&lt;/div&gt;}
+    {result.artifacts.length &gt; 0 &amp;&amp; &lt;div className="artifact-list"&gt;{result.artifacts.map((artifact) =&gt;
+      &lt;div key={artifact.id}&gt;&lt;FileText size={15} /&gt;&lt;span&gt;&lt;b&gt;{artifact.name}&lt;/b&gt;
+        &lt;small&gt;{titleCase(artifact.kind)} · {formatBytes(artifact.byte_size)}&lt;/small&gt;&lt;/span&gt;&lt;/div&gt;)}&lt;/div&gt;}
+  &lt;/div&gt;;
+}
+&nbsp;
+function LogsPanel({ logs }: { logs: ReturnType&lt;typeof useQuery&lt;Logs&gt;&gt; }) {
+  return &lt;Card className="logs-card"&gt;&lt;div className="section-heading"&gt;&lt;div&gt;&lt;h2&gt;Training logs&lt;/h2&gt;
+    &lt;p&gt;Polling safely while the run is active.&lt;/p&gt;&lt;/div&gt;&lt;TerminalSquare /&gt;&lt;/div&gt;
+    {logs.isLoading ? &lt;Loading /&gt; : logs.error ? &lt;ErrorState error={logs.error} retry={() =&gt; logs.refetch()} /&gt;
+      : &lt;pre className="log-viewer" aria-label="Training logs"&gt;{logs.data?.lines.join("\n") || "No log output yet."}&lt;/pre&gt;}
+  &lt;/Card&gt;;
+}
+&nbsp;
+function AddModelsModal({ projectId, run, completed, close, done }: {
+  projectId: string; run: ModelRun; completed: Set&lt;string&gt;; close: () =&gt; void; done: () =&gt; void;
+}) {
+  const [selected, setSelected] = useState&lt;string[]&gt;([]);
+  const [iterations, setIterations] = useState(Number(run.params.optimization_iterations || 5));
+  const [folds, setFolds] = useState(Number(run.params.cv_folds || 3));
+  const [minutes, setMinutes] = useState(Number(run.params.expected_minutes || 10));
+  const estimators = useQuery({
+    queryKey: ["estimators", projectId, run.task_type],
+    queryFn: () =&gt; api&lt;Estimator[]&gt;(
+      `/projects/${projectId}/training/estimators?task_type=${run.task_type as TaskType}`),
+  });
+  const available = estimators.data?.filter((item) =&gt; !completed.has(item.name)) || [];
+  const add = useMutation({
+    mutationFn: () =&gt; api(`/projects/${projectId}/training/runs/${run.id}/models`, json("POST", {
+      candidate_models: selected, optimization_iterations: iterations,
+      cv_folds: folds, expected_minutes: minutes, prefer_gpu: false,
+    })),
+    onSuccess: done,
+  });
+  return &lt;Modal title="Train additional models"
+    description="Completed candidates are preserved; only the selected additions will run." onClose={close}&gt;
+    {estimators.isLoading ? &lt;Loading /&gt; : available.length ? &lt;div className="stack"&gt;
+      &lt;div className="selection-actions"&gt;&lt;Button variant="secondary" type="button"
+        onClick={() =&gt; setSelected(available.slice(0, 20).map((model) =&gt; model.name))}&gt;Select all models&lt;/Button&gt;
+        {selected.length &gt; 0 &amp;&amp; &lt;Button variant="ghost" type="button" onClick={() =&gt; setSelected([])}&gt;Clear selection&lt;/Button&gt;}&lt;/div&gt;
+      &lt;div className="model-grid"&gt;{available.map((item) =&gt; &lt;label
+        className={selected.includes(item.name) ? "model-option active" : "model-option"} key={item.name}&gt;
+        &lt;input type="checkbox" checked={selected.includes(item.name)}
+          onChange={() =&gt; setSelected((current) =&gt; current.includes(item.name)
+            ? current.filter((name) =&gt; name !== item.name) : [...current, item.name])} /&gt;
+        &lt;span&gt;&lt;b&gt;{item.name}&lt;/b&gt;&lt;small&gt;{titleCase(item.cost_tier)} cost&lt;/small&gt;&lt;/span&gt;&lt;i&gt;✓&lt;/i&gt;
+      &lt;/label&gt;)}&lt;/div&gt;
+      &lt;div className="form-grid form-grid--3"&gt;
+        &lt;label&gt;Search iterations&lt;input type="number" min={1} max={25} value={iterations}
+          onChange={(event) =&gt; setIterations(Number(event.target.value))} /&gt;&lt;/label&gt;
+        &lt;label&gt;CV folds&lt;select value={folds} onChange={(event) =&gt; setFolds(Number(event.target.value))}&gt;
+          {[2, 3, 4, 5].map((value) =&gt; &lt;option key={value}&gt;{value}&lt;/option&gt;)}&lt;/select&gt;&lt;/label&gt;
+        &lt;label&gt;Minutes&lt;input type="number" min={1} max={120} value={minutes}
+          onChange={(event) =&gt; setMinutes(Number(event.target.value))} /&gt;&lt;/label&gt;
+      &lt;/div&gt;
+      {add.error &amp;&amp; <span class="branch-1 cbranch-no" title="branch not covered" >&lt;Notice tone="danger"&gt;{add.error.message}&lt;/Notice&gt;}</span>
+      &lt;div className="modal__actions"&gt;&lt;Button variant="ghost" onClick={close}&gt;Cancel&lt;/Button&gt;
+        &lt;Button disabled={!selected.length} loading={add.isPending} onClick={() =&gt; add.mutate()}&gt;
+          Train selected models&lt;/Button&gt;&lt;/div&gt;
+    &lt;/div&gt; : &lt;EmptyState title="Every compatible model is already included"
+      description="This run's leaderboard already contains the full available catalog." /&gt;}
+  &lt;/Modal&gt;;
+}
+&nbsp;</pre></td></tr></table></pre>
+
+                <div class='push'></div><!-- for sticky footer -->
+            </div><!-- /wrapper -->
+            <div class='footer quiet pad2 space-top1 center small'>
+                Code coverage generated by
+                <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
+                at 2026-08-13T10:27:11.026Z
+            </div>
+        <script src="../../prettify.js"></script>
+        <script>
+            window.onload = function () {
+                prettyPrint();
+            };
+        </script>
+        <script src="../../sorter.js"></script>
+        <script src="../../block-navigation.js"></script>
+    </body>
+</html>
+    

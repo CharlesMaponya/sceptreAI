@@ -21,6 +21,10 @@
 - CSV, Parquet, Excel, JSON, and JSONL upload contracts: implemented
 - Dataset versions and content hashing: implemented
 - Remote S3-compatible object storage with legacy local-read fallback: implemented
+- Resumable direct-to-object-storage multipart uploads with bounded browser concurrency,
+  short-lived grants, exact part validation, retry/resume, and abandoned-session abort:
+  implemented
+- Cryptographic multipart payload checksums and malware/content scanning: pending
 - CSV and JSON metadata extraction: implemented
 - Parquet and Excel storage/versioning with deferred rich parsing: implemented
 - Embedded SeaweedFS manifests: implemented
@@ -32,7 +36,8 @@
 - Target selection and task inference: implemented
 - Type inference for categorical, text, numeric, and temporal columns: implemented
 - Completeness, missingness, outlier flags, descriptive statistics: implemented
-- Full-dataset profiling with automatic memory-aware Dask partitioning: implemented
+- Full-dataset profiling with automatic memory-aware Ray Data and bounded Polars
+  batches: first implementation slice in progress
 - Durable staged profiling jobs with restart resume and cancellation: implemented
 - Progressive feature batches, polling, SSE progress, and lazy feature retrieval: implemented
 - Object-store-cached feature, relationship, preparation, and complete profile artifacts: implemented
@@ -66,7 +71,8 @@
 - HTTP and authenticated WebSocket log streaming: implemented
 - Optional Kubernetes Metrics API workload telemetry with graceful fallback: implemented
 - Kubernetes/metadata reconciliation before multi-user admission checks: implemented
-- Workload-aware 6-to-24-hour Job deadlines with explicit expiry diagnostics: implemented
+- Workload-aware operational Job deadlines capped at seven days with explicit
+  expiry diagnostics; this is not a training-completion SLA: implemented
 
 ## Phase 6: Validation and Explainability
 

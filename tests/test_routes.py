@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import pytest
+from automl_api.api.routes.training import router as training_router
 from automl_api.main import app
 
 
@@ -12,7 +12,6 @@ def test_dataset_upload_uses_multipart_form_data() -> None:
     assert "application/json" not in content
 
 
-@pytest.mark.skip(reason="Disabled pending stable FastAPI included-router introspection.")
 def test_phase_two_routes_are_registered() -> None:
     routes = set(app.openapi()["paths"])
 
@@ -48,7 +47,6 @@ def test_phase_two_routes_are_registered() -> None:
         "/api/v1/projects/{project_id}/training/runs/{run_id}/restart",
         "/api/v1/projects/{project_id}/training/runs/{run_id}/leaderboard",
         "/api/v1/projects/{project_id}/training/runs/{run_id}/logs",
-        "/api/v1/projects/{project_id}/training/runs/{run_id}/logs/ws",
         "/api/v1/projects/{project_id}/training/runs/{training_run_id}/validations",
         "/api/v1/projects/{project_id}/training/runs/{training_run_id}/explanations",
         "/api/v1/projects/{project_id}/training/runs/{training_run_id}/analyses",
@@ -56,3 +54,8 @@ def test_phase_two_routes_are_registered() -> None:
     }
 
     assert expected_routes.issubset(routes)
+    assert any(
+        getattr(route, "path", None)
+        == "/projects/{project_id}/training/runs/{run_id}/logs/ws"
+        for route in training_router.routes
+    )

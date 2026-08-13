@@ -314,6 +314,24 @@ def test_job_deadline_scales_beyond_the_six_hour_floor() -> None:
     assert manifest["spec"]["activeDeadlineSeconds"] == 43_200
 
 
+def test_job_deadline_is_capped_at_seven_days_by_default() -> None:
+    training_client = FakeTrainingClient(capacity_snapshot(), Settings())
+    estimate = training_client.estimate(
+        dataset_bytes=10 * 1024**2,
+        column_count=10,
+        expected_minutes=60 * 24 * 30,
+        prefer_gpu=False,
+    )
+
+    manifest = training_client.build_job_manifest(
+        run_id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        estimate=estimate,
+    )
+
+    assert manifest["spec"]["activeDeadlineSeconds"] == 604_800
+
+
 def test_oom_failure_is_reported_from_pod_termination_state() -> None:
     training_client = FakeTrainingClient(capacity_snapshot(), Settings())
     terminated = SimpleNamespace(reason="OOMKilled", exit_code=137)

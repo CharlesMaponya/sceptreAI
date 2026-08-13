@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sceptre.ai/schemas/artifact-manifest-v1.json",
+  "title": "Sceptre immutable artifact manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_revision",
+    "artifact_version",
+    "python_distribution_version",
+    "git_sha",
+    "chart",
+    "images",
+    "python_abi",
+    "dependency_lock_digest",
+    "runtime",
+    "catalog_revision",
+    "feature_revisions",
+    "platform_compatibility_contract_revision",
+    "qualification_suggestion_log_revision",
+    "qualification_workload_revision",
+    "migration_range"
+  ],
+  "properties": {
+    "schema_revision": {"const": "sceptre-artifact-manifest-v1"},
+    "artifact_version": {"$ref": "#/$defs/semver"},
+    "python_distribution_version": {"type": "string", "minLength": 1},
+    "git_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "chart": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "digest"],
+      "properties": {
+        "name": {"const": "sceptre"},
+        "version": {"$ref": "#/$defs/semver"},
+        "digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "images": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["digest", "platforms"],
+        "properties": {
+          "digest": {"$ref": "#/$defs/digest"},
+          "platforms": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^linux/(amd64|arm64)$"}
+          }
+        }
+      }
+    },
+    "python_abi": {"type": "string", "pattern": "^cp[0-9]{2,3}$"},
+    "dependency_lock_digest": {"$ref": "#/$defs/digest"},
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["python", "ray", "pyarrow", "polars", "sklearn"],
+      "properties": {
+        "python": {"type": "string", "pattern": "^3\\.12\\.[0-9]+$"},
+        "ray": {"type": "string", "minLength": 1},
+        "pyarrow": {"type": "string", "minLength": 1},
+        "polars": {"type": "string", "minLength": 1},
+        "sklearn": {"type": "string", "minLength": 1},
+        "deep_framework": {"type": ["string", "null"]}
+      }
+    },
+    "catalog_revision": {"$ref": "#/$defs/digest"},
+    "feature_revisions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract_schema", "registry_schema", "recipe_schema"],
+      "properties": {
+        "contract_schema": {"$ref": "#/$defs/digest"},
+        "registry_schema": {"$ref": "#/$defs/digest"},
+        "recipe_schema": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "platform_compatibility_contract_revision": {"$ref": "#/$defs/digest"},
+    "qualification_suggestion_log_revision": {"$ref": "#/$defs/digest"},
+    "qualification_workload_revision": {"$ref": "#/$defs/digest"},
+    "qualification_control_image_digest": {"$ref": "#/$defs/digest"},
+    "migration_range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": {"type": ["string", "null"]},
+        "to": {"type": "string", "minLength": 1}
+      }
+    }
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    }
+  }
+}

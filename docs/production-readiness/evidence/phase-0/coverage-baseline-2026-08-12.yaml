@@ -1,0 +1,85 @@
+schema_revision: sceptre-coverage-baseline-v1
+observed_at: "2026-08-12T23:11:00+02:00"
+status: blocked
+policy:
+  backend:
+    source:
+      - automl_api
+      - automl_shared
+    branch_measurement: true
+    minimum_percent_exclusive: 90
+    canonical_command: scripts/test_backend.sh
+  frontend:
+    source: apps/ui/react_app/src
+    minimum_percent:
+      statements: 90.01
+      branches: 90.01
+      functions: 90.01
+      lines: 90.01
+    canonical_command: npm --prefix apps/ui/react_app run test:coverage
+  exclusions:
+    broad_production_source_exclusions_allowed: false
+    test_source_counted_as_production_coverage: false
+ci_parity:
+  workflow: .github/workflows/ci.yml
+  backend_uses_canonical_command: true
+  frontend_uses_canonical_command: true
+  report_artifacts:
+    - coverage.xml
+    - htmlcov/
+    - apps/ui/react_app/coverage/
+measurements:
+  backend:
+    runtime: Python 3.14.4 local compatibility environment
+    functional_tests:
+      passed: 390
+      skipped: 0
+      warnings: 24
+    latest_complete_coverage_run:
+      passed: 390
+      statements_total: 8651
+      lines_covered: 7075
+      lines_missing: 1576
+      statement_percent: 81.78
+      branch_percent: 60.57
+      combined_percent: 77.60
+    threshold_status: failed
+  frontend:
+    runtime: node:24.19.0-bookworm
+    tests:
+      files_passed: 12
+      passed: 64
+      skipped: 0
+    coverage_percent:
+      statements: 84.66
+      branches: 78.31
+      functions: 81.64
+      lines: 87.85
+    threshold_status: failed
+verified_improvements:
+  - Removed both unexplained backend skips; their tests now execute and pass.
+  - Added direct authentication and refresh-token lifecycle coverage.
+  - Added project authorization, membership, and invitation lifecycle coverage.
+  - Added dataset service upload/versioning and scope coverage.
+  - Added embedded and remote object-store success, isolation, fallback, and failure coverage.
+  - Added API dependency, readiness, database-session, lifespan, and worker-dispatch coverage.
+  - Added a repository test that prevents local and CI coverage policies from diverging.
+  - Refreshed the frontend lockfile; npm audit reports zero known vulnerabilities.
+  - Added behavioral coverage for the complete training pipeline, data-format dispatch, candidate execution, CPU fallback, and fenced persistence.
+  - Added lifecycle, cancellation, retry, resume, checkpoint, and Ray/Polars batch coverage for profiling jobs; the module now measures 93% combined coverage.
+  - Added training-service estimate, validation, launch, Kubernetes-failure, query, log, and telemetry coverage.
+  - Added frontend account, password, project creation, invitation, retry, and empty-search state coverage.
+  - Added rich profile-evidence and governed model-operations coverage, including registration, promotion, deployment, stop, cleanup, and schema-gated drift.
+  - Added monitoring portfolio filters, monitoring-policy revisioning, and immutable governance-evidence interaction coverage; MonitoringPage now measures 92.77% line coverage.
+  - Added governed add-model, task-specific validation diagnostics, resource-estimation, and exact training-launch contract coverage; TrainingPage now measures 94.50% line coverage.
+  - Added application bootstrap, protected-route, login/logout, multipart progress/error, and upload token-refresh coverage; main.tsx now measures 100% line coverage.
+  - Added a deterministic skopt-to-Ray Tune adapter with typed spaces, provider-neutral suggestion logs, ordered concurrent observations, idempotent results, cancellation/failure policy, and portable checkpoint replay; the module measures 96.88% combined branch-aware coverage.
+  - Added an authenticated immutable feature-recipe contract with metadata-only compilation, leakage exclusion, bounded Arrow-to-Polars execution, and exact serialized training/inference parity; the module measures 97.76% combined branch-aware coverage.
+  - Added monitoring metric idempotency, threshold, drift/retraining, dashboard, and governance-report tests; the module now measures 93.73% combined branch-aware coverage.
+  - Added validation launch, source scoping, storage failure, artifact result, and explainability reuse tests; the module now measures 92.54% combined branch-aware coverage.
+  - Added registry, fallback, cleanup, drift-launch, and operations failure-path coverage; operations rose from 46% to 72.75% combined branch-aware coverage.
+blockers:
+  - Backend coverage remains below 90%; the largest gaps are operations, analysis, model audit, Kubernetes orchestration, profiling, and remaining training paths.
+  - Frontend coverage remains below 90%; RunsPage, application bootstrap/layout/API behavior, and residual branch/function paths dominate the gap.
+  - GitHub Actions is intentionally fail-closed until both coverage thresholds pass locally.
+  - Phase 1 remains blocked by the implementation guide's Phase 0A decision and qualification approvals in addition to this coverage gate.

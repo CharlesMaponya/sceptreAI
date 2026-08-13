@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from automl_api.training.correlation import CorrelatedFeatureFilter
+from sklearn.exceptions import NotFittedError
 
 
 def test_binary_classification_removes_the_correlated_feature_with_lower_iv() -> None:
@@ -79,3 +80,22 @@ def test_clustering_keeps_the_more_complete_correlated_feature() -> None:
     assert fitted.score_method_ == "non_missing_rate"
     assert fitted.removed_features_[0]["feature"] == "incomplete"
     assert fitted.transform(features).columns.tolist() == ["complete"]
+
+
+def test_correlation_filter_handles_no_numeric_columns_and_bad_target() -> None:
+    features = pd.DataFrame({"category": ["a", "b", "c"]})
+    fitted = CorrelatedFeatureFilter("clustering").fit(features)
+    assert fitted.transform(features).equals(features)
+    assert fitted.removed_features_ == []
+
+    numeric = pd.DataFrame({"a": range(10), "b": range(10)})
+    fitted = CorrelatedFeatureFilter("classification").fit(
+        numeric, pd.Series([None] * 10)
+    )
+    assert fitted.score_method_ == "mutual_information_classification"
+    assert len(fitted.removed_features_) == 1
+
+
+def test_correlation_transform_rejects_use_before_fit() -> None:
+    with pytest.raises(NotFittedError):
+        CorrelatedFeatureFilter("regression").transform(pd.DataFrame({"x": [1]}))

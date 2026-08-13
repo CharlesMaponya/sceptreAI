@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sceptre-ray-tune-smoke
+---
+apiVersion: ray.io/v1
+kind: RayJob
+metadata:
+  name: ray-tune-smoke
+  namespace: sceptre-ray-tune-smoke
+  labels:
+    app.kubernetes.io/name: ray-tune-smoke
+    app.kubernetes.io/part-of: sceptre
+spec:
+  entrypoint: python /home/ray/app/validate_tune_search_runtime.py
+  shutdownAfterJobFinishes: true
+  ttlSecondsAfterFinished: 600
+  activeDeadlineSeconds: 900
+  submitterConfig:
+    backoffLimit: 0
+  rayClusterSpec:
+    rayVersion: "2.56.1"
+    enableInTreeAutoscaling: false
+    headGroupSpec:
+      rayStartParams:
+        dashboard-host: "0.0.0.0"
+        num-cpus: "0"
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: ray-tune-smoke
+        spec:
+          containers:
+            - name: ray-head
+              image: sceptreai/ray-polars:2.56.1-1.43.2-local-14
+              imagePullPolicy: IfNotPresent
+              resources:
+                requests:
+                  cpu: "2"
+                  memory: 1536Mi
+                limits:
+                  cpu: "4"
+                  memory: 3Gi
+    workerGroupSpecs:
+      - groupName: cpu
+        replicas: 2
+        minReplicas: 2
+        maxReplicas: 2
+        rayStartParams:
+          num-cpus: "1"
+        template:
+          metadata:
+            labels:
+              app.kubernetes.io/name: ray-tune-smoke
+          spec:
+            containers:
+              - name: ray-worker
+                image: sceptreai/ray-polars:2.56.1-1.43.2-local-14
+                imagePullPolicy: IfNotPresent
+                resources:
+                  requests:
+                    cpu: 500m
+                    memory: 768Mi
+                  limits:
+                    cpu: "1"
+                    memory: 1536Mi

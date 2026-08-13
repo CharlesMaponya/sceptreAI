@@ -5,18 +5,28 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import automl_api.services.monitoring as monitoring_service
+import pytest
 from automl_api.api.routes.monitoring import router
-from automl_api.models.enums import RunKind, RunStatus, TaskType
-from automl_api.models.runs import ModelRun
+from automl_api.models.enums import (
+    ArtifactKind,
+    MetricKind,
+    MetricSplit,
+    RunKind,
+    RunStatus,
+    TaskType,
+)
+from automl_api.models.runs import Metric, ModelRun, RunArtifact
 from automl_api.schemas.monitoring import (
     MonitoringConfigurationRead,
     MonitoringConfigurationUpdate,
+    MonitoringMetricPointCreate,
 )
 from automl_api.services.monitoring import (
     _configuration,
     _threshold_status,
     update_monitoring_configuration,
 )
+from fastapi import HTTPException
 
 
 def _deployment() -> ModelRun:
@@ -207,3 +217,368 @@ def test_governance_snapshot_reuses_leaderboard_audit_report(monkeypatch) -> Non
     assert result.report == canonical
     assert any(content == b"canonical html" for content in stored.values())
     assert any(b'"schema_version": "2.0"' in content for content in stored.values())
+
+
+def test_deployment_lookup_and_registry_identity_are_fail_closed() -> None:
+    project_id = uuid.uuid4()
+    deployment_id = uuid.uuid4()
+    missing_db = SimpleNamespace(scalar=lambda _: None)
+
+    with pytest.raises(HTTPException, match="Deployment not found"):
+        monitoring_service.deployment_run(missing_db, project_id, deployment_id)
+
+    run = SimpleNamespace(project_id=project_id, tags={}, params={})
+    assert monitoring_service.deployment_registry_entry(missing_db, run) is None
+    run.tags = {"registry_entry_id": "not-a-uuid"}
+    assert monitoring_service.deployment_registry_entry(missing_db, run) is None
+
+    entry = SimpleNamespace(id=uuid.uuid4())
+    found_db = SimpleNamespace(scalar=lambda _: entry)
+    run.tags = {"registry_entry_id": str(entry.id)}
+    assert monitoring_service.deployment_registry_entry(found_db, run) is entry
+
+
+def _metric(
+    name: str,
+    value: float,
+    *,
+    step: int = 0,
+    status: str = "healthy",
+) -> Metric:
+    now = datetime.now(UTC)
+    return Metric(
+        id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        model_run_id=uuid.uuid4(),
+        name=name,
+        kind=MetricKind.PERFORMANCE,
+        split=MetricSplit.PRODUCTION,
+        value=value,
+        value_json={"sample_count": 10, "status": status, "source": "test"},
+        higher_is_better=False,
+        step=step,
+        recorded_at=now,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def test_monitoring_metric_recording_is_idempotent_and_sequences_points(
+    monkeypatch,
+) -> None:
+    deployment = _deployment()
+    user = SimpleNamespace(id=uuid.uuid4())
+    duplicate = _metric("error_rate", 0.01, step=2)
+    duplicate.value_json["idempotency_key"] = "same"
+    added = []
+
+    class DB:
+        def scalars(self, _):
+            return SimpleNamespace(all=lambda: [duplicate])
+
+        def add(self, value):
+            value.id = uuid.uuid4()
+            added.append(value)
+
+        def flush(self):
+            pass
+
+    monkeypatch.setattr(monitoring_service, "require_project_role", lambda *_: None)
+    monkeypatch.setattr(monitoring_service, "deployment_run", lambda *_: deployment)
+    payload = MonitoringMetricPointCreate(
+        name="error_rate",
+        value=0.02,
+        sample_count=20,
+        status="warning",
+        idempotency_key="same",
+    )
+
+    reused = monitoring_service.record_monitoring_metric(
+        DB(), user, deployment.project_id, deployment.id, payload
+    )
+    assert reused.id == duplicate.id
+    assert added == []
+
+    payload.idempotency_key = "new"
+    created = monitoring_service.record_monitoring_metric(
+        DB(), user, deployment.project_id, deployment.id, payload
+    )
+    assert created.status == "warning"
+    assert created.sample_count == 20
+    assert created.metadata["idempotency_key"] == "new"
+    assert added[0].step == 3
+
+
+def test_monitoring_series_and_threshold_edge_cases() -> None:
+    first = _metric("latency", 5.0, step=0)
+    second = _metric("latency", 6.0, step=1)
+    other = _metric("accuracy", 0.9)
+    series = monitoring_service._metric_series([first, second, other])
+
+    assert [item.name for item in series] == ["accuracy", "latency"]
+    assert len(series[1].points) == 2
+    configuration = _configuration(_deployment())
+    assert _threshold_status("error_rate", None, configuration) == "unknown"
+    assert _threshold_status("custom", 1.0, configuration) == "unknown"
+    assert _threshold_status("custom", 1.0, configuration, "healthy") == "healthy"
+    assert _threshold_status("custom", 1.0, configuration, "warning") == "warning"
+
+
+def test_linked_drift_and_retraining_runs_produce_timeline_points() -> None:
+    deployment = _deployment()
+    now = datetime.now(UTC)
+    drift = SimpleNamespace(
+        id=uuid.uuid4(),
+        run_kind=RunKind.DRIFT,
+        status=RunStatus.SUCCEEDED,
+        params={"max_rows": 50},
+        tags={
+            "deployment_run_id": str(deployment.id),
+            "diagnostics": {
+                "drift_share_percent": 40,
+                "drifted_feature_count": 1,
+                "drifted_features": ["age"],
+            },
+        },
+        created_at=now,
+        finished_at=now,
+    )
+    retraining = SimpleNamespace(
+        id=uuid.uuid4(),
+        run_kind=RunKind.TRAINING,
+        params={"deployment_run_id": str(deployment.id)},
+        tags={},
+    )
+    unrelated = SimpleNamespace(id=uuid.uuid4(), run_kind=RunKind.DRIFT, params={}, tags={})
+
+    drift_runs, retraining_runs = monitoring_service._linked_runs(
+        [drift, retraining, unrelated], deployment, None
+    )
+    assert drift_runs == [drift]
+    assert retraining_runs == [retraining]
+    points = monitoring_service._drift_points(drift_runs, _configuration(deployment))
+    assert points[0].value == 0.4
+    assert points[0].status == "critical"
+    assert points[0].metadata["drifted_features"] == ["age"]
+
+
+def test_portfolio_dashboard_returns_empty_without_visible_projects(monkeypatch) -> None:
+    monkeypatch.setattr(monitoring_service, "list_visible_projects", lambda *_: [])
+
+    dashboard = monitoring_service.monitoring_dashboard(
+        SimpleNamespace(), SimpleNamespace(id=uuid.uuid4())
+    )
+
+    assert dashboard.scope == "portfolio"
+    assert dashboard.deployment_count == 0
+    assert dashboard.open_alert_count == 0
+
+
+def test_monitoring_dashboard_combines_metrics_drift_and_retraining(monkeypatch) -> None:
+    deployment = _deployment()
+    project = SimpleNamespace(id=deployment.project_id, name="Risk")
+    deployment.params = {
+        "monitoring": {
+            **monitoring_service.DEFAULT_MONITORING,
+            "enabled": True,
+        }
+    }
+    now = datetime.now(UTC)
+    drift = SimpleNamespace(
+        id=uuid.uuid4(),
+        project_id=deployment.project_id,
+        run_kind=RunKind.DRIFT,
+        status=RunStatus.SUCCEEDED,
+        run_name="Drift",
+        params={"deployment_run_id": str(deployment.id), "max_rows": 100},
+        tags={"diagnostics": {"drift_share_percent": 10}},
+        created_at=now,
+        finished_at=now,
+    )
+    retraining = SimpleNamespace(
+        id=uuid.uuid4(),
+        project_id=deployment.project_id,
+        run_kind=RunKind.TRAINING,
+        status=RunStatus.RUNNING,
+        run_name="Retrain",
+        params={"deployment_run_id": str(deployment.id)},
+        tags={},
+        created_at=now,
+        finished_at=None,
+    )
+    metric = _metric("error_rate", 0.03, status="unknown")
+    metric.project_id = deployment.project_id
+    metric.model_run_id = deployment.id
+    entry = SimpleNamespace(
+        id=uuid.uuid4(),
+        model_name="Fraud model",
+        version=2,
+        champion_metric_name="accuracy",
+        champion_metric_value=0.92,
+    )
+
+    class DB:
+        scalar_calls = 0
+
+        def get(self, *_):
+            return project
+
+        def scalars(self, _):
+            self.scalar_calls += 1
+            values = [deployment, drift, retraining] if self.scalar_calls == 1 else [metric]
+            return SimpleNamespace(all=lambda: values)
+
+        def execute(self, _):
+            return SimpleNamespace(all=lambda: [(deployment.id, 2)])
+
+    monkeypatch.setattr(monitoring_service, "require_project_role", lambda *_: None)
+    monkeypatch.setattr(monitoring_service, "deployment_registry_entry", lambda *_: entry)
+
+    dashboard = monitoring_service.monitoring_dashboard(
+        DB(), SimpleNamespace(id=uuid.uuid4()), deployment.project_id
+    )
+
+    item = dashboard.deployments[0]
+    assert item.health_status == "warning"
+    assert item.open_alerts == 1
+    assert item.retraining_events == 1
+    assert item.governance_reports == 2
+    assert {event.kind for event in item.timeline} == {
+        "deployment",
+        "drift",
+        "retraining",
+    }
+
+
+def _governance_artifact(*, html: bool = True) -> RunArtifact:
+    now = datetime.now(UTC)
+    return RunArtifact(
+        id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        model_run_id=uuid.uuid4(),
+        kind=ArtifactKind.GOVERNANCE_REPORT,
+        name="report.json",
+        object_uri="s3://reports/report.json",
+        content_hash="abc",
+        byte_size=2,
+        artifact_metadata={
+            "version": 3,
+            "evidence_cutoff_at": now.isoformat(),
+            **({"html_uri": "s3://reports/report.html"} if html else {}),
+        },
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def test_governance_report_downloads_and_missing_html(monkeypatch) -> None:
+    artifact = _governance_artifact()
+    store = SimpleNamespace(read_bytes=lambda uri: uri.encode())
+    db = SimpleNamespace(scalar=lambda _: artifact)
+    monkeypatch.setattr(monitoring_service, "require_project_role", lambda *_: None)
+    monkeypatch.setattr(monitoring_service, "get_object_store", lambda: store)
+
+    content, content_type, filename = monitoring_service.governance_report_download(
+        db,
+        SimpleNamespace(),
+        artifact.project_id,
+        artifact.model_run_id,
+        artifact.id,
+        "html",
+    )
+    assert content == b"s3://reports/report.html"
+    assert content_type.startswith("text/html")
+    assert filename == "governance-report-v3.html"
+
+    content, content_type, filename = monitoring_service.governance_report_download(
+        db,
+        SimpleNamespace(),
+        artifact.project_id,
+        artifact.model_run_id,
+        artifact.id,
+        "json",
+    )
+    assert content == b"s3://reports/report.json"
+    assert content_type == "application/json"
+    assert filename == "governance-report-v3.json"
+
+    artifact.artifact_metadata.pop("html_uri")
+    with pytest.raises(HTTPException, match="HTML report not found"):
+        monitoring_service.governance_report_download(
+            db,
+            SimpleNamespace(),
+            artifact.project_id,
+            artifact.model_run_id,
+            artifact.id,
+            "html",
+        )
+
+
+def test_governance_artifact_lookup_and_unlinked_generation_fail_closed(
+    monkeypatch,
+) -> None:
+    ids = [uuid.uuid4() for _ in range(3)]
+    with pytest.raises(HTTPException, match="Governance report not found"):
+        monitoring_service._governance_report_artifact(SimpleNamespace(scalar=lambda _: None), *ids)
+
+    monkeypatch.setattr(monitoring_service, "require_project_role", lambda *_: None)
+    monkeypatch.setattr(monitoring_service, "deployment_run", lambda *_: SimpleNamespace(id=ids[1]))
+    monkeypatch.setattr(monitoring_service, "deployment_registry_entry", lambda *_: None)
+    with pytest.raises(HTTPException, match="not linked"):
+        monitoring_service.generate_governance_report(
+            SimpleNamespace(), SimpleNamespace(), ids[0], ids[1]
+        )
+
+
+def test_monitoring_read_helpers_return_stored_configuration_and_metrics(
+    monkeypatch,
+) -> None:
+    deployment = _deployment()
+    deployment.params = {"monitoring": {**monitoring_service.DEFAULT_MONITORING, "enabled": True}}
+    metric = _metric("throughput", 12.0)
+    db = SimpleNamespace(
+        scalars=lambda _: SimpleNamespace(all=lambda: [metric]),
+    )
+    monkeypatch.setattr(monitoring_service, "require_project_role", lambda *_: None)
+    monkeypatch.setattr(monitoring_service, "deployment_run", lambda *_: deployment)
+
+    configuration = monitoring_service.get_monitoring_configuration(
+        db, SimpleNamespace(), deployment.project_id, deployment.id
+    )
+    series = monitoring_service.list_monitoring_metrics(
+        db, SimpleNamespace(), deployment.project_id, deployment.id
+    )
+
+    assert configuration.enabled is True
+    assert series[0].name == "throughput"
+
+
+def test_governance_report_read_and_listing(monkeypatch) -> None:
+    artifact = _governance_artifact()
+    report = {"schema_version": "2.0"}
+    store = SimpleNamespace(read_bytes=lambda _: b'{"schema_version": "2.0"}')
+    db = SimpleNamespace(
+        scalar=lambda _: artifact,
+        scalars=lambda _: SimpleNamespace(all=lambda: [artifact]),
+    )
+    monkeypatch.setattr(monitoring_service, "require_project_role", lambda *_: None)
+    monkeypatch.setattr(monitoring_service, "deployment_run", lambda *_: SimpleNamespace())
+    monkeypatch.setattr(monitoring_service, "get_object_store", lambda: store)
+
+    summaries = monitoring_service.list_governance_reports(
+        db,
+        SimpleNamespace(),
+        artifact.project_id,
+        artifact.model_run_id,
+    )
+    loaded = monitoring_service.get_governance_report(
+        db,
+        SimpleNamespace(),
+        artifact.project_id,
+        artifact.model_run_id,
+        artifact.id,
+    )
+
+    assert summaries[0].version == 3
+    assert summaries[0].html_download_url.endswith("?format=html")
+    assert loaded.report == report

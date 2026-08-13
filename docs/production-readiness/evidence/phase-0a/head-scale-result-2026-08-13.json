@@ -1,0 +1,31 @@
+{
+  "count": 15,
+  "ready": 15,
+  "restarts": 0,
+  "nodes": [
+    {
+      "node": "k3d-sceptre-local-agent-0",
+      "heads": 4
+    },
+    {
+      "node": "k3d-sceptre-local-agent-1",
+      "heads": 3
+    },
+    {
+      "node": "k3d-sceptre-local-agent-2-0",
+      "heads": 2
+    },
+    {
+      "node": "k3d-sceptre-local-agent-3-0",
+      "heads": 2
+    },
+    {
+      "node": "k3d-sceptre-local-agent-4-0",
+      "heads": 2
+    },
+    {
+      "node": "k3d-sceptre-local-agent-5-0",
+      "heads": 2
+    }
+  ]
+}

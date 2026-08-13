@@ -24,6 +24,8 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True, index=True)
     full_name: Mapped[str | None] = mapped_column(String(200))
     password_hash: Mapped[str | None] = mapped_column(Text)
+    sso_issuer: Mapped[str | None] = mapped_column(String(512))
+    sso_subject: Mapped[str | None] = mapped_column(String(512), unique=True)
     auth_provider: Mapped[AuthProvider] = mapped_column(
         SQLEnum(AuthProvider, name="auth_provider", native_enum=False),
         nullable=False,

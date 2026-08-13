@@ -117,9 +117,6 @@ def test_one_broken_optional_estimator_library_does_not_hide_the_others(monkeypa
     assert "LGBMRegressor" not in model_names
 
 
-@pytest.mark.skip(
-    reason="Disabled pending stable cross-version historical estimator reconstruction."
-)
 def test_historical_candidate_can_be_reconstructed_for_explainability() -> None:
     dataframe = pd.DataFrame(
         {

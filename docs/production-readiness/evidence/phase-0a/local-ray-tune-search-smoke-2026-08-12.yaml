@@ -1,0 +1,88 @@
+schema_revision: sceptre-phase-0a-ray-tune-search-smoke-v1
+observed_at: "2026-08-12T22:47:51+02:00"
+status: partial_pass
+source:
+  git_sha: 710c327776f27f74ce2fd7b782eae2debd4a3f9a
+  worktree_clean: false
+guide:
+  path: docs/production-readiness/implementation-guide.md
+  sha256: 84896d560e5eda60a9bd1e059e0a44136aa87029b21eba739d0d81cbc42575d0
+runtime:
+  python: 3.12.13
+  ray: 2.56.1
+  polars: 1.43.2
+  pyarrow: 24.0.0
+  pandas: 2.3.3
+  scikit_learn: 1.9.0
+  scikit_optimize: 0.10.2
+  kuberay_operator: 1.6.2
+  kuberay_image: quay.io/kuberay/operator:v1.6.2
+  k3s: 1.35.6+k3s1
+  image:
+    reference: sceptreai/ray-polars:2.56.1-1.43.2-local-11
+    digest: sha256:83005f15261321200be20accf15f49291336f6a3e8e51e8e36704da3cf0d9d35
+artifacts:
+  Dockerfile.ray.cpu: bc5ac9b9d1f54f1fc2a7ca74c1eb1c7f24c45c77588655e51017dd9261ebb50c
+  scripts/validate_tune_search_runtime.py: 0069e0f1846a1e6762dd1bc0d181e0bfb2429f42374492d0fc2d4b6477571b48
+  packages/automl_shared/tune_search.py: 62c39a674356bd368e01027eab75e725bcf42a85165272e2949f205addf6913d
+  tests/test_tune_search.py: b6c50d7aa38f7a061aa2ec5e16600789b9b8bf8e3e0fc27616c69dd53008f969
+  infra/k3d/rayjob-tune-smoke.yaml: 97b3dbd73d8a2a6b5738138dfad029392070e2a98f7b6d7b72cc6f9f632aa565
+search_contract:
+  checkpoint_revision: sceptre-skopt-tune-v1
+  metric: quality
+  mode: max
+  seed: 42
+  trial_count: 4
+  concurrency: 2
+  objective_decimal_places: 8
+  deterministic_batch_strategy: cl_min
+  terminal_observation_order: [0, 1, 2, 3]
+  canonical_suggestion_log_digest: d85310feba1548cfdb7b633e8a314f7f210b73d500663548d0c2aa3614ed55a4
+  recipe_hashes:
+    - 4c0ff0b932a25f845a5196fce15a603ea263eeaf7abbddd2f22d7da0cc4ab3de
+    - 6540ddc383fc46a8a23868c828492a0b0fad4a59291d52d256eac79f17e3fc5e
+    - 396dec7f6f9c2af6483c4478e02b362d24fff7da7b3ec35ee57282aacafdac3f
+    - 99ceb25dd16d3e29bcb8d5c38131fc263a34bd681e29d8d443ca57414e6f0717
+  append_only_event_count: 12
+  checkpoint_format: portable_json_event_replay
+  checkpoint_restore_matches: true
+  physical_trial_ids_excluded_from_canonical_log: true
+  exactly_once_duplicate_result_test: passed
+  conflicting_result_test: rejected
+  cancelled_and_failed_trial_policy_test: passed
+  checkpoint_tamper_tests: rejected
+run:
+  rayjob: ray-tune-smoke
+  raycluster: ray-tune-smoke-bblfr
+  topology: kuberay_head_plus_two_workers
+  started_at: "2026-08-12T22:46:34+02:00"
+  finished_at: "2026-08-12T22:47:51+02:00"
+  ray_nodes: 3
+  desired_workers: 2
+  available_workers: 2
+  tune_trials_succeeded: 4
+  tune_trials_failed: 0
+  best_quality: 0.9222742568226749
+  status: passed
+tests:
+  focused:
+    passed: 17
+    combined_branch_aware_coverage_percent: 96.88
+    threshold_percent_exclusive: 90
+    threshold_status: passed
+  backend_regression:
+    passed: 349
+    warnings: 20
+    combined_branch_aware_coverage_percent: 74.14
+    threshold_percent_exclusive: 90
+    threshold_status: failed
+cleanup:
+  ephemeral_raycluster_removed_after_seconds: 60
+  isolated_namespace_removed: true
+limitations:
+  - This proves a minimal Tune Searcher integration, deterministic batch ordering, JSON save/restore, cancellation, and trial retry identity; PostgreSQL event persistence is Phase 1 work.
+  - Remote object-store checkpoint recovery and worker, head, driver, operator, node, and Kubernetes-cluster loss drills remain untested.
+  - The four-trial smoke is not the pending five-iteration by three-fold qualification workload or the 15-run scheduling proof.
+  - Ray Train recipes, feature/training/inference parity, champion refit, one-shot evaluation, security, cost, and provider qualification remain untested.
+  - Repository-wide backend and frontend coverage remain below 90.01%; CI remains intentionally fail-closed.
+  - ADR-005 and QLT-001 through QLT-009 remain pending, so Phase 0A cannot pass.

@@ -176,6 +176,47 @@ class DatasetVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
 
+class DatasetUploadSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Server-owned metadata for a browser-to-object-store multipart upload."""
+
+    __tablename__ = "dataset_upload_sessions"
+    __table_args__ = (
+        Index("ix_dataset_upload_sessions_owner_status", "created_by_id", "status"),
+        Index("ix_dataset_upload_sessions_expires_status", "expires_at", "status"),
+        Index("ix_dataset_upload_sessions_project_created", "project_id", "created_at"),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    created_by_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    dataset_name: Mapped[str] = mapped_column(String(220), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    tags: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+    original_filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    byte_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    part_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    total_parts: Mapped[int] = mapped_column(Integer, nullable=False)
+    object_key: Mapped[str] = mapped_column(String(1024), nullable=False, unique=True)
+    multipart_upload_id: Mapped[str] = mapped_column(String(1024), nullable=False)
+    resume_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="pending", server_default="pending"
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    dataset_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("datasets.id", ondelete="SET NULL")
+    )
+    dataset_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("dataset_versions.id", ondelete="SET NULL")
+    )
+
+
 class ProfilingJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "profiling_jobs"
     __table_args__ = (
