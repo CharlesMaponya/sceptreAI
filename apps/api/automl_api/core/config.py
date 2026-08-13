@@ -61,6 +61,18 @@ def resolve_database_url(database_url: str) -> str:
 class Settings:
     environment: str = "local"
     database_url: str = "postgresql+psycopg://automl:automl@localhost:55432/automl"
+    qualification_database_url: str | None = None
+    database_pool_size: int = 10
+    database_max_overflow: int = 5
+    database_pool_timeout_seconds: int = 10
+    database_connect_timeout_seconds: int = 5
+    database_statement_timeout_ms: int = 30_000
+    database_lock_timeout_ms: int = 5_000
+    database_idle_transaction_timeout_ms: int = 30_000
+    database_application_name: str = "sceptre-api"
+    database_ssl_mode: str = "prefer"
+    database_ssl_root_cert: Path | None = None
+    pgbouncer_transaction_mode: bool = False
 
     jwt_secret_key: str = "change-me"
     jwt_access_token_minutes: int = 24 * 60
@@ -126,6 +138,10 @@ class Settings:
     def sqlalchemy_database_url(self) -> str:
         return resolve_database_url(self.database_url)
 
+    @property
+    def sqlalchemy_qualification_database_url(self) -> str:
+        return resolve_database_url(self.qualification_database_url or self.database_url)
+
 
 @lru_cache
 def get_settings() -> Settings:
@@ -133,6 +149,52 @@ def get_settings() -> Settings:
     return Settings(
         environment=str(_get_env("ENVIRONMENT", Settings.environment, dotenv)),
         database_url=str(_get_env("DATABASE_URL", Settings.database_url, dotenv)),
+        qualification_database_url=(
+            str(value)
+            if (value := _get_env("QUALIFICATION_DATABASE_URL", None, dotenv))
+            else None
+        ),
+        database_pool_size=_get_int("DATABASE_POOL_SIZE", Settings.database_pool_size, dotenv),
+        database_max_overflow=_get_int(
+            "DATABASE_MAX_OVERFLOW", Settings.database_max_overflow, dotenv
+        ),
+        database_pool_timeout_seconds=_get_int(
+            "DATABASE_POOL_TIMEOUT_SECONDS", Settings.database_pool_timeout_seconds, dotenv
+        ),
+        database_connect_timeout_seconds=_get_int(
+            "DATABASE_CONNECT_TIMEOUT_SECONDS",
+            Settings.database_connect_timeout_seconds,
+            dotenv,
+        ),
+        database_statement_timeout_ms=_get_int(
+            "DATABASE_STATEMENT_TIMEOUT_MS", Settings.database_statement_timeout_ms, dotenv
+        ),
+        database_lock_timeout_ms=_get_int(
+            "DATABASE_LOCK_TIMEOUT_MS", Settings.database_lock_timeout_ms, dotenv
+        ),
+        database_idle_transaction_timeout_ms=_get_int(
+            "DATABASE_IDLE_TRANSACTION_TIMEOUT_MS",
+            Settings.database_idle_transaction_timeout_ms,
+            dotenv,
+        ),
+        database_application_name=str(
+            _get_env("DATABASE_APPLICATION_NAME", Settings.database_application_name, dotenv)
+        ),
+        database_ssl_mode=str(_get_env("DATABASE_SSL_MODE", Settings.database_ssl_mode, dotenv)),
+        database_ssl_root_cert=(
+            Path(value)
+            if (
+                value := _get_env(
+                    "DATABASE_SSL_ROOT_CERT",
+                    str(Settings.database_ssl_root_cert or ""),
+                    dotenv,
+                )
+            )
+            else None
+        ),
+        pgbouncer_transaction_mode=_get_bool(
+            "PGBOUNCER_TRANSACTION_MODE", Settings.pgbouncer_transaction_mode, dotenv
+        ),
         jwt_secret_key=str(_get_env("JWT_SECRET_KEY", Settings.jwt_secret_key, dotenv)),
         jwt_access_token_minutes=_get_int(
             "JWT_ACCESS_TOKEN_MINUTES",
@@ -194,9 +256,7 @@ def get_settings() -> Settings:
         nvidia_gpu_resource=str(
             _get_env("NVIDIA_GPU_RESOURCE", Settings.nvidia_gpu_resource, dotenv)
         ),
-        intel_gpu_resource=str(
-            _get_env("INTEL_GPU_RESOURCE", Settings.intel_gpu_resource, dotenv)
-        ),
+        intel_gpu_resource=str(_get_env("INTEL_GPU_RESOURCE", Settings.intel_gpu_resource, dotenv)),
         max_concurrent_jobs=_get_int("MAX_CONCURRENT_JOBS", Settings.max_concurrent_jobs, dotenv),
         mlflow_tracking_uri=str(
             _get_env("MLFLOW_TRACKING_URI", Settings.mlflow_tracking_uri, dotenv)
@@ -281,9 +341,7 @@ def get_settings() -> Settings:
                 dotenv,
             )
         ),
-        inference_image=str(
-            _get_env("INFERENCE_IMAGE", Settings.inference_image, dotenv)
-        ),
+        inference_image=str(_get_env("INFERENCE_IMAGE", Settings.inference_image, dotenv)),
         inference_image_pull_policy=str(
             _get_env(
                 "INFERENCE_IMAGE_PULL_POLICY",

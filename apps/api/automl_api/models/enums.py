@@ -106,3 +106,55 @@ class ModelStage(StrEnum):
     PRODUCTION = "production"
     ARCHIVED = "archived"
     REJECTED = "rejected"
+
+
+class CommandStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class OutboxStatus(StrEnum):
+    PENDING = "pending"
+    CLAIMED = "claimed"
+    DELIVERED = "delivered"
+    DEAD = "dead"
+
+
+class WorkflowStage(StrEnum):
+    SPLITTER = "splitter"
+    PREPARATION = "preparation"
+    TRAINING_RUN = "training_run"
+    TRAINING_TRIAL = "training_trial"
+    CHAMPION_REFIT = "champion_refit"
+    CHAMPION_EVALUATION = "champion_evaluation"
+    PROVIDER_CONFORMANCE = "provider_conformance"
+
+
+class AttemptStatus(StrEnum):
+    PENDING = "pending"
+    CLAIMED = "claimed"
+    SUBMITTED = "submitted"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    SUPERSEDED = "superseded"
+
+
+class ScopeStatus(StrEnum):
+    OPEN = "open"
+    SEALED = "sealed"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class FinalTestStatus(StrEnum):
+    ALLOCATED = "allocated"
+    OPENED = "opened"
+    COMMITTED = "committed"
+    FAILED = "failed"

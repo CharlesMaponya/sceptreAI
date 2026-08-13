@@ -7,6 +7,7 @@ from typing import Annotated
 from fastapi import (
     APIRouter,
     Depends,
+    Header,
     HTTPException,
     Query,
     Response,
@@ -73,8 +74,17 @@ def estimate(
     payload: TrainingEstimateRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> TrainingEstimateRead:
-    return estimate_training_run(db, current_user, project_id, payload)
+    result = estimate_training_run(
+        db,
+        current_user,
+        project_id,
+        payload,
+        idempotency_key=idempotency_key,
+    )
+    db.commit()
+    return result
 
 
 @router.post("/runs", response_model=TrainingLaunchRead, status_code=status.HTTP_202_ACCEPTED)
@@ -83,8 +93,15 @@ def launch(
     payload: TrainingLaunchRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
 ) -> TrainingLaunchRead:
-    result = launch_training_run(db, current_user, project_id, payload)
+    result = launch_training_run(
+        db,
+        current_user,
+        project_id,
+        payload,
+        idempotency_key=idempotency_key,
+    )
     db.commit()
     return result
 

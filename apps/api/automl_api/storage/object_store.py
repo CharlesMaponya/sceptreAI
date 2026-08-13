@@ -108,9 +108,7 @@ class MinioObjectStore(ObjectStore):
         from minio import Minio
 
         if not settings.object_store_endpoint:
-            raise ValueError(
-                "OBJECT_STORE_ENDPOINT is required for remote S3-compatible storage."
-            )
+            raise ValueError("OBJECT_STORE_ENDPOINT is required for remote S3-compatible storage.")
         if not settings.object_store_access_key or not settings.object_store_secret_key:
             raise ValueError("Object-store access and secret keys are required.")
 
@@ -246,7 +244,8 @@ class MinioObjectStore(ObjectStore):
 
 def get_object_store(settings: Settings | None = None) -> ObjectStore:
     settings = settings or get_settings()
-    if settings.object_store_type.lower() == "minio":
+    driver = settings.object_store_type.lower()
+    if driver == "minio":
         missing = [
             name
             for name, value in (
@@ -264,4 +263,9 @@ def get_object_store(settings: Settings | None = None) -> ObjectStore:
                 "local embedded store prevents training pods from losing access to uploads."
             )
         return MinioObjectStore(settings)
+    if settings.environment.lower() in {"production", "staging"}:
+        raise ValueError(
+            f"Unsupported production object-store driver '{settings.object_store_type}'. "
+            "Refusing to fall back to embedded storage."
+        )
     return EmbeddedObjectStore(settings)

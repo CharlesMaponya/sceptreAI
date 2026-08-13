@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, Header, Request, Response, status
 from sqlalchemy.orm import Session
 
 from automl_api.api.deps import get_current_user
@@ -23,6 +23,7 @@ from automl_api.schemas.operations import (
     RegistryStageUpdateRequest,
 )
 from automl_api.schemas.training import ModelRunRead
+from automl_api.services.idempotency import durable_mutation
 from automl_api.services.inference_gateway import (
     proxy_deployment_inference,
     resolve_deployment_inference_target,
@@ -143,8 +144,7 @@ def drift_runs(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> list[ModelRunRead]:
     result = [
-        ModelRunRead.model_validate(run)
-        for run in list_drift_runs(db, current_user, project_id)
+        ModelRunRead.model_validate(run) for run in list_drift_runs(db, current_user, project_id)
     ]
     db.commit()
     return result
@@ -161,13 +161,25 @@ def deploy(
     payload: ModelDeploymentRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
 ) -> ModelDeploymentLaunchRead:
-    result = deploy_registered_model(
+    result = durable_mutation(
         db,
         current_user,
         project_id,
-        entry_id,
-        payload,
+        operation="deployment.launch",
+        idempotency_key=idempotency_key,
+        payload={"entry_id": str(entry_id), **payload.model_dump(mode="json")},
+        execute=lambda: deploy_registered_model(db, current_user, project_id, entry_id, payload),
+        response_model=ModelDeploymentLaunchRead,
+        response_status=status.HTTP_202_ACCEPTED,
+        outbox_topic="deployment.reconcile",
+        aggregate_type="model_run",
+        outbox_payload=lambda result: {
+            "run_id": str(result.run.id),
+            "manifests": result.manifests,
+            "dockerfile_uri": result.dockerfile_uri,
+        },
     )
     db.commit()
     return result
@@ -225,12 +237,35 @@ def cleanup(
     payload: ArtifactCleanupRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
 ) -> ArtifactCleanupRead:
-    result = cleanup_project_resources(
+    result = durable_mutation(
         db,
         current_user,
         project_id,
-        payload,
+        operation="cleanup.execute",
+        idempotency_key=idempotency_key,
+        payload=payload.model_dump(mode="json"),
+        execute=lambda: cleanup_project_resources(
+            db,
+            current_user,
+            project_id,
+            payload,
+            execute_side_effects=False,
+        ),
+        response_model=ArtifactCleanupRead,
+        response_status=status.HTTP_200_OK,
+        outbox_topic="cleanup.execute",
+        aggregate_type="project",
+        resource_id=project_id,
+        outbox_payload=lambda result: (
+            None
+            if result.dry_run
+            else {
+                "artifact_ids": [str(value) for value in result.artifact_ids],
+                "cleanup_finished_jobs": payload.cleanup_finished_jobs,
+            }
+        ),
     )
     db.commit()
     return result

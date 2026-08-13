@@ -12,6 +12,7 @@ from kubernetes.client import ApiException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from automl_api.core.config import get_settings
 from automl_api.models.datasets import DatasetVersion
 from automl_api.models.enums import (
     ArtifactKind,
@@ -23,6 +24,7 @@ from automl_api.models.enums import (
 from automl_api.models.iam import User
 from automl_api.models.projects import Project
 from automl_api.models.runs import ModelRegistryEntry, ModelRun, RunArtifact
+from automl_api.models.workflows import DeletionStage, DeletionTombstone
 from automl_api.schemas.operations import (
     ArtifactCleanupRead,
     ArtifactCleanupRequest,
@@ -568,40 +570,28 @@ def deploy_registered_model(
         environment=k8s.settings.environment,
         registry_entry_id=entry.id,
     )
-    stored = get_object_store().put_bytes(
-        (f"projects/{project_id}/deployments/{deployment_run.id}/Dockerfile"),
-        dockerfile.encode("utf-8"),
-    )
+    dockerfile_key = f"projects/{project_id}/deployments/{deployment_run.id}/Dockerfile"
+    dockerfile_uri = f"minio://{get_settings().object_store_bucket}/{dockerfile_key}"
     db.add(
         RunArtifact(
             project_id=project_id,
             model_run_id=deployment_run.id,
             kind=ArtifactKind.DEPLOYMENT_IMAGE,
             name="Dockerfile",
-            object_uri=stored.uri,
+            object_uri=dockerfile_uri,
             content_hash=hashlib.sha256(dockerfile.encode("utf-8")).hexdigest(),
             byte_size=len(dockerfile.encode("utf-8")),
             artifact_metadata={
                 "registry_entry_id": str(entry.id),
                 "base_image": image,
                 "artifact_type": "dockerfile",
+                "desired_state": "object_write_pending",
+                "content": dockerfile,
             },
         )
     )
-    try:
-        k8s.create_model_deployment(manifests)
-    except Exception as exc:
-        deployment_run.status = RunStatus.FAILED
-        deployment_run.failure_code = "KUBERNETES_DEPLOYMENT_CREATE_FAILED"
-        deployment_run.failure_message = str(exc)
-        deployment_run.finished_at = datetime.now(UTC)
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="The cluster rejected the model deployment.",
-        ) from exc
-    urls = k8s.model_deployment_urls(service_name) or {}
-    deployment_run.status = RunStatus.RUNNING
-    deployment_run.started_at = datetime.now(UTC)
+    urls = _platform_model_deployment_urls(project_id, deployment_run.id)
+    deployment_run.status = RunStatus.QUEUED
     deployment_run.k8s_job_name = deployment_name
     deployment_run.tags = {
         **deployment_run.tags,
@@ -611,13 +601,14 @@ def deploy_registered_model(
         **urls,
         "image": image,
         "model_artifact_id": str(entry.model_artifact_id),
-        "dockerfile_uri": stored.uri,
+        "dockerfile_uri": dockerfile_uri,
+        "desired_state": "deployment_pending",
     }
     db.flush()
     return ModelDeploymentLaunchRead(
         run=ModelRunRead.model_validate(deployment_run),
         manifests=manifests,
-        dockerfile_uri=stored.uri,
+        dockerfile_uri=dockerfile_uri,
     )
 
 
@@ -858,6 +849,8 @@ def cleanup_project_resources(
     project_id: uuid.UUID,
     request: ArtifactCleanupRequest,
     client: KubernetesTrainingClient | None = None,
+    *,
+    execute_side_effects: bool = True,
 ) -> ArtifactCleanupRead:
     require_project_role(db, user, project_id, ProjectRole.ADMIN)
     cutoff = datetime.now(UTC) - timedelta(days=request.older_than_days)
@@ -895,7 +888,25 @@ def cleanup_project_resources(
     ]
     deleted_uris: list[str] = []
     errors: list[str] = []
-    if not request.dry_run:
+    if not request.dry_run and not execute_side_effects:
+        for artifact in candidates:
+            tombstone = DeletionTombstone(
+                project_id=project_id,
+                requested_by_id=user.id,
+                resource_type="run_artifact",
+                resource_id=artifact.id,
+                reason=f"artifact cleanup older than {request.older_than_days} days",
+            )
+            db.add(tombstone)
+            db.flush()
+            db.add(
+                DeletionStage(
+                    project_id=project_id,
+                    tombstone_id=tombstone.id,
+                    resource_class="object_store",
+                )
+            )
+    elif not request.dry_run:
         store = get_object_store()
         for artifact in candidates:
             try:
@@ -905,7 +916,7 @@ def cleanup_project_resources(
             except Exception as exc:
                 errors.append(f"{artifact.object_uri}: {exc}")
     deleted_jobs: list[str] = []
-    if not request.dry_run and request.cleanup_finished_jobs:
+    if not request.dry_run and request.cleanup_finished_jobs and execute_side_effects:
         try:
             deleted_jobs = (client or KubernetesTrainingClient()).cleanup_finished_jobs(project_id)
         except Exception as exc:

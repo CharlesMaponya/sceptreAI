@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from automl_api.api.deps import get_current_user
@@ -22,6 +23,7 @@ from automl_api.services.datasets import (
     list_project_datasets,
     upload_dataset_version,
 )
+from automl_api.services.idempotency import durable_mutation
 
 router = APIRouter(prefix="/projects/{project_id}/datasets", tags=["datasets"])
 
@@ -45,6 +47,7 @@ def upload_dataset(
     dataset_name: Annotated[str, Form(min_length=1, max_length=220)],
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
     description: Annotated[str | None, Form()] = None,
     tags: Annotated[str, Form()] = "{}",
 ) -> DatasetUploadResponse:
@@ -61,12 +64,22 @@ def upload_dataset(
             filename=file.filename or "",
             tags=parsed_tags,
         )
-        dataset, version = upload_dataset_version(
+        response = durable_mutation(
             db,
             current_user,
             project_id,
-            payload,
-            content,
+            operation="dataset.upload.complete",
+            idempotency_key=idempotency_key,
+            payload={
+                **payload.model_dump(mode="json"),
+                "content_sha256": hashlib.sha256(content).hexdigest(),
+                "byte_size": len(content),
+            },
+            execute=lambda: _upload_response(
+                db, current_user, project_id, payload, content
+            ),
+            response_model=DatasetUploadResponse,
+            response_status=status.HTTP_201_CREATED,
         )
     except ValueError as exc:
         raise HTTPException(
@@ -76,8 +89,18 @@ def upload_dataset(
         file.file.close()
 
     db.commit()
-    db.refresh(dataset)
-    db.refresh(version)
+    return response
+
+
+def _upload_response(
+    db: Session,
+    user: User,
+    project_id: uuid.UUID,
+    payload: DatasetUploadRequest,
+    content: bytes,
+) -> DatasetUploadResponse:
+    dataset, version = upload_dataset_version(db, user, project_id, payload, content)
+    db.flush()
     return DatasetUploadResponse(
         dataset=DatasetRead.model_validate(dataset),
         version=DatasetVersionRead.model_validate(version),

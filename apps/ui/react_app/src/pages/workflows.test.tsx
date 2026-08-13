@@ -502,6 +502,7 @@ describe("core workflow integrations", () => {
       return response([]);
     });
     vi.spyOn(XMLHttpRequest.prototype, "open").mockImplementation(() => undefined);
+    vi.spyOn(XMLHttpRequest.prototype, "setRequestHeader").mockImplementation(() => undefined);
     vi.spyOn(XMLHttpRequest.prototype, "send").mockImplementation(function (
       this: XMLHttpRequest,
       body?: Document | XMLHttpRequestBodyInit | null,

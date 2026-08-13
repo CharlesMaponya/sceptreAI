@@ -16,6 +16,13 @@ automountServiceAccountToken: false
 apiVersion: v1
 kind: ServiceAccount
 metadata:
+  name: {{ include "sceptre.reconcilerServiceAccount" . }}
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
   name: {{ include "sceptre.inferenceServiceAccount" . }}
   labels:
     {{- include "sceptre.labels" . | nindent 4 }}
@@ -30,7 +37,7 @@ metadata:
 rules:
   - apiGroups: ["batch"]
     resources: ["jobs"]
-    verbs: ["create", "get", "list", "watch", "delete"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: ["batch"]
     resources: ["jobs/status"]
     verbs: ["get"]
@@ -39,7 +46,7 @@ rules:
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["services"]
-    verbs: ["get", "list", "watch", "create", "delete"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["secrets"]
     resourceNames:
@@ -48,7 +55,7 @@ rules:
     verbs: ["get"]
   - apiGroups: ["apps"]
     resources: ["deployments"]
-    verbs: ["create", "get", "list", "watch", "delete"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: ["apps"]
     resources: ["deployments/status"]
     verbs: ["get"]
@@ -75,6 +82,49 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: {{ include "sceptre.fullname" . }}-workloads
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "sceptre.fullname" . }}-reconciler
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["create", "get"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  {{- if .Values.inference.ingress.enabled }}
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  {{- end }}
+  - apiGroups: ["ray.io"]
+    resources: ["rayjobs", "rayjobs/status", "rayclusters", "rayclusters/status"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "sceptre.fullname" . }}-reconciler
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "sceptre.reconcilerServiceAccount" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "sceptre.fullname" . }}-reconciler
 {{- if .Values.capabilities.clusterObserver.enabled }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1

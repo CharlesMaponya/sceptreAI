@@ -286,14 +286,10 @@ def test_inference_model_load_and_error_contracts(monkeypatch) -> None:
     assert ready_error.value.status_code == 503
 
     with pytest.raises(HTTPException, match="Prediction failed") as online_error:
-        _endpoint(app, "/v1/predict/online", "POST")(
-            PointPredictionRequest(record={"feature": 1})
-        )
+        _endpoint(app, "/v1/predict/online", "POST")(PointPredictionRequest(record={"feature": 1}))
     assert online_error.value.status_code == 422
     with pytest.raises(HTTPException, match="Prediction failed"):
-        _endpoint(app, "/v1/predict", "POST")(
-            PredictionRequest(records=[{"feature": 1}])
-        )
+        _endpoint(app, "/v1/predict", "POST")(PredictionRequest(records=[{"feature": 1}]))
 
 
 def test_inference_uploaded_json_formats_empty_limit_and_probabilities(tmp_path) -> None:
@@ -1306,16 +1302,16 @@ def test_deploy_registered_model_persists_manifest_and_dockerfile(monkeypatch) -
         client,
     )
 
-    assert result.run.status == RunStatus.RUNNING
+    assert result.run.status == RunStatus.QUEUED
     assert result.run.gpu_requested is False
     assert result.run.tags["service_name"] == "model-service"
-    assert result.run.tags["endpoint"] == "https://model.test/v1/predict"
-    assert result.dockerfile_uri.startswith("s3://artifacts/projects/")
-    assert client.created == [result.manifests]
+    assert result.run.tags["desired_state"] == "deployment_pending"
+    assert result.dockerfile_uri.startswith("minio://automl/projects/")
+    assert client.created == []
     assert any(isinstance(item, RunArtifact) for item in db.added)
 
 
-def test_deployment_rejects_stage_duplicate_project_and_cluster_failure(monkeypatch) -> None:
+def test_deployment_rejects_stage_duplicate_and_missing_project(monkeypatch) -> None:
     project_id = uuid.uuid4()
     entry = _deployable_entry(project_id)
     monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
@@ -1354,27 +1350,6 @@ def test_deployment_rejects_stage_duplicate_project_and_cluster_failure(monkeypa
             ModelDeploymentRequest(),
             _DeploymentClient(),
         )
-
-    db = _DeploymentDB(SimpleNamespace(id=project_id, name="Risk"))
-    monkeypatch.setattr(
-        operations_service,
-        "get_object_store",
-        lambda: SimpleNamespace(
-            put_bytes=lambda *_: SimpleNamespace(uri="s3://artifacts/Dockerfile")
-        ),
-    )
-    with pytest.raises(HTTPException, match="rejected the model deployment"):
-        operations_service.deploy_registered_model(
-            db,
-            SimpleNamespace(id=uuid.uuid4()),
-            project_id,
-            entry.id,
-            ModelDeploymentRequest(),
-            _DeploymentClient(RuntimeError("rejected")),
-        )
-    deployment = next(item for item in db.added if isinstance(item, ModelRun))
-    assert deployment.status == RunStatus.FAILED
-    assert deployment.failure_code == "KUBERNETES_DEPLOYMENT_CREATE_FAILED"
 
 
 def test_platform_health_reports_each_unavailable_dependency(monkeypatch) -> None:

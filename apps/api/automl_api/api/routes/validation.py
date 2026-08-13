@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Header, status
 from sqlalchemy.orm import Session
 
 from automl_api.api.deps import get_current_user
@@ -16,6 +16,7 @@ from automl_api.schemas.validation import (
     ExplainabilityLaunchRequest,
     ValidationLaunchRequest,
 )
+from automl_api.services.idempotency import durable_mutation
 from automl_api.services.validation import (
     get_analysis_result,
     launch_explainability_run,
@@ -40,13 +41,25 @@ def validate_model(
     payload: ValidationLaunchRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
 ) -> AnalysisLaunchRead:
-    result = launch_validation_run(
+    result = durable_mutation(
         db,
         current_user,
         project_id,
-        training_run_id,
-        payload,
+        operation="validation.launch",
+        idempotency_key=idempotency_key,
+        payload={"training_run_id": str(training_run_id), **payload.model_dump(mode="json")},
+        execute=lambda: launch_validation_run(
+            db, current_user, project_id, training_run_id, payload
+        ),
+        response_model=AnalysisLaunchRead,
+        response_status=status.HTTP_202_ACCEPTED,
+        outbox_topic="kubernetes.analysis.submit",
+        aggregate_type="model_run",
+        outbox_payload=lambda result: None
+        if result.cached
+        else {"run_id": str(result.run.id), "manifest": result.manifest},
     )
     db.commit()
     return result
@@ -63,13 +76,25 @@ def explain_model(
     payload: ExplainabilityLaunchRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
 ) -> AnalysisLaunchRead:
-    result = launch_explainability_run(
+    result = durable_mutation(
         db,
         current_user,
         project_id,
-        training_run_id,
-        payload,
+        operation="explainability.launch",
+        idempotency_key=idempotency_key,
+        payload={"training_run_id": str(training_run_id), **payload.model_dump(mode="json")},
+        execute=lambda: launch_explainability_run(
+            db, current_user, project_id, training_run_id, payload
+        ),
+        response_model=AnalysisLaunchRead,
+        response_status=status.HTTP_202_ACCEPTED,
+        outbox_topic="kubernetes.analysis.submit",
+        aggregate_type="model_run",
+        outbox_payload=lambda result: None
+        if result.cached
+        else {"run_id": str(result.run.id), "manifest": result.manifest},
     )
     db.commit()
     return result

@@ -116,10 +116,18 @@ def upload_dataset_version(
 
 
 def _object_store_type_from_settings() -> ObjectStoreType:
-    raw_value = get_settings().object_store_type.lower()
+    settings = get_settings()
+    raw_value = settings.object_store_type.lower()
     try:
         return ObjectStoreType(raw_value)
-    except ValueError:
+    except ValueError as exc:
+        if str(getattr(settings, "environment", "local")).lower() in {
+            "production",
+            "staging",
+        }:
+            raise ValueError(
+                f"Unsupported production object-store driver '{settings.object_store_type}'."
+            ) from exc
         return ObjectStoreType.MINIO
 
 

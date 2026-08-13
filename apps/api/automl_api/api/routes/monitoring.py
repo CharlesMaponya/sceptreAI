@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, Header, Query, Response, status
 from sqlalchemy.orm import Session
 
 from automl_api.api.deps import get_current_user
@@ -19,6 +19,7 @@ from automl_api.schemas.monitoring import (
     MonitoringMetricPointRead,
     MonitoringMetricSeriesRead,
 )
+from automl_api.services.idempotency import durable_mutation
 from automl_api.services.monitoring import (
     generate_governance_report,
     get_governance_report,
@@ -123,13 +124,20 @@ def create_deployment_metric(
     payload: MonitoringMetricPointCreate,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
 ) -> MonitoringMetricPointRead:
-    result = record_monitoring_metric(
+    result = durable_mutation(
         db,
         current_user,
         project_id,
-        deployment_run_id,
-        payload,
+        operation="monitoring.metric.ingest",
+        idempotency_key=idempotency_key,
+        payload={"deployment_run_id": str(deployment_run_id), **payload.model_dump(mode="json")},
+        execute=lambda: record_monitoring_metric(
+            db, current_user, project_id, deployment_run_id, payload
+        ),
+        response_model=MonitoringMetricPointRead,
+        response_status=status.HTTP_201_CREATED,
     )
     db.commit()
     return result
@@ -163,12 +171,23 @@ def create_governance_report(
     deployment_run_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
 ) -> GovernanceReportRead:
-    result = generate_governance_report(
+    result = durable_mutation(
         db,
         current_user,
         project_id,
-        deployment_run_id,
+        operation="governance.report.generate",
+        idempotency_key=idempotency_key,
+        payload={"deployment_run_id": str(deployment_run_id)},
+        execute=lambda: generate_governance_report(
+            db, current_user, project_id, deployment_run_id, defer_external=True
+        ),
+        response_model=GovernanceReportRead,
+        response_status=status.HTTP_201_CREATED,
+        outbox_topic="governance.reconcile",
+        aggregate_type="run_artifact",
+        outbox_payload=lambda result: {"report_id": str(result.id)},
     )
     db.commit()
     return result

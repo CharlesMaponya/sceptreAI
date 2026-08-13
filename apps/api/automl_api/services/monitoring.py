@@ -10,6 +10,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from automl_api.core.config import get_settings
 from automl_api.models.enums import (
     ArtifactKind,
     MetricKind,
@@ -264,9 +265,7 @@ def _threshold_status(
         else value <= threshold.critical
     )
     warning = (
-        value >= threshold.warning
-        if threshold.direction == "above"
-        else value <= threshold.warning
+        value >= threshold.warning if threshold.direction == "above" else value <= threshold.warning
     )
     return "critical" if critical else "warning" if warning else "healthy"
 
@@ -279,10 +278,9 @@ def _linked_runs(
     drift = []
     retraining = []
     for run in runs:
-        exact = (
-            run.tags.get("deployment_run_id") == str(deployment.id)
-            or run.params.get("deployment_run_id") == str(deployment.id)
-        )
+        exact = run.tags.get("deployment_run_id") == str(deployment.id) or run.params.get(
+            "deployment_run_id"
+        ) == str(deployment.id)
         same_model = registry_entry_id and (
             run.tags.get("registry_entry_id") == registry_entry_id
             or run.params.get("registry_entry_id") == registry_entry_id
@@ -366,17 +364,21 @@ def monitoring_dashboard(
         for run in runs
         if run.run_kind == RunKind.DEPLOYMENT and run.status != RunStatus.CANCELLED
     ]
-    all_metrics = list(
-        db.scalars(
-            select(Metric)
-            .where(
-                Metric.project_id.in_(project_ids),
-                Metric.model_run_id.in_([run.id for run in deployments]),
-                Metric.split == MetricSplit.PRODUCTION,
-            )
-            .order_by(Metric.recorded_at.asc())
-        ).all()
-    ) if deployments else []
+    all_metrics = (
+        list(
+            db.scalars(
+                select(Metric)
+                .where(
+                    Metric.project_id.in_(project_ids),
+                    Metric.model_run_id.in_([run.id for run in deployments]),
+                    Metric.split == MetricSplit.PRODUCTION,
+                )
+                .order_by(Metric.recorded_at.asc())
+            ).all()
+        )
+        if deployments
+        else []
+    )
     metrics_by_run: dict[uuid.UUID, list[Metric]] = defaultdict(list)
     for metric in all_metrics:
         metrics_by_run[metric.model_run_id].append(metric)
@@ -400,9 +402,7 @@ def monitoring_dashboard(
         drift = _drift_points(drift_runs, configuration)
         series = _metric_series(metrics_by_run.get(deployment.id, []))
         latest_points = [
-            metric_series.points[-1]
-            for metric_series in series
-            if metric_series.points
+            metric_series.points[-1] for metric_series in series if metric_series.points
         ]
         statuses = [
             _threshold_status(point.name, point.value, configuration, point.status)
@@ -548,6 +548,8 @@ def generate_governance_report(
     user: User,
     project_id: uuid.UUID,
     deployment_run_id: uuid.UUID,
+    *,
+    defer_external: bool = False,
 ) -> GovernanceReportRead:
     require_project_role(db, user, project_id, ProjectRole.EDITOR)
     deployment = deployment_run(db, project_id, deployment_run_id)
@@ -560,10 +562,13 @@ def generate_governance_report(
     source = entry.model_run
     evidence_cutoff = _now()
     reports = _governance_artifacts(db, project_id, deployment.id)
-    version = max(
-        (int(item.artifact_metadata.get("version", 0)) for item in reports),
-        default=0,
-    ) + 1
+    version = (
+        max(
+            (int(item.artifact_metadata.get("version", 0)) for item in reports),
+            default=0,
+        )
+        + 1
+    )
     report, _ = model_audit_report(
         db,
         user,
@@ -573,22 +578,28 @@ def generate_governance_report(
     )
     json_bytes = json.dumps(report, indent=2, sort_keys=True, default=str).encode("utf-8")
     content_hash = hashlib.sha256(json_bytes).hexdigest()
-    json_object = get_object_store().put_bytes(
-        f"projects/{project_id}/deployments/{deployment.id}/governance/report-v{version}.json",
-        json_bytes,
+    json_key = (
+        f"projects/{project_id}/deployments/{deployment.id}/governance/report-v{version}.json"
     )
+    html_key = (
+        f"projects/{project_id}/deployments/{deployment.id}/governance/report-v{version}.html"
+    )
+    if defer_external:
+        bucket = get_settings().object_store_bucket
+        json_uri = f"minio://{bucket}/{json_key}"
+        html_uri = f"minio://{bucket}/{html_key}"
+    else:
+        json_uri = get_object_store().put_bytes(json_key, json_bytes).uri
     html_bytes = _audit_html(report).encode("utf-8")
     html_hash = hashlib.sha256(html_bytes).hexdigest()
-    html_object = get_object_store().put_bytes(
-        f"projects/{project_id}/deployments/{deployment.id}/governance/report-v{version}.html",
-        html_bytes,
-    )
+    if not defer_external:
+        html_uri = get_object_store().put_bytes(html_key, html_bytes).uri
     artifact = RunArtifact(
         project_id=project_id,
         model_run_id=deployment.id,
         kind=ArtifactKind.GOVERNANCE_REPORT,
         name=f"governance-report-v{version}.json",
-        object_uri=json_object.uri,
+        object_uri=json_uri,
         content_hash=content_hash,
         byte_size=len(json_bytes),
         artifact_metadata={
@@ -596,8 +607,17 @@ def generate_governance_report(
             "model_version_id": str(entry.id),
             "generated_by_id": str(user.id),
             "evidence_cutoff_at": evidence_cutoff.isoformat(),
-            "html_uri": html_object.uri,
+            "html_uri": html_uri,
             "html_hash": html_hash,
+            **(
+                {
+                    "desired_state": "object_write_pending",
+                    "pending_json": json_bytes.decode("utf-8"),
+                    "pending_html": html_bytes.decode("utf-8"),
+                }
+                if defer_external
+                else {}
+            ),
         },
     )
     db.add(artifact)

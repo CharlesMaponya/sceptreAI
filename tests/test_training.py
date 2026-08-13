@@ -22,7 +22,6 @@ from automl_api.services.kubernetes_training import (
     _node_gpu,
 )
 from kubernetes.client import ApiException
-from pydantic import ValidationError
 
 NVIDIA_IMAGE = f"docker.io/maponyacharles/sceptreai:training-nvidia-{__version__}"
 INTEL_IMAGE = f"docker.io/maponyacharles/sceptreai:training-intel-{__version__}"
@@ -272,7 +271,7 @@ def test_memory_estimate_scales_with_dataset_and_search_budget() -> None:
     assert not large.can_launch
 
 
-def test_training_request_accepts_up_to_twenty_models() -> None:
+def test_training_request_has_no_legacy_twenty_model_cap() -> None:
     request = TrainingEstimateRequest(
         dataset_version_id=uuid.uuid4(),
         task_type=TaskType.CLASSIFICATION,
@@ -282,13 +281,13 @@ def test_training_request_accepts_up_to_twenty_models() -> None:
 
     assert request.candidate_limit == 20
     assert len(request.candidate_models) == 20
-    with pytest.raises(ValidationError):
-        TrainingEstimateRequest(
-            dataset_version_id=uuid.uuid4(),
-            task_type=TaskType.CLASSIFICATION,
-            candidate_limit=21,
-            candidate_models=[f"Model{index}" for index in range(21)],
-        )
+    expanded = TrainingEstimateRequest(
+        dataset_version_id=uuid.uuid4(),
+        task_type=TaskType.CLASSIFICATION,
+        candidate_limit=21,
+        candidate_models=[f"Model{index}" for index in range(21)],
+    )
+    assert len(expanded.candidate_models) == 21
 
 
 def test_job_deadline_scales_beyond_the_six_hour_floor() -> None:

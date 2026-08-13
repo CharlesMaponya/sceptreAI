@@ -54,6 +54,11 @@ spec:
                 secretKeyRef:
                   name: {{ include "sceptre.platformSecretName" . }}
                   key: {{ .Values.platform.databaseUrlKey }}
+            - name: QUALIFICATION_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sceptre.platformSecretName" . }}
+                  key: {{ .Values.platform.qualificationDatabaseUrlKey }}
           resources:
             requests: {cpu: 10m, memory: 32Mi}
             limits: {cpu: 100m, memory: 128Mi}
@@ -77,6 +82,11 @@ spec:
                 secretKeyRef:
                   name: {{ include "sceptre.platformSecretName" . }}
                   key: {{ .Values.platform.databaseUrlKey }}
+            - name: QUALIFICATION_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sceptre.platformSecretName" . }}
+                  key: {{ .Values.platform.qualificationDatabaseUrlKey }}
             - name: JWT_SECRET_KEY
               valueFrom:
                 secretKeyRef:
@@ -121,6 +131,67 @@ spec:
             failureThreshold: 4
           resources:
             {{- toYaml .Values.api.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sceptre.fullname" . }}-reconciler
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.reconciler.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "sceptre.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: reconciler
+  template:
+    metadata:
+      labels:
+        {{- include "sceptre.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: reconciler
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "sceptre.reconcilerServiceAccount" . }}
+      securityContext:
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: reconciler
+          image: {{ include "sceptre.image" (dict "root" . "image" .Values.api.image) | quote }}
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          command: ["python", "-m", "automl_api.workflow_reconciler"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "sceptre.fullname" . }}-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sceptre.platformSecretName" . }}
+                  key: {{ .Values.platform.databaseUrlKey }}
+            - {name: RECONCILER_POLL_SECONDS, value: {{ .Values.reconciler.pollSeconds | quote }}}
+            - name: OBJECT_STORE_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sceptre.objectStoreSecretName" . }}
+                  key: {{ include "sceptre.objectStoreAccessKey" . }}
+            - name: OBJECT_STORE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sceptre.objectStoreSecretName" . }}
+                  key: {{ include "sceptre.objectStoreSecretKey" . }}
+          resources:
+            {{- toYaml .Values.reconciler.resources | nindent 12 }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities: {drop: ["ALL"]}

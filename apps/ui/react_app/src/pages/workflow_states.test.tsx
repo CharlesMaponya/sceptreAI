@@ -528,6 +528,7 @@ describe("governed workflow states", () => {
       return response([]);
     });
     vi.spyOn(XMLHttpRequest.prototype, "open").mockImplementation(() => undefined);
+    vi.spyOn(XMLHttpRequest.prototype, "setRequestHeader").mockImplementation(() => undefined);
     vi.spyOn(XMLHttpRequest.prototype, "send").mockImplementation(function (this: XMLHttpRequest) {
       uploadAttempt += 1;
       const columns = uploadAttempt === 1 ? [{ name: "age" }] : [
@@ -743,6 +744,7 @@ describe("governed workflow states", () => {
       return response([]);
     });
     vi.spyOn(XMLHttpRequest.prototype, "open").mockImplementation(() => undefined);
+    vi.spyOn(XMLHttpRequest.prototype, "setRequestHeader").mockImplementation(() => undefined);
     vi.spyOn(XMLHttpRequest.prototype, "send").mockImplementation(function (this: XMLHttpRequest) {
       this.upload.dispatchEvent(new ProgressEvent("progress", { lengthComputable: true, loaded: 100, total: 100 }));
       finishUpload = () => {

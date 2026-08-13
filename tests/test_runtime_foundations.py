@@ -5,12 +5,14 @@ import sys
 import uuid
 from contextlib import AbstractContextManager
 from datetime import timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 from automl_api.api import deps
 from automl_api.core.config import Settings
+from automl_api.db import qualification_session
 from automl_api.db import session as db_session
 from automl_api.main import create_app, lifespan
 from automl_api.models.enums import RunKind
@@ -80,7 +82,7 @@ def test_database_session_singletons_and_generator_cleanup(monkeypatch) -> None:
     monkeypatch.setattr(
         db_session,
         "get_settings",
-        lambda: SimpleNamespace(sqlalchemy_database_url="postgresql://db/test"),
+        lambda: Settings(database_url="postgresql://db/test"),
     )
     monkeypatch.setattr(db_session, "create_engine", lambda *args, **kwargs: engine)
     monkeypatch.setattr(db_session, "sessionmaker", lambda **kwargs: factory)
@@ -98,10 +100,100 @@ def test_database_session_singletons_and_generator_cleanup(monkeypatch) -> None:
     session.close.assert_called_once()
 
 
-def test_api_health_checks_report_dependency_boundaries(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "automl_api.main.get_settings", lambda: SimpleNamespace(environment="test")
+def test_database_engine_options_bound_postgres_and_validate_tls(tmp_path: Path) -> None:
+    settings = Settings(
+        database_pool_size=7,
+        database_max_overflow=2,
+        database_application_name="phase1-test",
     )
+    options = db_session.engine_options(settings)
+    assert options["pool_size"] == 7
+    assert options["max_overflow"] == 2
+    assert options["connect_args"]["application_name"] == "phase1-test"
+    assert "statement_timeout=30000" in options["connect_args"]["options"]
+    assert db_session.engine_options(SimpleNamespace(sqlalchemy_database_url="sqlite://")) == {
+        "pool_pre_ping": True
+    }
+
+    with pytest.raises(RuntimeError, match="sslmode"):
+        db_session.engine_options(Settings(environment="production", database_ssl_mode="prefer"))
+    with pytest.raises(RuntimeError, match="certificate"):
+        db_session.engine_options(
+            Settings(environment="production", database_ssl_mode="verify-full")
+        )
+    certificate = tmp_path / "postgres-ca.pem"
+    certificate.write_text("test CA")
+    secure = db_session.engine_options(
+        Settings(
+            environment="production",
+            database_ssl_mode="verify-full",
+            database_ssl_root_cert=certificate,
+        )
+    )
+    assert secure["connect_args"]["sslrootcert"] == str(certificate)
+
+
+def test_final_authority_database_is_separate_in_production(monkeypatch, tmp_path: Path) -> None:
+    certificate = tmp_path / "postgres-ca.pem"
+    certificate.write_text("test CA")
+    shared = Settings(
+        environment="production",
+        database_ssl_mode="verify-full",
+        database_ssl_root_cert=certificate,
+    )
+    qualification_session._engine = None
+    monkeypatch.setattr(qualification_session, "get_settings", lambda: shared)
+    with pytest.raises(RuntimeError, match="separately protected"):
+        qualification_session.get_qualification_engine()
+
+    engine = MagicMock()
+    separate = Settings(
+        environment="production",
+        database_ssl_mode="verify-full",
+        database_ssl_root_cert=certificate,
+        qualification_database_url="postgresql+psycopg://authority/db",
+    )
+    monkeypatch.setattr(qualification_session, "get_settings", lambda: separate)
+    monkeypatch.setattr(qualification_session, "create_engine", lambda *_args, **_kwargs: engine)
+    assert qualification_session.get_qualification_engine() is engine
+    assert qualification_session.get_qualification_engine() is engine
+
+    factory = MagicMock()
+    qualification_session._session_factory = None
+    monkeypatch.setattr(qualification_session, "sessionmaker", lambda **_kwargs: factory)
+    assert qualification_session.get_qualification_session_factory() is factory
+    assert qualification_session.get_qualification_session_factory() is factory
+    session = MagicMock()
+    monkeypatch.setattr(
+        qualification_session,
+        "get_qualification_session_factory",
+        lambda: lambda: session,
+    )
+    generator = qualification_session.get_qualification_db()
+    assert next(generator) is session
+    with pytest.raises(StopIteration):
+        next(generator)
+    session.close.assert_called_once()
+
+
+def test_pool_metrics_export_only_supported_counters(monkeypatch) -> None:
+    pool = SimpleNamespace(
+        size=lambda: 10,
+        checkedin=lambda: 8,
+        checkedout=lambda: 2,
+        overflow=lambda: 0,
+    )
+    monkeypatch.setattr(db_session, "get_engine", lambda: SimpleNamespace(pool=pool))
+    assert db_session.pool_metrics() == {
+        "size": 10,
+        "checkedin": 8,
+        "checkedout": 2,
+        "overflow": 0,
+    }
+
+
+def test_api_health_checks_report_dependency_boundaries(monkeypatch) -> None:
+    monkeypatch.setattr("automl_api.main.get_settings", lambda: SimpleNamespace(environment="test"))
     app = create_app()
     assert _endpoint(app, "/health/live")() == {"status": "ok"}
     ready = _endpoint(app, "/health/ready")

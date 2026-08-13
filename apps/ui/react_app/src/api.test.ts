@@ -34,6 +34,34 @@ describe("API session handling", () => {
     expect(retriedHeaders.get("Authorization")).toBe("Bearer fresh");
   });
 
+  it("adds one stable idempotency key to a mutating request and its retry", async () => {
+    setSession({ user, tokens: {
+      access_token: "expired", refresh_token: "refresh-1", token_type: "bearer", expires_in: 60,
+    } });
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({ detail: "Expired" }), { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        access_token: "fresh", refresh_token: "refresh-2", token_type: "bearer", expires_in: 3600,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "created" }), { status: 201 }));
+
+    await api("/resources", { method: "POST", body: "{}" });
+    const first = new Headers(fetchMock.mock.calls[0][1]?.headers).get("Idempotency-Key");
+    const retried = new Headers(fetchMock.mock.calls[2][1]?.headers).get("Idempotency-Key");
+    expect(first).toBeTruthy();
+    expect(retried).toBe(first);
+  });
+
+  it("preserves a caller-provided key and leaves reads without one", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockImplementation(async () => new Response("{}", { status: 200 }));
+    await api("/resource", { method: "POST", headers: { "Idempotency-Key": "stable-key" } });
+    await api("/resource");
+    expect(new Headers(fetchMock.mock.calls[0][1]?.headers).get("Idempotency-Key"))
+      .toBe("stable-key");
+    expect(new Headers(fetchMock.mock.calls[1][1]?.headers).has("Idempotency-Key")).toBe(false);
+  });
+
   it("clears the session when refresh fails", async () => {
     setSession({ user, tokens: {
       access_token: "expired", refresh_token: "bad", token_type: "bearer", expires_in: 60,
@@ -122,6 +150,7 @@ describe("API authentication and multipart handling", () => {
 
   it("reports multipart progress and parses a successful upload", async () => {
     vi.spyOn(XMLHttpRequest.prototype, "open").mockImplementation(() => undefined);
+    vi.spyOn(XMLHttpRequest.prototype, "setRequestHeader").mockImplementation(() => undefined);
     vi.spyOn(XMLHttpRequest.prototype, "send").mockImplementation(function (this: XMLHttpRequest) {
       this.upload.dispatchEvent(new ProgressEvent("progress", {
         lengthComputable: true, loaded: 5, total: 10,
@@ -141,6 +170,7 @@ describe("API authentication and multipart handling", () => {
 
   it("surfaces multipart validation, network, and cancellation failures", async () => {
     vi.spyOn(XMLHttpRequest.prototype, "open").mockImplementation(() => undefined);
+    vi.spyOn(XMLHttpRequest.prototype, "setRequestHeader").mockImplementation(() => undefined);
     const send = vi.spyOn(XMLHttpRequest.prototype, "send");
     send.mockImplementationOnce(function (this: XMLHttpRequest) {
       Object.defineProperty(this, "status", { configurable: true, value: 422 });
@@ -191,6 +221,11 @@ describe("API authentication and multipart handling", () => {
     expect(attempts).toBe(2);
     expect(headers.mock.calls).toContainEqual(["Authorization", "Bearer expired"]);
     expect(headers.mock.calls).toContainEqual(["Authorization", "Bearer fresh"]);
+    const idempotencyKeys = headers.mock.calls
+      .filter(([name]) => name === "Idempotency-Key")
+      .map(([, value]) => value);
+    expect(idempotencyKeys).toHaveLength(2);
+    expect(idempotencyKeys[0]).toBe(idempotencyKeys[1]);
     expect(getSession()?.tokens.refresh_token).toBe("refresh-2");
   });
 });

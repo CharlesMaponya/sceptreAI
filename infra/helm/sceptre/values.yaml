@@ -25,6 +25,13 @@ api:
     requests: {cpu: 100m, memory: 256Mi}
     limits: {cpu: "1", memory: 1Gi}
 
+reconciler:
+  replicaCount: 3
+  pollSeconds: 1
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+
 ui:
   replicaCount: 1
   image:
@@ -90,7 +97,20 @@ platform:
   # Existing secret keys: DATABASE_URL and, for bundled MLflow, MLFLOW_DATABASE_URL.
   existingSecret: ""
   databaseUrlKey: DATABASE_URL
+  qualificationDatabaseUrlKey: QUALIFICATION_DATABASE_URL
   mlflowDatabaseUrlKey: MLFLOW_DATABASE_URL
+  database:
+    poolSize: 10
+    maxOverflow: 5
+    poolTimeoutSeconds: 10
+    connectTimeoutSeconds: 5
+    statementTimeoutMs: 30000
+    lockTimeoutMs: 5000
+    idleTransactionTimeoutMs: 30000
+    applicationName: sceptre-api
+    sslMode: prefer
+    sslRootCert: ""
+    pgbouncerTransactionMode: false
 
 seaweedfs:
   enabled: true

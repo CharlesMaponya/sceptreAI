@@ -51,16 +51,26 @@ async function raw<T>(path: string, options: RequestInit = {}, token?: string): 
   return data as T;
 }
 
+function withIdempotencyKey(options: RequestInit): RequestInit {
+  const method = (options.method || "GET").toUpperCase();
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) return options;
+  const headers = new Headers(options.headers);
+  if (!headers.has("Idempotency-Key")) headers.set("Idempotency-Key", crypto.randomUUID());
+  return { ...options, headers };
+}
+
 function multipartRequest<T>(
   path: string,
   body: FormData,
   token: string | undefined,
   onProgress: (percent: number) => void,
+  idempotencyKey: string,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open("POST", `${API_ROOT}${path}`);
     if (token) request.setRequestHeader("Authorization", `Bearer ${token}`);
+    request.setRequestHeader("Idempotency-Key", idempotencyKey);
     request.upload.onprogress = (event) => {
       if (event.lengthComputable && event.total > 0) {
         onProgress(Math.min(100, Math.round((event.loaded / event.total) * 100)));
@@ -85,8 +95,9 @@ function multipartRequest<T>(
 }
 
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const requestOptions = withIdempotencyKey(options);
   try {
-    return await raw<T>(path, options, session?.tokens.access_token);
+    return await raw<T>(path, requestOptions, session?.tokens.access_token);
   } catch (error) {
     if (!(error instanceof ApiError) || !session?.tokens.refresh_token || error.status !== 401) throw error;
     try {
@@ -94,7 +105,7 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
         method: "POST", body: JSON.stringify({ refresh_token: session.tokens.refresh_token }),
       });
       setSession({ user: session.user, tokens });
-      return raw<T>(path, options, tokens.access_token);
+      return raw<T>(path, requestOptions, tokens.access_token);
     } catch {
       setSession(null);
       throw new Error("Your session has expired. Please sign in again.");
@@ -107,8 +118,11 @@ export async function uploadFormData<T>(
   body: FormData,
   onProgress: (percent: number) => void,
 ): Promise<T> {
+  const idempotencyKey = crypto.randomUUID();
   try {
-    return await multipartRequest<T>(path, body, session?.tokens.access_token, onProgress);
+    return await multipartRequest<T>(
+      path, body, session?.tokens.access_token, onProgress, idempotencyKey,
+    );
   } catch (error) {
     if (!(error instanceof ApiError) || !session?.tokens.refresh_token || error.status !== 401) {
       throw error;
@@ -118,7 +132,7 @@ export async function uploadFormData<T>(
         method: "POST", body: JSON.stringify({ refresh_token: session.tokens.refresh_token }),
       });
       setSession({ user: session.user, tokens });
-      return multipartRequest<T>(path, body, tokens.access_token, onProgress);
+      return multipartRequest<T>(path, body, tokens.access_token, onProgress, idempotencyKey);
     } catch {
       setSession(null);
       throw new Error("Your session has expired. Please sign in again.");

@@ -209,6 +209,27 @@ class DatasetUploadSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    digest_algorithm: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="sha256", server_default="sha256"
+    )
+    digest_scope: Mapped[str] = mapped_column(
+        String(80),
+        nullable=False,
+        default="multipart_manifest",
+        server_default="multipart_manifest",
+    )
+    expected_object_digest: Mapped[str | None] = mapped_column(String(128))
+    observed_object_digest: Mapped[str | None] = mapped_column(String(128))
+    quarantine_reason: Mapped[str | None] = mapped_column(Text)
+    lease_owner: Mapped[str | None] = mapped_column(String(255))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    retry_budget: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=5, server_default="5"
+    )
+    terminal_reason: Mapped[str | None] = mapped_column(Text)
+    replayed_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     dataset_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("datasets.id", ondelete="SET NULL")
     )

@@ -25,6 +25,37 @@
         }
       }
     },
+    "platform": {
+      "type": "object",
+      "properties": {
+        "qualificationDatabaseUrlKey": {"type": "string", "minLength": 1},
+        "database": {
+          "type": "object",
+          "properties": {
+            "poolSize": {"type": "integer", "minimum": 1},
+            "maxOverflow": {"type": "integer", "minimum": 0},
+            "poolTimeoutSeconds": {"type": "integer", "minimum": 1},
+            "connectTimeoutSeconds": {"type": "integer", "minimum": 1},
+            "statementTimeoutMs": {"type": "integer", "minimum": 1},
+            "lockTimeoutMs": {"type": "integer", "minimum": 1},
+            "idleTransactionTimeoutMs": {"type": "integer", "minimum": 1},
+            "applicationName": {"type": "string", "minLength": 1},
+            "sslMode": {"enum": ["disable", "allow", "prefer", "require", "verify-ca", "verify-full"]},
+            "sslRootCert": {"type": "string"},
+            "pgbouncerTransactionMode": {"type": "boolean"}
+          },
+          "required": ["poolSize", "maxOverflow", "poolTimeoutSeconds", "connectTimeoutSeconds", "statementTimeoutMs", "lockTimeoutMs", "idleTransactionTimeoutMs", "applicationName", "sslMode", "pgbouncerTransactionMode"]
+        }
+      }
+    },
+    "reconciler": {
+      "type": "object",
+      "properties": {
+        "replicaCount": {"type": "integer", "minimum": 1},
+        "pollSeconds": {"type": "number", "exclusiveMinimum": 0}
+      },
+      "required": ["replicaCount", "pollSeconds"]
+    },
     "seaweedfs": {
       "type": "object",
       "properties": {

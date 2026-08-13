@@ -96,9 +96,7 @@ class KubernetesTrainingClient:
             namespace=namespace,
             label_selector="automl.platform/workload=training",
         ).items
-        active_training_jobs = sum(
-            pod.status.phase not in {"Succeeded", "Failed"} for pod in pods
-        )
+        active_training_jobs = sum(pod.status.phase not in {"Succeeded", "Failed"} for pod in pods)
 
         total_cpu = requested_cpu = available_cpu = 0.0
         total_memory = requested_memory = available_memory = 0
@@ -158,9 +156,8 @@ class KubernetesTrainingClient:
                 "GPU discovery is disabled because the optional cluster observer is not enabled."
             )
 
-        pvc_ready = (
-            not self.settings.dataset_cache_pvc_name
-            or self._pvc_is_bound(self.settings.dataset_cache_pvc_name)
+        pvc_ready = not self.settings.dataset_cache_pvc_name or self._pvc_is_bound(
+            self.settings.dataset_cache_pvc_name
         )
         priority_ready = (
             not self.settings.training_priority_class_name
@@ -192,6 +189,58 @@ class KubernetesTrainingClient:
             priority_class_ready=priority_ready,
             runtime_dependencies_ready=runtime_dependencies_ready,
         )
+
+    def create_ray_job(self, manifest: dict[str, Any]) -> dict[str, Any]:
+        if not self._configured:
+            raise RuntimeError(self._configuration_error or "Kubernetes client is not configured.")
+        namespace = (
+            manifest.get("metadata", {}).get("namespace") or self.settings.training_namespace
+        )
+        try:
+            return self.custom.create_namespaced_custom_object(
+                group="ray.io",
+                version="v1",
+                namespace=namespace,
+                plural="rayjobs",
+                body=manifest,
+            )
+        except ApiException as exc:
+            if exc.status != 409:
+                raise
+            return self.custom.get_namespaced_custom_object(
+                group="ray.io",
+                version="v1",
+                namespace=namespace,
+                plural="rayjobs",
+                name=manifest["metadata"]["name"],
+            )
+
+    def ray_job(self, name: str, namespace: str | None = None) -> dict[str, Any]:
+        if not self._configured:
+            raise RuntimeError(self._configuration_error or "Kubernetes client is not configured.")
+        return self.custom.get_namespaced_custom_object(
+            group="ray.io",
+            version="v1",
+            namespace=namespace or self.settings.training_namespace,
+            plural="rayjobs",
+            name=name,
+        )
+
+    def delete_ray_job(self, name: str, namespace: str | None = None) -> None:
+        if not self._configured:
+            raise RuntimeError(self._configuration_error or "Kubernetes client is not configured.")
+        try:
+            self.custom.delete_namespaced_custom_object(
+                group="ray.io",
+                version="v1",
+                namespace=namespace or self.settings.training_namespace,
+                plural="rayjobs",
+                name=name,
+                body=client.V1DeleteOptions(propagation_policy="Foreground"),
+            )
+        except ApiException as exc:
+            if exc.status != 404:
+                raise
 
     def _gpu_resources(self) -> tuple[tuple[str, str], ...]:
         return (
@@ -235,9 +284,7 @@ class KubernetesTrainingClient:
         desired_memory = max(768, estimated_working_set)
 
         compatible_vendors = (
-            gpu_compatible_vendors
-            if gpu_compatible_vendors is not None
-            else {"nvidia", "intel"}
+            gpu_compatible_vendors if gpu_compatible_vendors is not None else {"nvidia", "intel"}
         )
         gpu_nodes = [
             node
@@ -282,9 +329,7 @@ class KubernetesTrainingClient:
                 "unavailable; omit it or grant observer access."
             )
         if not snapshot.runtime_dependencies_ready:
-            blockers.append(
-                "Training runtime database or object-store Secret is missing."
-            )
+            blockers.append("Training runtime database or object-store Secret is missing.")
 
         cpu_request = max(0.0, self.settings.training_cpu_request_cores)
         cpu_limit = max(cpu_request, self.settings.training_cpu_limit_cores)
@@ -519,10 +564,30 @@ class KubernetesTrainingClient:
         return manifest
 
     def create_job(self, manifest: dict[str, Any]) -> None:
-        self.batch.create_namespaced_job(
-            namespace=self.settings.training_namespace,
-            body=manifest,
-        )
+        try:
+            self.batch.create_namespaced_job(
+                namespace=self.settings.training_namespace,
+                body=manifest,
+            )
+        except ApiException as exc:
+            if exc.status != 409:
+                raise
+
+    def ensure_service_account(self, name: str) -> None:
+        body = {
+            "apiVersion": "v1",
+            "kind": "ServiceAccount",
+            "metadata": {"name": name, "namespace": self.settings.training_namespace},
+            "automountServiceAccountToken": False,
+        }
+        try:
+            self.core.create_namespaced_service_account(
+                namespace=self.settings.training_namespace,
+                body=body,
+            )
+        except ApiException as exc:
+            if exc.status != 409:
+                raise
 
     def build_model_deployment_manifest(
         self,
@@ -609,8 +674,7 @@ class KubernetesTrainingClient:
                                                 "secretKeyRef": {
                                                     "name": self.settings.object_store_secret_name,
                                                     "key": (
-                                                        self.settings
-                                                        .object_store_access_key_secret_key
+                                                        self.settings.object_store_access_key_secret_key
                                                     ),
                                                 }
                                             },
@@ -621,8 +685,7 @@ class KubernetesTrainingClient:
                                                 "secretKeyRef": {
                                                     "name": self.settings.object_store_secret_name,
                                                     "key": (
-                                                        self.settings
-                                                        .object_store_secret_key_secret_key
+                                                        self.settings.object_store_secret_key_secret_key
                                                     ),
                                                 }
                                             },
@@ -711,9 +774,7 @@ class KubernetesTrainingClient:
                 ]
             }
             if self.settings.inference_ingress_class_name:
-                ingress_spec["ingressClassName"] = (
-                    self.settings.inference_ingress_class_name
-                )
+                ingress_spec["ingressClassName"] = self.settings.inference_ingress_class_name
             if self.settings.inference_ingress_tls_secret_name:
                 ingress_spec["tls"] = [
                     {
@@ -737,14 +798,26 @@ class KubernetesTrainingClient:
         deployment = manifests["deployment"]
         service = manifests["service"]
         namespace = self.settings.training_namespace
-        self.apps.create_namespaced_deployment(namespace=namespace, body=deployment)
         try:
-            self.core.create_namespaced_service(namespace=namespace, body=service)
+            self.apps.create_namespaced_deployment(namespace=namespace, body=deployment)
+        except ApiException as exc:
+            if exc.status != 409:
+                raise
+        try:
+            try:
+                self.core.create_namespaced_service(namespace=namespace, body=service)
+            except ApiException as exc:
+                if exc.status != 409:
+                    raise
             if ingress := manifests.get("ingress"):
-                self.networking.create_namespaced_ingress(
-                    namespace=namespace,
-                    body=ingress,
-                )
+                try:
+                    self.networking.create_namespaced_ingress(
+                        namespace=namespace,
+                        body=ingress,
+                    )
+                except ApiException as exc:
+                    if exc.status != 409:
+                        raise
         except Exception:
             try:
                 self.core.delete_namespaced_service(
@@ -775,9 +848,7 @@ class KubernetesTrainingClient:
         if desired > 0 and available >= desired:
             return "ready"
         selector = deployment.spec.selector.match_labels or {}
-        label_selector = ",".join(
-            f"{key}={value}" for key, value in selector.items()
-        )
+        label_selector = ",".join(f"{key}={value}" for key, value in selector.items())
         pods = self.core.list_namespaced_pod(
             namespace=self.settings.training_namespace,
             label_selector=label_selector,
@@ -798,8 +869,7 @@ class KubernetesTrainingClient:
             status.last_state.terminated.reason
             for pod in pods
             for status in (pod.status.container_statuses or [])
-            if getattr(status, "last_state", None)
-            and status.last_state.terminated
+            if getattr(status, "last_state", None) and status.last_state.terminated
         }
         if "OOMKilled" in terminated_reasons | previous_terminated_reasons:
             return "out_of_memory"
@@ -823,11 +893,7 @@ class KubernetesTrainingClient:
             namespace=self.settings.training_namespace,
         )
         port = next(
-            (
-                item
-                for item in (service.spec.ports or [])
-                if item.name == "http"
-            ),
+            (item for item in (service.spec.ports or []) if item.name == "http"),
             None,
         )
         if port is None:
@@ -843,11 +909,7 @@ class KubernetesTrainingClient:
                 admitted = getattr(load_balancer, "ingress", None) or []
                 rules = ingress.spec.rules or []
                 if admitted and rules and rules[0].host:
-                    scheme = (
-                        "https"
-                        if self.settings.inference_ingress_tls_secret_name
-                        else "http"
-                    )
+                    scheme = "https" if self.settings.inference_ingress_tls_secret_name else "http"
                     base_url = f"{scheme}://{rules[0].host}"
             except ApiException as exc:
                 if exc.status != 404:
@@ -856,13 +918,9 @@ class KubernetesTrainingClient:
             load_balancer = getattr(getattr(service, "status", None), "load_balancer", None)
             ingress = getattr(load_balancer, "ingress", None) or []
             if ingress:
-                host = getattr(ingress[0], "hostname", None) or getattr(
-                    ingress[0], "ip", None
-                )
+                host = getattr(ingress[0], "hostname", None) or getattr(ingress[0], "ip", None)
                 if host:
-                    base_url = (
-                        f"{self.settings.inference_external_scheme}://{host}:{port.port}"
-                    )
+                    base_url = f"{self.settings.inference_external_scheme}://{host}:{port.port}"
         elif (
             service.spec.type == "NodePort"
             and port.node_port
@@ -905,8 +963,7 @@ class KubernetesTrainingClient:
         jobs = self.batch.list_namespaced_job(
             namespace=self.settings.training_namespace,
             label_selector=(
-                "automl.platform/workload=training,"
-                f"automl.platform/project-id={project_id}"
+                f"automl.platform/workload=training,automl.platform/project-id={project_id}"
             ),
         ).items
         for job in jobs:
@@ -1262,15 +1319,11 @@ def _namespace_quota_capacity(
         used = getattr(quota.status, "used", None) or {}
         for key in ("requests.cpu", "limits.cpu", "cpu"):
             if key in hard:
-                cpu_constraints.append(
-                    (_cpu_cores(hard[key]), _cpu_cores(used.get(key, "0")))
-                )
+                cpu_constraints.append((_cpu_cores(hard[key]), _cpu_cores(used.get(key, "0"))))
                 break
         for key in ("requests.memory", "limits.memory", "memory"):
             if key in hard:
-                memory_constraints.append(
-                    (_memory_mb(hard[key]), _memory_mb(used.get(key, "0")))
-                )
+                memory_constraints.append((_memory_mb(hard[key]), _memory_mb(used.get(key, "0"))))
                 break
     if not cpu_constraints or not memory_constraints:
         return None

@@ -91,6 +91,7 @@ jobs:
           alembic upgrade head
           python scripts/verify_database_schema.py
           alembic check
+          python scripts/rehearse_phase1_migrations.py
 
       - name: Run tests with coverage
         env:
@@ -154,7 +155,7 @@ jobs:
           python-version: "3.12"
 
       - name: Check syntax with compileall
-        run: python -m compileall apps packages alembic scripts tests
+        run: python -m compileall apps/api packages alembic scripts tests
 
   repository-security:
     name: Repository Security
@@ -298,6 +299,11 @@ jobs:
           grep -q 'waiting for complete API database schema' "$rendered"
           grep -Fq 'resources: ["jobs/status"]' "$rendered"
           grep -Fq 'resources: ["deployments/status"]' "$rendered"
+          grep -Fq 'name: sceptre-reconciler' "$rendered"
+          grep -Fq 'replicas: 3' "$rendered"
+          grep -Fq 'command: ["python", "-m", "automl_api.workflow_reconciler"]' "$rendered"
+          grep -Fq 'resources: ["serviceaccounts"]' "$rendered"
+          grep -Fq 'resources: ["rayjobs", "rayjobs/status", "rayclusters", "rayclusters/status"]' "$rendered"
           grep -Fq "image: \"${image}:seaweedfs-${version}\"" "$rendered"
           grep -Fq 'OBJECT_STORE_ENDPOINT: "http://sceptre-seaweedfs:8333"' "$rendered"
           grep -Fq "image: \"${image}:postgresql-${version}\"" "$rendered"

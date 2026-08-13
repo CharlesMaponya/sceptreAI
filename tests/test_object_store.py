@@ -196,6 +196,14 @@ def test_remote_store_configuration_and_factory_fail_closed(monkeypatch, tmp_pat
     client = _MinioClient()
     monkeypatch.setattr("minio.Minio", lambda *_args, **_kwargs: client)
     assert isinstance(get_object_store(_settings(tmp_path, remote=True)), MinioObjectStore)
+    with pytest.raises(ValueError, match="Unsupported production object-store driver"):
+        get_object_store(
+            Settings(
+                environment="production",
+                object_store_type="unknown-driver",
+                local_object_store_path=tmp_path,
+            )
+        )
 
 
 def test_remote_store_rejects_foreign_bucket_uris(monkeypatch, tmp_path) -> None:

@@ -127,6 +127,10 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- printf "%s-api" (include "sceptre.fullname" .) -}}
 {{- end -}}
 
+{{- define "sceptre.reconcilerServiceAccount" -}}
+{{- printf "%s-reconciler" (include "sceptre.fullname" .) -}}
+{{- end -}}
+
 {{- define "sceptre.authSecretName" -}}
 {{- default (printf "%s-auth" (include "sceptre.fullname" .)) .Values.auth.existingSecret -}}
 {{- end -}}

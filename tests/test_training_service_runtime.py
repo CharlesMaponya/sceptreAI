@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from automl_api.models.enums import RunKind, RunStatus, TaskType
+from automl_api.models.enums import CommandStatus, RunKind, RunStatus, ScopeStatus, TaskType
 from automl_api.schemas.training import (
     ClusterCapacityRead,
     TrainingAddModelsRequest,
@@ -312,11 +312,32 @@ def _launch_request(version_id: uuid.UUID) -> TrainingLaunchRequest:
         optimization_iterations=3,
         cv_folds=3,
         run_name="qualified run",
-        params={"contract_revision": "v1"},
+        split_revision_id=uuid.uuid4(),
+        feature_contract_revision_id=uuid.uuid4(),
+        feature_registry_revision_id=uuid.uuid4(),
+        feature_recipe_revision_id=uuid.uuid4(),
+        feature_search_space_revision_id=uuid.uuid4(),
+        estimator_catalog_revision_id=uuid.uuid4(),
     )
 
 
-def test_training_launch_builds_durable_pending_run_and_submits_job(monkeypatch) -> None:
+def _mock_durable_launch(monkeypatch, payload: TrainingLaunchRequest) -> None:
+    command = SimpleNamespace(
+        id=uuid.uuid4(),
+        status=CommandStatus.PENDING,
+        response_payload={},
+        project_id=uuid.uuid4(),
+    )
+    revisions = {
+        "catalog": SimpleNamespace(id=payload.estimator_catalog_revision_id),
+        "recipe": SimpleNamespace(id=payload.feature_recipe_revision_id),
+    }
+    monkeypatch.setattr(training, "begin_command", lambda *_args, **_kwargs: (command, False))
+    monkeypatch.setattr(training, "_resolve_launch_revisions", lambda *_args: revisions)
+    monkeypatch.setattr(training, "enqueue_outbox", MagicMock())
+
+
+def test_training_launch_builds_durable_pending_run_and_outbox_intent(monkeypatch) -> None:
     version = _version()
     estimate = _estimate()
     db = _Session()
@@ -328,13 +349,16 @@ def test_training_launch_builds_durable_pending_run_and_submits_job(monkeypatch)
     monkeypatch.setattr(training, "_lock_training_admission", MagicMock())
     monkeypatch.setattr(training, "estimate_training_run", lambda *_args: estimate)
     monkeypatch.setattr(training, "_latest_leakage_analysis", lambda *_args: (None, {}))
+    payload = _launch_request(version.id)
+    _mock_durable_launch(monkeypatch, payload)
 
     result = training.launch_training_run(
         db,
         SimpleNamespace(id=uuid.uuid4()),
         version.project_id,
-        _launch_request(version.id),
+        payload,
         client,
+        idempotency_key="launch-one",
     )
 
     persisted = db.added[0]
@@ -344,11 +368,13 @@ def test_training_launch_builds_durable_pending_run_and_submits_job(monkeypatch)
     assert persisted.tags["leaderboard"][0]["model"] == "Ridge"
     assert persisted.tags["leaderboard"][0]["status"] == "pending"
     assert result.run.id == persisted.id
-    assert result.manifest["metadata"]["name"] == persisted.k8s_job_name
-    client.create_job.assert_called_once_with(result.manifest)
+    assert result.manifest["executor"] == "kuberay"
+    assert result.manifest["desiredState"] == "ray_submission_pending"
+    client.create_job.assert_not_called()
+    training.enqueue_outbox.assert_called_once()
 
 
-def test_training_launch_persists_cluster_submission_failure(monkeypatch) -> None:
+def test_training_launch_does_not_call_cluster_in_request_transaction(monkeypatch) -> None:
     version = _version()
     db = _Session()
     client = MagicMock()
@@ -358,22 +384,20 @@ def test_training_launch_persists_cluster_submission_failure(monkeypatch) -> Non
     monkeypatch.setattr(training, "_lock_training_admission", MagicMock())
     monkeypatch.setattr(training, "estimate_training_run", lambda *_args: _estimate())
     monkeypatch.setattr(training, "_latest_leakage_analysis", lambda *_args: (None, {}))
+    payload = _launch_request(version.id)
+    _mock_durable_launch(monkeypatch, payload)
 
-    with pytest.raises(HTTPException, match="cluster rejected") as error:
-        training.launch_training_run(
-            db,
-            SimpleNamespace(id=uuid.uuid4()),
-            version.project_id,
-            _launch_request(version.id),
-            client,
-        )
+    result = training.launch_training_run(
+        db,
+        SimpleNamespace(id=uuid.uuid4()),
+        version.project_id,
+        payload,
+        client,
+        idempotency_key="launch-no-side-effect",
+    )
 
-    persisted = db.added[0]
-    assert error.value.status_code == 502
-    assert persisted.status == RunStatus.FAILED
-    assert persisted.failure_code == "KUBERNETES_JOB_CREATE_FAILED"
-    assert persisted.failure_message == "admission denied"
-    assert persisted.finished_at is not None
+    assert result.run.status == RunStatus.QUEUED
+    client.create_job.assert_not_called()
 
 
 def test_training_launch_rejects_failed_precheck(monkeypatch) -> None:
@@ -389,6 +413,7 @@ def test_training_launch_rejects_failed_precheck(monkeypatch) -> None:
             uuid.uuid4(),
             _launch_request(uuid.uuid4()),
             MagicMock(),
+            idempotency_key="blocked",
         )
     assert error.value.status_code == 409
 
@@ -435,18 +460,277 @@ def test_training_validation_helpers_reject_incoherent_specs(monkeypatch) -> Non
         )
 
 
+@pytest.mark.parametrize(
+    ("updates", "code"),
+    [
+        ({"candidate_models": ["Ridge"]}, "invalid_catalog_selection"),
+        ({"execution_mode_hint": "incremental"}, "invalid_catalog_selection"),
+        ({"candidate_limit": 2}, "invalid_catalog_selection"),
+        ({"deadline_seconds": 7100}, "qualification_deadline_required"),
+        ({"optimization_iterations": 4}, "qualification_strength_required"),
+        ({"cv_folds": 4}, "qualification_strength_required"),
+    ],
+)
+def test_all_catalog_contract_rejects_client_weakening(updates, code: str) -> None:
+    payload = TrainingEstimateRequest(
+        dataset_version_id=uuid.uuid4(),
+        task_type=TaskType.REGRESSION,
+        catalog_mode="all",
+        **updates,
+    )
+    with pytest.raises(HTTPException) as error:
+        training._validate_catalog_selection(payload)
+    assert error.value.detail["code"] == code
+
+
+def test_all_catalog_contract_omitted_candidate_limit_expands_catalog() -> None:
+    payload = TrainingEstimateRequest(
+        dataset_version_id=uuid.uuid4(),
+        task_type=TaskType.REGRESSION,
+        catalog_mode="all",
+    )
+    training._validate_catalog_selection(payload)
+    assert "candidate_limit" not in payload.model_fields_set
+
+
+def test_experiment_spec_is_authoritative_and_compatibility_fields_are_assertions() -> None:
+    spec = SimpleNamespace(
+        id=uuid.uuid4(),
+        dataset_version_id=uuid.uuid4(),
+        task_type=TaskType.REGRESSION.value,
+        target_column="target",
+        primary_metric="rmse",
+        catalog_revision_id=uuid.uuid4(),
+    )
+    project_id = uuid.uuid4()
+    resolved = training._resolve_estimate_identity(
+        _Session(scalar_values=[spec]),
+        project_id,
+        TrainingEstimateRequest(experiment_spec_revision_id=spec.id, catalog_mode="all"),
+    )
+    assert resolved.dataset_version_id == spec.dataset_version_id
+    assert resolved.catalog_revision_id == spec.catalog_revision_id
+    with pytest.raises(HTTPException) as error:
+        training._resolve_estimate_identity(
+            _Session(scalar_values=[spec]),
+            project_id,
+            TrainingEstimateRequest(
+                experiment_spec_revision_id=spec.id,
+                dataset_version_id=uuid.uuid4(),
+                catalog_mode="all",
+            ),
+        )
+    assert error.value.detail["code"] == "experiment_spec_mismatch"
+
+
+def test_reservation_validation_is_atomic_and_digest_bound() -> None:
+    project_id = uuid.uuid4()
+    reservation = SimpleNamespace(
+        id=uuid.uuid4(),
+        project_id=project_id,
+        command_id=uuid.uuid4(),
+        status="held",
+        expires_at=datetime.now(UTC) + timedelta(minutes=5),
+    )
+    digest = "a" * 64
+    command = SimpleNamespace(
+        response_payload={
+            "estimate_digest": digest,
+            "capacity_profile_revision": "local-capacity-v1",
+        }
+    )
+    request = _launch_request(uuid.uuid4()).model_copy(
+        update={
+            "capacity_reservation_id": reservation.id,
+            "estimate_digest": digest,
+            "capacity_profile_revision": "local-capacity-v1",
+        }
+    )
+    estimate = _estimate().model_copy(update={"estimate_digest": digest})
+    db = _Session(scalar_values=[reservation])
+    db.get = lambda _model, _identifier: command
+    assert training._validate_launch_reservation(db, project_id, request, estimate) is reservation
+    request = request.model_copy(update={"estimate_digest": "b" * 64})
+    with pytest.raises(HTTPException) as error:
+        bad_db = _Session(scalar_values=[reservation])
+        bad_db.get = lambda _model, _identifier: command
+        training._validate_launch_reservation(bad_db, project_id, request, estimate)
+    assert error.value.detail["code"] == "capacity_profile_changed"
+
+
+def _coherent_revisions(payload: TrainingLaunchRequest) -> list[object]:
+    return [
+        SimpleNamespace(
+            id=payload.split_revision_id,
+            dataset_version_id=payload.dataset_version_id,
+        ),
+        SimpleNamespace(
+            id=payload.feature_contract_revision_id,
+            task_type=payload.task_type.value,
+            target_column=payload.target_column,
+        ),
+        SimpleNamespace(id=payload.feature_registry_revision_id),
+        SimpleNamespace(
+            id=payload.feature_recipe_revision_id,
+            registry_revision_id=payload.feature_registry_revision_id,
+        ),
+        SimpleNamespace(
+            id=payload.feature_search_space_revision_id,
+            metric_name=payload.primary_metric,
+        ),
+        SimpleNamespace(id=payload.estimator_catalog_revision_id),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("index", "message"),
+    [
+        (0, "selected split revision"),
+        (1, "selected contract revision"),
+        (2, "selected registry revision"),
+        (3, "selected recipe revision"),
+        (4, "selected search revision"),
+        (5, "selected catalog revision"),
+    ],
+)
+def test_launch_revision_resolution_rejects_each_missing_binding(index: int, message: str) -> None:
+    payload = _launch_request(uuid.uuid4())
+    revisions = _coherent_revisions(payload)
+    revisions[index] = None
+    with pytest.raises(HTTPException, match=message):
+        training._resolve_launch_revisions(_Session(scalar_values=revisions), uuid.uuid4(), payload)
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (lambda rows: setattr(rows[0], "dataset_version_id", uuid.uuid4()), "split revision"),
+        (lambda rows: setattr(rows[1], "task_type", "classification"), "feature contract"),
+        (lambda rows: setattr(rows[1], "target_column", "other"), "feature contract"),
+        (lambda rows: setattr(rows[3], "registry_revision_id", uuid.uuid4()), "recipe"),
+        (lambda rows: setattr(rows[4], "metric_name", "mae"), "search-space"),
+    ],
+)
+def test_launch_revision_resolution_rejects_incoherent_lineage(mutate, message: str) -> None:
+    payload = _launch_request(uuid.uuid4())
+    revisions = _coherent_revisions(payload)
+    mutate(revisions)
+    with pytest.raises(HTTPException, match=message):
+        training._resolve_launch_revisions(_Session(scalar_values=revisions), uuid.uuid4(), payload)
+
+
+def test_launch_revision_resolution_accepts_scope_and_rejects_scope_state() -> None:
+    payload = _launch_request(uuid.uuid4()).model_copy(
+        update={"promotional_scope_id": uuid.uuid4()}
+    )
+    revisions = _coherent_revisions(payload)
+    scope = SimpleNamespace(
+        id=payload.promotional_scope_id,
+        split_revision_id=payload.split_revision_id,
+        status=ScopeStatus.OPEN,
+    )
+    resolved = training._resolve_launch_revisions(
+        _Session(scalar_values=[*revisions, scope]), uuid.uuid4(), payload
+    )
+    assert resolved["scope"] is scope
+    with pytest.raises(HTTPException, match="missing or bound"):
+        training._resolve_launch_revisions(
+            _Session(scalar_values=[*revisions, None]), uuid.uuid4(), payload
+        )
+    scope.status = ScopeStatus.SEALED
+    with pytest.raises(HTTPException, match="already sealed"):
+        training._resolve_launch_revisions(
+            _Session(scalar_values=[*_coherent_revisions(payload), scope]),
+            uuid.uuid4(),
+            payload,
+        )
+
+
+def test_estimate_identity_and_catalog_resolution_failure_paths() -> None:
+    project_id = uuid.uuid4()
+    with pytest.raises(HTTPException) as error:
+        training._resolve_estimate_identity(
+            _Session(), project_id, TrainingEstimateRequest(catalog_mode="all")
+        )
+    assert error.value.detail["code"] == "experiment_spec_required"
+    missing_spec = TrainingEstimateRequest(
+        experiment_spec_revision_id=uuid.uuid4(), catalog_mode="all"
+    )
+    with pytest.raises(HTTPException) as error:
+        training._resolve_estimate_identity(_Session(), project_id, missing_spec)
+    assert error.value.detail["code"] == "experiment_spec_changed"
+
+    catalog_id = uuid.uuid4()
+    current = SimpleNamespace(id=uuid.uuid4())
+    request = _request(catalog_revision_id=catalog_id)
+    with pytest.raises(HTTPException) as error:
+        training._resolved_catalog_revision(
+            _Session(scalar_values=[None, current]), project_id, request
+        )
+    assert error.value.detail["current_revision"] == str(current.id)
+    request = _request(catalog_revision_id=None)
+    active = SimpleNamespace(id=uuid.uuid4())
+    assert (
+        training._resolved_catalog_revision(_Session(scalar_values=[active]), project_id, request)
+        is active
+    )
+
+
+def test_reservation_validation_rejects_required_expired_and_profile_mismatch() -> None:
+    project_id = uuid.uuid4()
+    required = _launch_request(uuid.uuid4()).model_copy(
+        update={"catalog_mode": "all", "reserve_capacity": True, "candidate_limit": None}
+    )
+    with pytest.raises(HTTPException) as error:
+        training._validate_launch_reservation(_Session(), project_id, required, _estimate())
+    assert error.value.detail["code"] == "capacity_reservation_required"
+
+    reservation = SimpleNamespace(
+        id=uuid.uuid4(),
+        command_id=uuid.uuid4(),
+        status="held",
+        expires_at=datetime.now(UTC) - timedelta(seconds=1),
+    )
+    supplied = _launch_request(uuid.uuid4()).model_copy(
+        update={"capacity_reservation_id": reservation.id}
+    )
+    with pytest.raises(HTTPException) as error:
+        training._validate_launch_reservation(
+            _Session(scalar_values=[reservation]), project_id, supplied, _estimate()
+        )
+    assert error.value.detail["code"] == "capacity_reservation_expired"
+
+    reservation.expires_at = datetime.now(UTC) + timedelta(minutes=1)
+    supplied = supplied.model_copy(
+        update={"estimate_digest": "a" * 64, "capacity_profile_revision": "wrong"}
+    )
+    estimate = _estimate().model_copy(update={"estimate_digest": "a" * 64})
+    command = SimpleNamespace(
+        response_payload={
+            "estimate_digest": "a" * 64,
+            "capacity_profile_revision": "local-capacity-v1",
+        }
+    )
+    db = _Session(scalar_values=[reservation])
+    db.get = lambda *_args: command
+    with pytest.raises(HTTPException) as error:
+        training._validate_launch_reservation(db, project_id, supplied, estimate)
+    assert error.value.detail["code"] == "capacity_profile_changed"
+
+
 def test_dataset_and_leakage_lookup_helpers() -> None:
     version = _version()
-    assert training._get_dataset_version(
-        _Session(scalar_values=[version]), version.project_id, version.id
-    ) is version
+    assert (
+        training._get_dataset_version(
+            _Session(scalar_values=[version]), version.project_id, version.id
+        )
+        is version
+    )
     with pytest.raises(HTTPException, match="Dataset version not found"):
         training._get_dataset_version(_Session(scalar_values=[None]), uuid.uuid4(), uuid.uuid4())
 
     assert training._latest_leakage_analysis(_Session(), version.id, None) == (None, {})
-    profile = SimpleNamespace(
-        overview_json={"leakage_analysis": {"excluded_columns": ["proxy"]}}
-    )
+    profile = SimpleNamespace(overview_json={"leakage_analysis": {"excluded_columns": ["proxy"]}})
     assert training._latest_leakage_analysis(
         _Session(scalar_values=[profile]), version.id, "target"
     ) == (profile, {"excluded_columns": ["proxy"]})
@@ -460,9 +744,12 @@ def test_training_queries_logs_and_telemetry_fail_softly(monkeypatch) -> None:
     run = _run()
     user = SimpleNamespace(id=uuid.uuid4())
     monkeypatch.setattr(training, "require_project_role", lambda *_args: None)
-    assert training.get_training_run(
-        _Session(scalar_values=[run]), user, run.project_id, run.id, sync=False
-    ) is run
+    assert (
+        training.get_training_run(
+            _Session(scalar_values=[run]), user, run.project_id, run.id, sync=False
+        )
+        is run
+    )
     with pytest.raises(HTTPException, match="Training run not found"):
         training.get_training_run(
             _Session(scalar_values=[None]), user, run.project_id, run.id, sync=False
@@ -501,9 +788,7 @@ def test_training_resources_tracks_peaks_progress_and_degraded_telemetry(monkeyp
     }
     monkeypatch.setattr(training, "get_training_run", lambda *_args, **_kwargs: run)
 
-    usage = training.training_resources(
-        db, SimpleNamespace(), run.project_id, run.id, client
-    )
+    usage = training.training_resources(db, SimpleNamespace(), run.project_id, run.id, client)
 
     assert usage.progress == pytest.approx(1 / 3)
     assert usage.estimated_remaining_seconds is not None
@@ -514,9 +799,7 @@ def test_training_resources_tracks_peaks_progress_and_degraded_telemetry(monkeyp
     assert db.refreshes == 1
 
     client.training_resource_usage.side_effect = ApiException(status=503, reason="metrics down")
-    degraded = training.training_resources(
-        db, SimpleNamespace(), run.project_id, run.id, client
-    )
+    degraded = training.training_resources(db, SimpleNamespace(), run.project_id, run.id, client)
     assert degraded.telemetry_available is False
     assert "metrics down" in (degraded.status_reason or "")
 
@@ -565,9 +848,12 @@ def test_cancel_training_run_is_idempotent_and_tolerates_missing_job(monkeypatch
 
     terminal = _run(RunStatus.SUCCEEDED)
     monkeypatch.setattr(training, "get_training_run", lambda *_args, **_kwargs: terminal)
-    assert training.cancel_training_run(
-        _Session(), user, terminal.project_id, terminal.id, MagicMock()
-    ) is terminal
+    assert (
+        training.cancel_training_run(
+            _Session(), user, terminal.project_id, terminal.id, MagicMock()
+        )
+        is terminal
+    )
 
     cancelled = _run(RunStatus.CANCELLED)
     cancelled.finished_at = None
@@ -587,9 +873,7 @@ def test_cancel_training_run_is_idempotent_and_tolerates_missing_job(monkeypatch
     client = MagicMock()
     client.delete_job.side_effect = ApiException(status=404)
     monkeypatch.setattr(training, "get_training_run", lambda *_args, **_kwargs: active)
-    result = training.cancel_training_run(
-        _Session(), user, active.project_id, active.id, client
-    )
+    result = training.cancel_training_run(_Session(), user, active.project_id, active.id, client)
     assert result.status == RunStatus.CANCELLED
     assert result.tags["cancelled_candidate"] == "Ridge"
     assert result.tags["leaderboard"][0]["status"] == "cancelled"
@@ -620,9 +904,7 @@ def test_restart_and_add_models_reject_invalid_source_states(monkeypatch) -> Non
     request = SimpleNamespace(candidate_models=["Ridge"])
     source.status = RunStatus.RUNNING
     with pytest.raises(HTTPException, match="only be added"):
-        training.add_models_to_training_run(
-            _Session(), user, source.project_id, source.id, request
-        )
+        training.add_models_to_training_run(_Session(), user, source.project_id, source.id, request)
 
 
 @pytest.mark.parametrize(
@@ -716,9 +998,7 @@ def test_reconcile_active_runs_skips_unsubmitted_and_stops_on_api_error(monkeypa
     sync = MagicMock(side_effect=ApiException(status=503))
     monkeypatch.setattr(training, "_sync_run_status", sync)
 
-    training._reconcile_active_runs(
-        db, MagicMock(), [RunStatus.QUEUED, RunStatus.RUNNING]
-    )
+    training._reconcile_active_runs(db, MagicMock(), [RunStatus.QUEUED, RunStatus.RUNNING])
 
     sync.assert_called_once()
 
@@ -773,20 +1053,21 @@ def test_get_run_syncs_active_job_and_logs_without_job(monkeypatch) -> None:
     sync = MagicMock()
     monkeypatch.setattr(training, "_sync_run_status", sync)
     client = MagicMock()
-    assert training.get_training_run(
-        _Session(scalar_values=[run]),
-        SimpleNamespace(),
-        run.project_id,
-        run.id,
-        client=client,
-    ) is run
+    assert (
+        training.get_training_run(
+            _Session(scalar_values=[run]),
+            SimpleNamespace(),
+            run.project_id,
+            run.id,
+            client=client,
+        )
+        is run
+    )
     sync.assert_called_once()
 
     run.k8s_job_name = None
     monkeypatch.setattr(training, "get_training_run", lambda *_args, **_kwargs: run)
-    result = training.training_logs(
-        _Session(), SimpleNamespace(), run.project_id, run.id, client
-    )
+    result = training.training_logs(_Session(), SimpleNamespace(), run.project_id, run.id, client)
     assert result.lines == []
     client.job_logs.assert_not_called()
 
@@ -797,9 +1078,7 @@ def test_resource_usage_propagates_unexpected_api_error(monkeypatch) -> None:
     client.training_resource_usage.side_effect = ApiException(status=500)
     monkeypatch.setattr(training, "get_training_run", lambda *_args, **_kwargs: run)
     with pytest.raises(ApiException):
-        training.training_resources(
-            _Session(), SimpleNamespace(), run.project_id, run.id, client
-        )
+        training.training_resources(_Session(), SimpleNamespace(), run.project_id, run.id, client)
 
 
 def test_leaderboard_combines_parent_extension_and_cancelled_entries(monkeypatch) -> None:
@@ -851,9 +1130,7 @@ def test_leaderboard_combines_parent_extension_and_cancelled_entries(monkeypatch
             SimpleNamespace(name="RandomForest", cost_tier="medium"),
         ],
     )
-    result = training.training_leaderboard(
-        _Session(), SimpleNamespace(), run.project_id, run.id
-    )
+    result = training.training_leaderboard(_Session(), SimpleNamespace(), run.project_id, run.id)
 
     assert result.winner == "Ridge"
     assert result.entries[0].rank == 1
@@ -939,9 +1216,7 @@ def test_standalone_leaderboard_without_metric_remains_unranked(monkeypatch) -> 
         "select_candidates",
         lambda *_args: [SimpleNamespace(name="Ridge", cost_tier="low")],
     )
-    result = training.training_leaderboard(
-        _Session(), SimpleNamespace(), run.project_id, run.id
-    )
+    result = training.training_leaderboard(_Session(), SimpleNamespace(), run.project_id, run.id)
     assert result.primary_metric is None
     assert result.entries[0].status == "running"
 
@@ -955,7 +1230,7 @@ def _successful_submission_client() -> MagicMock:
     return client
 
 
-def test_restart_training_run_submits_and_links_new_attempt(monkeypatch) -> None:
+def test_restart_legacy_run_requires_immutable_revision_bindings(monkeypatch) -> None:
     monkeypatch.setattr(training, "require_project_role", lambda *_args: None)
     source = _run(RunStatus.FAILED)
     source.params.update(
@@ -983,14 +1258,14 @@ def test_restart_training_run_submits_and_links_new_attempt(monkeypatch) -> None
     monkeypatch.setattr(training, "estimate_training_run", lambda *_args: _estimate())
     monkeypatch.setattr(training, "_latest_leakage_analysis", lambda *_args: (None, {}))
 
-    result = training.restart_training_run(
-        db, SimpleNamespace(id=uuid.uuid4()), source.project_id, source.id, client
-    )
-    assert result.run.tags["restarted_from_run_id"] == str(source.id)
-    assert source.tags["restarted_by_run_id"] == str(result.run.id)
+    with pytest.raises(HTTPException, match="predates immutable revision bindings") as error:
+        training.restart_training_run(
+            db, SimpleNamespace(id=uuid.uuid4()), source.project_id, source.id, client
+        )
+    assert error.value.status_code == 409
 
 
-def test_add_models_submits_extension_and_links_parent(monkeypatch) -> None:
+def test_add_models_to_legacy_run_requires_immutable_revision_bindings(monkeypatch) -> None:
     monkeypatch.setattr(training, "require_project_role", lambda *_args: None)
     parent = _run(RunStatus.SUCCEEDED)
     parent.params = {"primary_metric": "rmse", "excluded_leakage_columns": []}
@@ -1005,8 +1280,8 @@ def test_add_models_submits_extension_and_links_parent(monkeypatch) -> None:
     monkeypatch.setattr(training, "_latest_leakage_analysis", lambda *_args: (None, {}))
 
     request = TrainingAddModelsRequest(candidate_models=["Ridge"])
-    result = training.add_models_to_training_run(
-        db, SimpleNamespace(id=uuid.uuid4()), parent.project_id, parent.id, request, client
-    )
-    assert result.run.tags["leaderboard_parent_run_id"] == str(parent.id)
-    assert parent.tags["extension_run_ids"] == [str(result.run.id)]
+    with pytest.raises(HTTPException, match="predates immutable revision bindings") as error:
+        training.add_models_to_training_run(
+            db, SimpleNamespace(id=uuid.uuid4()), parent.project_id, parent.id, request, client
+        )
+    assert error.value.status_code == 409

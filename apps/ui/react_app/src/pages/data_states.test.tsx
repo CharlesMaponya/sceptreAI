@@ -61,6 +61,7 @@ describe("dataset qualification states", () => {
   it("validates file selection, removal, drag-and-drop, and upload errors", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response([]));
     vi.spyOn(XMLHttpRequest.prototype, "open").mockImplementation(() => undefined);
+    vi.spyOn(XMLHttpRequest.prototype, "setRequestHeader").mockImplementation(() => undefined);
     vi.spyOn(XMLHttpRequest.prototype, "send").mockImplementation(function (this: XMLHttpRequest) {
       Object.defineProperty(this, "status", { configurable: true, value: 500 });
       Object.defineProperty(this, "responseText", {

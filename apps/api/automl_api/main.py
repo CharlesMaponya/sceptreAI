@@ -8,6 +8,7 @@ from sqlalchemy import text
 from automl_api import __version__
 from automl_api.api.routes import (
     auth,
+    contracts,
     datasets,
     monitoring,
     operations,
@@ -65,6 +66,7 @@ def create_app() -> FastAPI:
         return {"status": "ok", "database": "ok", "object_store": "ok"}
 
     app.include_router(auth.router, prefix="/api/v1")
+    app.include_router(contracts.router, prefix="/api/v1")
     app.include_router(projects.router, prefix="/api/v1")
     app.include_router(datasets.router, prefix="/api/v1")
     app.include_router(profiling.router, prefix="/api/v1")

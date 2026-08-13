@@ -182,9 +182,7 @@ def get_analysis_result(
         model_name=str(run.params.get("model_name", "unknown")),
         metrics=run.tags.get("metrics", {}),
         diagnostics=run.tags.get("diagnostics", {}),
-        feature_importance=normalize_feature_importance(
-            run.tags.get("feature_importance", [])
-        ),
+        feature_importance=normalize_feature_importance(run.tags.get("feature_importance", [])),
         artifacts=[RunArtifactRead.model_validate(artifact) for artifact in artifacts],
     )
 
@@ -272,20 +270,8 @@ def _launch_analysis_run(
         estimate=estimate,
     )
     run.k8s_job_name = manifest["metadata"]["name"]
-    try:
-        k8s.create_job(manifest)
-    except Exception as exc:
-        run.status = RunStatus.FAILED
-        run.failure_code = "KUBERNETES_JOB_CREATE_FAILED"
-        run.failure_message = str(exc)
-        run.plain_english_failure = "Kubernetes could not start the isolated analysis job."
-        run.finished_at = datetime.now(UTC)
-        db.flush()
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=run.plain_english_failure,
-        ) from exc
     run.status = RunStatus.QUEUED
+    run.tags = {**run.tags, "desired_state": "kubernetes_submission_pending"}
     db.flush()
     return AnalysisLaunchRead(
         run=ModelRunRead.model_validate(run),

@@ -21,6 +21,18 @@ data:
   OBJECT_STORE_SECRET_KEY_SECRET_KEY: {{ include "sceptre.objectStoreSecretKey" . | quote }}
   DATABASE_SECRET_NAME: {{ include "sceptre.platformSecretName" . | quote }}
   DATABASE_SECRET_KEY: {{ .Values.platform.databaseUrlKey | quote }}
+  QUALIFICATION_DATABASE_SECRET_KEY: {{ .Values.platform.qualificationDatabaseUrlKey | quote }}
+  DATABASE_POOL_SIZE: {{ .Values.platform.database.poolSize | quote }}
+  DATABASE_MAX_OVERFLOW: {{ .Values.platform.database.maxOverflow | quote }}
+  DATABASE_POOL_TIMEOUT_SECONDS: {{ .Values.platform.database.poolTimeoutSeconds | quote }}
+  DATABASE_CONNECT_TIMEOUT_SECONDS: {{ .Values.platform.database.connectTimeoutSeconds | quote }}
+  DATABASE_STATEMENT_TIMEOUT_MS: {{ .Values.platform.database.statementTimeoutMs | quote }}
+  DATABASE_LOCK_TIMEOUT_MS: {{ .Values.platform.database.lockTimeoutMs | quote }}
+  DATABASE_IDLE_TRANSACTION_TIMEOUT_MS: {{ .Values.platform.database.idleTransactionTimeoutMs | quote }}
+  DATABASE_APPLICATION_NAME: {{ .Values.platform.database.applicationName | quote }}
+  DATABASE_SSL_MODE: {{ .Values.platform.database.sslMode | quote }}
+  DATABASE_SSL_ROOT_CERT: {{ .Values.platform.database.sslRootCert | quote }}
+  PGBOUNCER_TRANSACTION_MODE: {{ .Values.platform.database.pgbouncerTransactionMode | quote }}
   MLFLOW_TRACKING_URI: {{ include "sceptre.mlflowTrackingUri" . | quote }}
   MLFLOW_ENABLE_ASYNC_LOGGING: "false"
   TRAINING_NAMESPACE: {{ .Release.Namespace | quote }}

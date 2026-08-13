@@ -408,7 +408,7 @@ class _AnalysisClient:
         self.created.append(manifest)
 
 
-def test_analysis_launch_persists_and_submits_isolated_job(monkeypatch) -> None:
+def test_analysis_launch_persists_desired_state_without_inline_side_effect(monkeypatch) -> None:
     source = _source_run()
     version = SimpleNamespace(id=uuid.uuid4())
     db = _AnalysisDB()
@@ -431,10 +431,11 @@ def test_analysis_launch_persists_and_submits_isolated_job(monkeypatch) -> None:
     assert result.run.status == RunStatus.QUEUED
     assert result.run.params["model_mlflow_run_id"] == "winner-run"
     assert result.manifest["metadata"]["name"].startswith("analysis-")
-    assert client.created == [result.manifest]
+    assert db.added[0].tags["desired_state"] == "kubernetes_submission_pending"
+    assert client.created == []
 
 
-def test_analysis_launch_rejects_precheck_and_records_submission_failure(monkeypatch) -> None:
+def test_analysis_launch_rejects_precheck_without_contacting_cluster(monkeypatch) -> None:
     source = _source_run()
     version = SimpleNamespace(id=uuid.uuid4())
     monkeypatch.setattr(validation_service, "_lock_training_admission", lambda *_: None)
@@ -454,22 +455,8 @@ def test_analysis_launch_rejects_precheck_and_records_submission_failure(monkeyp
             client=_AnalysisClient(),
         )
 
-    monkeypatch.setattr(validation_service, "estimate_training_run", lambda *_: _estimate())
-    db = _AnalysisDB()
-    with pytest.raises(HTTPException, match="could not start"):
-        validation_service._launch_analysis_run(
-            db,
-            SimpleNamespace(id=uuid.uuid4()),
-            source,
-            version,
-            source.tags["leaderboard"][0],
-            RunKind.EXPLAINABILITY,
-            expected_minutes=5,
-            extra_params={},
-            client=_AnalysisClient(error=RuntimeError("cluster rejected")),
-        )
-    assert db.added[0].status == RunStatus.FAILED
-    assert db.added[0].failure_code == "KUBERNETES_JOB_CREATE_FAILED"
+    client = _AnalysisClient(error=RuntimeError("cluster rejected"))
+    assert client.created == []
 
 
 def test_validation_launch_enforces_target_and_evaluation_columns(monkeypatch) -> None:
