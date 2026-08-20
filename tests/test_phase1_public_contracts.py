@@ -57,6 +57,8 @@ def test_capabilities_are_stable_and_do_not_expose_infrastructure(monkeypatch) -
     assert result.auth_modes == ["simple"]
     assert result.max_qualified_concurrency == 15
     assert result.environment_qualified is False
+    assert result.upload_data_region == "local"
+    assert result.upload_storage_driver == "embedded"
     assert "hostname" not in result.model_dump()
 
 

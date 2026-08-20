@@ -105,6 +105,7 @@ spec:
                   key: {{ .Values.auth.passwordResetEmail.passwordKey }}
                   optional: true
             - {name: SIMPLE_AUTH_ENABLED, value: {{ .Values.auth.simpleAuthEnabled | quote }}}
+            {{- if or .Values.seaweedfs.enabled (eq .Values.externalObjectStore.driver "s3_compatible") }}
             - name: OBJECT_STORE_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
@@ -115,6 +116,7 @@ spec:
                 secretKeyRef:
                   name: {{ include "sceptre.objectStoreSecretName" . }}
                   key: {{ include "sceptre.objectStoreSecretKey" . }}
+            {{- end }}
           ports:
             - {name: http, containerPort: 8000}
           startupProbe:
@@ -180,6 +182,7 @@ spec:
                   name: {{ include "sceptre.platformSecretName" . }}
                   key: {{ .Values.platform.databaseUrlKey }}
             - {name: RECONCILER_POLL_SECONDS, value: {{ .Values.reconciler.pollSeconds | quote }}}
+            {{- if or .Values.seaweedfs.enabled (eq .Values.externalObjectStore.driver "s3_compatible") }}
             - name: OBJECT_STORE_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
@@ -190,6 +193,7 @@ spec:
                 secretKeyRef:
                   name: {{ include "sceptre.objectStoreSecretName" . }}
                   key: {{ include "sceptre.objectStoreSecretKey" . }}
+            {{- end }}
           resources:
             {{- toYaml .Values.reconciler.resources | nindent 12 }}
           securityContext:

@@ -8,19 +8,21 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 COPY pyproject.toml README.md alembic.ini ./
+RUN apt-get update \
+    && apt-get install --no-install-recommends --yes libgomp1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --uid 10001 sceptre \
+    && mkdir -p apps/api/automl_api packages/automl_shared \
+    && touch apps/api/automl_api/__init__.py packages/automl_shared/__init__.py
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install --upgrade pip==26.1.2 \
+    && python -m pip install ".[k8s,ml]"
+
 COPY alembic ./alembic
 COPY apps/api ./apps/api
 COPY apps/ui/react_app/public/sceptre-icon.png ./apps/ui/react_app/public/sceptre-icon.png
 COPY packages ./packages
 COPY scripts/verify_database_schema.py ./scripts/verify_database_schema.py
-
-RUN apt-get update \
-    && apt-get install --no-install-recommends --yes libgomp1 \
-    && rm -rf /var/lib/apt/lists/* \
-    && useradd --create-home --uid 10001 sceptre
-RUN --mount=type=cache,target=/root/.cache/pip \
-    python -m pip install --upgrade pip==26.1.2 \
-    && python -m pip install ".[k8s,ml]"
 
 USER 10001
 EXPOSE 8000

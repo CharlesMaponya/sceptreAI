@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { api, authenticate, getSession, setSession, signOut, uploadFormData } from "./api";
+import { api, apiBlob, authenticate, getSession, setSession, signOut, uploadFormData } from "./api";
 
 const user = {
   id: "user-1", email: "ada@example.com", full_name: "Ada", global_role: "member",
@@ -227,5 +227,64 @@ describe("API authentication and multipart handling", () => {
     expect(idempotencyKeys).toHaveLength(2);
     expect(idempotencyKeys[0]).toBe(idempotencyKeys[1]);
     expect(getSession()?.tokens.refresh_token).toBe("refresh-2");
+  });
+});
+
+describe("authenticated binary downloads", () => {
+  beforeEach(() => {
+    setSession(null);
+    vi.restoreAllMocks();
+  });
+
+  it("returns the prediction blob and provider filename", async () => {
+    setSession({ user, tokens: {
+      access_token: "access", refresh_token: "refresh", token_type: "bearer", expires_in: 3600,
+    } });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response("prediction\n1\n", {
+      status: 200, headers: { "Content-Disposition": 'attachment; filename="scored.csv"' },
+    }));
+    const result = await apiBlob("/api/v1/offline", { method: "POST", body: "{}" });
+    expect(result.filename).toBe("scored.csv");
+    expect(result.blob.size).toBe(13);
+    expect(new Headers(fetchMock.mock.calls[0][1]?.headers).get("Authorization"))
+      .toBe("Bearer access");
+  });
+
+  it("uses a safe filename fallback and surfaces non-authentication errors", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response("value", { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ detail: "invalid scoring input" }), {
+        status: 422,
+      }));
+    await expect(apiBlob("/api/v1/offline")).resolves.toMatchObject({ filename: "predictions.csv" });
+    await expect(apiBlob("/api/v1/offline")).rejects.toThrow("invalid scoring input");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("refreshes once for an expired binary request", async () => {
+    setSession({ user, tokens: {
+      access_token: "expired", refresh_token: "refresh-1", token_type: "bearer", expires_in: 60,
+    } });
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({ detail: "Expired" }), { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        access_token: "fresh", refresh_token: "refresh-2", token_type: "bearer", expires_in: 3600,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response("prediction", { status: 200 }));
+    await expect(apiBlob("/api/v1/offline", { method: "POST" }))
+      .resolves.toMatchObject({ filename: "predictions.csv" });
+    expect(new Headers(fetchMock.mock.calls[2][1]?.headers).get("Authorization"))
+      .toBe("Bearer fresh");
+  });
+
+  it("clears the session when binary-request refresh fails", async () => {
+    setSession({ user, tokens: {
+      access_token: "expired", refresh_token: "bad", token_type: "bearer", expires_in: 60,
+    } });
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response("expired", { status: 401 }))
+      .mockResolvedValueOnce(new Response("invalid", { status: 401 }));
+    await expect(apiBlob("/api/v1/offline")).rejects.toThrow("session has expired");
+    expect(getSession()).toBeNull();
   });
 });

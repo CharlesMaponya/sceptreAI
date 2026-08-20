@@ -814,6 +814,8 @@ The most important operational settings are:
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM_EMAIL` | Unset, `587`, unset | Optional production password-reset email transport |
 | `SMTP_USERNAME`, `SMTP_PASSWORD` | Unset | Optional SMTP credentials; store these in a Kubernetes Secret |
 | `OBJECT_STORE_ENDPOINT` | Environment-specific | S3-compatible object-store endpoint |
+| `OBJECT_STORE_PUBLIC_ENDPOINT` | Environment-specific | Browser-reachable endpoint used only when signing direct upload instructions |
+| `OBJECT_STORE_REGION` | `local` for development | Physical storage region; mandatory in staging and production and returned to the shared upload client |
 | `OBJECT_STORE_BUCKET` | `automl` | Shared bucket used by the API and Kubernetes Jobs |
 | `OBJECT_STORE_ACCESS_KEY` | Environment-specific | Object-store access key |
 | `OBJECT_STORE_SECRET_KEY` | Environment-specific | Object-store secret key |

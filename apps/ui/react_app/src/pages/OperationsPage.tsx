@@ -6,12 +6,13 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
-import { api, getSession, json, uploadFormData } from "../api";
+import { api, apiBlob, getSession, json } from "../api";
 import {
   Badge, Button, Card, EmptyState, ErrorState, Loading, Metric, Modal, Notice, PageHeader,
 } from "../components/ui";
 import { formatBytes, formatDate, titleCase } from "../lib";
 import type { Dataset, DatasetVersion, Leaderboard, ModelRun, PlatformHealth } from "../types";
+import { createResumableUpload, waitForUploadResult, waitForVerifiedUpload } from "../resumableUpload";
 
 interface Registry {
   id: string; model_run_id: string; stage: string; model_name: string; version: number;
@@ -188,14 +189,19 @@ function DriftModal({ projectId, entry, close, done }: {
   );
   const upload = useMutation({
     mutationFn: async (selected: File) => {
-      const body = new FormData();
-      body.set("dataset_name", `Drift comparison · ${selected.name}`.slice(0, 220));
-      body.set("description", `External drift data for ${entry.model_name}`);
-      body.set("tags", JSON.stringify({ purpose: "drift", registry_entry_id: entry.id }));
-      body.set("file", selected, selected.name);
-      return uploadFormData<DatasetUploadResult>(
-        `/projects/${projectId}/datasets/upload`, body, setUploadProgress,
-      );
+      let result = await createResumableUpload<Dataset, DatasetVersion>({
+        projectId, file: selected,
+        datasetName: `Drift comparison · ${selected.name}`.slice(0, 220),
+        description: `External drift data for ${entry.model_name}`,
+        uploadKind: "drift", sensitivity: "internal",
+        tags: { purpose: "drift", registry_entry_id: entry.id },
+        onTelemetry: ({ percent }) => setUploadProgress(percent),
+      }).result;
+      if (!result.version?.schema_json?.columns?.length) {
+        result = await waitForUploadResult<Dataset, DatasetVersion>(projectId, result.session.id);
+      }
+      if (!result.dataset || !result.version) throw new Error("Drift upload has no dataset version.");
+      return { dataset: result.dataset, version: result.version };
     },
     onSuccess: setUploaded,
   });
@@ -276,7 +282,7 @@ function DeploymentRow({ projectId, deployment, refresh }: {
         description="The prediction endpoint will become unavailable. The registered model and evidence remain intact."
         confirmLabel="Stop deployment" close={() => setConfirmStop(false)}
         action={() => stop.mutateAsync()} />}
-      {apiAccessOpen && <ApiAccessModal deployment={deployment}
+      {apiAccessOpen && <ApiAccessModal projectId={projectId} deployment={deployment}
         close={() => setApiAccessOpen(false)} />}</td></tr>;
 }
 
@@ -299,8 +305,8 @@ function DeploymentAccess({ deployment, openApiAccess }: {
   return <span className="endpoint-state">Provisioning</span>;
 }
 
-function ApiAccessModal({ deployment, close }: {
-  deployment: DeployStatus; close: () => void;
+function ApiAccessModal({ projectId, deployment, close }: {
+  projectId: string; deployment: DeployStatus; close: () => void;
 }) {
   const [accessToken, setAccessToken] = useState(
     () => getSession()?.tokens.access_token || "",
@@ -385,6 +391,8 @@ function ApiAccessModal({ deployment, close }: {
         <div className="gateway-endpoints">{platformEndpoints.map(([method, label, path]) =>
           path && <PlatformEndpoint key={label} method={method} label={label} path={path} />)}</div>
       </section>
+      {deployment.platform_offline_endpoint && <OfflineScoringUpload
+        projectId={projectId} endpoint={deployment.platform_offline_endpoint} />}
       {deployment.endpoint && <section className="endpoint-access__section">
         <h3>Direct external service</h3>
         <p>These links are available because external model exposure is configured for this cluster.</p>
@@ -411,6 +419,51 @@ function ApiAccessModal({ deployment, close }: {
       <div className="modal__actions"><Button variant="ghost" onClick={close}>Close</Button></div>
     </div>
   </Modal>;
+}
+
+function OfflineScoringUpload({ projectId, endpoint }: { projectId: string; endpoint: string }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [progress, setProgress] = useState(0);
+  const predict = useMutation({
+    mutationFn: async (selected: File) => {
+      const completion = await createResumableUpload({
+        projectId,
+        file: selected,
+        datasetName: `Offline scoring · ${selected.name}`.slice(0, 220),
+        uploadKind: "offline_scoring",
+        sensitivity: "internal",
+        tags: { purpose: "offline_scoring" },
+        onTelemetry: ({ percent }) => setProgress(percent),
+      }).result;
+      await waitForVerifiedUpload(projectId, completion.session.id);
+      const result = await apiBlob(
+        endpoint,
+        json("POST", { upload_session_id: completion.session.id }),
+      );
+      const url = URL.createObjectURL(result.blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = result.filename;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      return result.filename;
+    },
+  });
+  return <section className="endpoint-access__section">
+    <h3>Offline file prediction</h3>
+    <p>The browser uploads directly to object storage once. Sceptre verifies the object, then streams it to the deployed model.</p>
+    <label className="dropzone analysis-upload"><input type="file"
+      accept=".csv,.parquet,.xlsx,.xls,.json,.jsonl"
+      onChange={(event) => { setFile(event.target.files?.[0] || null); setProgress(0); predict.reset(); }} />
+      <FileSpreadsheet /><b>{file?.name || "Choose a scoring file"}</b>
+      <span>CSV, Parquet, Excel, JSON, or JSONL</span></label>
+    {file && <Button variant="secondary" loading={predict.isPending}
+      onClick={() => predict.mutate(file)}><Upload size={15} />Upload and predict</Button>}
+    {predict.isPending && <div className="progress-panel"><div><b>Direct upload and verification</b>
+      <span>{progress}%</span></div><progress value={progress} max={100} /></div>}
+    {predict.error && <Notice tone="danger">{predict.error.message}</Notice>}
+    {predict.data && <Notice tone="success">Downloaded {predict.data}.</Notice>}
+  </section>;
 }
 
 function PlatformEndpoint({ method, label, path }: {

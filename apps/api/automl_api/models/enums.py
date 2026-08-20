@@ -41,10 +41,15 @@ class DatasetStatus(StrEnum):
 
 
 class ObjectStoreType(StrEnum):
+    EMBEDDED = "embedded"
+    S3_COMPATIBLE = "s3_compatible"
+    AWS_S3 = "aws_s3"
+    AZURE_BLOB = "azure_blob"
+    GCS = "gcs"
+    # Legacy persisted identities remain readable until the Phase 2 backfill is complete.
     MINIO = "minio"
     S3 = "s3"
     AZURE = "azure"
-    GCS = "gcs"
 
 
 class TaskType(StrEnum):

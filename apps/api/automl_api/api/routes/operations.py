@@ -26,6 +26,7 @@ from automl_api.schemas.training import ModelRunRead
 from automl_api.services.idempotency import durable_mutation
 from automl_api.services.inference_gateway import (
     proxy_deployment_inference,
+    proxy_object_backed_offline_inference,
     resolve_deployment_inference_target,
 )
 from automl_api.services.operations import (
@@ -215,6 +216,12 @@ async def deployment_inference_gateway(
         project_id,
         run_id,
     )
+    if path == "v1/predict/offline" and request.headers.get("content-type", "").startswith(
+        "application/json"
+    ):
+        return await proxy_object_backed_offline_inference(
+            request, target, db, current_user, project_id
+        )
     return await proxy_deployment_inference(request, target, path)
 
 

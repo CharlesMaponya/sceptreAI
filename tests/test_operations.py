@@ -1306,7 +1306,7 @@ def test_deploy_registered_model_persists_manifest_and_dockerfile(monkeypatch) -
     assert result.run.gpu_requested is False
     assert result.run.tags["service_name"] == "model-service"
     assert result.run.tags["desired_state"] == "deployment_pending"
-    assert result.dockerfile_uri.startswith("minio://automl/projects/")
+    assert result.dockerfile_uri.startswith("pending://automl/projects/")
     assert client.created == []
     assert any(isinstance(item, RunArtifact) for item in db.added)
 

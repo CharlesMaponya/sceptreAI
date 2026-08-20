@@ -134,6 +134,13 @@ putting credentials in values files. Required secret key names are documented in
 `values.yaml`.
 `examples/values-external.yaml` shows the full external-service shape without
 embedding credentials.
+Set `externalObjectStore.region` to the bucket or container's physical region.
+The chart rejects staging and production renders without it so the browser and
+API cannot issue an upload with an ambiguous residency classification.
+Staging and production also require `uploads.scanner.command`,
+`uploads.scanner.version`, and `uploads.scanner.signatureVersion`. The last two
+values must be governed release identifiers rather than `unconfigured`; they
+are persisted with each upload verification result.
 `examples/values-capabilities.yaml` exercises ingress, per-model ingress, an RWX
 cache, PriorityClass, ResourceQuota, and LimitRange on clusters that provide
 those capabilities.

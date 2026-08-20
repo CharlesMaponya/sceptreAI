@@ -9,6 +9,7 @@ import { MonitoringPage } from "./MonitoringPage";
 import { OperationsPage } from "./OperationsPage";
 import { RunsPage } from "./RunsPage";
 import { TrainingPage } from "./TrainingPage";
+import * as resumableUpload from "../resumableUpload";
 
 vi.mock("../components/PlotlyChart", () => ({
   default: () => <div data-testid="plotly-chart" />,
@@ -527,28 +528,33 @@ describe("governed workflow states", () => {
       });
       return response([]);
     });
-    vi.spyOn(XMLHttpRequest.prototype, "open").mockImplementation(() => undefined);
-    vi.spyOn(XMLHttpRequest.prototype, "setRequestHeader").mockImplementation(() => undefined);
-    vi.spyOn(XMLHttpRequest.prototype, "send").mockImplementation(function (this: XMLHttpRequest) {
+    vi.spyOn(resumableUpload, "createResumableUpload").mockImplementation((options) => {
       uploadAttempt += 1;
-      const columns = uploadAttempt === 1 ? [{ name: "age" }] : [
-        { name: "age" }, { name: "tenure" }, { name: "region" },
-      ];
-      this.upload.dispatchEvent(new ProgressEvent("progress", {
-        lengthComputable: true, loaded: 100, total: 100,
-      }));
-      finishUpload = () => {
-        Object.defineProperty(this, "status", { configurable: true, value: 201 });
-        Object.defineProperty(this, "responseText", { configurable: true, value: JSON.stringify({
+      options.onTelemetry?.({ stage: "uploading", confirmedBytes: 100, totalBytes: 100,
+        percent: 100, bytesPerSecond: 100, retry: 0 });
+      let resolveUpload!: (value: unknown) => void;
+      const result = new Promise((resolve) => { resolveUpload = resolve; });
+      finishUpload = () => resolveUpload({
           dataset: { id: "validation-dataset", name: "External cohort" },
           version: {
             id: "validation-version", version_number: 1,
-            schema_json: { columns },
+            schema_json: { columns: [] },
           },
-        }) });
-        this.onload?.call(this, new ProgressEvent("load"));
-      };
+          session: { id: `validation-upload-${uploadAttempt}` },
+        });
+      return { result, pause: vi.fn(), resume: vi.fn(), cancel: vi.fn() } as unknown as
+        resumableUpload.ResumableUploadController;
     });
+    vi.spyOn(resumableUpload, "waitForUploadResult").mockImplementation(async () => ({
+      dataset: { id: "validation-dataset", name: "External cohort" },
+      version: {
+        id: "validation-version", version_number: 1,
+        schema_json: { columns: uploadAttempt === 1 ? [{ name: "age" }] : [
+          { name: "age" }, { name: "tenure" }, { name: "region" },
+        ] },
+      },
+      session: { id: `validation-upload-${uploadAttempt}` } as resumableUpload.UploadSession,
+    }));
     const user = userEvent.setup();
     const { container } = renderRoute(<RunsPage />, "/projects/project-1/runs");
 
@@ -743,18 +749,26 @@ describe("governed workflow states", () => {
       }
       return response([]);
     });
-    vi.spyOn(XMLHttpRequest.prototype, "open").mockImplementation(() => undefined);
-    vi.spyOn(XMLHttpRequest.prototype, "setRequestHeader").mockImplementation(() => undefined);
-    vi.spyOn(XMLHttpRequest.prototype, "send").mockImplementation(function (this: XMLHttpRequest) {
-      this.upload.dispatchEvent(new ProgressEvent("progress", { lengthComputable: true, loaded: 100, total: 100 }));
-      finishUpload = () => {
-        Object.defineProperty(this, "status", { configurable: true, value: 201 });
-        Object.defineProperty(this, "responseText", { configurable: true, value: JSON.stringify({
+    vi.spyOn(resumableUpload, "createResumableUpload").mockImplementation((options) => {
+      options.onTelemetry?.({ stage: "uploading", confirmedBytes: 100, totalBytes: 100,
+        percent: 100, bytesPerSecond: 100, retry: 0 });
+      let resolveUpload!: (value: unknown) => void;
+      const result = new Promise((resolve) => { resolveUpload = resolve; });
+      finishUpload = () => resolveUpload({
           dataset: { id: "drift-dataset", name: "Current customers" },
-          version: { id: "drift-version", schema_json: { columns: [{ name: "age" }, { name: "tenure" }] } },
-        }) });
-        this.onload?.call(this, new ProgressEvent("load"));
-      };
+          version: { id: "drift-version", schema_json: { columns: [] } },
+          session: { id: "drift-upload" },
+        });
+      return { result, pause: vi.fn(), resume: vi.fn(), cancel: vi.fn() } as unknown as
+        resumableUpload.ResumableUploadController;
+    });
+    vi.spyOn(resumableUpload, "waitForUploadResult").mockResolvedValue({
+      dataset: { id: "drift-dataset", name: "Current customers" },
+      version: {
+        id: "drift-version",
+        schema_json: { columns: [{ name: "age" }, { name: "tenure" }] },
+      },
+      session: { id: "drift-upload" } as resumableUpload.UploadSession,
     });
     const user = userEvent.setup();
     const { container } = renderRoute(<OperationsPage />, "/projects/project-1/operations");

@@ -125,6 +125,8 @@ class CapabilitiesRead(BaseModel):
     max_qualified_concurrency: int
     environment_qualified: bool
     deployment_target: str
+    upload_data_region: str
+    upload_storage_driver: str
 
 
 class CursorPage(BaseModel):

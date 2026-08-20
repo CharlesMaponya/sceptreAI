@@ -8,15 +8,36 @@ from threading import Barrier
 from time import sleep
 
 import pytest
-from automl_api.models.enums import AttemptStatus, AuthProvider, GlobalRole, OutboxStatus
+from automl_api.models.datasets import Dataset, DatasetVersion
+from automl_api.models.enums import (
+    AttemptStatus,
+    AuthProvider,
+    DatasetFormat,
+    DatasetStatus,
+    GlobalRole,
+    ObjectStoreType,
+    OutboxStatus,
+    RunKind,
+    RunStatus,
+    TaskType,
+)
 from automl_api.models.iam import User
 from automl_api.models.projects import Project
 from automl_api.models.qualification import FinalTestAllocation
-from automl_api.models.workflows import WorkflowAttempt
+from automl_api.models.runs import ModelRun
+from automl_api.models.workflows import (
+    EstimatorCatalogRevision,
+    FeatureRecipeRevision,
+    FeatureRegistryRevision,
+    TrainingCandidate,
+    TrainingTrial,
+    WorkflowAttempt,
+)
 from automl_api.services import final_test_authority as authority
 from automl_api.services import workflow_state as state
 from sqlalchemy import create_engine, delete, func, select
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 
@@ -456,3 +477,144 @@ def test_three_provider_race_allows_only_the_canonical_final_reader(
             db.execute(
                 delete(FinalTestAllocation).where(FinalTestAllocation.id == allocation_id)
             )
+
+
+def test_attempt_lineage_enforces_one_active_generation_and_run_parent(
+    phase1_db: Session, tenant: tuple[User, Project]
+) -> None:
+    user, project = tenant
+    dataset = Dataset(project_id=project.id, created_by_id=user.id, name="lineage")
+    phase1_db.add(dataset)
+    phase1_db.flush()
+    version = DatasetVersion(
+        project_id=project.id,
+        dataset_id=dataset.id,
+        created_by_id=user.id,
+        version_number=1,
+        status=DatasetStatus.READY,
+        format=DatasetFormat.CSV,
+        object_store_type=ObjectStoreType.MINIO,
+        object_uri="s3://automl/phase1-lineage.csv",
+        content_hash="a" * 64,
+    )
+    phase1_db.add(version)
+    phase1_db.flush()
+    run = ModelRun(
+        project_id=project.id,
+        dataset_version_id=version.id,
+        created_by_id=user.id,
+        run_kind=RunKind.TRAINING,
+        status=RunStatus.QUEUED,
+        task_type=TaskType.REGRESSION,
+        target_column="target",
+    )
+    phase1_db.add(run)
+    phase1_db.flush()
+    run_attempt = WorkflowAttempt(
+        project_id=project.id,
+        stage="training_run",
+        logical_key=f"training-run:{run.id}",
+        model_run_id=run.id,
+        workload_identity="project-training",
+        generation=1,
+        fencing_token=uuid.uuid4().hex,
+        status=AttemptStatus.RUNNING,
+    )
+    phase1_db.add(run_attempt)
+    phase1_db.flush()
+
+    duplicate = WorkflowAttempt(
+        project_id=project.id,
+        stage="training_run",
+        logical_key=run_attempt.logical_key,
+        model_run_id=run.id,
+        workload_identity="project-training",
+        generation=2,
+        fencing_token=uuid.uuid4().hex,
+        status=AttemptStatus.PENDING,
+    )
+    savepoint = phase1_db.begin_nested()
+    try:
+        phase1_db.add(duplicate)
+        with pytest.raises(IntegrityError, match="uq_attempt_active_logical"):
+            phase1_db.flush()
+    finally:
+        savepoint.rollback()
+
+    catalog = EstimatorCatalogRevision(
+        project_id=project.id,
+        name="catalog",
+        revision=1,
+        digest_scope="catalog",
+        content_digest="b" * 64,
+        release_version="phase1",
+    )
+    registry = FeatureRegistryRevision(
+        project_id=project.id,
+        name="registry",
+        revision=1,
+        digest_scope="feature_registry",
+        content_digest="c" * 64,
+    )
+    phase1_db.add_all([catalog, registry])
+    phase1_db.flush()
+    recipe = FeatureRecipeRevision(
+        project_id=project.id,
+        name="recipe",
+        revision=1,
+        digest_scope="feature_recipe",
+        content_digest="d" * 64,
+        registry_revision_id=registry.id,
+    )
+    phase1_db.add(recipe)
+    phase1_db.flush()
+    candidate = TrainingCandidate(
+        project_id=project.id,
+        model_run_id=run.id,
+        candidate_key="0:fixed",
+        estimator_key="fixed",
+        catalog_revision_id=catalog.id,
+        feature_recipe_revision_id=recipe.id,
+    )
+    phase1_db.add(candidate)
+    phase1_db.flush()
+    trial = TrainingTrial(
+        project_id=project.id,
+        candidate_id=candidate.id,
+        suggestion_id="suggestion-1",
+        params_digest="e" * 64,
+    )
+    phase1_db.add(trial)
+    phase1_db.flush()
+    trial_attempt = WorkflowAttempt(
+        project_id=project.id,
+        stage="training_trial",
+        logical_key=f"trial:{trial.id}",
+        model_run_id=run.id,
+        trial_id=trial.id,
+        run_attempt_id=run_attempt.id,
+        workload_identity="project-training",
+        generation=1,
+        fencing_token=uuid.uuid4().hex,
+    )
+    phase1_db.add(trial_attempt)
+    phase1_db.flush()
+
+    wrong_parent = WorkflowAttempt(
+        project_id=project.id,
+        stage="training_trial",
+        logical_key=f"trial:{trial.id}:wrong-parent",
+        model_run_id=run.id,
+        trial_id=trial.id,
+        run_attempt_id=trial_attempt.id,
+        workload_identity="project-training",
+        generation=1,
+        fencing_token=uuid.uuid4().hex,
+    )
+    savepoint = phase1_db.begin_nested()
+    try:
+        phase1_db.add(wrong_parent)
+        with pytest.raises(IntegrityError, match="same-run training_run parent"):
+            phase1_db.flush()
+    finally:
+        savepoint.rollback()

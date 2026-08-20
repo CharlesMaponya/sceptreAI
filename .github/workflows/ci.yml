@@ -128,6 +128,12 @@ jobs:
       - run: npm ci
       - run: npm run test:coverage
 
+      - name: Install the Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser regressions
+        run: npm run test:e2e
+
       - name: Upload frontend coverage
         if: ${{ always() && hashFiles('apps/ui/react_app/coverage/coverage-summary.json') != '' }}
         uses: actions/upload-artifact@v6
@@ -281,6 +287,24 @@ jobs:
             --namespace sceptre \
             --values infra/helm/sceptre/examples/values-capabilities.yaml \
             > /tmp/sceptre-values-capabilities.yaml
+          if helm template sceptre "$chart" \
+            --namespace sceptre \
+            --set environment=production \
+            --set-string uploads.scanner.command=/usr/bin/scanner \
+            --set-string uploads.scanner.version=scanner-1.0.0 \
+            --set-string uploads.scanner.signatureVersion=signatures-2026-08-20 \
+            > /tmp/sceptre-production-missing-region.yaml 2>&1; then
+            echo "Production rendering accepted an undefined storage region."
+            exit 1
+          fi
+          helm template sceptre "$chart" \
+            --namespace sceptre \
+            --set environment=production \
+            --set-string uploads.scanner.command=/usr/bin/scanner \
+            --set-string uploads.scanner.version=scanner-1.0.0 \
+            --set-string uploads.scanner.signatureVersion=signatures-2026-08-20 \
+            --set-string externalObjectStore.region=af-south-1 \
+            > /tmp/sceptre-production-governed.yaml
 
       - name: Assert portable defaults
         run: |
@@ -305,7 +329,13 @@ jobs:
           grep -Fq 'resources: ["serviceaccounts"]' "$rendered"
           grep -Fq 'resources: ["rayjobs", "rayjobs/status", "rayclusters", "rayclusters/status"]' "$rendered"
           grep -Fq "image: \"${image}:seaweedfs-${version}\"" "$rendered"
+          grep -Fq 'OBJECT_STORE_TYPE: "s3_compatible"' "$rendered"
           grep -Fq 'OBJECT_STORE_ENDPOINT: "http://sceptre-seaweedfs:8333"' "$rendered"
+          grep -Fq 'UPLOAD_PART_SIZE_BYTES: "134217728"' "$rendered"
+          grep -Fq 'BUFFERED_UPLOAD_MAX_BYTES: "104857600"' "$rendered"
+          grep -Fq 'client.put_bucket_cors' "$rendered"
+          grep -Fq 'OBJECT_STORE_PUBLIC_ENDPOINT: "https://s3.example.test"' \
+            /tmp/sceptre-values-external.yaml
           grep -Fq "image: \"${image}:postgresql-${version}\"" "$rendered"
           grep -Fq 'runAsUser: 101' "$rendered"
           grep -Fq 'runAsGroup: 101' "$rendered"

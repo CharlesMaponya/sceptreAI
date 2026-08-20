@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import re
+import secrets
 import uuid
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
@@ -18,6 +20,8 @@ from automl_api.models.enums import ProjectRole, RunKind, RunStatus
 from automl_api.models.iam import User
 from automl_api.models.runs import ModelRun
 from automl_api.services.projects import require_project_role
+from automl_api.services.uploads import get_upload_session
+from automl_api.storage.object_store import get_object_store
 
 _DNS_LABEL = re.compile(r"^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$")
 _ACTIVE_DEPLOYMENT_STATUSES = {RunStatus.SUCCEEDED}
@@ -48,6 +52,7 @@ _FORWARDED_RESPONSE_HEADERS = {
     "x-prediction-row-count",
 }
 _MAX_OPENAPI_BYTES = 5 * 1024 * 1024
+_MAX_OBJECT_REQUEST_BYTES = 16 * 1024
 
 
 @dataclass(frozen=True)
@@ -145,15 +150,102 @@ async def proxy_deployment_inference(
         headers=_selected_headers(request.headers, _FORWARDED_REQUEST_HEADERS),
         content=request.stream(),
     )
+    upstream_response = await _send_upstream(client, upstream_request, target)
+
+    if path in {"docs", "openapi.json"}:
+        return await _rewritten_openapi_response(
+            upstream_response,
+            client,
+            gateway_base_path,
+            render_docs=path == "docs",
+        )
+
+    return _streaming_upstream_response(upstream_response, client)
+
+
+async def proxy_object_backed_offline_inference(
+    request: Request,
+    target: DeploymentInferenceTarget,
+    db: Session,
+    user: User,
+    project_id: uuid.UUID,
+) -> Response:
+    """Stream a verified direct upload to inference without browser retransmission."""
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > _MAX_OBJECT_REQUEST_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail="The object-backed inference request is too large.",
+            )
     try:
-        upstream_response = await client.send(upstream_request, stream=True)
+        document = json.loads(body)
+        session_id = uuid.UUID(str(document["upload_session_id"]))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="A valid offline-scoring upload_session_id is required.",
+        ) from exc
+
+    upload = get_upload_session(db, user, project_id, session_id)
+    if upload.upload_kind != "offline_scoring":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The upload is not an offline-scoring input.",
+        )
+    if upload.status != "ready" or not upload.completed_object_uri:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The offline-scoring upload has not passed object verification.",
+        )
+    store = get_object_store()
+    if upload.provider_driver != store.driver_name:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The upload provider does not match the active object-store driver.",
+        )
+
+    source = store.open_stream(upload.completed_object_uri)
+    boundary = f"sceptre-{secrets.token_hex(16)}"
+    upstream_url = httpx.URL(target.url_for("v1/predict/offline")).copy_with(
+        query=request.scope.get("query_string", b""),
+    )
+    headers = _selected_headers(request.headers, {"accept", "accept-encoding", "accept-language"})
+    headers["content-type"] = f"multipart/form-data; boundary={boundary}"
+    client = _new_http_client()
+    upstream_request = client.build_request(
+        "POST",
+        upstream_url,
+        headers=headers,
+        content=_multipart_object_body(
+            source,
+            boundary=boundary,
+            filename=upload.original_filename,
+            content_type=upload.content_type or "application/octet-stream",
+        ),
+    )
+    try:
+        upstream_response = await _send_upstream(client, upstream_request, target)
+    except BaseException:
+        source.close()
+        raise
+    return _streaming_upstream_response(upstream_response, client)
+
+
+async def _send_upstream(
+    client: httpx.AsyncClient,
+    upstream_request: httpx.Request,
+    target: DeploymentInferenceTarget,
+) -> httpx.Response:
+    try:
+        return await client.send(upstream_request, stream=True)
     except httpx.TimeoutException as exc:
         await client.aclose()
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail=(
-                "The deployed model did not respond before the platform gateway "
-                "connection timeout."
+                "The deployed model did not respond before the platform gateway connection timeout."
             ),
         ) from exc
     except httpx.RequestError as exc:
@@ -169,14 +261,11 @@ async def proxy_deployment_inference(
         await client.aclose()
         raise
 
-    if path in {"docs", "openapi.json"}:
-        return await _rewritten_openapi_response(
-            upstream_response,
-            client,
-            gateway_base_path,
-            render_docs=path == "docs",
-        )
 
+def _streaming_upstream_response(
+    upstream_response: httpx.Response,
+    client: httpx.AsyncClient,
+) -> StreamingResponse:
     response_headers = _selected_headers(
         upstream_response.headers,
         _FORWARDED_RESPONSE_HEADERS,
@@ -195,6 +284,26 @@ async def proxy_deployment_inference(
         status_code=upstream_response.status_code,
         headers=response_headers,
     )
+
+
+async def _multipart_object_body(
+    source,
+    *,
+    boundary: str,
+    filename: str,
+    content_type: str,
+) -> AsyncIterator[bytes]:
+    safe_filename = re.sub(r"[^A-Za-z0-9._-]+", "_", filename).strip("._") or "input.csv"
+    yield (
+        f'--{boundary}\r\nContent-Disposition: form-data; name="file"; '
+        f'filename="{safe_filename}"\r\nContent-Type: {content_type}\r\n\r\n'
+    ).encode("ascii")
+    try:
+        while chunk := await asyncio.to_thread(source.read, 1024 * 1024):
+            yield chunk
+    finally:
+        source.close()
+    yield f"\r\n--{boundary}--\r\n".encode("ascii")
 
 
 def _new_http_client() -> httpx.AsyncClient:
@@ -275,11 +384,7 @@ async def _rewritten_openapi_response(
 
 
 def _selected_headers(headers: Mapping[str, str], allowed: set[str]) -> dict[str, str]:
-    return {
-        name: value
-        for name, value in headers.items()
-        if name.lower() in allowed
-    }
+    return {name: value for name, value in headers.items() if name.lower() in allowed}
 
 
 def _gateway_base_path(request: Request, path: str) -> str:

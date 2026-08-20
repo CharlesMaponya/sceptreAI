@@ -1,0 +1,26 @@
+schema_revision: sceptre-phase-1-migration-rehearsal-v1
+status: passed
+observed_at: "2026-08-20T11:47:59+02:00"
+command: scripts/rehearse_phase1_migrations.py
+target_revision: 0007_phase1_attempt_lineage
+verified_tables: 42
+alembic_check: passed
+supported_starts:
+  - revision: 0001_initial
+    status: passed
+  - revision: 0002_expand_artifact_kind
+    status: passed
+  - revision: 0003_security_controls
+    status: passed
+  - revision: 0004_resumable_dataset_uploads
+    status: passed
+    seeded_upload_rows: 10000
+    preserved_upload_rows: 10000
+verification_scope:
+  - columns
+  - types
+  - constraints
+  - indexes
+  - defaults
+  - foreign_keys
+  - alembic_head

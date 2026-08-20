@@ -4,7 +4,10 @@ metadata:
   name: automl-platform-config
   namespace: automl
 data:
-  OBJECT_STORE_TYPE: minio
+  OBJECT_STORE_TYPE: s3_compatible
+  OBJECT_STORE_ENDPOINT: http://automl-seaweedfs:8333
+  OBJECT_STORE_BUCKET: automl
+  OBJECT_STORE_REGION: local
   DATASET_CACHE_SIZE_GB: "5"
   GPU_ENABLED: "false"
   CLUSTER_OBSERVER_ENABLED: "false"

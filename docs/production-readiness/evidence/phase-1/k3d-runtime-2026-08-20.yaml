@@ -1,0 +1,86 @@
+schema_revision: sceptre-phase-1-k3d-runtime-v1
+status: passed
+observed_at: "2026-08-20T12:30:26+02:00"
+cluster:
+  name: sceptre-local
+  kubernetes_server: v1.35.6+k3s1
+  nodes_ready: 3
+  topology:
+    servers: 1
+    agents: 2
+operator:
+  image: quay.io/kuberay/operator:v1.6.2
+  ready_replicas: 1
+release:
+  namespace: sceptre
+  helm_revision: 16
+  status: deployed
+  replicas:
+    api: {ready: 2, desired: 2}
+    reconciler: {ready: 3, desired: 3}
+    ui: {ready: 2, desired: 2}
+  health:
+    live: passed
+    database: passed
+    object_store: passed
+    helm_smoke_hook: passed
+  schema:
+    tables: 42
+    revision: 0007_phase1_attempt_lineage
+rbac:
+  api_create_rayjobs: denied
+  reconciler_create_rayjobs: allowed
+  reconciler_read_platform_secret: denied
+ray_lifecycle:
+  submit_outbox_delivery_attempts: 1
+  cancel_outbox_delivery_attempts: 1
+  initial_attempt_status_before_claim: pending
+  submitted_attempt_status: submitted
+  first_generation_terminal_status: superseded
+  replacement_generation: 2
+  replacement_terminal_status: cancelled
+  submission_mode: K8sJobMode
+  embedded_raycluster: true
+  cluster_selector_present: false
+  backoff_limit: 0
+  shutdown_after_job_finishes: false
+  deletion_policy_on_success: DeleteNone
+  deletion_policy_on_failure: DeleteNone
+  head_and_worker_image_digest: sha256:9b7b834f4a82323a6ffbd5f0d228ac2a467165f99999db450dd2876b4bf447f4
+  submitter_job_created: true
+  submitter_job_backoff_limit: 0
+  submitter_job_image_digest: sha256:9b7b834f4a82323a6ffbd5f0d228ac2a467165f99999db450dd2876b4bf447f4
+  submitter_job_project_service_account: true
+  submitter_job_restart_policy: Never
+  workload_identity_project_bound: true
+  service_account_token_automount: false
+  resource_deleted_after_durable_cancel: true
+ray_recovery:
+  failed_generation_observed: true
+  failed_generation_status: superseded
+  replacement_generation_submitted: true
+  replacement_predecessor_linked: true
+  replacement_fence_rotated: true
+  replacement_cancel_delivered_once: true
+cluster_recovery:
+  disk_pressure_detected_during_large_image_pull: true
+  build_and_obsolete_phase_cache_reclaimed_gb: 56
+  persistent_volumes_deleted: false
+  nodes_ready_after_recovery: 3
+  nodes_with_disk_pressure_after_recovery: 0
+  platform_replicas_restored: true
+ha_reconciler:
+  replicas: 3
+  victim_deleted: true
+  expired_claim_recovered: true
+  expired_claim_delivery_attempts: 2
+  pending_entry_delivered_once: true
+  pending_entry_delivery_attempts: 1
+cleanup:
+  rayjobs_remaining: 0
+  rayclusters_remaining: 0
+  disposable_service_accounts_remaining: 0
+  disposable_database_projects_remaining: 0
+  disposable_model_runs_remaining: 0
+  disposable_attempts_remaining: 0
+  disposable_outbox_entries_remaining: 0

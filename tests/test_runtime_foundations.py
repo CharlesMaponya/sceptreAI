@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import sys
+import tomllib
 import uuid
 from contextlib import AbstractContextManager
 from datetime import timedelta
@@ -15,12 +17,45 @@ from automl_api.core.config import Settings
 from automl_api.db import qualification_session
 from automl_api.db import session as db_session
 from automl_api.main import create_app, lifespan
-from automl_api.models.enums import RunKind
+from automl_api.models.enums import AttemptStatus, RunKind, RunStatus
 from automl_api.security.tokens import create_signed_token
 from automl_api.training import analysis, pipeline, worker
 from fastapi import HTTPException, Response
 from fastapi.routing import APIRoute
 from fastapi.security import HTTPAuthorizationCredentials
+
+
+def test_packaging_is_bounded_to_the_qualified_python_312_runtime() -> None:
+    project = tomllib.loads(Path("pyproject.toml").read_text())
+    assert project["project"]["requires-python"] == ">=3.12,<3.13"
+    requirements = Path("requirements-training.txt").read_text()
+    assert "boto3==1.43.56" in project["project"]["dependencies"]
+    assert "botocore==1.43.56" in project["project"]["dependencies"]
+    assert "boto3==1.43.56\nbotocore==1.43.56\n" in requirements
+    for dependency in (
+        "azure-identity",
+        "azure-storage-blob",
+        "boto3",
+        "botocore",
+        "google-cloud-storage",
+        "httpx",
+        "s3fs",
+    ):
+        assert dependency in requirements
+    assert "minio" not in requirements.lower()
+    for module in (
+        "azure.identity",
+        "azure.storage.blob",
+        "boto3",
+        "botocore",
+        "google.cloud.storage",
+        "httpx",
+        "s3fs",
+    ):
+        assert importlib.util.find_spec(module) is not None
+    assert 'python-version: "3.12"' in Path(".github/workflows/ci.yml").read_text()
+    for dockerfile in ("Dockerfile.api", "Dockerfile.training.cpu"):
+        assert Path(dockerfile).read_text().startswith("FROM python:3.12.13-slim-trixie@sha256:")
 
 
 class _RunSession(AbstractContextManager):
@@ -193,7 +228,10 @@ def test_pool_metrics_export_only_supported_counters(monkeypatch) -> None:
 
 
 def test_api_health_checks_report_dependency_boundaries(monkeypatch) -> None:
-    monkeypatch.setattr("automl_api.main.get_settings", lambda: SimpleNamespace(environment="test"))
+    monkeypatch.setattr(
+        "automl_api.main.get_settings",
+        lambda: Settings(environment="test", object_store_type="embedded"),
+    )
     app = create_app()
     assert _endpoint(app, "/health/live")() == {"status": "ok"}
     ready = _endpoint(app, "/health/ready")
@@ -293,3 +331,148 @@ def test_worker_rejects_unknown_run(monkeypatch) -> None:
 
     with pytest.raises(ValueError, match="was not found"):
         worker.main()
+
+
+def _session_context(session):
+    context = MagicMock()
+    context.__enter__.return_value = session
+    return context
+
+
+def test_worker_fenced_context_is_atomic_and_required_as_a_pair(monkeypatch) -> None:
+    monkeypatch.delenv("AUTOML_ATTEMPT_ID", raising=False)
+    monkeypatch.delenv("AUTOML_FENCING_TOKEN", raising=False)
+    assert worker._fenced_attempt_context() is None
+    monkeypatch.setenv("AUTOML_ATTEMPT_ID", str(uuid.uuid4()))
+    with pytest.raises(ValueError, match="must be set together"):
+        worker._fenced_attempt_context()
+    monkeypatch.setenv("AUTOML_FENCING_TOKEN", "fence")
+    assert worker._fenced_attempt_context()[1] == "fence"
+
+
+def test_worker_begins_only_the_matching_submitted_attempt(monkeypatch) -> None:
+    run_id = uuid.uuid4()
+    attempt_id = uuid.uuid4()
+    monkeypatch.setenv("AUTOML_ATTEMPT_ID", str(attempt_id))
+    monkeypatch.setenv("AUTOML_FENCING_TOKEN", "fence")
+    attempt = SimpleNamespace(
+        id=attempt_id,
+        model_run_id=run_id,
+        fencing_token="fence",
+        status=AttemptStatus.SUBMITTED,
+        heartbeat_at=None,
+        terminal_cas_version=0,
+    )
+    durable_run = SimpleNamespace(
+        id=run_id,
+        status=RunStatus.QUEUED,
+        started_at=None,
+    )
+    db = MagicMock()
+    db.scalar.return_value = attempt
+    db.get.return_value = durable_run
+    monkeypatch.setattr(worker, "get_session_factory", lambda: lambda: _session_context(db))
+
+    assert worker._begin_fenced_attempt(run_id) == (attempt_id, "fence")
+    assert attempt.status == AttemptStatus.RUNNING
+    assert attempt.heartbeat_at is not None
+    assert durable_run.status == RunStatus.RUNNING
+    db.commit.assert_called_once()
+
+    attempt.status = AttemptStatus.SUPERSEDED
+    with pytest.raises(worker.StaleFence, match="cannot start"):
+        worker._begin_fenced_attempt(run_id)
+    attempt.status = AttemptStatus.RUNNING
+    attempt.fencing_token = "new-fence"
+    with pytest.raises(worker.StaleFence, match="stale run fence"):
+        worker._begin_fenced_attempt(run_id)
+    db.scalar.return_value = None
+    with pytest.raises(ValueError, match="does not belong"):
+        worker._begin_fenced_attempt(run_id)
+
+
+def test_worker_terminal_cas_publishes_once_and_rejects_missing_artifact(monkeypatch) -> None:
+    run_id = uuid.uuid4()
+    attempt_id = uuid.uuid4()
+    context = (attempt_id, "fence")
+    attempt = SimpleNamespace(
+        id=attempt_id,
+        model_run_id=run_id,
+        terminal_cas_version=0,
+    )
+    durable_run = SimpleNamespace(
+        id=run_id,
+        tags={"winner_model_artifact_uri": "s3://models/winner"},
+        status=RunStatus.RUNNING,
+        finished_at=None,
+    )
+    db = MagicMock()
+    db.scalar.side_effect = [attempt, durable_run]
+    monkeypatch.setattr(worker, "get_session_factory", lambda: lambda: _session_context(db))
+    terminal_cas = MagicMock(return_value=True)
+    monkeypatch.setattr(worker, "cas_register_terminal_artifact", terminal_cas)
+
+    worker._complete_fenced_attempt(run_id, context)
+
+    terminal_cas.assert_called_once_with(
+        db,
+        attempt_id=attempt_id,
+        fencing_token="fence",
+        expected_cas_version=0,
+        checkpoint_uri="s3://models/winner",
+    )
+    assert durable_run.status == RunStatus.SUCCEEDED
+    assert durable_run.finished_at is not None
+
+    durable_run.tags = {}
+    db.scalar.side_effect = [attempt, durable_run]
+    with pytest.raises(ValueError, match="was not published"):
+        worker._complete_fenced_attempt(run_id, context)
+    db.scalar.side_effect = [None, durable_run]
+    with pytest.raises(ValueError, match="lineage is missing"):
+        worker._complete_fenced_attempt(run_id, context)
+    db.scalar.side_effect = [attempt, durable_run]
+    durable_run.tags = {"winner_model_artifact_uri": "s3://models/winner"}
+    terminal_cas.return_value = False
+    with pytest.raises(worker.StaleFence, match="CAS was rejected"):
+        worker._complete_fenced_attempt(run_id, context)
+
+
+def test_worker_failure_is_fenced_and_cannot_overwrite_a_successor(monkeypatch) -> None:
+    run_id = uuid.uuid4()
+    attempt_id = uuid.uuid4()
+    context = (attempt_id, "fence")
+    attempt = SimpleNamespace(
+        id=attempt_id,
+        model_run_id=run_id,
+        fencing_token="fence",
+        status=AttemptStatus.RUNNING,
+        terminal_cas_version=0,
+        terminal_reason=None,
+    )
+    durable_run = SimpleNamespace(
+        id=run_id,
+        status=RunStatus.RUNNING,
+        failure_code=None,
+        failure_message=None,
+        finished_at=None,
+    )
+    db = MagicMock()
+    db.scalar.side_effect = [attempt, durable_run]
+    monkeypatch.setattr(worker, "get_session_factory", lambda: lambda: _session_context(db))
+
+    assert worker._fail_fenced_attempt(run_id, context, RuntimeError("fit failed"))
+    assert attempt.status == AttemptStatus.FAILED
+    assert durable_run.status == RunStatus.FAILED
+    assert durable_run.failure_code == "ray_attempt_failed"
+
+    attempt.status = AttemptStatus.SUPERSEDED
+    db.scalar.side_effect = [attempt]
+    assert not worker._fail_fenced_attempt(run_id, context, RuntimeError("late"))
+    attempt.fencing_token = "replacement"
+    db.scalar.side_effect = [attempt]
+    with pytest.raises(worker.StaleFence, match="stale run fence"):
+        worker._fail_fenced_attempt(run_id, context, RuntimeError("late"))
+    db.scalar.side_effect = [None]
+    with pytest.raises(ValueError, match="lineage is missing"):
+        worker._fail_fenced_attempt(run_id, context, RuntimeError("missing"))

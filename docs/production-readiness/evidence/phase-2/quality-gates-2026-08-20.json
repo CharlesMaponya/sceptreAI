@@ -1,0 +1,96 @@
+{
+  "schema_revision": "sceptre-phase-2-quality-gates-v1",
+  "observed_at": "2026-08-20T17:45:58+02:00",
+  "overall_status": "blocked",
+  "guide": {
+    "path": "docs/production-readiness/implementation-guide.md",
+    "sha256": "84896d560e5eda60a9bd1e059e0a44136aa87029b21eba739d0d81cbc42575d0"
+  },
+  "gates": {
+    "P2-G01": {
+      "status": "blocked",
+      "local_s3_compatible_contract": "passed",
+      "native_s3": "not_run_no_isolated_account",
+      "native_gcs": "not_run_no_isolated_account",
+      "native_azure": "not_run_no_isolated_account",
+      "native_lifecycle_and_versioning": "not_run_no_isolated_account",
+      "reason": "No isolated provider credentials are configured and the signed Phase 0A decision authorizes zero external spend."
+    },
+    "P2-G02": {
+      "status": "blocked",
+      "required_object_count": 15,
+      "required_object_bytes_each": 10737418240,
+      "required_payload_bytes": 161061273600,
+      "required_capacity_bytes_with_20_percent_headroom": 193273528320,
+      "k3d_object_store_capacity_bytes": 10737418240,
+      "host_free_bytes_observed": 53410689024,
+      "capacity_preflight": "failed_as_required",
+      "signed_control_plane_rss_bound_bytes": null,
+      "reason": "The reference environment lacks capacity and the signed Phase 0A evidence does not define the RSS bound named by the gate."
+    },
+    "P2-G03": {
+      "status": "blocked_by_P2-G02",
+      "harness_fixture_kind": "systems",
+      "harness_statistical_dataset": false,
+      "reason": "The harness enforces the required identity labels, but the exact load campaign has not run."
+    },
+    "P2-G04": {
+      "status": "passed",
+      "browser_reload": "passed_live",
+      "api_pod_replacement": "passed_live",
+      "network_interruption": "passed_live",
+      "database_pod_replacement": "passed_live",
+      "confirmed_offset_preserved_bytes": 134217728,
+      "expired_and_throttled_contracts": "passed_contract_suite"
+    },
+    "P2-G05": {
+      "status": "passed",
+      "corrupt_final_object": "quarantined_live",
+      "corrupt_transfer_units": "rejected_contract_suite"
+    },
+    "P2-G06": {
+      "status": "passed",
+      "active_multipart_uploads_after_cleanup": 0,
+      "quarantined_object_exists_after_grace": false,
+      "database_terminal_state": "failed_after_retention_cleanup"
+    },
+    "P2-G07": {
+      "status": "not_applicable_until_phases_10_to_13",
+      "reason": "This gate explicitly requires future real-provider and release-candidate repetitions."
+    }
+  },
+  "quality": {
+    "backend_full_suite_tests": 857,
+    "backend_full_suite_status": "passed_before_disruptive_database_restart",
+    "backend_new_phase2_harness_tests": 14,
+    "backend_phase2_focused_tests": 58,
+    "backend_changed_path_tests": 255,
+    "backend_statement_coverage_percent": 95.569,
+    "backend_branch_coverage_percent": 90.080,
+    "backend_changed_path_statement_coverage_percent": 95.200,
+    "backend_changed_path_branch_coverage_percent": 90.924,
+    "frontend_tests": 163,
+    "frontend_statement_coverage_percent": 94.67,
+    "frontend_branch_coverage_percent": 90.10,
+    "independent_minimum_percent": 90.01,
+    "ruff": "passed",
+    "compileall": "passed",
+    "frontend_lint": "passed",
+    "frontend_build": "passed_with_plotly_chunk_advisory",
+    "playwright_default": {"passed": 4, "skipped": 2},
+    "playwright_live_phase2": {"passed": 1, "failed": 0},
+    "helm_lint_and_render": "passed",
+    "verified_upload_schema_handoff": "passed",
+    "deployment_region_resolution_and_enforcement": "passed",
+    "stale_completed_object_cleanup": "passed",
+    "scanner_startup_timeout_and_secret_isolation": "passed",
+    "provider_neutral_storage_default": "passed",
+    "provider_neutral_training_dependencies": "passed",
+    "workload_identity_object_store_environment": "passed",
+    "harness_region_resolution_and_goodput_gate": "passed",
+    "quota_reservation_and_session_locking_contract": "passed",
+    "provider_completion_crash_recovery": "passed",
+    "scanner_total_deadline_and_version_evidence": "passed"
+  },
+  "sandbox_note": "After the live database restart proof, the continuation sandbox denied local socket creation. A later full-suite rerun therefore errored only in five PostgreSQL fixtures and hung at asyncio.to_thread; these are sandbox restrictions, not recorded as green rerun evidence."
+}

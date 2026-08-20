@@ -51,7 +51,9 @@ rules:
     resources: ["secrets"]
     resourceNames:
       - {{ include "sceptre.platformSecretName" . }}
+      {{- if or .Values.seaweedfs.enabled (eq .Values.externalObjectStore.driver "s3_compatible") }}
       - {{ include "sceptre.objectStoreSecretName" . }}
+      {{- end }}
     verbs: ["get"]
   - apiGroups: ["apps"]
     resources: ["deployments"]

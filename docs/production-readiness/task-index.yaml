@@ -1600,14 +1600,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-W02
   phase: '1'
@@ -1625,14 +1645,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-W03
   phase: '1'
@@ -1646,14 +1686,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-W04
   phase: '1'
@@ -1668,14 +1728,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-W05
   phase: '1'
@@ -1690,14 +1770,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-W06
   phase: '1'
@@ -1711,14 +1811,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-W07
   phase: '1'
@@ -1733,14 +1853,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-W08
   phase: '1'
@@ -1755,14 +1895,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-W09
   phase: '1'
@@ -1779,14 +1939,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-W10
   phase: '1'
@@ -1801,14 +1981,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-W11
   phase: '1'
@@ -1823,14 +2023,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-W12
   phase: '1'
@@ -1846,14 +2066,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-W13
   phase: '1'
@@ -1867,14 +2107,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-W14
   phase: '1'
@@ -1889,14 +2149,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-W15
   phase: '1'
@@ -1911,14 +2191,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-W16
   phase: '1'
@@ -1933,14 +2233,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-W17
   phase: '1'
@@ -1956,14 +2276,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-W18
   phase: '1'
@@ -1978,14 +2318,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-W19
   phase: '1'
@@ -2000,14 +2360,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-W20
   phase: '1'
@@ -2021,14 +2401,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-W21
   phase: '1'
@@ -2042,14 +2442,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-W22
   phase: '1'
@@ -2063,14 +2483,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-W23
   phase: '1'
@@ -2084,14 +2524,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-W24
   phase: '1'
@@ -2105,14 +2565,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-W25
   phase: '1'
@@ -2126,14 +2606,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-W26
   phase: '1'
@@ -2148,14 +2648,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-W27
   phase: '1'
@@ -2170,14 +2690,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-W28
   phase: '1'
@@ -2193,14 +2733,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-G01
   phase: '1'
@@ -2214,14 +2774,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-gate-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-G02
   phase: '1'
@@ -2235,14 +2815,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-gate-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-G03
   phase: '1'
@@ -2256,14 +2856,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-gate-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-G04
   phase: '1'
@@ -2277,14 +2897,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-gate-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-G05
   phase: '1'
@@ -2298,14 +2938,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-gate-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-G06
   phase: '1'
@@ -2320,14 +2980,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-gate-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-G07
   phase: '1'
@@ -2342,14 +3022,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-gate-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P1-G08
   phase: '1'
@@ -2365,14 +3065,34 @@ entries:
   prerequisites:
   - Phases 0 and 0A.
   evidence_schema_revision: sceptre-gate-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0005_phase1_durable_workflows.py
+  - alembic/versions/0006_phase1_public_contracts.py
+  - alembic/versions/0007_phase1_attempt_lineage.py
+  - apps/api/automl_api/models/workflows.py
+  - apps/api/automl_api/services/reconciler.py
+  - apps/api/automl_api/services/workflow_state.py
+  - apps/api/automl_api/training/worker.py
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase1_postgres_contracts.py
+  - tests/test_phase1_reconciler.py
+  - tests/test_phase1_workflow_state.py
+  - scripts/rehearse_phase1_migrations.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml
   owner: backend and database engineering.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Stop new reconcilers and Ray submissions, roll application images back, and retain the expand-compatible
+    Phase 1 schema until old readers retire.
+  requalification_triggers:
+  - State-machine, lease, retry, fencing, idempotency, database engine, pooler, KubeRay, or supported
+    migration-range change
   supersedes: []
 - id: P2-W01
   phase: '2'
@@ -2386,14 +3106,35 @@ entries:
   prerequisites:
   - Phase 1 state, idempotency, and outbox contracts.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0008_phase2_cloud_ingestion.py
+  - apps/api/automl_api/services/uploads.py
+  - apps/api/automl_api/services/upload_policy.py
+  - apps/api/automl_api/storage/
+  - apps/ui/react_app/src/resumableUpload.ts
+  - infra/helm/sceptre/templates/seaweedfs.yaml
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase2_upload_drivers.py
+  - tests/test_phase2_upload_policy.py
+  - tests/test_phase2_upload_services.py
+  - tests/test_phase2_load_harness.py
+  - tests/test_inference_gateway.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  - python scripts/benchmark_phase2_ingestion.py
+  - helm lint infra/helm/sceptre -f infra/helm/sceptre/values-k3d.yaml
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml
   owner: backend, UI, cloud integration, and security.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Disable new resumable sessions, allow active provider sessions to finish or abort, roll API/UI
+    images back, and retain provider-neutral session rows for audit.
+  requalification_triggers:
+  - Object-store driver, browser upload protocol, CORS policy, part sizing, scanner, checksum, lifecycle,
+    region, or upload quota change
   supersedes: []
 - id: P2-W02
   phase: '2'
@@ -2407,14 +3148,35 @@ entries:
   prerequisites:
   - Phase 1 state, idempotency, and outbox contracts.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0008_phase2_cloud_ingestion.py
+  - apps/api/automl_api/services/uploads.py
+  - apps/api/automl_api/services/upload_policy.py
+  - apps/api/automl_api/storage/
+  - apps/ui/react_app/src/resumableUpload.ts
+  - infra/helm/sceptre/templates/seaweedfs.yaml
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase2_upload_drivers.py
+  - tests/test_phase2_upload_policy.py
+  - tests/test_phase2_upload_services.py
+  - tests/test_phase2_load_harness.py
+  - tests/test_inference_gateway.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  - python scripts/benchmark_phase2_ingestion.py
+  - helm lint infra/helm/sceptre -f infra/helm/sceptre/values-k3d.yaml
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml
   owner: backend, UI, cloud integration, and security.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Disable new resumable sessions, allow active provider sessions to finish or abort, roll API/UI
+    images back, and retain provider-neutral session rows for audit.
+  requalification_triggers:
+  - Object-store driver, browser upload protocol, CORS policy, part sizing, scanner, checksum, lifecycle,
+    region, or upload quota change
   supersedes: []
 - id: P2-W03
   phase: '2'
@@ -2428,14 +3190,35 @@ entries:
   prerequisites:
   - Phase 1 state, idempotency, and outbox contracts.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0008_phase2_cloud_ingestion.py
+  - apps/api/automl_api/services/uploads.py
+  - apps/api/automl_api/services/upload_policy.py
+  - apps/api/automl_api/storage/
+  - apps/ui/react_app/src/resumableUpload.ts
+  - infra/helm/sceptre/templates/seaweedfs.yaml
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase2_upload_drivers.py
+  - tests/test_phase2_upload_policy.py
+  - tests/test_phase2_upload_services.py
+  - tests/test_phase2_load_harness.py
+  - tests/test_inference_gateway.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  - python scripts/benchmark_phase2_ingestion.py
+  - helm lint infra/helm/sceptre -f infra/helm/sceptre/values-k3d.yaml
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml
   owner: backend, UI, cloud integration, and security.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Disable new resumable sessions, allow active provider sessions to finish or abort, roll API/UI
+    images back, and retain provider-neutral session rows for audit.
+  requalification_triggers:
+  - Object-store driver, browser upload protocol, CORS policy, part sizing, scanner, checksum, lifecycle,
+    region, or upload quota change
   supersedes: []
 - id: P2-W04
   phase: '2'
@@ -2450,14 +3233,35 @@ entries:
   prerequisites:
   - Phase 1 state, idempotency, and outbox contracts.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0008_phase2_cloud_ingestion.py
+  - apps/api/automl_api/services/uploads.py
+  - apps/api/automl_api/services/upload_policy.py
+  - apps/api/automl_api/storage/
+  - apps/ui/react_app/src/resumableUpload.ts
+  - infra/helm/sceptre/templates/seaweedfs.yaml
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase2_upload_drivers.py
+  - tests/test_phase2_upload_policy.py
+  - tests/test_phase2_upload_services.py
+  - tests/test_phase2_load_harness.py
+  - tests/test_inference_gateway.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  - python scripts/benchmark_phase2_ingestion.py
+  - helm lint infra/helm/sceptre -f infra/helm/sceptre/values-k3d.yaml
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml
   owner: backend, UI, cloud integration, and security.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Disable new resumable sessions, allow active provider sessions to finish or abort, roll API/UI
+    images back, and retain provider-neutral session rows for audit.
+  requalification_triggers:
+  - Object-store driver, browser upload protocol, CORS policy, part sizing, scanner, checksum, lifecycle,
+    region, or upload quota change
   supersedes: []
 - id: P2-W05
   phase: '2'
@@ -2472,14 +3276,35 @@ entries:
   prerequisites:
   - Phase 1 state, idempotency, and outbox contracts.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0008_phase2_cloud_ingestion.py
+  - apps/api/automl_api/services/uploads.py
+  - apps/api/automl_api/services/upload_policy.py
+  - apps/api/automl_api/storage/
+  - apps/ui/react_app/src/resumableUpload.ts
+  - infra/helm/sceptre/templates/seaweedfs.yaml
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase2_upload_drivers.py
+  - tests/test_phase2_upload_policy.py
+  - tests/test_phase2_upload_services.py
+  - tests/test_phase2_load_harness.py
+  - tests/test_inference_gateway.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  - python scripts/benchmark_phase2_ingestion.py
+  - helm lint infra/helm/sceptre -f infra/helm/sceptre/values-k3d.yaml
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml
   owner: backend, UI, cloud integration, and security.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Disable new resumable sessions, allow active provider sessions to finish or abort, roll API/UI
+    images back, and retain provider-neutral session rows for audit.
+  requalification_triggers:
+  - Object-store driver, browser upload protocol, CORS policy, part sizing, scanner, checksum, lifecycle,
+    region, or upload quota change
   supersedes: []
 - id: P2-W06
   phase: '2'
@@ -2494,14 +3319,35 @@ entries:
   prerequisites:
   - Phase 1 state, idempotency, and outbox contracts.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0008_phase2_cloud_ingestion.py
+  - apps/api/automl_api/services/uploads.py
+  - apps/api/automl_api/services/upload_policy.py
+  - apps/api/automl_api/storage/
+  - apps/ui/react_app/src/resumableUpload.ts
+  - infra/helm/sceptre/templates/seaweedfs.yaml
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase2_upload_drivers.py
+  - tests/test_phase2_upload_policy.py
+  - tests/test_phase2_upload_services.py
+  - tests/test_phase2_load_harness.py
+  - tests/test_inference_gateway.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  - python scripts/benchmark_phase2_ingestion.py
+  - helm lint infra/helm/sceptre -f infra/helm/sceptre/values-k3d.yaml
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml
   owner: backend, UI, cloud integration, and security.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Disable new resumable sessions, allow active provider sessions to finish or abort, roll API/UI
+    images back, and retain provider-neutral session rows for audit.
+  requalification_triggers:
+  - Object-store driver, browser upload protocol, CORS policy, part sizing, scanner, checksum, lifecycle,
+    region, or upload quota change
   supersedes: []
 - id: P2-W07
   phase: '2'
@@ -2517,14 +3363,35 @@ entries:
   prerequisites:
   - Phase 1 state, idempotency, and outbox contracts.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0008_phase2_cloud_ingestion.py
+  - apps/api/automl_api/services/uploads.py
+  - apps/api/automl_api/services/upload_policy.py
+  - apps/api/automl_api/storage/
+  - apps/ui/react_app/src/resumableUpload.ts
+  - infra/helm/sceptre/templates/seaweedfs.yaml
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase2_upload_drivers.py
+  - tests/test_phase2_upload_policy.py
+  - tests/test_phase2_upload_services.py
+  - tests/test_phase2_load_harness.py
+  - tests/test_inference_gateway.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  - python scripts/benchmark_phase2_ingestion.py
+  - helm lint infra/helm/sceptre -f infra/helm/sceptre/values-k3d.yaml
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml
   owner: backend, UI, cloud integration, and security.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Disable new resumable sessions, allow active provider sessions to finish or abort, roll API/UI
+    images back, and retain provider-neutral session rows for audit.
+  requalification_triggers:
+  - Object-store driver, browser upload protocol, CORS policy, part sizing, scanner, checksum, lifecycle,
+    region, or upload quota change
   supersedes: []
 - id: P2-W08
   phase: '2'
@@ -2540,14 +3407,35 @@ entries:
   prerequisites:
   - Phase 1 state, idempotency, and outbox contracts.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0008_phase2_cloud_ingestion.py
+  - apps/api/automl_api/services/uploads.py
+  - apps/api/automl_api/services/upload_policy.py
+  - apps/api/automl_api/storage/
+  - apps/ui/react_app/src/resumableUpload.ts
+  - infra/helm/sceptre/templates/seaweedfs.yaml
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase2_upload_drivers.py
+  - tests/test_phase2_upload_policy.py
+  - tests/test_phase2_upload_services.py
+  - tests/test_phase2_load_harness.py
+  - tests/test_inference_gateway.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  - python scripts/benchmark_phase2_ingestion.py
+  - helm lint infra/helm/sceptre -f infra/helm/sceptre/values-k3d.yaml
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml
   owner: backend, UI, cloud integration, and security.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Disable new resumable sessions, allow active provider sessions to finish or abort, roll API/UI
+    images back, and retain provider-neutral session rows for audit.
+  requalification_triggers:
+  - Object-store driver, browser upload protocol, CORS policy, part sizing, scanner, checksum, lifecycle,
+    region, or upload quota change
   supersedes: []
 - id: P2-W09
   phase: '2'
@@ -2562,14 +3450,35 @@ entries:
   prerequisites:
   - Phase 1 state, idempotency, and outbox contracts.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0008_phase2_cloud_ingestion.py
+  - apps/api/automl_api/services/uploads.py
+  - apps/api/automl_api/services/upload_policy.py
+  - apps/api/automl_api/storage/
+  - apps/ui/react_app/src/resumableUpload.ts
+  - infra/helm/sceptre/templates/seaweedfs.yaml
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase2_upload_drivers.py
+  - tests/test_phase2_upload_policy.py
+  - tests/test_phase2_upload_services.py
+  - tests/test_phase2_load_harness.py
+  - tests/test_inference_gateway.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  - python scripts/benchmark_phase2_ingestion.py
+  - helm lint infra/helm/sceptre -f infra/helm/sceptre/values-k3d.yaml
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml
   owner: backend, UI, cloud integration, and security.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Disable new resumable sessions, allow active provider sessions to finish or abort, roll API/UI
+    images back, and retain provider-neutral session rows for audit.
+  requalification_triggers:
+  - Object-store driver, browser upload protocol, CORS policy, part sizing, scanner, checksum, lifecycle,
+    region, or upload quota change
   supersedes: []
 - id: P2-W10
   phase: '2'
@@ -2584,14 +3493,35 @@ entries:
   prerequisites:
   - Phase 1 state, idempotency, and outbox contracts.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0008_phase2_cloud_ingestion.py
+  - apps/api/automl_api/services/uploads.py
+  - apps/api/automl_api/services/upload_policy.py
+  - apps/api/automl_api/storage/
+  - apps/ui/react_app/src/resumableUpload.ts
+  - infra/helm/sceptre/templates/seaweedfs.yaml
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase2_upload_drivers.py
+  - tests/test_phase2_upload_policy.py
+  - tests/test_phase2_upload_services.py
+  - tests/test_phase2_load_harness.py
+  - tests/test_inference_gateway.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  - python scripts/benchmark_phase2_ingestion.py
+  - helm lint infra/helm/sceptre -f infra/helm/sceptre/values-k3d.yaml
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml
   owner: backend, UI, cloud integration, and security.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Disable new resumable sessions, allow active provider sessions to finish or abort, roll API/UI
+    images back, and retain provider-neutral session rows for audit.
+  requalification_triggers:
+  - Object-store driver, browser upload protocol, CORS policy, part sizing, scanner, checksum, lifecycle,
+    region, or upload quota change
   supersedes: []
 - id: P2-W11
   phase: '2'
@@ -2608,14 +3538,35 @@ entries:
   prerequisites:
   - Phase 1 state, idempotency, and outbox contracts.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0008_phase2_cloud_ingestion.py
+  - apps/api/automl_api/services/uploads.py
+  - apps/api/automl_api/services/upload_policy.py
+  - apps/api/automl_api/storage/
+  - apps/ui/react_app/src/resumableUpload.ts
+  - infra/helm/sceptre/templates/seaweedfs.yaml
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase2_upload_drivers.py
+  - tests/test_phase2_upload_policy.py
+  - tests/test_phase2_upload_services.py
+  - tests/test_phase2_load_harness.py
+  - tests/test_inference_gateway.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  - python scripts/benchmark_phase2_ingestion.py
+  - helm lint infra/helm/sceptre -f infra/helm/sceptre/values-k3d.yaml
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml
   owner: backend, UI, cloud integration, and security.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Disable new resumable sessions, allow active provider sessions to finish or abort, roll API/UI
+    images back, and retain provider-neutral session rows for audit.
+  requalification_triggers:
+  - Object-store driver, browser upload protocol, CORS policy, part sizing, scanner, checksum, lifecycle,
+    region, or upload quota change
   supersedes: []
 - id: P2-W12
   phase: '2'
@@ -2629,14 +3580,35 @@ entries:
   prerequisites:
   - Phase 1 state, idempotency, and outbox contracts.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0008_phase2_cloud_ingestion.py
+  - apps/api/automl_api/services/uploads.py
+  - apps/api/automl_api/services/upload_policy.py
+  - apps/api/automl_api/storage/
+  - apps/ui/react_app/src/resumableUpload.ts
+  - infra/helm/sceptre/templates/seaweedfs.yaml
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase2_upload_drivers.py
+  - tests/test_phase2_upload_policy.py
+  - tests/test_phase2_upload_services.py
+  - tests/test_phase2_load_harness.py
+  - tests/test_inference_gateway.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  - python scripts/benchmark_phase2_ingestion.py
+  - helm lint infra/helm/sceptre -f infra/helm/sceptre/values-k3d.yaml
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml
   owner: backend, UI, cloud integration, and security.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Disable new resumable sessions, allow active provider sessions to finish or abort, roll API/UI
+    images back, and retain provider-neutral session rows for audit.
+  requalification_triggers:
+  - Object-store driver, browser upload protocol, CORS policy, part sizing, scanner, checksum, lifecycle,
+    region, or upload quota change
   supersedes: []
 - id: P2-W13
   phase: '2'
@@ -2650,14 +3622,35 @@ entries:
   prerequisites:
   - Phase 1 state, idempotency, and outbox contracts.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0008_phase2_cloud_ingestion.py
+  - apps/api/automl_api/services/uploads.py
+  - apps/api/automl_api/services/upload_policy.py
+  - apps/api/automl_api/storage/
+  - apps/ui/react_app/src/resumableUpload.ts
+  - infra/helm/sceptre/templates/seaweedfs.yaml
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase2_upload_drivers.py
+  - tests/test_phase2_upload_policy.py
+  - tests/test_phase2_upload_services.py
+  - tests/test_phase2_load_harness.py
+  - tests/test_inference_gateway.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  - python scripts/benchmark_phase2_ingestion.py
+  - helm lint infra/helm/sceptre -f infra/helm/sceptre/values-k3d.yaml
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml
   owner: backend, UI, cloud integration, and security.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Disable new resumable sessions, allow active provider sessions to finish or abort, roll API/UI
+    images back, and retain provider-neutral session rows for audit.
+  requalification_triggers:
+  - Object-store driver, browser upload protocol, CORS policy, part sizing, scanner, checksum, lifecycle,
+    region, or upload quota change
   supersedes: []
 - id: P2-W14
   phase: '2'
@@ -2673,14 +3666,35 @@ entries:
   prerequisites:
   - Phase 1 state, idempotency, and outbox contracts.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0008_phase2_cloud_ingestion.py
+  - apps/api/automl_api/services/uploads.py
+  - apps/api/automl_api/services/upload_policy.py
+  - apps/api/automl_api/storage/
+  - apps/ui/react_app/src/resumableUpload.ts
+  - infra/helm/sceptre/templates/seaweedfs.yaml
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase2_upload_drivers.py
+  - tests/test_phase2_upload_policy.py
+  - tests/test_phase2_upload_services.py
+  - tests/test_phase2_load_harness.py
+  - tests/test_inference_gateway.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  - python scripts/benchmark_phase2_ingestion.py
+  - helm lint infra/helm/sceptre -f infra/helm/sceptre/values-k3d.yaml
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml
   owner: backend, UI, cloud integration, and security.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Disable new resumable sessions, allow active provider sessions to finish or abort, roll API/UI
+    images back, and retain provider-neutral session rows for audit.
+  requalification_triggers:
+  - Object-store driver, browser upload protocol, CORS policy, part sizing, scanner, checksum, lifecycle,
+    region, or upload quota change
   supersedes: []
 - id: P2-W15
   phase: '2'
@@ -2695,14 +3709,35 @@ entries:
   prerequisites:
   - Phase 1 state, idempotency, and outbox contracts.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0008_phase2_cloud_ingestion.py
+  - apps/api/automl_api/services/uploads.py
+  - apps/api/automl_api/services/upload_policy.py
+  - apps/api/automl_api/storage/
+  - apps/ui/react_app/src/resumableUpload.ts
+  - infra/helm/sceptre/templates/seaweedfs.yaml
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase2_upload_drivers.py
+  - tests/test_phase2_upload_policy.py
+  - tests/test_phase2_upload_services.py
+  - tests/test_phase2_load_harness.py
+  - tests/test_inference_gateway.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  - python scripts/benchmark_phase2_ingestion.py
+  - helm lint infra/helm/sceptre -f infra/helm/sceptre/values-k3d.yaml
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml
   owner: backend, UI, cloud integration, and security.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Disable new resumable sessions, allow active provider sessions to finish or abort, roll API/UI
+    images back, and retain provider-neutral session rows for audit.
+  requalification_triggers:
+  - Object-store driver, browser upload protocol, CORS policy, part sizing, scanner, checksum, lifecycle,
+    region, or upload quota change
   supersedes: []
 - id: P2-W16
   phase: '2'
@@ -2717,14 +3752,35 @@ entries:
   prerequisites:
   - Phase 1 state, idempotency, and outbox contracts.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0008_phase2_cloud_ingestion.py
+  - apps/api/automl_api/services/uploads.py
+  - apps/api/automl_api/services/upload_policy.py
+  - apps/api/automl_api/storage/
+  - apps/ui/react_app/src/resumableUpload.ts
+  - infra/helm/sceptre/templates/seaweedfs.yaml
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase2_upload_drivers.py
+  - tests/test_phase2_upload_policy.py
+  - tests/test_phase2_upload_services.py
+  - tests/test_phase2_load_harness.py
+  - tests/test_inference_gateway.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  - python scripts/benchmark_phase2_ingestion.py
+  - helm lint infra/helm/sceptre -f infra/helm/sceptre/values-k3d.yaml
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml
   owner: backend, UI, cloud integration, and security.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Disable new resumable sessions, allow active provider sessions to finish or abort, roll API/UI
+    images back, and retain provider-neutral session rows for audit.
+  requalification_triggers:
+  - Object-store driver, browser upload protocol, CORS policy, part sizing, scanner, checksum, lifecycle,
+    region, or upload quota change
   supersedes: []
 - id: P2-W17
   phase: '2'
@@ -2738,14 +3794,35 @@ entries:
   prerequisites:
   - Phase 1 state, idempotency, and outbox contracts.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0008_phase2_cloud_ingestion.py
+  - apps/api/automl_api/services/uploads.py
+  - apps/api/automl_api/services/upload_policy.py
+  - apps/api/automl_api/storage/
+  - apps/ui/react_app/src/resumableUpload.ts
+  - infra/helm/sceptre/templates/seaweedfs.yaml
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase2_upload_drivers.py
+  - tests/test_phase2_upload_policy.py
+  - tests/test_phase2_upload_services.py
+  - tests/test_phase2_load_harness.py
+  - tests/test_inference_gateway.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  - python scripts/benchmark_phase2_ingestion.py
+  - helm lint infra/helm/sceptre -f infra/helm/sceptre/values-k3d.yaml
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml
   owner: backend, UI, cloud integration, and security.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Disable new resumable sessions, allow active provider sessions to finish or abort, roll API/UI
+    images back, and retain provider-neutral session rows for audit.
+  requalification_triggers:
+  - Object-store driver, browser upload protocol, CORS policy, part sizing, scanner, checksum, lifecycle,
+    region, or upload quota change
   supersedes: []
 - id: P2-W18
   phase: '2'
@@ -2759,14 +3836,35 @@ entries:
   prerequisites:
   - Phase 1 state, idempotency, and outbox contracts.
   evidence_schema_revision: sceptre-work-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0008_phase2_cloud_ingestion.py
+  - apps/api/automl_api/services/uploads.py
+  - apps/api/automl_api/services/upload_policy.py
+  - apps/api/automl_api/storage/
+  - apps/ui/react_app/src/resumableUpload.ts
+  - infra/helm/sceptre/templates/seaweedfs.yaml
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase2_upload_drivers.py
+  - tests/test_phase2_upload_policy.py
+  - tests/test_phase2_upload_services.py
+  - tests/test_phase2_load_harness.py
+  - tests/test_inference_gateway.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  - python scripts/benchmark_phase2_ingestion.py
+  - helm lint infra/helm/sceptre -f infra/helm/sceptre/values-k3d.yaml
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml
   owner: backend, UI, cloud integration, and security.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Disable new resumable sessions, allow active provider sessions to finish or abort, roll API/UI
+    images back, and retain provider-neutral session rows for audit.
+  requalification_triggers:
+  - Object-store driver, browser upload protocol, CORS policy, part sizing, scanner, checksum, lifecycle,
+    region, or upload quota change
   supersedes: []
 - id: P2-G01
   phase: '2'
@@ -2781,14 +3879,35 @@ entries:
   prerequisites:
   - Phase 1 state, idempotency, and outbox contracts.
   evidence_schema_revision: sceptre-gate-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0008_phase2_cloud_ingestion.py
+  - apps/api/automl_api/services/uploads.py
+  - apps/api/automl_api/services/upload_policy.py
+  - apps/api/automl_api/storage/
+  - apps/ui/react_app/src/resumableUpload.ts
+  - infra/helm/sceptre/templates/seaweedfs.yaml
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase2_upload_drivers.py
+  - tests/test_phase2_upload_policy.py
+  - tests/test_phase2_upload_services.py
+  - tests/test_phase2_load_harness.py
+  - tests/test_inference_gateway.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  - python scripts/benchmark_phase2_ingestion.py
+  - helm lint infra/helm/sceptre -f infra/helm/sceptre/values-k3d.yaml
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml
   owner: backend, UI, cloud integration, and security.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Disable new resumable sessions, allow active provider sessions to finish or abort, roll API/UI
+    images back, and retain provider-neutral session rows for audit.
+  requalification_triggers:
+  - Object-store driver, browser upload protocol, CORS policy, part sizing, scanner, checksum, lifecycle,
+    region, or upload quota change
   supersedes: []
 - id: P2-G02
   phase: '2'
@@ -2804,14 +3923,35 @@ entries:
   prerequisites:
   - Phase 1 state, idempotency, and outbox contracts.
   evidence_schema_revision: sceptre-gate-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0008_phase2_cloud_ingestion.py
+  - apps/api/automl_api/services/uploads.py
+  - apps/api/automl_api/services/upload_policy.py
+  - apps/api/automl_api/storage/
+  - apps/ui/react_app/src/resumableUpload.ts
+  - infra/helm/sceptre/templates/seaweedfs.yaml
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase2_upload_drivers.py
+  - tests/test_phase2_upload_policy.py
+  - tests/test_phase2_upload_services.py
+  - tests/test_phase2_load_harness.py
+  - tests/test_inference_gateway.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  - python scripts/benchmark_phase2_ingestion.py
+  - helm lint infra/helm/sceptre -f infra/helm/sceptre/values-k3d.yaml
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml
   owner: backend, UI, cloud integration, and security.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Disable new resumable sessions, allow active provider sessions to finish or abort, roll API/UI
+    images back, and retain provider-neutral session rows for audit.
+  requalification_triggers:
+  - Object-store driver, browser upload protocol, CORS policy, part sizing, scanner, checksum, lifecycle,
+    region, or upload quota change
   supersedes: []
 - id: P2-G03
   phase: '2'
@@ -2827,14 +3967,35 @@ entries:
   prerequisites:
   - Phase 1 state, idempotency, and outbox contracts.
   evidence_schema_revision: sceptre-gate-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0008_phase2_cloud_ingestion.py
+  - apps/api/automl_api/services/uploads.py
+  - apps/api/automl_api/services/upload_policy.py
+  - apps/api/automl_api/storage/
+  - apps/ui/react_app/src/resumableUpload.ts
+  - infra/helm/sceptre/templates/seaweedfs.yaml
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase2_upload_drivers.py
+  - tests/test_phase2_upload_policy.py
+  - tests/test_phase2_upload_services.py
+  - tests/test_phase2_load_harness.py
+  - tests/test_inference_gateway.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  - python scripts/benchmark_phase2_ingestion.py
+  - helm lint infra/helm/sceptre -f infra/helm/sceptre/values-k3d.yaml
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml
   owner: backend, UI, cloud integration, and security.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Disable new resumable sessions, allow active provider sessions to finish or abort, roll API/UI
+    images back, and retain provider-neutral session rows for audit.
+  requalification_triggers:
+  - Object-store driver, browser upload protocol, CORS policy, part sizing, scanner, checksum, lifecycle,
+    region, or upload quota change
   supersedes: []
 - id: P2-G04
   phase: '2'
@@ -2849,14 +4010,35 @@ entries:
   prerequisites:
   - Phase 1 state, idempotency, and outbox contracts.
   evidence_schema_revision: sceptre-gate-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0008_phase2_cloud_ingestion.py
+  - apps/api/automl_api/services/uploads.py
+  - apps/api/automl_api/services/upload_policy.py
+  - apps/api/automl_api/storage/
+  - apps/ui/react_app/src/resumableUpload.ts
+  - infra/helm/sceptre/templates/seaweedfs.yaml
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase2_upload_drivers.py
+  - tests/test_phase2_upload_policy.py
+  - tests/test_phase2_upload_services.py
+  - tests/test_phase2_load_harness.py
+  - tests/test_inference_gateway.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  - python scripts/benchmark_phase2_ingestion.py
+  - helm lint infra/helm/sceptre -f infra/helm/sceptre/values-k3d.yaml
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml
   owner: backend, UI, cloud integration, and security.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Disable new resumable sessions, allow active provider sessions to finish or abort, roll API/UI
+    images back, and retain provider-neutral session rows for audit.
+  requalification_triggers:
+  - Object-store driver, browser upload protocol, CORS policy, part sizing, scanner, checksum, lifecycle,
+    region, or upload quota change
   supersedes: []
 - id: P2-G05
   phase: '2'
@@ -2870,14 +4052,35 @@ entries:
   prerequisites:
   - Phase 1 state, idempotency, and outbox contracts.
   evidence_schema_revision: sceptre-gate-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0008_phase2_cloud_ingestion.py
+  - apps/api/automl_api/services/uploads.py
+  - apps/api/automl_api/services/upload_policy.py
+  - apps/api/automl_api/storage/
+  - apps/ui/react_app/src/resumableUpload.ts
+  - infra/helm/sceptre/templates/seaweedfs.yaml
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase2_upload_drivers.py
+  - tests/test_phase2_upload_policy.py
+  - tests/test_phase2_upload_services.py
+  - tests/test_phase2_load_harness.py
+  - tests/test_inference_gateway.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  - python scripts/benchmark_phase2_ingestion.py
+  - helm lint infra/helm/sceptre -f infra/helm/sceptre/values-k3d.yaml
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml
   owner: backend, UI, cloud integration, and security.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Disable new resumable sessions, allow active provider sessions to finish or abort, roll API/UI
+    images back, and retain provider-neutral session rows for audit.
+  requalification_triggers:
+  - Object-store driver, browser upload protocol, CORS policy, part sizing, scanner, checksum, lifecycle,
+    region, or upload quota change
   supersedes: []
 - id: P2-G06
   phase: '2'
@@ -2891,14 +4094,35 @@ entries:
   prerequisites:
   - Phase 1 state, idempotency, and outbox contracts.
   evidence_schema_revision: sceptre-gate-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0008_phase2_cloud_ingestion.py
+  - apps/api/automl_api/services/uploads.py
+  - apps/api/automl_api/services/upload_policy.py
+  - apps/api/automl_api/storage/
+  - apps/ui/react_app/src/resumableUpload.ts
+  - infra/helm/sceptre/templates/seaweedfs.yaml
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase2_upload_drivers.py
+  - tests/test_phase2_upload_policy.py
+  - tests/test_phase2_upload_services.py
+  - tests/test_phase2_load_harness.py
+  - tests/test_inference_gateway.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  - python scripts/benchmark_phase2_ingestion.py
+  - helm lint infra/helm/sceptre -f infra/helm/sceptre/values-k3d.yaml
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml
   owner: backend, UI, cloud integration, and security.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Disable new resumable sessions, allow active provider sessions to finish or abort, roll API/UI
+    images back, and retain provider-neutral session rows for audit.
+  requalification_triggers:
+  - Object-store driver, browser upload protocol, CORS policy, part sizing, scanner, checksum, lifecycle,
+    region, or upload quota change
   supersedes: []
 - id: P2-G07
   phase: '2'
@@ -2913,14 +4137,35 @@ entries:
   prerequisites:
   - Phase 1 state, idempotency, and outbox contracts.
   evidence_schema_revision: sceptre-gate-record-v1
-  repository_paths: []
-  tests: []
-  evidence_outputs: []
+  repository_paths:
+  - alembic/versions/0008_phase2_cloud_ingestion.py
+  - apps/api/automl_api/services/uploads.py
+  - apps/api/automl_api/services/upload_policy.py
+  - apps/api/automl_api/storage/
+  - apps/ui/react_app/src/resumableUpload.ts
+  - infra/helm/sceptre/templates/seaweedfs.yaml
+  tests:
+  - scripts/test_backend.sh
+  - tests/test_phase2_upload_drivers.py
+  - tests/test_phase2_upload_policy.py
+  - tests/test_phase2_upload_services.py
+  - tests/test_phase2_load_harness.py
+  - tests/test_inference_gateway.py
+  - npm run test:coverage --prefix apps/ui/react_app
+  - python scripts/benchmark_phase2_ingestion.py
+  - helm lint infra/helm/sceptre -f infra/helm/sceptre/values-k3d.yaml
+  evidence_outputs:
+  - docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
+  - docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
+  - docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml
   owner: backend, UI, cloud integration, and security.
   reviewer: null
   issue_url: null
-  rollback: null
-  requalification_triggers: []
+  rollback: Disable new resumable sessions, allow active provider sessions to finish or abort, roll API/UI
+    images back, and retain provider-neutral session rows for audit.
+  requalification_triggers:
+  - Object-store driver, browser upload protocol, CORS policy, part sizing, scanner, checksum, lifecycle,
+    region, or upload quota change
   supersedes: []
 - id: P3-W01
   phase: '3'

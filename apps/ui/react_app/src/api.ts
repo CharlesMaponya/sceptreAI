@@ -113,6 +113,41 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   }
 }
 
+async function rawBlob(path: string, options: RequestInit, token?: string) {
+  const headers = new Headers(options.headers);
+  headers.set("Content-Type", "application/json");
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const response = await fetch(path, { ...options, headers });
+  if (!response.ok) {
+    const data = await responseData(response);
+    throw new ApiError(messageFrom(data, response.status), response.status);
+  }
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] || "predictions.csv";
+  return { blob: await response.blob(), filename };
+}
+
+export async function apiBlob(path: string, options: RequestInit = {}) {
+  const requestOptions = withIdempotencyKey(options);
+  try {
+    return await rawBlob(path, requestOptions, session?.tokens.access_token);
+  } catch (error) {
+    if (!(error instanceof ApiError) || !session?.tokens.refresh_token || error.status !== 401) {
+      throw error;
+    }
+    try {
+      const tokens = await raw<Tokens>("/auth/refresh", {
+        method: "POST", body: JSON.stringify({ refresh_token: session.tokens.refresh_token }),
+      });
+      setSession({ user: session.user, tokens });
+      return rawBlob(path, requestOptions, tokens.access_token);
+    } catch {
+      setSession(null);
+      throw new Error("Your session has expired. Please sign in again.");
+    }
+  }
+}
+
 export async function uploadFormData<T>(
   path: string,
   body: FormData,

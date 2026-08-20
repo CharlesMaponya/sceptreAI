@@ -1,3 +1,15 @@
+{{- if and (has .Values.environment (list "staging" "production")) (not .Values.uploads.scanner.command) -}}
+{{- fail "uploads.scanner.command is required in staging and production" -}}
+{{- end -}}
+{{- if and (has .Values.environment (list "staging" "production")) (or (has .Values.uploads.scanner.version (list "builtin-v1" "unconfigured")) (has .Values.uploads.scanner.signatureVersion (list "builtin-content-policy-v1" "unconfigured"))) -}}
+{{- fail "uploads.scanner.version and uploads.scanner.signatureVersion must identify the governed external scanner policy in staging and production" -}}
+{{- end -}}
+{{- if and (has .Values.environment (list "staging" "production")) (not .Values.externalObjectStore.region) -}}
+{{- fail "externalObjectStore.region is required in staging and production" -}}
+{{- end -}}
+{{- if not (has .Values.auth.publicAppUrl .Values.uploads.allowedOrigins) -}}
+{{- fail "uploads.allowedOrigins must contain auth.publicAppUrl exactly" -}}
+{{- end -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -12,13 +24,30 @@ data:
   SMTP_FROM_EMAIL: {{ .Values.auth.passwordResetEmail.fromEmail | quote }}
   SMTP_STARTTLS: {{ .Values.auth.passwordResetEmail.startTls | quote }}
   SMTP_USE_SSL: {{ .Values.auth.passwordResetEmail.useSsl | quote }}
-  # Legacy adapter name retained for compatibility with existing Sceptre images and artifact URIs.
-  OBJECT_STORE_TYPE: minio
+  OBJECT_STORE_TYPE: {{ include "sceptre.objectStoreType" . | quote }}
   OBJECT_STORE_ENDPOINT: {{ include "sceptre.objectStoreEndpoint" . | quote }}
+  OBJECT_STORE_PUBLIC_ENDPOINT: {{ include "sceptre.objectStorePublicEndpoint" . | quote }}
+  OBJECT_STORE_REGION: {{ .Values.externalObjectStore.region | quote }}
+  GCS_PROJECT: {{ .Values.externalObjectStore.gcsProject | quote }}
+  AZURE_STORAGE_ACCOUNT: {{ .Values.externalObjectStore.azureStorageAccount | quote }}
   OBJECT_STORE_BUCKET: {{ include "sceptre.objectStoreBucket" . | quote }}
   OBJECT_STORE_SECRET_NAME: {{ include "sceptre.objectStoreSecretName" . | quote }}
   OBJECT_STORE_ACCESS_KEY_SECRET_KEY: {{ include "sceptre.objectStoreAccessKey" . | quote }}
   OBJECT_STORE_SECRET_KEY_SECRET_KEY: {{ include "sceptre.objectStoreSecretKey" . | quote }}
+  UPLOAD_ALLOWED_ORIGINS: {{ join "," .Values.uploads.allowedOrigins | quote }}
+  UPLOAD_PART_SIZE_BYTES: {{ printf "%.0f" .Values.uploads.partSizeBytes | quote }}
+  UPLOAD_INSTRUCTION_TTL_SECONDS: {{ .Values.uploads.instructionTtlSeconds | quote }}
+  UPLOAD_SESSION_TTL_SECONDS: {{ .Values.uploads.sessionTtlSeconds | quote }}
+  BUFFERED_UPLOAD_MAX_BYTES: {{ printf "%.0f" .Values.uploads.bufferedUploadMaxBytes | quote }}
+  MAX_UPLOAD_SIZE_BYTES: {{ printf "%.0f" .Values.uploads.maxUploadSizeBytes | quote }}
+  UPLOAD_MAX_DECOMPRESSION_RATIO: {{ .Values.uploads.maxDecompressionRatio | quote }}
+  UPLOAD_MAX_DECOMPRESSED_BYTES: {{ printf "%.0f" .Values.uploads.maxDecompressedBytes | quote }}
+  PROJECT_STORAGE_QUOTA_BYTES: {{ printf "%.0f" .Values.uploads.projectStorageQuotaBytes | quote }}
+  UPLOAD_QUARANTINE_RETENTION_SECONDS: {{ .Values.uploads.quarantineRetentionSeconds | quote }}
+  UPLOAD_SCANNER_COMMAND: {{ .Values.uploads.scanner.command | quote }}
+  UPLOAD_SCANNER_TIMEOUT_SECONDS: {{ .Values.uploads.scanner.timeoutSeconds | quote }}
+  UPLOAD_SCANNER_VERSION: {{ .Values.uploads.scanner.version | quote }}
+  UPLOAD_SCANNER_SIGNATURE_VERSION: {{ .Values.uploads.scanner.signatureVersion | quote }}
   DATABASE_SECRET_NAME: {{ include "sceptre.platformSecretName" . | quote }}
   DATABASE_SECRET_KEY: {{ .Values.platform.databaseUrlKey | quote }}
   QUALIFICATION_DATABASE_SECRET_KEY: {{ .Values.platform.qualificationDatabaseUrlKey | quote }}

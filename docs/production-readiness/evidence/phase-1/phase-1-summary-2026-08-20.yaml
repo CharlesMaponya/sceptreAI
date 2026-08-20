@@ -1,0 +1,93 @@
+schema_revision: sceptre-phase-1-evidence-summary-v1
+status: passed
+observed_at: "2026-08-20T12:30:26+02:00"
+source:
+  git_sha: 02fbac51d3ff5409f1b5c9988d365b47a17e6f00
+  branch: codex/production-readiness
+  worktree_clean: false
+  evidence_revision: phase-1-local-2026-08-20
+guide:
+  path: docs/production-readiness/implementation-guide.md
+  sha256: 84896d560e5eda60a9bd1e059e0a44136aa87029b21eba739d0d81cbc42575d0
+runtime:
+  environment: local-k3d
+  kubernetes_client: v1.35.6
+  kubernetes_server: v1.35.6+k3s1
+  kuberay_operator: v1.6.2
+  helm: v4.2.3
+  helm_release_revision: 16
+  python_image: "3.12.13"
+  python_requires: ">=3.12,<3.13"
+  mlflow: 3.14.0
+  ray: 2.56.1
+  polars: 1.43.2
+  pyarrow: 24.0.0
+images:
+  api:
+    reference: localhost:5111/sceptreai:api-phase1-green3
+    digest: sha256:82802af096857e44aeada0d56337b35db1b446c3cc3b4af0c0621a801b508234
+  training_cpu:
+    reference: localhost:5111/sceptreai:training-cpu-phase1-green2
+    digest: sha256:9b7b834f4a82323a6ffbd5f0d228ac2a467165f99999db450dd2876b4bf447f4
+quality:
+  backend_tests: 816
+  backend_statement_coverage_percent: 95.650
+  backend_branch_coverage_percent: 90.239
+  frontend_tests: 133
+  frontend_statement_coverage_percent: 94.94
+  frontend_branch_coverage_percent: 90.14
+  frontend_function_coverage_percent: 92.76
+  frontend_line_coverage_percent: 96.49
+  required_each_percent: 90.01
+  ruff: passed
+  compileall: passed
+  frontend_lint: passed
+  frontend_build: passed_with_plotly_chunk_advisory
+  frontend_runtime_image_build: passed
+  helm_profiles: 10
+  helm_lint_and_render: passed
+  helm_smoke_test: passed
+database:
+  tables: 42
+  revision: 0007_phase1_attempt_lineage
+  alembic_check: passed
+  postgres_concurrency_tests: 8
+  migration_start_revisions: 4
+  legacy_upload_rows: 10000
+  migration_rehearsal: passed
+durability:
+  api_rayjob_create_allowed: false
+  reconciler_rayjob_create_allowed: true
+  reconciler_platform_secret_read_allowed: false
+  reconciler_replicas_ready: 3
+  expired_claim_recovered: true
+  expired_claim_delivery_attempts: 2
+  pending_entry_delivered_once: true
+  pending_entry_delivery_attempts: 1
+  rayjob_submission_mode: K8sJobMode
+  rayjob_embeds_ephemeral_cluster: true
+  rayjob_attaches_shared_cluster: false
+  rayjob_backoff_limit: 0
+  submitter_job_backoff_limit: 0
+  submitter_job_created_by_operator: true
+  submitter_job_exact_training_digest: true
+  submitter_job_project_service_account: true
+  submitter_job_service_account_token_automount: false
+  rayjob_operator_deletion_policy: DeleteNone
+  failed_generation_superseded: true
+  replacement_generation: 2
+  replacement_predecessor_fence_preserved: true
+  replacement_submit_delivery_attempts: 1
+  replacement_cancel_delivery_attempts: 1
+  durable_cancel_terminal_state: cancelled
+  rayjob_and_cluster_deleted_after_cancel: true
+  disposable_probe_cleaned: true
+gates:
+  P1-G01: passed
+  P1-G02: passed
+  P1-G03: passed
+  P1-G04: passed
+  P1-G05: passed
+  P1-G06: passed
+  P1-G07: passed
+  P1-G08: passed

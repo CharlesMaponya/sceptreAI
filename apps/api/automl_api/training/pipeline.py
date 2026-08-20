@@ -178,7 +178,8 @@ def execute_training_run(run_id: uuid.UUID) -> dict[str, float]:
             return {}
         return result.metrics
     except Exception as exc:
-        _mark_failed(run_id, exc)
+        if not os.getenv("AUTOML_ATTEMPT_ID"):
+            _mark_failed(run_id, exc)
         raise
 
 
@@ -1335,13 +1336,15 @@ def _persist_training_success(
         persisted_run = _locked_run(db, run_id)
         if persisted_run is None or persisted_run.status in _TERMINAL_RUN_STATUSES:
             return False
-        persisted_run.status = RunStatus.SUCCEEDED
+        fenced_attempt = bool(os.getenv("AUTOML_ATTEMPT_ID"))
+        persisted_run.status = RunStatus.RUNNING if fenced_attempt else RunStatus.SUCCEEDED
         persisted_run.mlflow_run_id = mlflow_run_id
-        persisted_run.finished_at = datetime.now(UTC)
+        persisted_run.finished_at = None if fenced_attempt else datetime.now(UTC)
         persisted_run.tags = {
             **persisted_run.tags,
             "winner": result.leaderboard[0]["model"],
             "winner_mlflow_run_id": result.leaderboard[0].get("mlflow_run_id"),
+            "winner_model_artifact_uri": result.leaderboard[0].get("model_artifact_uri"),
             "leaderboard_primary_metric": result.primary_metric,
             "leaderboard": result.leaderboard,
         }

@@ -112,4 +112,109 @@ spec:
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "sceptre.fullname" . }}-object-store-bootstrap-{{ .Release.Revision }}
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+    app.kubernetes.io/component: object-store-bootstrap
+spec:
+  backoffLimit: 10
+  activeDeadlineSeconds: 300
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        {{- include "sceptre.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: object-store-bootstrap
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: OnFailure
+      containers:
+        - name: configure
+          image: {{ include "sceptre.image" (dict "root" . "image" .Values.api.image) | quote }}
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          command: ["python", "-c"]
+          args:
+            - |
+              import os, time
+              import boto3
+              from botocore.config import Config
+              endpoint = os.environ["OBJECT_STORE_ENDPOINT"]
+              bucket = os.environ["OBJECT_STORE_BUCKET"]
+              client = boto3.client("s3", endpoint_url=endpoint,
+                  aws_access_key_id=os.environ["OBJECT_STORE_ACCESS_KEY"],
+                  aws_secret_access_key=os.environ["OBJECT_STORE_SECRET_KEY"],
+                  config=Config(signature_version="s3v4"))
+              for attempt in range(60):
+                  try:
+                      client.head_bucket(Bucket=bucket)
+                      break
+                  except Exception:
+                      try:
+                          client.create_bucket(Bucket=bucket)
+                          break
+                      except Exception:
+                          if attempt == 59:
+                              raise
+                          time.sleep(2)
+              client.put_bucket_cors(Bucket=bucket, CORSConfiguration={"CORSRules": [{
+                  "AllowedOrigins": os.environ["UPLOAD_ALLOWED_ORIGINS"].split(","),
+                  "AllowedMethods": ["GET", "PUT", "POST", "HEAD"],
+                  "AllowedHeaders": ["*"],
+                  "ExposeHeaders": ["ETag", "x-amz-checksum-sha256", "x-amz-request-id"],
+                  "MaxAgeSeconds": int(os.environ["UPLOAD_INSTRUCTION_TTL_SECONDS"]),
+              }]})
+          envFrom:
+            - configMapRef:
+                name: {{ include "sceptre.fullname" . }}-config
+          env:
+            - name: OBJECT_STORE_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sceptre.objectStoreSecretName" . }}
+                  key: {{ include "sceptre.objectStoreAccessKey" . }}
+            - name: OBJECT_STORE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sceptre.objectStoreSecretName" . }}
+                  key: {{ include "sceptre.objectStoreSecretKey" . }}
+          resources:
+            requests: {cpu: 10m, memory: 64Mi}
+            limits: {cpu: 200m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+{{- if .Values.seaweedfs.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "sceptre.fullname" . }}-seaweedfs
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+  {{- with .Values.seaweedfs.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.seaweedfs.ingress.className }}
+  ingressClassName: {{ .Values.seaweedfs.ingress.className | quote }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.seaweedfs.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "sceptre.fullname" . }}-seaweedfs
+                port:
+                  name: s3
+{{- end }}
 {{- end }}

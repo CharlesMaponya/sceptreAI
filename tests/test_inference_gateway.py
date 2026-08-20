@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from types import SimpleNamespace
 from typing import Any
 
+import automl_api.api.routes.operations as operation_routes
 import automl_api.services.inference_gateway as gateway
 import httpx
 import pytest
@@ -104,10 +106,7 @@ def _request(
 
 
 def _gateway_path(path: str, *, project_id: uuid.UUID, run_id: uuid.UUID) -> str:
-    return (
-        f"/api/v1/projects/{project_id}/operations/deployments/{run_id}"
-        f"/inference/{path}"
-    )
+    return f"/api/v1/projects/{project_id}/operations/deployments/{run_id}/inference/{path}"
 
 
 def _target() -> gateway.DeploymentInferenceTarget:
@@ -139,6 +138,44 @@ def test_gateway_route_requires_platform_authentication() -> None:
 
     assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
     assert exc_info.value.detail == "Authentication required."
+
+
+def test_gateway_route_selects_object_backed_offline_protocol(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = _target()
+    calls: list[str] = []
+    monkeypatch.setattr(
+        operation_routes, "resolve_deployment_inference_target", lambda *_: target
+    )
+
+    async def object_backed(*_args):
+        calls.append("object")
+        return gateway.Response(status_code=202)
+
+    async def ordinary(*_args):
+        calls.append("ordinary")
+        return gateway.Response(status_code=200)
+
+    monkeypatch.setattr(
+        operation_routes, "proxy_object_backed_offline_inference", object_backed
+    )
+    monkeypatch.setattr(operation_routes, "proxy_deployment_inference", ordinary)
+    arguments = (
+        uuid.uuid4(),
+        uuid.uuid4(),
+        "v1/predict/offline",
+        _request("POST", "/gateway", headers={"content-type": "application/json"}),
+        SimpleNamespace(),
+        SimpleNamespace(),
+    )
+    assert _run(operation_routes.deployment_inference_gateway(*arguments)).status_code == 202
+    multipart = list(arguments)
+    multipart[3] = _request(
+        "POST", "/gateway", headers={"content-type": "multipart/form-data; boundary=x"}
+    )
+    assert _run(operation_routes.deployment_inference_gateway(*multipart)).status_code == 200
+    assert calls == ["object", "ordinary"]
 
 
 def test_resolver_checks_project_viewer_role_before_deployment_lookup(
@@ -623,11 +660,141 @@ def test_gateway_streams_offline_upload_without_trusting_content_length(
     assert b"".join(received_chunks) == b"first-upload-chunksecond-upload-chunk"
     assert body == b"prediction\n1\n"
     assert response.headers["content-type"] == "text/csv"
-    assert response.headers["content-disposition"] == (
-        'attachment; filename="predictions.csv"'
-    )
+    assert response.headers["content-disposition"] == ('attachment; filename="predictions.csv"')
     assert upstream_stream.closed
     assert client.is_closed
+
+
+def test_gateway_streams_verified_object_backed_offline_upload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_id = uuid.uuid4()
+    session_id = uuid.uuid4()
+    received = bytearray()
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/predict/offline"
+        assert request.headers["content-type"].startswith("multipart/form-data; boundary=sceptre-")
+        assert "content-length" not in request.headers
+        async for chunk in request.stream:
+            received.extend(chunk)
+        return httpx.Response(
+            200,
+            stream=_TrackingStream(b"prediction\n", b"1\n"),
+            headers={"content-type": "text/csv"},
+        )
+
+    client = _mock_client(handler)
+    monkeypatch.setattr(gateway, "_new_http_client", lambda: client)
+    monkeypatch.setattr(
+        gateway,
+        "get_upload_session",
+        lambda *_: SimpleNamespace(
+            upload_kind="offline_scoring",
+            status="ready",
+            completed_object_uri="s3://bucket/input.csv",
+            provider_driver="s3_compatible",
+            original_filename='unsafe name".csv',
+            content_type="text/csv",
+        ),
+    )
+    source = io.BytesIO(b"feature\n1\n")
+    monkeypatch.setattr(
+        gateway,
+        "get_object_store",
+        lambda: SimpleNamespace(driver_name="s3_compatible", open_stream=lambda _uri: source),
+    )
+    request = _request(
+        "POST",
+        "/gateway/v1/predict/offline",
+        body=json.dumps({"upload_session_id": str(session_id)}).encode(),
+        query_string=b"format=csv",
+        headers={"content-type": "application/json", "accept": "text/csv"},
+    )
+
+    async def scenario() -> tuple[Any, bytes]:
+        response = await gateway.proxy_object_backed_offline_inference(
+            request, _target(), SimpleNamespace(), SimpleNamespace(), project_id
+        )
+        return response, b"".join([chunk async for chunk in response.body_iterator])
+
+    response, body = _run(scenario())
+    assert response.status_code == 200 and body == b"prediction\n1\n"
+    assert b'filename="unsafe_name_.csv"' in received
+    assert b"feature\n1\n" in received
+    assert source.closed and client.is_closed
+
+
+@pytest.mark.parametrize(
+    ("upload", "expected_detail"),
+    [
+        (SimpleNamespace(upload_kind="dataset"), "not an offline-scoring"),
+        (
+            SimpleNamespace(upload_kind="offline_scoring", status="verifying"),
+            "has not passed object verification",
+        ),
+    ],
+)
+def test_object_backed_offline_upload_requires_eligible_session(
+    monkeypatch: pytest.MonkeyPatch,
+    upload: SimpleNamespace,
+    expected_detail: str,
+) -> None:
+    upload.completed_object_uri = getattr(upload, "completed_object_uri", None)
+    monkeypatch.setattr(gateway, "get_upload_session", lambda *_: upload)
+    request = _request(
+        "POST", "/gateway", body=json.dumps({"upload_session_id": str(uuid.uuid4())}).encode()
+    )
+    with pytest.raises(HTTPException) as error:
+        _run(
+            gateway.proxy_object_backed_offline_inference(
+                request, _target(), SimpleNamespace(), SimpleNamespace(), uuid.uuid4()
+            )
+        )
+    assert expected_detail in error.value.detail
+
+
+def test_object_backed_offline_upload_rejects_invalid_or_oversized_request() -> None:
+    for body, expected_status in ((b"{}", 422), (b"x" * 16385, 413)):
+        with pytest.raises(HTTPException) as error:
+            _run(
+                gateway.proxy_object_backed_offline_inference(
+                    _request("POST", "/gateway", body=body),
+                    _target(),
+                    SimpleNamespace(),
+                    SimpleNamespace(),
+                    uuid.uuid4(),
+                )
+            )
+        assert error.value.status_code == expected_status
+
+
+def test_object_backed_offline_upload_rejects_provider_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        gateway,
+        "get_upload_session",
+        lambda *_: SimpleNamespace(
+            upload_kind="offline_scoring",
+            status="ready",
+            completed_object_uri="s3://bucket/input.csv",
+            provider_driver="aws_s3",
+        ),
+    )
+    monkeypatch.setattr(gateway, "get_object_store", lambda: SimpleNamespace(driver_name="gcs"))
+    request = _request(
+        "POST",
+        "/gateway",
+        body=json.dumps({"upload_session_id": str(uuid.uuid4())}).encode(),
+    )
+    with pytest.raises(HTTPException) as error:
+        _run(
+            gateway.proxy_object_backed_offline_inference(
+                request, _target(), SimpleNamespace(), SimpleNamespace(), uuid.uuid4()
+            )
+        )
+    assert error.value.status_code == 409
 
 
 def test_gateway_rewrites_openapi_server_and_bearer_security(
@@ -687,9 +854,7 @@ def test_gateway_rewrites_openapi_server_and_bearer_security(
     assert response.status_code == status.HTTP_200_OK
     assert document["servers"] == [{"url": expected_base}]
     assert document["security"] == [{"PlatformBearer": []}]
-    assert document["paths"]["/v1/predict"]["post"]["security"] == [
-        {"PlatformBearer": []}
-    ]
+    assert document["paths"]["/v1/predict"]["post"]["security"] == [{"PlatformBearer": []}]
     assert "servers" not in document["paths"]["/v1/predict"]["post"]
     assert document["components"]["securitySchemes"]["PlatformBearer"] == {
         "type": "http",

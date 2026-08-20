@@ -68,11 +68,46 @@ def test_run_once_commits_requeue_after_handler_failure(monkeypatch) -> None:
     worker_session.commit.assert_called_once()
 
 
+def test_observe_once_commits_success_and_rolls_back_failure(monkeypatch) -> None:
+    session = MagicMock()
+    observer = MagicMock(return_value=2)
+    monkeypatch.setattr(workflow_reconciler, "observe_training_ray_jobs", observer)
+    k8s = MagicMock()
+
+    assert workflow_reconciler.observe_once(lambda: _Context(session), k8s=k8s) == 2
+    observer.assert_called_once_with(session, k8s)
+    session.commit.assert_called_once()
+
+    session.reset_mock()
+    observer.side_effect = RuntimeError("observer unavailable")
+    assert workflow_reconciler.observe_once(lambda: _Context(session), k8s=k8s) == 0
+    session.rollback.assert_called_once()
+
+
+def test_cleanup_uploads_once_counts_every_cleanup_class_and_rolls_back(monkeypatch) -> None:
+    session = MagicMock()
+    cleanup = MagicMock(
+        return_value={"expired": 1, "completed_deleted": 2, "quarantine_deleted": 3}
+    )
+    monkeypatch.setattr(workflow_reconciler, "cleanup_abandoned_uploads", cleanup)
+
+    assert workflow_reconciler.cleanup_uploads_once(lambda: _Context(session)) == 6
+    cleanup.assert_called_once_with(session)
+    session.commit.assert_called_once()
+
+    session.reset_mock()
+    cleanup.side_effect = RuntimeError("storage unavailable")
+    assert workflow_reconciler.cleanup_uploads_once(lambda: _Context(session)) == 0
+    session.rollback.assert_called_once()
+
+
 def test_main_uses_explicit_worker_identity_and_bounded_poll_interval(monkeypatch) -> None:
     monkeypatch.setenv("RECONCILER_WORKER_ID", "worker-explicit")
     monkeypatch.setenv("RECONCILER_POLL_SECONDS", "0")
     factory = MagicMock()
     monkeypatch.setattr(workflow_reconciler, "get_session_factory", lambda: factory)
+    monkeypatch.setattr(workflow_reconciler, "KubernetesTrainingClient", MagicMock())
+    monkeypatch.setattr(workflow_reconciler, "observe_once", lambda *_args, **_kwargs: 0)
     processed = iter([1, 0])
     monkeypatch.setattr(
         workflow_reconciler,
@@ -106,6 +141,8 @@ def test_main_derives_worker_identity_when_not_configured(monkeypatch) -> None:
     )
     factory = MagicMock()
     monkeypatch.setattr(workflow_reconciler, "get_session_factory", lambda: factory)
+    monkeypatch.setattr(workflow_reconciler, "KubernetesTrainingClient", MagicMock())
+    monkeypatch.setattr(workflow_reconciler, "observe_once", lambda *_args, **_kwargs: 0)
 
     def stop(received_factory, *, worker_id):
         assert received_factory is factory

@@ -1,0 +1,91 @@
+schema_revision: sceptre-phase-2-evidence-summary-v1
+status: blocked
+observed_at: "2026-08-20T17:45:58+02:00"
+source:
+  git_sha: 02fbac51d3ff5409f1b5c9988d365b47a17e6f00
+  worktree_clean: false
+  evidence_revision: phase-2-local-2026-08-20
+guide:
+  path: docs/production-readiness/implementation-guide.md
+  sha256: 84896d560e5eda60a9bd1e059e0a44136aa87029b21eba739d0d81cbc42575d0
+implementation:
+  pathway: Polars and Ray
+  dask_allowed: false
+  object_store_drivers:
+    - embedded
+    - s3_compatible
+    - aws_s3
+    - gcs
+    - azure_blob
+  shared_browser_client_uses:
+    - primary_dataset
+    - validation
+    - drift
+    - offline_scoring
+  load_harness: scripts/benchmark_phase2_ingestion.py
+quality:
+  backend_full_suite_tests: 857
+  backend_new_load_harness_tests: 14
+  backend_phase2_focused_tests: 58
+  backend_changed_path_tests: 255
+  backend_statement_coverage_percent: 95.569
+  backend_branch_coverage_percent: 90.080
+  backend_changed_path_statement_coverage_percent: 95.200
+  backend_changed_path_branch_coverage_percent: 90.924
+  frontend_tests: 163
+  frontend_statement_coverage_percent: 94.67
+  frontend_branch_coverage_percent: 90.10
+  minimum_independent_dimension_percent: 90.01
+  ruff: passed
+  compileall: passed
+  frontend_lint: passed
+  frontend_build: passed_with_plotly_chunk_advisory
+  helm: passed
+  playwright: passed
+  verified_upload_schema_handoff: passed
+  deployment_region_resolution_and_enforcement: passed
+  stale_completed_object_cleanup: passed
+  scanner_startup_timeout_and_secret_isolation: passed
+  provider_neutral_storage_default: passed
+  provider_neutral_training_dependencies: passed
+  workload_identity_object_store_environment: passed
+  harness_region_resolution_and_goodput_gate: passed
+  quota_reservation_and_session_locking_contract: passed
+  provider_completion_crash_recovery: passed
+  scanner_total_deadline_and_version_evidence: passed
+local_k3d:
+  status: passed
+  evidence: docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml
+  direct_browser_payload_bytes: 41943046
+  payload_bytes_proxied_through_api_or_ui: 0
+  exact_origin_cors: passed
+  restart_resume: passed
+  database_recovery: passed
+  digest_quarantine: passed
+  cleanup: passed
+  log_redaction: passed
+blocking_gates:
+  - gate: P2-G01
+    condition: Native AWS S3, GCS, Azure, and lifecycle/versioning semantics have not run.
+    required_change: Provide isolated non-production provider accounts and a signed spend authorization.
+  - gate: P2-G02
+    condition: The exact workload requires 193273528320 bytes with headroom; k3d has 10737418240 bytes and the host has 53410689024 free bytes.
+    required_change: Provide a reference object store with at least 180 GiB available capacity.
+  - gate: P2-G02
+    condition: The signed Phase 0A evidence does not define control_plane_rss_bound_bytes.
+    required_change: Approve and sign an explicit per-pod or aggregate API/UI RSS bound before the campaign.
+  - gate: P2-G03
+    condition: It depends on completion of the exact P2-G02 campaign.
+    required_change: Run the checked-in harness after the P2-G02 preflight passes.
+gate_status:
+  P2-G01: blocked
+  P2-G02: blocked
+  P2-G03: blocked_by_P2-G02
+  P2-G04: passed
+  P2-G05: passed
+  P2-G06: passed
+  P2-G07: not_applicable_until_phases_10_to_13
+rollback: >-
+  Disable new resumable sessions, allow active provider sessions to finish or
+  abort, roll API and UI images back, and retain provider-neutral session rows
+  and object evidence for audit.

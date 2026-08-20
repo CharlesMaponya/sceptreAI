@@ -127,6 +127,13 @@ seaweedfs:
     accessKeyKey: AWS_ACCESS_KEY_ID
     secretKeyKey: AWS_SECRET_ACCESS_KEY
   bucket: automl
+  # Browser uploads use this public origin; the API never proxies object bytes.
+  publicEndpoint: http://localhost:8333
+  ingress:
+    enabled: false
+    className: ""
+    host: storage.localhost
+    annotations: {}
   persistence:
     enabled: true
     size: 10Gi
@@ -139,11 +146,34 @@ seaweedfs:
 
 externalObjectStore:
   # Used when seaweedfs.enabled=false.
+  driver: s3_compatible
   endpoint: ""
+  publicEndpoint: ""
+  region: ""
+  gcsProject: ""
+  azureStorageAccount: ""
   bucket: automl
   existingSecret: ""
   accessKeyKey: ACCESS_KEY
   secretKeyKey: SECRET_KEY
+
+uploads:
+  allowedOrigins: [http://localhost:8080]
+  partSizeBytes: 134217728
+  instructionTtlSeconds: 900
+  sessionTtlSeconds: 86400
+  bufferedUploadMaxBytes: 104857600
+  maxUploadSizeBytes: 21474836480
+  maxDecompressionRatio: 100
+  maxDecompressedBytes: 1073741824
+  projectStorageQuotaBytes: 214748364800
+  quarantineRetentionSeconds: 604800
+  scanner:
+    # Required by application startup in staging and production.
+    command: ""
+    timeoutSeconds: 300
+    version: builtin-v1
+    signatureVersion: builtin-content-policy-v1
 
 mlflow:
   enabled: true

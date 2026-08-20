@@ -171,11 +171,10 @@ def _git_sha() -> str:
 
 
 def _assign_ids(
-    bullets: list[IndexedBullet], existing: dict[str, Any] | None
+    bullets: list[IndexedBullet], existing: dict[str, Any] | None, *, guide_commit: str
 ) -> list[dict[str, Any]]:
     existing_by_fingerprint = {
-        entry["fingerprint"]: entry
-        for entry in (existing or {}).get("entries", [])
+        entry["fingerprint"]: entry for entry in (existing or {}).get("entries", [])
     }
     counters: dict[tuple[str, str], int] = {}
     for entry in (existing or {}).get("entries", []):
@@ -189,6 +188,7 @@ def _assign_ids(
         prior = existing_by_fingerprint.get(bullet.fingerprint)
         if prior is not None:
             entry_id = prior["id"]
+            entry_guide_commit = prior.get("guide_commit", guide_commit)
             issue_url = prior.get("issue_url")
             supersedes = prior.get("supersedes", [])
             reviewer = prior.get("reviewer")
@@ -197,11 +197,12 @@ def _assign_ids(
             counters[key] = counters.get(key, 0) + 1
             marker = "W" if bullet.kind == "work" else "G"
             entry_id = f"P{bullet.phase}-{marker}{counters[key]:02d}"
+            entry_guide_commit = guide_commit
             issue_url = None
             supersedes = []
             reviewer = None
-        phase_evidence = (
-            {
+        if bullet.phase == "0A":
+            phase_evidence = {
                 "repository_paths": [
                     "docs/production-readiness/decision-register.yaml",
                     "infra/k3d/",
@@ -227,15 +228,84 @@ def _assign_ids(
                     "cluster-topology, node-family, or qualification-target change"
                 ],
             }
-            if bullet.phase == "0A"
-            else {
+        elif bullet.phase == "1":
+            phase_evidence = {
+                "repository_paths": [
+                    "alembic/versions/0005_phase1_durable_workflows.py",
+                    "alembic/versions/0006_phase1_public_contracts.py",
+                    "alembic/versions/0007_phase1_attempt_lineage.py",
+                    "apps/api/automl_api/models/workflows.py",
+                    "apps/api/automl_api/services/reconciler.py",
+                    "apps/api/automl_api/services/workflow_state.py",
+                    "apps/api/automl_api/training/worker.py",
+                ],
+                "tests": [
+                    "scripts/test_backend.sh",
+                    "tests/test_phase1_postgres_contracts.py",
+                    "tests/test_phase1_reconciler.py",
+                    "tests/test_phase1_workflow_state.py",
+                    "scripts/rehearse_phase1_migrations.py",
+                    "npm run test:coverage --prefix apps/ui/react_app",
+                ],
+                "evidence_outputs": [
+                    "docs/production-readiness/evidence/phase-1/phase-1-summary-2026-08-20.yaml",
+                    "docs/production-readiness/evidence/phase-1/quality-gates-2026-08-20.json",
+                    "docs/production-readiness/evidence/phase-1/k3d-runtime-2026-08-20.yaml",
+                    "docs/production-readiness/evidence/phase-1/migration-rehearsal-2026-08-20.yaml",
+                ],
+                "rollback": (
+                    "Stop new reconcilers and Ray submissions, roll application images back, "
+                    "and retain the expand-compatible Phase 1 schema until old readers retire."
+                ),
+                "requalification_triggers": [
+                    "State-machine, lease, retry, fencing, idempotency, database engine, "
+                    "pooler, KubeRay, or supported migration-range change"
+                ],
+            }
+        elif bullet.phase == "2":
+            phase_evidence = {
+                "repository_paths": [
+                    "alembic/versions/0008_phase2_cloud_ingestion.py",
+                    "apps/api/automl_api/services/uploads.py",
+                    "apps/api/automl_api/services/upload_policy.py",
+                    "apps/api/automl_api/storage/",
+                    "apps/ui/react_app/src/resumableUpload.ts",
+                    "infra/helm/sceptre/templates/seaweedfs.yaml",
+                ],
+                "tests": [
+                    "scripts/test_backend.sh",
+                    "tests/test_phase2_upload_drivers.py",
+                    "tests/test_phase2_upload_policy.py",
+                    "tests/test_phase2_upload_services.py",
+                    "tests/test_phase2_load_harness.py",
+                    "tests/test_inference_gateway.py",
+                    "npm run test:coverage --prefix apps/ui/react_app",
+                    "python scripts/benchmark_phase2_ingestion.py",
+                    "helm lint infra/helm/sceptre -f infra/helm/sceptre/values-k3d.yaml",
+                ],
+                "evidence_outputs": [
+                    "docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml",
+                    "docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json",
+                    "docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml",
+                ],
+                "rollback": (
+                    "Disable new resumable sessions, allow active provider sessions to finish or "
+                    "abort, roll API/UI images back, and retain provider-neutral session rows "
+                    "for audit."
+                ),
+                "requalification_triggers": [
+                    "Object-store driver, browser upload protocol, CORS policy, part sizing, "
+                    "scanner, checksum, lifecycle, region, or upload quota change"
+                ],
+            }
+        else:
+            phase_evidence = {
                 "repository_paths": [],
                 "tests": [],
                 "evidence_outputs": [],
                 "rollback": None,
                 "requalification_triggers": [],
             }
-        )
         entries.append(
             {
                 "id": entry_id,
@@ -247,12 +317,10 @@ def _assign_ids(
                 ],
                 "text": bullet.text,
                 "fingerprint": bullet.fingerprint,
-                "guide_commit": _git_sha(),
+                "guide_commit": entry_guide_commit,
                 "prerequisites": list(bullet.prerequisites),
                 "evidence_schema_revision": (
-                    "sceptre-gate-record-v1"
-                    if bullet.kind == "gate"
-                    else "sceptre-work-record-v1"
+                    "sceptre-gate-record-v1" if bullet.kind == "gate" else "sceptre-work-record-v1"
                 ),
                 "repository_paths": phase_evidence["repository_paths"],
                 "tests": phase_evidence["tests"],
@@ -270,15 +338,20 @@ def _assign_ids(
 
 def build_index(guide: Path, existing: dict[str, Any] | None = None) -> dict[str, Any]:
     guide_bytes = guide.read_bytes()
+    guide_sha256 = _sha256_bytes(guide_bytes)
+    existing_guide = (existing or {}).get("guide", {})
+    guide_commit = (
+        existing_guide.get("commit") if existing_guide.get("sha256") == guide_sha256 else _git_sha()
+    )
     bullets = parse_guide(guide)
-    entries = _assign_ids(bullets, existing)
+    entries = _assign_ids(bullets, existing, guide_commit=guide_commit)
     return {
         "schema_revision": "sceptre-production-task-index-v1",
         "status": "draft",
         "guide": {
             "path": str(guide.relative_to(ROOT)),
-            "commit": _git_sha(),
-            "sha256": _sha256_bytes(guide_bytes),
+            "commit": guide_commit,
+            "sha256": guide_sha256,
         },
         "entry_count": len(entries),
         "entries": entries,

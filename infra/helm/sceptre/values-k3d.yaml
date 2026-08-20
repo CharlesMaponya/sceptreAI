@@ -10,3 +10,13 @@ training:
   imagePullPolicy: IfNotPresent
 inference:
   image: {pullPolicy: IfNotPresent}
+ingress:
+  enabled: true
+  className: traefik
+  host: localhost
+seaweedfs:
+  publicEndpoint: http://storage.localhost:8080
+  ingress:
+    enabled: true
+    className: traefik
+    host: storage.localhost

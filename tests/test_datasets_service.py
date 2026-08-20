@@ -95,7 +95,7 @@ def test_upload_creates_immutable_dataset_version(monkeypatch) -> None:
     )
     content = b"a,b\n1,2\n3,4\n"
     store = MagicMock()
-    store.put_bytes.return_value = SimpleNamespace(uri="minio://datasets/object.csv")
+    store.put_bytes.return_value = SimpleNamespace(uri="s3://datasets/object.csv")
     monkeypatch.setattr(datasets, "require_project_role", lambda *_args: None)
     monkeypatch.setattr(datasets, "inspect_tabular_bytes", lambda *_args: _inspection())
     monkeypatch.setattr(datasets, "get_object_store", lambda: store)
@@ -112,8 +112,8 @@ def test_upload_creates_immutable_dataset_version(monkeypatch) -> None:
     assert dataset.latest_version_number == 1
     assert version.version_number == 1
     assert version.content_hash == hashlib.sha256(content).hexdigest()
-    assert version.object_store_type == ObjectStoreType.S3
-    assert version.object_uri == "minio://datasets/object.csv"
+    assert version.object_store_type == ObjectStoreType.AWS_S3
+    assert version.object_uri == "s3://datasets/object.csv"
     key, stored_content = store.put_bytes.call_args.args
     assert key.startswith(f"projects/{project_id}/datasets/{dataset.id}/versions/1/")
     assert key.endswith("-customers.csv")
@@ -138,7 +138,7 @@ def test_upload_updates_existing_dataset_without_erasing_optional_metadata(monke
     monkeypatch.setattr(
         datasets,
         "get_settings",
-        lambda: SimpleNamespace(object_store_type="unexpected-store"),
+        lambda: SimpleNamespace(object_store_type="embedded"),
     )
     db = _Session([existing])
 
@@ -159,4 +159,14 @@ def test_upload_updates_existing_dataset_without_erasing_optional_metadata(monke
     assert existing.tags == {"owner": "finance"}
     assert existing.latest_version_number == 5
     assert version.version_number == 5
-    assert version.object_store_type == ObjectStoreType.MINIO
+    assert version.object_store_type == ObjectStoreType.EMBEDDED
+
+
+def test_upload_rejects_an_unknown_object_store_driver(monkeypatch) -> None:
+    monkeypatch.setattr(
+        datasets,
+        "get_settings",
+        lambda: SimpleNamespace(object_store_type="unexpected-store"),
+    )
+    with pytest.raises(ValueError, match="Unsupported object-store driver"):
+        datasets._object_store_type_from_settings()

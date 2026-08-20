@@ -87,12 +87,30 @@ class Settings:
     smtp_starttls: bool = True
     smtp_use_ssl: bool = False
 
-    object_store_type: str = "minio"
+    object_store_type: str = "embedded"
     object_store_endpoint: str | None = None
+    object_store_public_endpoint: str | None = None
     object_store_bucket: str = "automl"
+    object_store_region: str | None = None
     object_store_access_key: str | None = None
     object_store_secret_key: str | None = None
+    gcs_project: str | None = None
+    azure_storage_account: str | None = None
     local_object_store_path: Path = Path(".automl_object_store")
+    upload_allowed_origins: tuple[str, ...] = ("http://localhost:8080",)
+    upload_part_size_bytes: int = 128 * 1024 * 1024
+    upload_instruction_ttl_seconds: int = 15 * 60
+    upload_session_ttl_seconds: int = 24 * 60 * 60
+    buffered_upload_max_bytes: int = 100 * 1024 * 1024
+    max_upload_size_bytes: int = 20 * 1024 * 1024 * 1024
+    upload_max_decompression_ratio: int = 100
+    upload_max_decompressed_bytes: int = 1024 * 1024 * 1024
+    project_storage_quota_bytes: int = 200 * 1024 * 1024 * 1024
+    upload_quarantine_retention_seconds: int = 7 * 24 * 60 * 60
+    upload_scanner_command: str | None = None
+    upload_scanner_timeout_seconds: int = 300
+    upload_scanner_version: str = "builtin-v1"
+    upload_scanner_signature_version: str = "builtin-content-policy-v1"
 
     dataset_cache_size_gb: int = 5
     dataset_cache_pvc_name: str | None = None
@@ -221,8 +239,16 @@ def get_settings() -> Settings:
             Settings.object_store_endpoint,
             dotenv,
         ),
+        object_store_public_endpoint=_get_env(
+            "OBJECT_STORE_PUBLIC_ENDPOINT",
+            Settings.object_store_public_endpoint,
+            dotenv,
+        ),
         object_store_bucket=str(
             _get_env("OBJECT_STORE_BUCKET", Settings.object_store_bucket, dotenv)
+        ),
+        object_store_region=_get_env(
+            "OBJECT_STORE_REGION", Settings.object_store_region, dotenv
         ),
         object_store_access_key=_get_env(
             "OBJECT_STORE_ACCESS_KEY",
@@ -234,8 +260,68 @@ def get_settings() -> Settings:
             Settings.object_store_secret_key,
             dotenv,
         ),
+        gcs_project=_get_env("GCS_PROJECT", Settings.gcs_project, dotenv),
+        azure_storage_account=_get_env(
+            "AZURE_STORAGE_ACCOUNT", Settings.azure_storage_account, dotenv
+        ),
         local_object_store_path=Path(
             str(_get_env("LOCAL_OBJECT_STORE_PATH", str(Settings.local_object_store_path), dotenv))
+        ),
+        upload_allowed_origins=_get_csv(
+            "UPLOAD_ALLOWED_ORIGINS", Settings.upload_allowed_origins, dotenv
+        ),
+        upload_part_size_bytes=_get_int(
+            "UPLOAD_PART_SIZE_BYTES", Settings.upload_part_size_bytes, dotenv
+        ),
+        upload_instruction_ttl_seconds=_get_int(
+            "UPLOAD_INSTRUCTION_TTL_SECONDS",
+            Settings.upload_instruction_ttl_seconds,
+            dotenv,
+        ),
+        upload_session_ttl_seconds=_get_int(
+            "UPLOAD_SESSION_TTL_SECONDS", Settings.upload_session_ttl_seconds, dotenv
+        ),
+        buffered_upload_max_bytes=_get_int(
+            "BUFFERED_UPLOAD_MAX_BYTES", Settings.buffered_upload_max_bytes, dotenv
+        ),
+        max_upload_size_bytes=_get_int(
+            "MAX_UPLOAD_SIZE_BYTES", Settings.max_upload_size_bytes, dotenv
+        ),
+        upload_max_decompression_ratio=_get_int(
+            "UPLOAD_MAX_DECOMPRESSION_RATIO",
+            Settings.upload_max_decompression_ratio,
+            dotenv,
+        ),
+        upload_max_decompressed_bytes=_get_int(
+            "UPLOAD_MAX_DECOMPRESSED_BYTES",
+            Settings.upload_max_decompressed_bytes,
+            dotenv,
+        ),
+        project_storage_quota_bytes=_get_int(
+            "PROJECT_STORAGE_QUOTA_BYTES", Settings.project_storage_quota_bytes, dotenv
+        ),
+        upload_quarantine_retention_seconds=_get_int(
+            "UPLOAD_QUARANTINE_RETENTION_SECONDS",
+            Settings.upload_quarantine_retention_seconds,
+            dotenv,
+        ),
+        upload_scanner_command=_get_env(
+            "UPLOAD_SCANNER_COMMAND", Settings.upload_scanner_command, dotenv
+        ),
+        upload_scanner_timeout_seconds=_get_int(
+            "UPLOAD_SCANNER_TIMEOUT_SECONDS",
+            Settings.upload_scanner_timeout_seconds,
+            dotenv,
+        ),
+        upload_scanner_version=str(
+            _get_env("UPLOAD_SCANNER_VERSION", Settings.upload_scanner_version, dotenv)
+        ),
+        upload_scanner_signature_version=str(
+            _get_env(
+                "UPLOAD_SCANNER_SIGNATURE_VERSION",
+                Settings.upload_scanner_signature_version,
+                dotenv,
+            )
         ),
         dataset_cache_size_gb=_get_int(
             "DATASET_CACHE_SIZE_GB",

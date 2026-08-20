@@ -10,7 +10,9 @@ platform:
 auth:
   existingSecret: sceptre-auth
 externalObjectStore:
+  driver: s3_compatible
   endpoint: https://s3.example.test
+  publicEndpoint: https://s3.example.test
   bucket: sceptre
   existingSecret: sceptre-external-object-store
 mlflow:

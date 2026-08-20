@@ -56,7 +56,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- define "sceptre.objectStoreSecretName" -}}
 {{- if .Values.seaweedfs.enabled -}}
 {{- default (printf "%s-seaweedfs" (include "sceptre.fullname" .)) .Values.seaweedfs.auth.existingSecret -}}
-{{- else -}}
+{{- else if eq .Values.externalObjectStore.driver "s3_compatible" -}}
 {{- required "externalObjectStore.existingSecret is required when seaweedfs.enabled=false" .Values.externalObjectStore.existingSecret -}}
 {{- end -}}
 {{- end -}}
@@ -72,8 +72,24 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- define "sceptre.objectStoreEndpoint" -}}
 {{- if .Values.seaweedfs.enabled -}}
 {{- printf "http://%s-seaweedfs:8333" (include "sceptre.fullname" .) -}}
+{{- else if or (eq .Values.externalObjectStore.driver "s3_compatible") (eq .Values.externalObjectStore.driver "azure_blob") -}}
+{{- required "externalObjectStore.endpoint is required for S3-compatible and Azure Blob drivers" .Values.externalObjectStore.endpoint -}}
 {{- else -}}
-{{- required "externalObjectStore.endpoint is required when seaweedfs.enabled=false" .Values.externalObjectStore.endpoint -}}
+{{- .Values.externalObjectStore.endpoint -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "sceptre.objectStoreType" -}}
+{{- ternary "s3_compatible" .Values.externalObjectStore.driver .Values.seaweedfs.enabled -}}
+{{- end -}}
+
+{{- define "sceptre.objectStorePublicEndpoint" -}}
+{{- if .Values.seaweedfs.enabled -}}
+{{- required "seaweedfs.publicEndpoint is required for browser-direct uploads" .Values.seaweedfs.publicEndpoint -}}
+{{- else if eq .Values.externalObjectStore.driver "s3_compatible" -}}
+{{- required "externalObjectStore.publicEndpoint is required for S3-compatible browser-direct uploads" .Values.externalObjectStore.publicEndpoint -}}
+{{- else -}}
+{{- .Values.externalObjectStore.publicEndpoint -}}
 {{- end -}}
 {{- end -}}
 

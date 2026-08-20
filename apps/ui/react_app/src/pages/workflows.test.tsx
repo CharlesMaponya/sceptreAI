@@ -4,12 +4,14 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setSession } from "../api";
+import * as apiModule from "../api";
 import { DataPage } from "./DataPage";
 import { OperationsPage } from "./OperationsPage";
 import { MonitoringPage } from "./MonitoringPage";
 import { ProjectOverview } from "./ProjectOverview";
 import { RunsPage } from "./RunsPage";
 import { TrainingPage } from "./TrainingPage";
+import * as resumableUpload from "../resumableUpload";
 
 const response = (data: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(data), {
   status, headers: { "Content-Type": "application/json" },
@@ -493,35 +495,29 @@ describe("core workflow integrations", () => {
   }, 8000);
 
   it("uploads first, then returns to overview without starting profiling", async () => {
-    let uploadBody: unknown = null;
+    let uploadOptions: resumableUpload.ResumableUploadOptions | null = null;
     let finishUpload: (() => void) | undefined;
+    const verified = vi.spyOn(resumableUpload, "waitForVerifiedUpload")
+      .mockResolvedValue({ status: "ready" } as never);
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
       if (String(input).endsWith("/profile-jobs") && options?.method === "POST") {
         return response({ id: "profile-1", status: "queued" }, 202);
       }
       return response([]);
     });
-    vi.spyOn(XMLHttpRequest.prototype, "open").mockImplementation(() => undefined);
-    vi.spyOn(XMLHttpRequest.prototype, "setRequestHeader").mockImplementation(() => undefined);
-    vi.spyOn(XMLHttpRequest.prototype, "send").mockImplementation(function (
-      this: XMLHttpRequest,
-      body?: Document | XMLHttpRequestBodyInit | null,
-    ) {
-      uploadBody = body ?? null;
-      this.upload.dispatchEvent(new ProgressEvent("progress", {
-        lengthComputable: true, loaded: 50, total: 100,
-      }));
-      finishUpload = () => {
-        Object.defineProperty(this, "status", { configurable: true, value: 201 });
-        Object.defineProperty(this, "responseText", { configurable: true, value: JSON.stringify({
-          dataset: { id: "dataset-1", name: "Customer activity", latest_version_number: 1 },
-          version: {
-            id: "version-1", dataset_id: "dataset-1", version_number: 1,
-            schema_json: { columns: [{ name: "id" }, { name: "value" }] },
-          },
-        }) });
-        this.onload?.call(this, new ProgressEvent("load"));
-      };
+    vi.spyOn(resumableUpload, "createResumableUpload").mockImplementation((options) => {
+      uploadOptions = options;
+      options.onTelemetry?.({ stage: "uploading", confirmedBytes: 50, totalBytes: 100,
+        percent: 50, bytesPerSecond: 50, retry: 0 });
+      let resolveUpload!: (value: unknown) => void;
+      const result = new Promise((resolve) => { resolveUpload = resolve; });
+      finishUpload = () => resolveUpload({
+          dataset: null,
+          version: null,
+          session: { id: "upload-1" },
+        });
+      return { result, pause: vi.fn(), resume: vi.fn(), cancel: vi.fn() } as unknown as
+        resumableUpload.ResumableUploadController;
     });
     const user = userEvent.setup();
     const { container } = renderRoute(<DataPage />, "/projects/project-1/data");
@@ -538,16 +534,14 @@ describe("core workflow integrations", () => {
     expect(await screen.findByText("50%")).toBeInTheDocument();
     expect(screen.getByRole("progressbar", { name: "Dataset upload progress" }))
       .toHaveValue(50);
-    await waitFor(() => expect(uploadBody).toBeInstanceOf(FormData));
-    if (!(uploadBody instanceof FormData)) throw new Error("Expected multipart upload body.");
-    const form = uploadBody;
-    expect(form.get("dataset_name")).toBe("Customer activity");
-    expect(form.get("description")).toBe("");
-    expect(form.get("tags")).toBe("{}");
-    expect(form.get("file")).toBeInstanceOf(File);
-    expect((form.get("file") as File).name).toBe("customers.csv");
+    await waitFor(() => expect(uploadOptions).not.toBeNull());
+    expect(uploadOptions!.datasetName).toBe("Customer activity");
+    expect(uploadOptions!.description).toBe("");
+    expect(uploadOptions!.uploadKind).toBe("dataset");
+    expect(uploadOptions!.file.name).toBe("customers.csv");
     act(() => finishUpload?.());
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(verified).toHaveBeenCalledWith("project-1", "upload-1");
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/profile-jobs"))).toBe(false);
   });
 
@@ -778,6 +772,18 @@ describe("core workflow integrations", () => {
       configurable: true,
       value: { writeText },
     });
+    const createUpload = vi.spyOn(resumableUpload, "createResumableUpload").mockReturnValue({
+      result: Promise.resolve({ session: { id: "offline-upload-1" }, dataset: null, version: null }),
+    } as never);
+    vi.spyOn(resumableUpload, "waitForVerifiedUpload").mockResolvedValue({ status: "ready" } as never);
+    const apiBlob = vi.spyOn(apiModule, "apiBlob").mockResolvedValue({
+      blob: new Blob(["prediction\n1\n"]), filename: "predictions.csv",
+    });
+    const createObjectURL = vi.fn().mockReturnValue("blob:predictions");
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectURL });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revokeObjectURL });
+    const download = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
     renderRoute(<OperationsPage />, "/projects/project-1/operations");
 
     await user.click(await screen.findByRole("button", { name: "API access" }));
@@ -808,6 +814,20 @@ describe("core workflow integrations", () => {
       .toBeInTheDocument();
     expect(screen.queryByText(/kubectl .*port-forward/)).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Local endpoint/ })).not.toBeInTheDocument();
+    const scoringFile = new File(["feature\n1\n"], "scoring.csv", { type: "text/csv" });
+    await user.upload(screen.getByLabelText(/Choose a scoring file/i), scoringFile);
+    await user.click(screen.getByRole("button", { name: "Upload and predict" }));
+    expect(await screen.findByText("Downloaded predictions.csv.")).toBeInTheDocument();
+    expect(createUpload).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: "project-1", file: scoringFile, uploadKind: "offline_scoring",
+    }));
+    expect(apiBlob).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/predict/offline"),
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(createObjectURL).toHaveBeenCalled();
+    expect(download).toHaveBeenCalled();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:predictions");
   });
 
   it("shows deployment request failures and recovers on retry", async () => {

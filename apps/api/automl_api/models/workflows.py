@@ -544,6 +544,12 @@ class WorkflowAttempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             name="fk_attempt_trial_project",
         ),
         ForeignKeyConstraint(
+            ["project_id", "run_attempt_id"],
+            ["workflow_attempts.project_id", "workflow_attempts.id"],
+            ondelete="RESTRICT",
+            name="fk_trial_attempt_run_attempt_project",
+        ),
+        ForeignKeyConstraint(
             ["project_id", "scope_id"],
             ["promotional_scopes.project_id", "promotional_scopes.id"],
             ondelete="CASCADE",
@@ -556,19 +562,33 @@ class WorkflowAttempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             name="fk_attempt_conformance_project",
         ),
         Index("ix_attempt_claim", "status", "available_at", "lease_expires_at"),
+        Index(
+            "uq_attempt_active_logical",
+            "project_id",
+            "logical_key",
+            unique=True,
+            postgresql_where=text(
+                "status IN ('pending', 'claimed', 'submitted', 'running')"
+            ),
+        ),
         CheckConstraint("generation > 0 AND retry_count >= 0", name="attempt_generation_retry"),
         CheckConstraint(
             "(stage = 'training_run' AND model_run_id IS NOT NULL AND trial_id IS NULL "
+            "AND run_attempt_id IS NULL "
             "AND scope_id IS NULL AND conformance_campaign_id IS NULL) OR "
             "(stage = 'training_trial' AND model_run_id IS NOT NULL AND trial_id IS NOT NULL "
+            "AND run_attempt_id IS NOT NULL "
             "AND scope_id IS NULL AND conformance_campaign_id IS NULL) OR "
             "(stage IN ('splitter', 'preparation') AND dataset_version_id IS NOT NULL "
-            "AND model_run_id IS NULL AND trial_id IS NULL AND scope_id IS NULL "
+            "AND model_run_id IS NULL AND trial_id IS NULL AND run_attempt_id IS NULL "
+            "AND scope_id IS NULL "
             "AND conformance_campaign_id IS NULL) OR "
             "(stage IN ('champion_refit', 'champion_evaluation') AND scope_id IS NOT NULL "
-            "AND trial_id IS NULL AND conformance_campaign_id IS NULL) OR "
+            "AND trial_id IS NULL AND run_attempt_id IS NULL "
+            "AND conformance_campaign_id IS NULL) OR "
             "(stage = 'provider_conformance' AND conformance_campaign_id IS NOT NULL "
-            "AND model_run_id IS NULL AND trial_id IS NULL AND scope_id IS NULL)",
+            "AND model_run_id IS NULL AND trial_id IS NULL AND run_attempt_id IS NULL "
+            "AND scope_id IS NULL)",
             name="attempt_typed_parent",
         ),
     )
@@ -589,6 +609,7 @@ class WorkflowAttempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     dataset_version_id: Mapped[uuid.UUID | None] = mapped_column()
     model_run_id: Mapped[uuid.UUID | None] = mapped_column()
     trial_id: Mapped[uuid.UUID | None] = mapped_column()
+    run_attempt_id: Mapped[uuid.UUID | None] = mapped_column()
     scope_id: Mapped[uuid.UUID | None] = mapped_column()
     conformance_campaign_id: Mapped[uuid.UUID | None] = mapped_column()
     workload_identity: Mapped[str] = mapped_column(String(255), nullable=False)

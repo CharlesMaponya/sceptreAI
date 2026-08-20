@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Database, FileSpreadsheet, Play, Plus, RefreshCw, Upload, X } from "lucide-react";
-import { lazy, Suspense, DragEvent, FormEvent, useEffect, useMemo, useState } from "react";
-import { api, json, uploadFormData } from "../api";
+import { Database, FileSpreadsheet, Pause, Play, Plus, RefreshCw, Upload, X } from "lucide-react";
+import { lazy, Suspense, DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { api, json } from "../api";
 import { Badge, Button, Card, EmptyState, ErrorState, Loading, Metric, Modal, Notice, PageHeader } from "../components/ui";
 import { formatBytes, titleCase } from "../lib";
 import type { Dataset, DatasetVersion, LeakageAnalysis, LeakageFinding, ProfileJob } from "../types";
 import { useNavigate, useParams } from "react-router";
 import { buildWordCloudTrace, formatStatistic } from "./presentation";
+import { createResumableUpload, type ResumableUploadController, type UploadTelemetry, waitForVerifiedUpload } from "../resumableUpload";
 
 type ProfileResult = ProfileJob & {
   feature_profiles_json: Record<string, {
@@ -19,7 +20,6 @@ type ProfileResult = ProfileJob & {
   relationships_json: Array<{ source_column: string; target_column: string; method: string; value: number }>;
 };
 
-type DatasetUploadResult = { dataset: Dataset; version: DatasetVersion };
 const PlotlyChart = lazy(() => import("../components/PlotlyChart"));
 
 export function DataPage() {
@@ -30,6 +30,8 @@ export function DataPage() {
   const [selected, setSelected] = useState<Dataset | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadTelemetry, setUploadTelemetry] = useState<UploadTelemetry | null>(null);
+  const uploadController = useRef<ResumableUploadController<Dataset, DatasetVersion> | null>(null);
   const datasets = useQuery({ queryKey: ["datasets", projectId], queryFn: () => api<Dataset[]>(`/projects/${projectId}/datasets`) });
   useEffect(() => {
     if (!selected && datasets.data?.length) setSelected(datasets.data[0]);
@@ -38,21 +40,28 @@ export function DataPage() {
 
   const upload = useMutation({
     mutationFn: async (values: { name: string; description: string; file: File }) => {
-      const body = new FormData();
-      body.set("dataset_name", values.name);
-      body.set("description", values.description);
-      body.set("tags", JSON.stringify({}));
-      body.set("file", values.file, values.file.name);
-      return uploadFormData<DatasetUploadResult>(
-        `/projects/${projectId}/datasets/upload`,
-        body,
-        setUploadProgress,
-      );
+      const controller = createResumableUpload<Dataset, DatasetVersion>({
+        projectId, file: values.file, datasetName: values.name, description: values.description,
+        sensitivity: "internal", uploadKind: "dataset",
+        onTelemetry: (telemetry) => {
+          setUploadTelemetry(telemetry);
+          setUploadProgress(telemetry.percent);
+        },
+      });
+      uploadController.current = controller;
+      const result = await controller.result;
+      if (!result.dataset || !result.version) {
+        await waitForVerifiedUpload(projectId, result.session.id);
+      }
+      return result;
     },
     onSuccess: (result) => {
       client.invalidateQueries({ queryKey: ["datasets", projectId] });
-      client.invalidateQueries({ queryKey: ["versions", projectId, result.dataset.id] });
+      if (result.dataset) {
+        client.invalidateQueries({ queryKey: ["versions", projectId, result.dataset.id] });
+      }
       setFile(null);
+      uploadController.current = null;
       setShowUpload(false);
       navigate(`/projects/${projectId}`);
     },
@@ -60,6 +69,7 @@ export function DataPage() {
   const openUpload = () => {
     upload.reset();
     setUploadProgress(0);
+    setUploadTelemetry(null);
     setShowUpload(true);
   };
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -92,12 +102,20 @@ export function DataPage() {
             : <><Upload /><b>Drop a file here or browse</b><span>CSV, Parquet, Excel, JSON, or JSONL</span></>}
         </label>
         {upload.isPending && <div className="progress-panel" role="status" aria-live="polite">
-          <div><b>{uploadProgress < 100 ? "Uploading dataset" : "Upload complete"}</b><span>{uploadProgress}%</span></div>
+          <div><b>{titleCase(uploadTelemetry?.stage || "Preparing upload")}</b><span>{uploadProgress}%</span></div>
           <progress aria-label="Dataset upload progress" value={uploadProgress} max={100} />
-          <p>{uploadProgress < 100 ? "Keep this window open while the file is transferred." : "Inspecting the dataset and preparing its profile…"}</p>
+          <p>{uploadTelemetry?.bytesPerSecond ? `${formatBytes(uploadTelemetry.bytesPerSecond)}/s · ` : ""}
+            {uploadTelemetry?.retry ? `Retry ${uploadTelemetry.retry} · ` : ""}
+            Confirmed {formatBytes(uploadTelemetry?.confirmedBytes || 0)} of {formatBytes(uploadTelemetry?.totalBytes || file?.size || 0)}.</p>
+          <div className="modal__actions">{uploadTelemetry?.stage === "paused"
+            ? <Button variant="secondary" type="button" onClick={() => uploadController.current?.resume()}><Play size={15} />Resume</Button>
+            : <Button variant="secondary" type="button" onClick={() => uploadController.current?.pause()}><Pause size={15} />Pause</Button>}
+            <Button variant="ghost" type="button" onClick={() => uploadController.current?.cancel()}><X size={15} />Cancel upload</Button></div>
         </div>}
         {upload.error && <Notice tone="danger">{upload.error.message}</Notice>}
-        <div className="modal__actions"><Button variant="ghost" type="button" onClick={() => setShowUpload(false)}>Cancel</Button><Button disabled={!file} loading={upload.isPending}>Upload dataset</Button></div>
+        <div className="modal__actions"><Button variant="ghost" type="button" onClick={() => {
+          if (upload.isPending) uploadController.current?.cancel(); else setShowUpload(false);
+        }}>Cancel</Button><Button disabled={!file || upload.isPending} loading={upload.isPending}>Upload dataset</Button></div>
       </form>
     </Modal>}
   </>;

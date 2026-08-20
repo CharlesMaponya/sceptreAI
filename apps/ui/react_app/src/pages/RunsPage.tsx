@@ -7,7 +7,7 @@ import {
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, useParams } from "react-router";
-import { api, getSession, json, uploadFormData } from "../api";
+import { api, getSession, json } from "../api";
 import {
   Badge, Button, Card, EmptyState, ErrorState, Loading, Modal, Notice, PageHeader,
 } from "../components/ui";
@@ -15,6 +15,7 @@ import { formatBytes, formatDate, titleCase } from "../lib";
 import type {
   Dataset, DatasetVersion, Estimator, Leaderboard, ModelRun, TaskType, TrainingResourceUsage,
 } from "../types";
+import { createResumableUpload, waitForUploadResult } from "../resumableUpload";
 import {
   fallbackPipeline, fallbackPipelineDiagram, formatDuration, formatNumber,
 } from "./presentation";
@@ -716,14 +717,19 @@ function AnalysisPanel({ projectId, run, successfulModels }: {
   });
   const uploadValidation = useMutation({
     mutationFn: async (file: File) => {
-      const body = new FormData();
-      body.set("dataset_name", `External validation · ${file.name}`.slice(0, 220));
-      body.set("description", `Uploaded to validate ${run.run_name || run.id}`);
-      body.set("tags", JSON.stringify({ purpose: "external_validation", source_run_id: run.id }));
-      body.set("file", file, file.name);
-      return uploadFormData<DatasetUploadResult>(
-        `/projects/${projectId}/datasets/upload`, body, setValidationUploadProgress,
-      );
+      let result = await createResumableUpload<Dataset, DatasetVersion>({
+        projectId, file,
+        datasetName: `External validation · ${file.name}`.slice(0, 220),
+        description: `Uploaded to validate ${run.run_name || run.id}`,
+        uploadKind: "validation", sensitivity: "internal",
+        tags: { purpose: "external_validation", source_run_id: run.id },
+        onTelemetry: ({ percent }) => setValidationUploadProgress(percent),
+      }).result;
+      if (!result.version?.schema_json?.columns?.length) {
+        result = await waitForUploadResult<Dataset, DatasetVersion>(projectId, result.session.id);
+      }
+      if (!result.dataset || !result.version) throw new Error("Validation upload has no dataset version.");
+      return { dataset: result.dataset, version: result.version };
     },
     onSuccess: (uploaded) => {
       setUploadedValidation(uploaded);

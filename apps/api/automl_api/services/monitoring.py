@@ -586,8 +586,8 @@ def generate_governance_report(
     )
     if defer_external:
         bucket = get_settings().object_store_bucket
-        json_uri = f"minio://{bucket}/{json_key}"
-        html_uri = f"minio://{bucket}/{html_key}"
+        json_uri = f"pending://{bucket}/{json_key}"
+        html_uri = f"pending://{bucket}/{html_key}"
     else:
         json_uri = get_object_store().put_bytes(json_key, json_bytes).uri
     html_bytes = _audit_html(report).encode("utf-8")

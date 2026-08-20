@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
@@ -117,14 +118,39 @@ class DatasetVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
     )
     object_store_type: Mapped[ObjectStoreType] = mapped_column(
-        SQLEnum(ObjectStoreType, name="object_store_type", native_enum=False),
+        SQLEnum(
+            ObjectStoreType,
+            name="object_store_type",
+            native_enum=False,
+            length=32,
+        ),
         nullable=False,
-        default=ObjectStoreType.MINIO,
-        server_default=ObjectStoreType.MINIO.value,
+        default=ObjectStoreType.S3_COMPATIBLE,
+        server_default=ObjectStoreType.S3_COMPATIBLE.value,
     )
     object_uri: Mapped[str] = mapped_column(String(1024), nullable=False)
     original_filename: Mapped[str | None] = mapped_column(String(512))
     content_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    content_hash_algorithm: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="sha256", server_default="sha256"
+    )
+    content_hash_scope: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="byte_stream", server_default="byte_stream"
+    )
+    content_hash_verification_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="pending", server_default="verified_legacy"
+    )
+    content_hash_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    data_region: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="local", server_default="legacy"
+    )
+    sensitivity: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="internal", server_default="internal"
+    )
+    retention_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    legal_hold: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     byte_size: Mapped[int | None] = mapped_column(BigInteger)
     row_count: Mapped[int | None] = mapped_column(BigInteger)
     column_count: Mapped[int | None] = mapped_column(Integer)
@@ -184,6 +210,20 @@ class DatasetUploadSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_dataset_upload_sessions_owner_status", "created_by_id", "status"),
         Index("ix_dataset_upload_sessions_expires_status", "expires_at", "status"),
         Index("ix_dataset_upload_sessions_project_created", "project_id", "created_at"),
+        Index(
+            "ix_upload_sessions_reconcile", "status", "last_progress_at", "expires_at"
+        ),
+        Index(
+            "ix_upload_sessions_project_storage", "project_id", "status", "byte_size"
+        ),
+        CheckConstraint(
+            "confirmed_bytes >= 0 AND confirmed_bytes <= byte_size",
+            name="upload_confirmed_byte_bounds",
+        ),
+        CheckConstraint(
+            "part_size > 0 AND total_parts > 0 AND byte_size > 0",
+            name="upload_part_bounds",
+        ),
     )
 
     project_id: Mapped[uuid.UUID] = mapped_column(
@@ -193,6 +233,9 @@ class DatasetUploadSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     dataset_name: Mapped[str] = mapped_column(String(220), nullable=False)
+    upload_kind: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="dataset", server_default="dataset"
+    )
     description: Mapped[str | None] = mapped_column(Text)
     tags: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
@@ -203,6 +246,59 @@ class DatasetUploadSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     total_parts: Mapped[int] = mapped_column(Integer, nullable=False)
     object_key: Mapped[str] = mapped_column(String(1024), nullable=False, unique=True)
     multipart_upload_id: Mapped[str] = mapped_column(String(1024), nullable=False)
+    provider_driver: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="s3_compatible", server_default="s3_compatible"
+    )
+    protocol: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="multipart", server_default="multipart"
+    )
+    provider_state: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+    transfer_receipts: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    instruction_state: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+    confirmed_bytes: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    content_type: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        default="application/octet-stream",
+        server_default="application/octet-stream",
+    )
+    sensitivity: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="internal", server_default="internal"
+    )
+    data_region: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="local", server_default="local"
+    )
+    retention_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    legal_hold: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    provider_checksum: Mapped[str | None] = mapped_column(String(256))
+    completed_object_uri: Mapped[str | None] = mapped_column(String(1024))
+    checksum_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_progress_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    aborted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    quarantine_delete_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    scanner_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="pending", server_default="pending"
+    )
+    scanner_name: Mapped[str | None] = mapped_column(String(120))
+    scanner_version: Mapped[str | None] = mapped_column(String(120))
+    scanner_signature_version: Mapped[str | None] = mapped_column(String(255))
+    scanner_evidence: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+    content_policy_revision: Mapped[str | None] = mapped_column(String(128))
+    target_metadata: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
     resume_key: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[str] = mapped_column(
         String(32), nullable=False, default="pending", server_default="pending"
@@ -224,7 +320,9 @@ class DatasetUploadSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     lease_owner: Mapped[str | None] = mapped_column(String(255))
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    retry_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     retry_budget: Mapped[int] = mapped_column(
         Integer, nullable=False, default=5, server_default="5"
     )

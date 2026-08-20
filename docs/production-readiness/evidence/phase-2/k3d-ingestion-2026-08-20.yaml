@@ -1,0 +1,90 @@
+schema_revision: sceptre-phase-2-k3d-ingestion-v1
+status: passed
+observed_at: "2026-08-20T16:45:04+02:00"
+environment:
+  cluster: sceptre-local
+  distribution: k3d
+  namespace: sceptre
+  helm_release_revision: 21
+  storage_driver: s3_compatible
+  storage_implementation: SeaweedFS S3 API
+  api_image: sceptre-registry.localhost:5111/sceptreai:api-phase2-green
+  ui_image: sceptre-registry.localhost:5111/sceptreai:ui-phase2-green
+  ui_image_digest: sha256:08da8822add5408d9646822ce3af2033d1fd1d15d6884f0bf9ddd2d4c389378a
+runtime_imports:
+  boto3: 1.43.56
+  polars: 1.43.2
+  pyarrow: 24.0.0
+  ray: 2.56.1
+rollout:
+  api: {ready: 2, expected: 2}
+  ui: {ready: 2, expected: 2}
+  reconciler: {ready: 3, expected: 3}
+  object_store: {ready: 1, expected: 1}
+  postgresql: {ready: 1, expected: 1}
+checks:
+  exact_origin_cors:
+    status: passed
+    approved_origin: {origin: "http://localhost:8080", http_status: 200, allow_origin: "http://localhost:8080"}
+    denied_origin: {origin: "https://evil.example", http_status: 403, allow_origin: null}
+    scope: presigned object PUT URL
+  direct_upload:
+    status: passed
+    initial_ready_session: 81214d60
+    client_payload_destination: "storage.localhost:8080"
+    api_or_ui_payload_bytes: 0
+  api_restart_resume:
+    status: passed
+    session_id: 5f4ff752
+    committed_before_restart_bytes: 134217728
+    resumed_offset_bytes: 134217728
+    retransmitted_confirmed_bytes: 0
+  long_verification:
+    status: passed
+    session_id: 9dda786b-9234-4d35-ac64-1093b4c8870f
+    payload_bytes: 134217728
+    elapsed_seconds: 51.54
+    reconciler_restarts_before: 0
+    reconciler_restarts_after: 0
+  database_restart_resume:
+    status: passed
+    session_id: 78a33c57-1dfc-4744-8719-12f487b4c405
+    confirmed_bytes: 524303
+    terminal_status: ready
+  browser_reload_and_network_loss:
+    status: passed
+    runner: Playwright Chromium against the live k3d ingress
+    test: "e2e/phase2-ingestion.spec.ts"
+    upload_begin_requests: 1
+    note: The first instruction request was interrupted, the page reloaded, and IndexedDB resumed the same durable session.
+  corrupted_object:
+    status: passed
+    session_id: b9c6a8c9-a08e-4ad6-b74e-d1a4ce383276
+    terminal_status: quarantined
+  abort_cleanup:
+    status: passed
+    session_id: f00aefbd
+    terminal_status: aborted
+    active_multipart_uploads_after_abort: 0
+  quarantine_cleanup:
+    status: passed
+    session_id: b9c6a8c9-a08e-4ad6-b74e-d1a4ce383276
+    terminal_status_after_grace: failed
+    object_exists_after_cleanup: false
+    active_multipart_uploads_after_cleanup: 0
+  load_harness_smoke:
+    status: passed
+    object_count: 2
+    aggregate_payload_bytes: 41943046
+    payload_hosts: ["storage.localhost:8080"]
+    note: Correctness smoke only; it is not the exact Phase 2 scale gate.
+  log_redaction:
+    status: passed
+    log_streams_scanned: 10
+    x_amz_signature_findings: 0
+    x_amz_credential_findings: 0
+    upload_id_query_findings: 0
+    sas_signature_findings: 0
+limitations:
+  - The bucket-root OPTIONS response is not the transfer security oracle; exact-origin evidence above uses a presigned object URL.
+  - Native managed-provider and exact 15-by-10-GiB qualification are recorded separately as blocked gates.

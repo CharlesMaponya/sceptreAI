@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import sys
 from pathlib import Path
@@ -39,3 +40,22 @@ def test_checked_in_task_index_matches_guide_without_renumbering() -> None:
 
     generator._validate(regenerated)
     assert regenerated == existing
+
+
+def test_unchanged_guide_preserves_the_commit_bound_to_its_digest() -> None:
+    generator = _load_generator()
+    introducing_commit = "a" * 40
+    existing = {
+        "guide": {
+            "sha256": hashlib.sha256(GUIDE.read_bytes()).hexdigest(),
+            "commit": introducing_commit,
+        },
+        "entries": [],
+    }
+
+    regenerated = generator.build_index(GUIDE, existing)
+
+    assert regenerated["guide"]["commit"] == introducing_commit
+    assert {entry["guide_commit"] for entry in regenerated["entries"]} == {
+        introducing_commit
+    }

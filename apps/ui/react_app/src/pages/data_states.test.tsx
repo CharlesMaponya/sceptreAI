@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setSession } from "../api";
 import { DataPage } from "./DataPage";
+import * as resumableUpload from "../resumableUpload";
 
 vi.mock("../components/PlotlyChart", () => ({
   default: () => <div data-testid="feature-chart" />,
@@ -60,15 +61,12 @@ describe("dataset qualification states", () => {
 
   it("validates file selection, removal, drag-and-drop, and upload errors", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response([]));
-    vi.spyOn(XMLHttpRequest.prototype, "open").mockImplementation(() => undefined);
-    vi.spyOn(XMLHttpRequest.prototype, "setRequestHeader").mockImplementation(() => undefined);
-    vi.spyOn(XMLHttpRequest.prototype, "send").mockImplementation(function (this: XMLHttpRequest) {
-      Object.defineProperty(this, "status", { configurable: true, value: 500 });
-      Object.defineProperty(this, "responseText", {
-        configurable: true, value: JSON.stringify({ detail: "Object store rejected the upload" }),
-      });
-      this.onload?.call(this, new ProgressEvent("load"));
-    });
+    vi.spyOn(resumableUpload, "createResumableUpload").mockImplementation(() => ({
+      result: new Promise((_resolve, reject) => {
+        window.setTimeout(() => reject(new Error("Object store rejected the upload")), 0);
+      }),
+      pause: vi.fn(), resume: vi.fn(), cancel: vi.fn(),
+    } as unknown as resumableUpload.ResumableUploadController));
     const user = userEvent.setup({ applyAccept: false });
     const { container } = renderData();
     await screen.findByText("Your model starts with trusted data");

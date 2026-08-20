@@ -23,23 +23,23 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">92.2% </span>
+                <span class="strong">91.96% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>355/385</span>
+                <span class='fraction'>355/386</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">83.11% </span>
+                <span class="strong">82.92% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>438/527</span>
+                <span class='fraction'>442/533</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">91.06% </span>
+                <span class="strong">91.11% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>163/179</span>
+                <span class='fraction'>164/180</span>
             </div>
         
             
@@ -979,7 +979,14 @@
 <a name='L914'></a><a href='#L914'>914</a>
 <a name='L915'></a><a href='#L915'>915</a>
 <a name='L916'></a><a href='#L916'>916</a>
-<a name='L917'></a><a href='#L917'>917</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L917'></a><a href='#L917'>917</a>
+<a name='L918'></a><a href='#L918'>918</a>
+<a name='L919'></a><a href='#L919'>919</a>
+<a name='L920'></a><a href='#L920'>920</a>
+<a name='L921'></a><a href='#L921'>921</a>
+<a name='L922'></a><a href='#L922'>922</a>
+<a name='L923'></a><a href='#L923'>923</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1698,13 +1705,18 @@
 <span class="cline-any cline-yes">27x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
@@ -1904,7 +1916,7 @@ import {
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, useParams } from "react-router";
-import { api, getSession, json, uploadFormData } from "../api";
+import { api, getSession, json } from "../api";
 import {
   Badge, Button, Card, EmptyState, ErrorState, Loading, Modal, Notice, PageHeader,
 } from "../components/ui";
@@ -1912,6 +1924,7 @@ import { formatBytes, formatDate, titleCase } from "../lib";
 import type {
   Dataset, DatasetVersion, Estimator, Leaderboard, ModelRun, TaskType, TrainingResourceUsage,
 } from "../types";
+import { createResumableUpload, waitForUploadResult } from "../resumableUpload";
 import {
   fallbackPipeline, fallbackPipelineDiagram, formatDuration, formatNumber,
 } from "./presentation";
@@ -2613,14 +2626,19 @@ function AnalysisPanel({ projectId, run, successfulModels }: {
   });
   const uploadValidation = useMutation({
     mutationFn: async (file: File) =&gt; {
-      const body = new FormData();
-      body.set("dataset_name", `External validation · ${file.name}`.slice(0, 220));
-      body.set("description", `Uploaded to validate ${run.run_name || <span class="branch-1 cbranch-no" title="branch not covered" >run.id}</span>`);
-      body.set("tags", JSON.stringify({ purpose: "external_validation", source_run_id: run.id }));
-      body.set("file", file, file.name);
-      return uploadFormData&lt;DatasetUploadResult&gt;(
-        `/projects/${projectId}/datasets/upload`, body, setValidationUploadProgress,
-      );
+      let result = await createResumableUpload&lt;Dataset, DatasetVersion&gt;({
+        projectId, file,
+        datasetName: `External validation · ${file.name}`.slice(0, 220),
+        description: `Uploaded to validate ${run.run_name || <span class="branch-1 cbranch-no" title="branch not covered" >run.id}</span>`,
+        uploadKind: "validation", sensitivity: "internal",
+        tags: { purpose: "external_validation", source_run_id: run.id },
+        onTelemetry: ({ percent }) =&gt; setValidationUploadProgress(percent),
+      }).result;
+      <span class="missing-if-branch" title="else path not taken" >E</span>if (!result.version?.schema_json?.columns?.length) {
+        result = await waitForUploadResult&lt;Dataset, DatasetVersion&gt;(projectId, result.session.id);
+      }
+      <span class="missing-if-branch" title="if path not taken" >I</span>if (!result.dataset || !result.version) <span class="cstat-no" title="statement not covered" >throw new Error("Validation upload has no dataset version.");</span>
+      return { dataset: result.dataset, version: result.version };
     },
     onSuccess: (uploaded) =&gt; {
       setUploadedValidation(uploaded);
@@ -2818,7 +2836,7 @@ function AddModelsModal({ projectId, run, completed, close, done }: {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-08-13T14:26:55.311Z
+                at 2026-08-20T15:44:36.035Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

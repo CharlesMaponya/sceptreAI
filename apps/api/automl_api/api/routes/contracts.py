@@ -48,6 +48,7 @@ from automl_api.services.contracts import (
     run_collection,
 )
 from automl_api.services.projects import require_project_role
+from automl_api.services.upload_policy import configured_upload_data_region
 from automl_api.services.workflow_state import transition_command
 from automl_api.training.model_catalog import candidate_catalog
 
@@ -92,6 +93,8 @@ def capabilities() -> CapabilitiesRead:
         max_qualified_concurrency=settings.max_concurrent_jobs,
         environment_qualified=False,
         deployment_target=settings.environment,
+        upload_data_region=configured_upload_data_region(settings),
+        upload_storage_driver=getattr(settings, "object_store_type", "embedded"),
     )
 
 

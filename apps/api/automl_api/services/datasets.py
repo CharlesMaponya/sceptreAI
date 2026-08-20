@@ -118,17 +118,17 @@ def upload_dataset_version(
 def _object_store_type_from_settings() -> ObjectStoreType:
     settings = get_settings()
     raw_value = settings.object_store_type.lower()
+    raw_value = {
+        "minio": ObjectStoreType.S3_COMPATIBLE.value,
+        "s3": ObjectStoreType.AWS_S3.value,
+        "azure": ObjectStoreType.AZURE_BLOB.value,
+    }.get(raw_value, raw_value)
     try:
         return ObjectStoreType(raw_value)
     except ValueError as exc:
-        if str(getattr(settings, "environment", "local")).lower() in {
-            "production",
-            "staging",
-        }:
-            raise ValueError(
-                f"Unsupported production object-store driver '{settings.object_store_type}'."
-            ) from exc
-        return ObjectStoreType.MINIO
+        raise ValueError(
+            f"Unsupported object-store driver '{settings.object_store_type}'."
+        ) from exc
 
 
 def _get_project_dataset(db: Session, project_id: uuid.UUID, dataset_id: uuid.UUID) -> Dataset:

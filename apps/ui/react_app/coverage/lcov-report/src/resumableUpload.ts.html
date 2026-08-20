@@ -1,0 +1,1411 @@
+
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Code coverage report for src/resumableUpload.ts</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../prettify.css" />
+    <link rel="stylesheet" href="../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+    
+<body>
+<div class='wrapper'>
+    <div class='pad1'>
+        <h1><a href="../index.html">All files</a> / <a href="index.html">src</a> resumableUpload.ts</h1>
+        <div class='clearfix'>
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">93.2% </span>
+                <span class="quiet">Statements</span>
+                <span class='fraction'>247/265</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">95% </span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>114/120</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">85.71% </span>
+                <span class="quiet">Functions</span>
+                <span class='fraction'>54/63</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">96.26% </span>
+                <span class="quiet">Lines</span>
+                <span class='fraction'>206/214</span>
+            </div>
+        
+            
+        </div>
+        <p class="quiet">
+            Press <em>n</em> or <em>j</em> to go to the next uncovered block, <em>b</em>, <em>p</em> or <em>k</em> for the previous block.
+        </p>
+        <template id="filterTemplate">
+            <div class="quiet">
+                Filter:
+                <input type="search" id="fileSearch">
+            </div>
+        </template>
+    </div>
+    <div class='status-line high'></div>
+    <pre><table class="coverage">
+<tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
+<a name='L2'></a><a href='#L2'>2</a>
+<a name='L3'></a><a href='#L3'>3</a>
+<a name='L4'></a><a href='#L4'>4</a>
+<a name='L5'></a><a href='#L5'>5</a>
+<a name='L6'></a><a href='#L6'>6</a>
+<a name='L7'></a><a href='#L7'>7</a>
+<a name='L8'></a><a href='#L8'>8</a>
+<a name='L9'></a><a href='#L9'>9</a>
+<a name='L10'></a><a href='#L10'>10</a>
+<a name='L11'></a><a href='#L11'>11</a>
+<a name='L12'></a><a href='#L12'>12</a>
+<a name='L13'></a><a href='#L13'>13</a>
+<a name='L14'></a><a href='#L14'>14</a>
+<a name='L15'></a><a href='#L15'>15</a>
+<a name='L16'></a><a href='#L16'>16</a>
+<a name='L17'></a><a href='#L17'>17</a>
+<a name='L18'></a><a href='#L18'>18</a>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a>
+<a name='L38'></a><a href='#L38'>38</a>
+<a name='L39'></a><a href='#L39'>39</a>
+<a name='L40'></a><a href='#L40'>40</a>
+<a name='L41'></a><a href='#L41'>41</a>
+<a name='L42'></a><a href='#L42'>42</a>
+<a name='L43'></a><a href='#L43'>43</a>
+<a name='L44'></a><a href='#L44'>44</a>
+<a name='L45'></a><a href='#L45'>45</a>
+<a name='L46'></a><a href='#L46'>46</a>
+<a name='L47'></a><a href='#L47'>47</a>
+<a name='L48'></a><a href='#L48'>48</a>
+<a name='L49'></a><a href='#L49'>49</a>
+<a name='L50'></a><a href='#L50'>50</a>
+<a name='L51'></a><a href='#L51'>51</a>
+<a name='L52'></a><a href='#L52'>52</a>
+<a name='L53'></a><a href='#L53'>53</a>
+<a name='L54'></a><a href='#L54'>54</a>
+<a name='L55'></a><a href='#L55'>55</a>
+<a name='L56'></a><a href='#L56'>56</a>
+<a name='L57'></a><a href='#L57'>57</a>
+<a name='L58'></a><a href='#L58'>58</a>
+<a name='L59'></a><a href='#L59'>59</a>
+<a name='L60'></a><a href='#L60'>60</a>
+<a name='L61'></a><a href='#L61'>61</a>
+<a name='L62'></a><a href='#L62'>62</a>
+<a name='L63'></a><a href='#L63'>63</a>
+<a name='L64'></a><a href='#L64'>64</a>
+<a name='L65'></a><a href='#L65'>65</a>
+<a name='L66'></a><a href='#L66'>66</a>
+<a name='L67'></a><a href='#L67'>67</a>
+<a name='L68'></a><a href='#L68'>68</a>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a>
+<a name='L71'></a><a href='#L71'>71</a>
+<a name='L72'></a><a href='#L72'>72</a>
+<a name='L73'></a><a href='#L73'>73</a>
+<a name='L74'></a><a href='#L74'>74</a>
+<a name='L75'></a><a href='#L75'>75</a>
+<a name='L76'></a><a href='#L76'>76</a>
+<a name='L77'></a><a href='#L77'>77</a>
+<a name='L78'></a><a href='#L78'>78</a>
+<a name='L79'></a><a href='#L79'>79</a>
+<a name='L80'></a><a href='#L80'>80</a>
+<a name='L81'></a><a href='#L81'>81</a>
+<a name='L82'></a><a href='#L82'>82</a>
+<a name='L83'></a><a href='#L83'>83</a>
+<a name='L84'></a><a href='#L84'>84</a>
+<a name='L85'></a><a href='#L85'>85</a>
+<a name='L86'></a><a href='#L86'>86</a>
+<a name='L87'></a><a href='#L87'>87</a>
+<a name='L88'></a><a href='#L88'>88</a>
+<a name='L89'></a><a href='#L89'>89</a>
+<a name='L90'></a><a href='#L90'>90</a>
+<a name='L91'></a><a href='#L91'>91</a>
+<a name='L92'></a><a href='#L92'>92</a>
+<a name='L93'></a><a href='#L93'>93</a>
+<a name='L94'></a><a href='#L94'>94</a>
+<a name='L95'></a><a href='#L95'>95</a>
+<a name='L96'></a><a href='#L96'>96</a>
+<a name='L97'></a><a href='#L97'>97</a>
+<a name='L98'></a><a href='#L98'>98</a>
+<a name='L99'></a><a href='#L99'>99</a>
+<a name='L100'></a><a href='#L100'>100</a>
+<a name='L101'></a><a href='#L101'>101</a>
+<a name='L102'></a><a href='#L102'>102</a>
+<a name='L103'></a><a href='#L103'>103</a>
+<a name='L104'></a><a href='#L104'>104</a>
+<a name='L105'></a><a href='#L105'>105</a>
+<a name='L106'></a><a href='#L106'>106</a>
+<a name='L107'></a><a href='#L107'>107</a>
+<a name='L108'></a><a href='#L108'>108</a>
+<a name='L109'></a><a href='#L109'>109</a>
+<a name='L110'></a><a href='#L110'>110</a>
+<a name='L111'></a><a href='#L111'>111</a>
+<a name='L112'></a><a href='#L112'>112</a>
+<a name='L113'></a><a href='#L113'>113</a>
+<a name='L114'></a><a href='#L114'>114</a>
+<a name='L115'></a><a href='#L115'>115</a>
+<a name='L116'></a><a href='#L116'>116</a>
+<a name='L117'></a><a href='#L117'>117</a>
+<a name='L118'></a><a href='#L118'>118</a>
+<a name='L119'></a><a href='#L119'>119</a>
+<a name='L120'></a><a href='#L120'>120</a>
+<a name='L121'></a><a href='#L121'>121</a>
+<a name='L122'></a><a href='#L122'>122</a>
+<a name='L123'></a><a href='#L123'>123</a>
+<a name='L124'></a><a href='#L124'>124</a>
+<a name='L125'></a><a href='#L125'>125</a>
+<a name='L126'></a><a href='#L126'>126</a>
+<a name='L127'></a><a href='#L127'>127</a>
+<a name='L128'></a><a href='#L128'>128</a>
+<a name='L129'></a><a href='#L129'>129</a>
+<a name='L130'></a><a href='#L130'>130</a>
+<a name='L131'></a><a href='#L131'>131</a>
+<a name='L132'></a><a href='#L132'>132</a>
+<a name='L133'></a><a href='#L133'>133</a>
+<a name='L134'></a><a href='#L134'>134</a>
+<a name='L135'></a><a href='#L135'>135</a>
+<a name='L136'></a><a href='#L136'>136</a>
+<a name='L137'></a><a href='#L137'>137</a>
+<a name='L138'></a><a href='#L138'>138</a>
+<a name='L139'></a><a href='#L139'>139</a>
+<a name='L140'></a><a href='#L140'>140</a>
+<a name='L141'></a><a href='#L141'>141</a>
+<a name='L142'></a><a href='#L142'>142</a>
+<a name='L143'></a><a href='#L143'>143</a>
+<a name='L144'></a><a href='#L144'>144</a>
+<a name='L145'></a><a href='#L145'>145</a>
+<a name='L146'></a><a href='#L146'>146</a>
+<a name='L147'></a><a href='#L147'>147</a>
+<a name='L148'></a><a href='#L148'>148</a>
+<a name='L149'></a><a href='#L149'>149</a>
+<a name='L150'></a><a href='#L150'>150</a>
+<a name='L151'></a><a href='#L151'>151</a>
+<a name='L152'></a><a href='#L152'>152</a>
+<a name='L153'></a><a href='#L153'>153</a>
+<a name='L154'></a><a href='#L154'>154</a>
+<a name='L155'></a><a href='#L155'>155</a>
+<a name='L156'></a><a href='#L156'>156</a>
+<a name='L157'></a><a href='#L157'>157</a>
+<a name='L158'></a><a href='#L158'>158</a>
+<a name='L159'></a><a href='#L159'>159</a>
+<a name='L160'></a><a href='#L160'>160</a>
+<a name='L161'></a><a href='#L161'>161</a>
+<a name='L162'></a><a href='#L162'>162</a>
+<a name='L163'></a><a href='#L163'>163</a>
+<a name='L164'></a><a href='#L164'>164</a>
+<a name='L165'></a><a href='#L165'>165</a>
+<a name='L166'></a><a href='#L166'>166</a>
+<a name='L167'></a><a href='#L167'>167</a>
+<a name='L168'></a><a href='#L168'>168</a>
+<a name='L169'></a><a href='#L169'>169</a>
+<a name='L170'></a><a href='#L170'>170</a>
+<a name='L171'></a><a href='#L171'>171</a>
+<a name='L172'></a><a href='#L172'>172</a>
+<a name='L173'></a><a href='#L173'>173</a>
+<a name='L174'></a><a href='#L174'>174</a>
+<a name='L175'></a><a href='#L175'>175</a>
+<a name='L176'></a><a href='#L176'>176</a>
+<a name='L177'></a><a href='#L177'>177</a>
+<a name='L178'></a><a href='#L178'>178</a>
+<a name='L179'></a><a href='#L179'>179</a>
+<a name='L180'></a><a href='#L180'>180</a>
+<a name='L181'></a><a href='#L181'>181</a>
+<a name='L182'></a><a href='#L182'>182</a>
+<a name='L183'></a><a href='#L183'>183</a>
+<a name='L184'></a><a href='#L184'>184</a>
+<a name='L185'></a><a href='#L185'>185</a>
+<a name='L186'></a><a href='#L186'>186</a>
+<a name='L187'></a><a href='#L187'>187</a>
+<a name='L188'></a><a href='#L188'>188</a>
+<a name='L189'></a><a href='#L189'>189</a>
+<a name='L190'></a><a href='#L190'>190</a>
+<a name='L191'></a><a href='#L191'>191</a>
+<a name='L192'></a><a href='#L192'>192</a>
+<a name='L193'></a><a href='#L193'>193</a>
+<a name='L194'></a><a href='#L194'>194</a>
+<a name='L195'></a><a href='#L195'>195</a>
+<a name='L196'></a><a href='#L196'>196</a>
+<a name='L197'></a><a href='#L197'>197</a>
+<a name='L198'></a><a href='#L198'>198</a>
+<a name='L199'></a><a href='#L199'>199</a>
+<a name='L200'></a><a href='#L200'>200</a>
+<a name='L201'></a><a href='#L201'>201</a>
+<a name='L202'></a><a href='#L202'>202</a>
+<a name='L203'></a><a href='#L203'>203</a>
+<a name='L204'></a><a href='#L204'>204</a>
+<a name='L205'></a><a href='#L205'>205</a>
+<a name='L206'></a><a href='#L206'>206</a>
+<a name='L207'></a><a href='#L207'>207</a>
+<a name='L208'></a><a href='#L208'>208</a>
+<a name='L209'></a><a href='#L209'>209</a>
+<a name='L210'></a><a href='#L210'>210</a>
+<a name='L211'></a><a href='#L211'>211</a>
+<a name='L212'></a><a href='#L212'>212</a>
+<a name='L213'></a><a href='#L213'>213</a>
+<a name='L214'></a><a href='#L214'>214</a>
+<a name='L215'></a><a href='#L215'>215</a>
+<a name='L216'></a><a href='#L216'>216</a>
+<a name='L217'></a><a href='#L217'>217</a>
+<a name='L218'></a><a href='#L218'>218</a>
+<a name='L219'></a><a href='#L219'>219</a>
+<a name='L220'></a><a href='#L220'>220</a>
+<a name='L221'></a><a href='#L221'>221</a>
+<a name='L222'></a><a href='#L222'>222</a>
+<a name='L223'></a><a href='#L223'>223</a>
+<a name='L224'></a><a href='#L224'>224</a>
+<a name='L225'></a><a href='#L225'>225</a>
+<a name='L226'></a><a href='#L226'>226</a>
+<a name='L227'></a><a href='#L227'>227</a>
+<a name='L228'></a><a href='#L228'>228</a>
+<a name='L229'></a><a href='#L229'>229</a>
+<a name='L230'></a><a href='#L230'>230</a>
+<a name='L231'></a><a href='#L231'>231</a>
+<a name='L232'></a><a href='#L232'>232</a>
+<a name='L233'></a><a href='#L233'>233</a>
+<a name='L234'></a><a href='#L234'>234</a>
+<a name='L235'></a><a href='#L235'>235</a>
+<a name='L236'></a><a href='#L236'>236</a>
+<a name='L237'></a><a href='#L237'>237</a>
+<a name='L238'></a><a href='#L238'>238</a>
+<a name='L239'></a><a href='#L239'>239</a>
+<a name='L240'></a><a href='#L240'>240</a>
+<a name='L241'></a><a href='#L241'>241</a>
+<a name='L242'></a><a href='#L242'>242</a>
+<a name='L243'></a><a href='#L243'>243</a>
+<a name='L244'></a><a href='#L244'>244</a>
+<a name='L245'></a><a href='#L245'>245</a>
+<a name='L246'></a><a href='#L246'>246</a>
+<a name='L247'></a><a href='#L247'>247</a>
+<a name='L248'></a><a href='#L248'>248</a>
+<a name='L249'></a><a href='#L249'>249</a>
+<a name='L250'></a><a href='#L250'>250</a>
+<a name='L251'></a><a href='#L251'>251</a>
+<a name='L252'></a><a href='#L252'>252</a>
+<a name='L253'></a><a href='#L253'>253</a>
+<a name='L254'></a><a href='#L254'>254</a>
+<a name='L255'></a><a href='#L255'>255</a>
+<a name='L256'></a><a href='#L256'>256</a>
+<a name='L257'></a><a href='#L257'>257</a>
+<a name='L258'></a><a href='#L258'>258</a>
+<a name='L259'></a><a href='#L259'>259</a>
+<a name='L260'></a><a href='#L260'>260</a>
+<a name='L261'></a><a href='#L261'>261</a>
+<a name='L262'></a><a href='#L262'>262</a>
+<a name='L263'></a><a href='#L263'>263</a>
+<a name='L264'></a><a href='#L264'>264</a>
+<a name='L265'></a><a href='#L265'>265</a>
+<a name='L266'></a><a href='#L266'>266</a>
+<a name='L267'></a><a href='#L267'>267</a>
+<a name='L268'></a><a href='#L268'>268</a>
+<a name='L269'></a><a href='#L269'>269</a>
+<a name='L270'></a><a href='#L270'>270</a>
+<a name='L271'></a><a href='#L271'>271</a>
+<a name='L272'></a><a href='#L272'>272</a>
+<a name='L273'></a><a href='#L273'>273</a>
+<a name='L274'></a><a href='#L274'>274</a>
+<a name='L275'></a><a href='#L275'>275</a>
+<a name='L276'></a><a href='#L276'>276</a>
+<a name='L277'></a><a href='#L277'>277</a>
+<a name='L278'></a><a href='#L278'>278</a>
+<a name='L279'></a><a href='#L279'>279</a>
+<a name='L280'></a><a href='#L280'>280</a>
+<a name='L281'></a><a href='#L281'>281</a>
+<a name='L282'></a><a href='#L282'>282</a>
+<a name='L283'></a><a href='#L283'>283</a>
+<a name='L284'></a><a href='#L284'>284</a>
+<a name='L285'></a><a href='#L285'>285</a>
+<a name='L286'></a><a href='#L286'>286</a>
+<a name='L287'></a><a href='#L287'>287</a>
+<a name='L288'></a><a href='#L288'>288</a>
+<a name='L289'></a><a href='#L289'>289</a>
+<a name='L290'></a><a href='#L290'>290</a>
+<a name='L291'></a><a href='#L291'>291</a>
+<a name='L292'></a><a href='#L292'>292</a>
+<a name='L293'></a><a href='#L293'>293</a>
+<a name='L294'></a><a href='#L294'>294</a>
+<a name='L295'></a><a href='#L295'>295</a>
+<a name='L296'></a><a href='#L296'>296</a>
+<a name='L297'></a><a href='#L297'>297</a>
+<a name='L298'></a><a href='#L298'>298</a>
+<a name='L299'></a><a href='#L299'>299</a>
+<a name='L300'></a><a href='#L300'>300</a>
+<a name='L301'></a><a href='#L301'>301</a>
+<a name='L302'></a><a href='#L302'>302</a>
+<a name='L303'></a><a href='#L303'>303</a>
+<a name='L304'></a><a href='#L304'>304</a>
+<a name='L305'></a><a href='#L305'>305</a>
+<a name='L306'></a><a href='#L306'>306</a>
+<a name='L307'></a><a href='#L307'>307</a>
+<a name='L308'></a><a href='#L308'>308</a>
+<a name='L309'></a><a href='#L309'>309</a>
+<a name='L310'></a><a href='#L310'>310</a>
+<a name='L311'></a><a href='#L311'>311</a>
+<a name='L312'></a><a href='#L312'>312</a>
+<a name='L313'></a><a href='#L313'>313</a>
+<a name='L314'></a><a href='#L314'>314</a>
+<a name='L315'></a><a href='#L315'>315</a>
+<a name='L316'></a><a href='#L316'>316</a>
+<a name='L317'></a><a href='#L317'>317</a>
+<a name='L318'></a><a href='#L318'>318</a>
+<a name='L319'></a><a href='#L319'>319</a>
+<a name='L320'></a><a href='#L320'>320</a>
+<a name='L321'></a><a href='#L321'>321</a>
+<a name='L322'></a><a href='#L322'>322</a>
+<a name='L323'></a><a href='#L323'>323</a>
+<a name='L324'></a><a href='#L324'>324</a>
+<a name='L325'></a><a href='#L325'>325</a>
+<a name='L326'></a><a href='#L326'>326</a>
+<a name='L327'></a><a href='#L327'>327</a>
+<a name='L328'></a><a href='#L328'>328</a>
+<a name='L329'></a><a href='#L329'>329</a>
+<a name='L330'></a><a href='#L330'>330</a>
+<a name='L331'></a><a href='#L331'>331</a>
+<a name='L332'></a><a href='#L332'>332</a>
+<a name='L333'></a><a href='#L333'>333</a>
+<a name='L334'></a><a href='#L334'>334</a>
+<a name='L335'></a><a href='#L335'>335</a>
+<a name='L336'></a><a href='#L336'>336</a>
+<a name='L337'></a><a href='#L337'>337</a>
+<a name='L338'></a><a href='#L338'>338</a>
+<a name='L339'></a><a href='#L339'>339</a>
+<a name='L340'></a><a href='#L340'>340</a>
+<a name='L341'></a><a href='#L341'>341</a>
+<a name='L342'></a><a href='#L342'>342</a>
+<a name='L343'></a><a href='#L343'>343</a>
+<a name='L344'></a><a href='#L344'>344</a>
+<a name='L345'></a><a href='#L345'>345</a>
+<a name='L346'></a><a href='#L346'>346</a>
+<a name='L347'></a><a href='#L347'>347</a>
+<a name='L348'></a><a href='#L348'>348</a>
+<a name='L349'></a><a href='#L349'>349</a>
+<a name='L350'></a><a href='#L350'>350</a>
+<a name='L351'></a><a href='#L351'>351</a>
+<a name='L352'></a><a href='#L352'>352</a>
+<a name='L353'></a><a href='#L353'>353</a>
+<a name='L354'></a><a href='#L354'>354</a>
+<a name='L355'></a><a href='#L355'>355</a>
+<a name='L356'></a><a href='#L356'>356</a>
+<a name='L357'></a><a href='#L357'>357</a>
+<a name='L358'></a><a href='#L358'>358</a>
+<a name='L359'></a><a href='#L359'>359</a>
+<a name='L360'></a><a href='#L360'>360</a>
+<a name='L361'></a><a href='#L361'>361</a>
+<a name='L362'></a><a href='#L362'>362</a>
+<a name='L363'></a><a href='#L363'>363</a>
+<a name='L364'></a><a href='#L364'>364</a>
+<a name='L365'></a><a href='#L365'>365</a>
+<a name='L366'></a><a href='#L366'>366</a>
+<a name='L367'></a><a href='#L367'>367</a>
+<a name='L368'></a><a href='#L368'>368</a>
+<a name='L369'></a><a href='#L369'>369</a>
+<a name='L370'></a><a href='#L370'>370</a>
+<a name='L371'></a><a href='#L371'>371</a>
+<a name='L372'></a><a href='#L372'>372</a>
+<a name='L373'></a><a href='#L373'>373</a>
+<a name='L374'></a><a href='#L374'>374</a>
+<a name='L375'></a><a href='#L375'>375</a>
+<a name='L376'></a><a href='#L376'>376</a>
+<a name='L377'></a><a href='#L377'>377</a>
+<a name='L378'></a><a href='#L378'>378</a>
+<a name='L379'></a><a href='#L379'>379</a>
+<a name='L380'></a><a href='#L380'>380</a>
+<a name='L381'></a><a href='#L381'>381</a>
+<a name='L382'></a><a href='#L382'>382</a>
+<a name='L383'></a><a href='#L383'>383</a>
+<a name='L384'></a><a href='#L384'>384</a>
+<a name='L385'></a><a href='#L385'>385</a>
+<a name='L386'></a><a href='#L386'>386</a>
+<a name='L387'></a><a href='#L387'>387</a>
+<a name='L388'></a><a href='#L388'>388</a>
+<a name='L389'></a><a href='#L389'>389</a>
+<a name='L390'></a><a href='#L390'>390</a>
+<a name='L391'></a><a href='#L391'>391</a>
+<a name='L392'></a><a href='#L392'>392</a>
+<a name='L393'></a><a href='#L393'>393</a>
+<a name='L394'></a><a href='#L394'>394</a>
+<a name='L395'></a><a href='#L395'>395</a>
+<a name='L396'></a><a href='#L396'>396</a>
+<a name='L397'></a><a href='#L397'>397</a>
+<a name='L398'></a><a href='#L398'>398</a>
+<a name='L399'></a><a href='#L399'>399</a>
+<a name='L400'></a><a href='#L400'>400</a>
+<a name='L401'></a><a href='#L401'>401</a>
+<a name='L402'></a><a href='#L402'>402</a>
+<a name='L403'></a><a href='#L403'>403</a>
+<a name='L404'></a><a href='#L404'>404</a>
+<a name='L405'></a><a href='#L405'>405</a>
+<a name='L406'></a><a href='#L406'>406</a>
+<a name='L407'></a><a href='#L407'>407</a>
+<a name='L408'></a><a href='#L408'>408</a>
+<a name='L409'></a><a href='#L409'>409</a>
+<a name='L410'></a><a href='#L410'>410</a>
+<a name='L411'></a><a href='#L411'>411</a>
+<a name='L412'></a><a href='#L412'>412</a>
+<a name='L413'></a><a href='#L413'>413</a>
+<a name='L414'></a><a href='#L414'>414</a>
+<a name='L415'></a><a href='#L415'>415</a>
+<a name='L416'></a><a href='#L416'>416</a>
+<a name='L417'></a><a href='#L417'>417</a>
+<a name='L418'></a><a href='#L418'>418</a>
+<a name='L419'></a><a href='#L419'>419</a>
+<a name='L420'></a><a href='#L420'>420</a>
+<a name='L421'></a><a href='#L421'>421</a>
+<a name='L422'></a><a href='#L422'>422</a>
+<a name='L423'></a><a href='#L423'>423</a>
+<a name='L424'></a><a href='#L424'>424</a>
+<a name='L425'></a><a href='#L425'>425</a>
+<a name='L426'></a><a href='#L426'>426</a>
+<a name='L427'></a><a href='#L427'>427</a>
+<a name='L428'></a><a href='#L428'>428</a>
+<a name='L429'></a><a href='#L429'>429</a>
+<a name='L430'></a><a href='#L430'>430</a>
+<a name='L431'></a><a href='#L431'>431</a>
+<a name='L432'></a><a href='#L432'>432</a>
+<a name='L433'></a><a href='#L433'>433</a>
+<a name='L434'></a><a href='#L434'>434</a>
+<a name='L435'></a><a href='#L435'>435</a>
+<a name='L436'></a><a href='#L436'>436</a>
+<a name='L437'></a><a href='#L437'>437</a>
+<a name='L438'></a><a href='#L438'>438</a>
+<a name='L439'></a><a href='#L439'>439</a>
+<a name='L440'></a><a href='#L440'>440</a>
+<a name='L441'></a><a href='#L441'>441</a>
+<a name='L442'></a><a href='#L442'>442</a>
+<a name='L443'></a><a href='#L443'>443</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">14x</span>
+<span class="cline-any cline-yes">43x</span>
+<span class="cline-any cline-yes">57x</span>
+<span class="cline-any cline-yes">33x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">17x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">16x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">14x</span>
+<span class="cline-any cline-yes">14x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">14x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">14x</span>
+<span class="cline-any cline-yes">14x</span>
+<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">14x</span>
+<span class="cline-any cline-yes">14x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">14x</span>
+<span class="cline-any cline-yes">14x</span>
+<span class="cline-any cline-yes">14x</span>
+<span class="cline-any cline-yes">19x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">16x</span>
+<span class="cline-any cline-yes">16x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">21x</span>
+<span class="cline-any cline-yes">21x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">11x</span>
+<span class="cline-any cline-yes">11x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">11x</span>
+<span class="cline-any cline-yes">11x</span>
+<span class="cline-any cline-yes">11x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">22x</span>
+<span class="cline-any cline-yes">22x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">14x</span>
+<span class="cline-any cline-yes">14x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">22x</span>
+<span class="cline-any cline-yes">22x</span>
+<span class="cline-any cline-yes">22x</span>
+<span class="cline-any cline-yes">22x</span>
+<span class="cline-any cline-yes">22x</span>
+<span class="cline-any cline-yes">22x</span>
+<span class="cline-any cline-yes">22x</span>
+<span class="cline-any cline-yes">22x</span>
+<span class="cline-any cline-yes">22x</span>
+<span class="cline-any cline-yes">21x</span>
+<span class="cline-any cline-yes">21x</span>
+<span class="cline-any cline-yes">14x</span>
+<span class="cline-any cline-yes">14x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">14x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">14x</span>
+<span class="cline-any cline-yes">14x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">22x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">30x</span>
+<span class="cline-any cline-yes">30x</span>
+<span class="cline-any cline-yes">30x</span>
+<span class="cline-any cline-yes">30x</span>
+<span class="cline-any cline-yes">30x</span>
+<span class="cline-any cline-yes">30x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">88x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-yes">16x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">108x</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">20x</span>
+<span class="cline-any cline-yes">20x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">36x</span>
+<span class="cline-any cline-yes">36x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { api, json } from "./api";
+import { IncrementalSha256, type Sha256Snapshot } from "./incrementalSha256";
+&nbsp;
+export type UploadKind = "dataset" | "validation" | "drift" | "offline_scoring";
+export type UploadStage = "hashing" | "uploading" | "paused" | "verifying" | "complete" | "cancelled";
+export type UploadCursor = { unit_number: number; offset: number; length: number; checksum_sha256?: string | null };
+export type UploadReceipt = {
+  unit_number: number; offset: number; length: number; etag?: string | null;
+  checksum_sha256?: string | null; provider_headers: Record&lt;string, string&gt;;
+};
+export type UploadSession = {
+  id: string; project_id: string; upload_kind: UploadKind; status: string;
+  provider_driver: string; protocol: string; byte_size: number; part_size: number;
+  total_parts: number; confirmed_bytes: number; resume_key: string; expires_at: string;
+  original_filename: string; expected_object_digest: string; sensitivity: string;
+  data_region: string; legal_hold: boolean; next_cursor: UploadCursor | null;
+  capabilities: { parallel_chunks_per_object: number };
+};
+export type UploadProgress = {
+  session_id: string; status: string; confirmed_bytes: number; total_bytes: number;
+  receipts: UploadReceipt[]; next_cursor: UploadCursor | null; expires_at: string; complete: boolean;
+};
+export type UploadCompletion&lt;TDataset = unknown, TVersion = unknown&gt; = {
+  session: UploadSession; dataset: TDataset | null; version: TVersion | null;
+};
+export type UploadTelemetry = {
+  stage: UploadStage; confirmedBytes: number; totalBytes: number; percent: number;
+  bytesPerSecond: number; retry: number; expiresAt?: string;
+};
+export type ResumableUploadOptions = {
+  projectId: string;
+  file: File;
+  datasetName: string;
+  description?: string;
+  uploadKind?: UploadKind;
+  sensitivity: "public" | "internal" | "confidential" | "restricted";
+  dataRegion?: string;
+  retentionDays?: number;
+  legalHold?: boolean;
+  tags?: Record&lt;string, unknown&gt;;
+  targetMetadata?: Record&lt;string, unknown&gt;;
+  onTelemetry?: (telemetry: UploadTelemetry) =&gt; void;
+  onHashCheckpoint?: (snapshot: Sha256Snapshot) =&gt; void;
+};
+&nbsp;
+type PersistedUpload = {
+  key: string; projectId: string; fingerprint: string; contentSha256?: string;
+  hashSnapshot?: Sha256Snapshot; session?: UploadSession; receipts: UploadReceipt[];
+  updatedAt: string;
+};
+&nbsp;
+const DB_NAME = "sceptre-resumable-uploads";
+const STORE_NAME = "uploads";
+const HASH_CHUNK_SIZE = 8 * 1024 * 1024;
+const memoryFallback = new Map&lt;string, PersistedUpload&gt;();
+&nbsp;
+export class ResumableUploadController&lt;TDataset = unknown, TVersion = unknown&gt; {
+  readonly result: Promise&lt;UploadCompletion&lt;TDataset, TVersion&gt;&gt;;
+  private paused = false;
+  private cancelled = false;
+  private resumeWaiters: Array&lt;() =&gt; void&gt; = [];
+  private session: UploadSession | null = null;
+  private activeRequest: XMLHttpRequest | null = null;
+&nbsp;
+  constructor(options: ResumableUploadOptions) {
+    this.result = runUpload(options, this);
+  }
+&nbsp;
+  pause() {
+    if (this.cancelled) return;
+    this.paused = true;
+    this.activeRequest?.abort();
+  }
+&nbsp;
+  resume() {
+    if (this.cancelled) return;
+    this.paused = false;
+    this.resumeWaiters.splice(0).forEach((resolve) =&gt; resolve());
+  }
+&nbsp;
+  async cancel() {
+    if (this.cancelled) return;
+    this.cancelled = true;
+    this.activeRequest?.abort();
+    this.paused = false;
+    this.resumeWaiters.splice(0).forEach((resolve) =&gt; resolve());
+    if (this.session) {
+      await api(`/projects/${this.session.project_id}/datasets/uploads/${this.session.id}/abort`,
+        json("POST", {}));
+      await removePersistedUpload(persistenceKey(this.session.project_id, this.session.original_filename,
+        this.session.byte_size));
+    }
+  }
+&nbsp;
+  _setSession(session: UploadSession) { this.session = session; }
+  _setRequest(request: XMLHttpRequest | null) { this.activeRequest = request; }
+  _isCancelled() { return this.cancelled; }
+  _isPaused() { return this.paused; }
+  async _waitUntilResumed() {
+    if (!this.paused) return;
+    await new Promise&lt;void&gt;((resolve) =&gt; this.resumeWaiters.push(resolve));
+  }
+}
+&nbsp;
+export function createResumableUpload&lt;TDataset = unknown, TVersion = unknown&gt;(
+  options: ResumableUploadOptions,
+) {
+  return new ResumableUploadController&lt;TDataset, TVersion&gt;(options);
+}
+&nbsp;
+export async function waitForVerifiedUpload(
+  projectId: string,
+  sessionId: string,
+  { attempts = 120, intervalMs = 1000 }: { attempts?: number; intervalMs?: number } = {},
+): Promise&lt;UploadSession&gt; {
+  const terminalFailures = new Set(["aborted", "expired", "quarantined", "failed"]);
+  for (let attempt = 0; attempt &lt; attempts; attempt += 1) {
+    const session = await api&lt;UploadSession&gt;(
+      `/projects/${projectId}/datasets/uploads/${sessionId}`,
+    );
+    if (session.status === "ready") return session;
+    if (terminalFailures.has(session.status)) {
+      throw new Error(`Upload verification ended with status ${session.status}.`);
+    }
+    if (attempt + 1 &lt; attempts) await delay(intervalMs);
+  }
+  throw new Error("Upload verification did not finish before the local wait deadline.");
+}
+&nbsp;
+export async function waitForUploadResult&lt;TDataset = unknown, TVersion = unknown&gt;(
+  projectId: string,
+  sessionId: string,
+): Promise&lt;UploadCompletion&lt;TDataset, TVersion&gt;&gt; {
+  await waitForVerifiedUpload(projectId, sessionId, { attempts: 3600, intervalMs: 1000 });
+  return api&lt;UploadCompletion&lt;TDataset, TVersion&gt;&gt;(
+    `/projects/${projectId}/datasets/uploads/${sessionId}/result`,
+  );
+}
+&nbsp;
+export async function hashFileIncrementally(
+  file: File,
+  onProgress?: (processed: number, snapshot: Sha256Snapshot) =&gt; void,
+  snapshot?: Sha256Snapshot,
+): Promise&lt;string&gt; {
+  if (snapshot &amp;&amp; snapshot.bytesHashed &gt; file.size) {
+    throw new Error("The saved integrity checkpoint exceeds the selected file size.");
+  }
+  if (typeof Worker === "undefined") {
+    const digest = new IncrementalSha256(snapshot);
+    for (let offset = snapshot?.bytesHashed || 0; offset &lt; file.size; offset += HASH_CHUNK_SIZE) {
+      digest.update(new Uint8Array(await blobArrayBuffer(file.slice(offset, offset + HASH_CHUNK_SIZE))));
+      onProgress?.(Math.min(file.size, offset + HASH_CHUNK_SIZE), digest.snapshot());
+    }
+    return digest.digestHex();
+  }
+  const worker = new Worker(new URL("./uploadHash.worker.ts", import.meta.url), { type: "module" });
+  let checkpoint: (() =&gt; void) | null = null;
+  let checkpointFailure: ((reason: Error) =&gt; void) | null = null;
+  const completion = new Promise&lt;string&gt;((resolve, reject) =&gt; {
+    worker.onerror = <span class="fstat-no" title="function not covered" >() =&gt; {</span>
+      const error = <span class="cstat-no" title="statement not covered" >new Error("The upload integrity worker failed.");</span>
+<span class="cstat-no" title="statement not covered" >      checkpointFailure?.(error);</span>
+<span class="cstat-no" title="statement not covered" >      reject(error);</span>
+    };
+    worker.onmessage = (event: MessageEvent) =&gt; {
+      if (event.data.type === "checkpoint") {
+        onProgress?.(event.data.id, event.data.snapshot);
+        checkpoint?.();
+        checkpoint = null;
+        checkpointFailure = null;
+      }
+      if (event.data.type === "complete") resolve(event.data.sha256);
+    };
+  });
+  try {
+    worker.postMessage({ type: "start", snapshot });
+    for (let offset = snapshot?.bytesHashed || 0; offset &lt; file.size; offset += HASH_CHUNK_SIZE) {
+      const end = Math.min(file.size, offset + HASH_CHUNK_SIZE);
+      const chunk = await blobArrayBuffer(file.slice(offset, end));
+      const acknowledged = new Promise&lt;void&gt;((resolve, reject) =&gt; {
+        checkpoint = resolve;
+        checkpointFailure = reject;
+      });
+      worker.postMessage({ type: "chunk", id: end, value: chunk }, [chunk]);
+      await acknowledged;
+    }
+    worker.postMessage({ type: "finish" });
+    return await completion;
+  } catch (error) {
+<span class="cstat-no" title="statement not covered" >    void completion.catch(<span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >u</span>ndefined)</span>;</span>
+<span class="cstat-no" title="statement not covered" >    throw error;</span>
+  } finally {
+    worker.terminate();
+  }
+}
+&nbsp;
+async function runUpload&lt;TDataset, TVersion&gt;(
+  options: ResumableUploadOptions,
+  controller: ResumableUploadController&lt;TDataset, TVersion&gt;,
+): Promise&lt;UploadCompletion&lt;TDataset, TVersion&gt;&gt; {
+  const key = persistenceKey(options.projectId, options.file.name, options.file.size);
+  const fingerprint = fileFingerprint(options.file);
+  let persisted = await loadPersistedUpload(key);
+  if (persisted &amp;&amp; persisted.fingerprint !== fingerprint) {
+    await removePersistedUpload(key);
+    persisted = undefined;
+  }
+  emit(options, "hashing", 0, options.file.size, 0, 0);
+  let checkpointWrite = Promise.resolve();
+  const sha256 = persisted?.contentSha256 || await hashFileIncrementally(
+    options.file,
+    (processed, snapshot) =&gt; {
+      options.onHashCheckpoint?.(snapshot);
+      persisted = { key, projectId: options.projectId, fingerprint, hashSnapshot: snapshot,
+        receipts: persisted?.receipts || [], updatedAt: new Date().toISOString() };
+      checkpointWrite = checkpointWrite.then(() =&gt; savePersistedUpload(persisted!));
+      emit(options, "hashing", processed, options.file.size, 0, 0);
+    },
+    persisted?.hashSnapshot,
+  );
+  await checkpointWrite;
+  persisted = { ...(persisted || { key, projectId: options.projectId, fingerprint, receipts: [] }),
+    contentSha256: sha256, updatedAt: new Date().toISOString() };
+  await savePersistedUpload(persisted);
+  if (controller._isCancelled()) throw new Error("The upload was cancelled.");
+&nbsp;
+  let session = persisted.session;
+  if (!session || session.expected_object_digest !== sha256 || new Date(session.expires_at) &lt;= new Date()) {
+    const dataRegion = options.dataRegion || (await api&lt;{ upload_data_region: string }&gt;(
+      "/capabilities",
+    )).upload_data_region;
+    session = await api&lt;UploadSession&gt;(`/projects/${options.projectId}/datasets/uploads`,
+      json("POST", {
+        upload_kind: options.uploadKind || "dataset", dataset_name: options.datasetName,
+        description: options.description || null, filename: options.file.name,
+        byte_size: options.file.size, content_type: options.file.type || "application/octet-stream",
+        sha256, sensitivity: options.sensitivity, data_region: dataRegion,
+        retention_days: options.retentionDays || null, legal_hold: options.legalHold || false,
+        tags: options.tags || {}, target_metadata: options.targetMetadata || {},
+      }));
+    persisted = { ...persisted, session, receipts: [], updatedAt: new Date().toISOString() };
+    await savePersistedUpload(persisted);
+  }
+  controller._setSession(session);
+  let progress = await api&lt;UploadProgress&gt;(
+    `/projects/${options.projectId}/datasets/uploads/${session.id}/progress`);
+  const startedAt = performance.now();
+  let failedInstructionRefreshes = 0;
+  while (!progress.complete) {
+    if (controller._isCancelled()) throw new Error("The upload was cancelled.");
+    if (controller._isPaused()) {
+      emit(options, "paused", progress.confirmed_bytes, progress.total_bytes, 0, 0, session.expires_at);
+      await controller._waitUntilResumed();
+      continue;
+    }
+    const cursor = progress.next_cursor;
+    if (!cursor) throw new Error("The provider did not expose the next required transfer cursor.");
+    const value = await blobArrayBuffer(options.file.slice(cursor.offset, cursor.offset + cursor.length));
+    cursor.checksum_sha256 = await arrayBufferSha256(value);
+    const instruction = await api&lt;TransferInstruction&gt;(
+      `/projects/${options.projectId}/datasets/uploads/${session.id}/instructions`,
+      json("POST", { cursor }));
+    let receipt: UploadReceipt;
+    try {
+      receipt = await transferUnit(instruction, value, controller, (loaded) =&gt; {
+        const elapsed = Math.max(0.001, (performance.now() - startedAt) / 1000);
+        emit(options, "uploading", progress.confirmed_bytes + loaded, progress.total_bytes,
+          (progress.confirmed_bytes + loaded) / elapsed, 0, session!.expires_at);
+      }, (retry) =&gt; emit(options, "uploading", progress.confirmed_bytes,
+        progress.total_bytes, 0, retry, session!.expires_at));
+      failedInstructionRefreshes = 0;
+    } catch (error) {
+      <span class="missing-if-branch" title="if path not taken" >I</span>if (controller._isCancelled()) <span class="cstat-no" title="statement not covered" >throw error;</span>
+      progress = await api&lt;UploadProgress&gt;(
+        `/projects/${options.projectId}/datasets/uploads/${session.id}/progress`);
+      const providerAdvanced = progress.complete || (
+        progress.next_cursor !== null &amp;&amp; progress.next_cursor.offset !== cursor.offset
+      );
+      if (providerAdvanced) continue;
+      failedInstructionRefreshes += 1;
+      if (failedInstructionRefreshes &gt;= 5) throw error;
+      continue;
+    }
+    persisted.receipts = [...persisted.receipts.filter(
+<span class="fstat-no" title="function not covered" >      (i</span>tem) =&gt; <span class="cstat-no" title="statement not covered" >item.unit_number !== receipt.unit_number)</span>, receipt];
+    persisted.updatedAt = new Date().toISOString();
+    await savePersistedUpload(persisted);
+    progress = await api&lt;UploadProgress&gt;(
+      `/projects/${options.projectId}/datasets/uploads/${session.id}/progress`);
+  }
+  emit(options, "verifying", progress.confirmed_bytes, progress.total_bytes, 0, 0, session.expires_at);
+  const completion = await api&lt;UploadCompletion&lt;TDataset, TVersion&gt;&gt;(
+    `/projects/${options.projectId}/datasets/uploads/${session.id}/complete`,
+    json("POST", { sha256, receipts: persisted.receipts }));
+  await removePersistedUpload(key);
+  emit(options, "complete", progress.total_bytes, progress.total_bytes, 0, 0, session.expires_at);
+  return completion;
+}
+&nbsp;
+type TransferInstruction = {
+  instruction_id: string; method: "PUT" | "POST"; url: string; headers: Record&lt;string, string&gt;;
+  cursor: UploadCursor; expires_at: string; expose_response_headers: string[];
+};
+&nbsp;
+async function transferUnit&lt;TDataset, TVersion&gt;(
+  instruction: TransferInstruction,
+  value: ArrayBuffer,
+  controller: ResumableUploadController&lt;TDataset, TVersion&gt;,
+  onProgress: (loaded: number) =&gt; void,
+  onRetry: (retry: number) =&gt; void,
+): Promise&lt;UploadReceipt&gt; {
+  let retry = 0;
+  while (true) {
+    try {
+      return await xhrTransfer(instruction, value, controller, onProgress);
+    } catch (error) {
+      <span class="missing-if-branch" title="if path not taken" >I</span>if (controller._isCancelled()) <span class="cstat-no" title="statement not covered" >throw new Error("The upload was cancelled.", { cause: error });</span>
+      <span class="missing-if-branch" title="if path not taken" >I</span>if (controller._isPaused()) {
+<span class="cstat-no" title="statement not covered" >        await controller._waitUntilResumed();</span>
+<span class="cstat-no" title="statement not covered" >        continue;</span>
+      }
+      retry += 1;
+      onRetry(retry);
+      if (error instanceof ProviderTransferError &amp;&amp; [401, 403].includes(error.status)) throw error;
+      if (retry &gt;= 5) throw error;
+      const retryAfter = error instanceof ProviderTransferError ? error.retryAfterSeconds : null;
+      const ceiling = Math.min(30_000, 500 * (2 ** retry));
+      await delay(retryAfter == null ? Math.random() * ceiling : retryAfter * 1000);
+    }
+  }
+}
+&nbsp;
+class ProviderTransferError extends Error {
+  constructor(message: string, readonly status: number, readonly retryAfterSeconds: number | null) {
+    super(message);
+  }
+}
+&nbsp;
+function xhrTransfer&lt;TDataset, TVersion&gt;(
+  instruction: TransferInstruction,
+  value: ArrayBuffer,
+  controller: ResumableUploadController&lt;TDataset, TVersion&gt;,
+  onProgress: (loaded: number) =&gt; void,
+): Promise&lt;UploadReceipt&gt; {
+  return new Promise((resolve, reject) =&gt; {
+    const request = new XMLHttpRequest();
+    controller._setRequest(request);
+    request.open(instruction.method, instruction.url);
+    Object.entries(instruction.headers).forEach(([key, header]) =&gt; request.setRequestHeader(key, header));
+    request.upload.onprogress = (event) =&gt; onProgress(event.loaded);
+    request.onerror = <span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >r</span>eject(new ProviderTransferError("Provider transfer failed.", 0, null));</span>
+    request.onabort = <span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >r</span>eject(new ProviderTransferError("Provider transfer interrupted.", 0, null));</span>
+    request.onload = () =&gt; {
+      controller._setRequest(null);
+      if (!((request.status &gt;= 200 &amp;&amp; request.status &lt; 300) || request.status === 308)) {
+        const retryAfter = Number.parseFloat(request.getResponseHeader("Retry-After") || "");
+        reject(new ProviderTransferError("Provider rejected the transfer unit.", request.status,
+          Number.isFinite(retryAfter) ? retryAfter : null));
+        return;
+      }
+      const providerHeaders: Record&lt;string, string&gt; = {};
+      instruction.expose_response_headers.forEach((name) =&gt; {
+        const header = request.getResponseHeader(name);
+        if (header) providerHeaders[name] = header;
+      });
+      resolve({ unit_number: instruction.cursor.unit_number, offset: instruction.cursor.offset,
+        length: instruction.cursor.length, etag: request.getResponseHeader("ETag"),
+        checksum_sha256: request.getResponseHeader("x-amz-checksum-sha256"), provider_headers: providerHeaders });
+    };
+    request.send(value);
+  });
+}
+&nbsp;
+async function arrayBufferSha256(value: ArrayBuffer): Promise&lt;string&gt; {
+  return new IncrementalSha256().update(new Uint8Array(value)).digestHex();
+}
+&nbsp;
+function blobArrayBuffer(blob: Blob): Promise&lt;ArrayBuffer&gt; {
+  <span class="missing-if-branch" title="if path not taken" >I</span>if (typeof blob.arrayBuffer === "function") <span class="cstat-no" title="statement not covered" >return blob.arrayBuffer();</span>
+  return new Promise((resolve, reject) =&gt; {
+    const reader = new FileReader();
+    reader.onerror = <span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >r</span>eject(reader.error || new Error("The selected file could not be read."));</span>
+    reader.onload = () =&gt; resolve(reader.result as ArrayBuffer);
+    reader.readAsArrayBuffer(blob);
+  });
+}
+&nbsp;
+function emit(options: ResumableUploadOptions,
+  stage: UploadStage, confirmedBytes: number, totalBytes: number, bytesPerSecond: number,
+  retry: number, expiresAt?: string) {
+  options.onTelemetry?.({ stage, confirmedBytes, totalBytes,
+    percent: totalBytes ? Math.min(100, Math.round((confirmedBytes / totalBytes) * 100)) : 0,
+    bytesPerSecond, retry, expiresAt });
+}
+&nbsp;
+const delay = (milliseconds: number) =&gt; new Promise&lt;void&gt;((resolve) =&gt; setTimeout(resolve, milliseconds));
+const persistenceKey = (projectId: string, filename: string, size: number) =&gt; `${projectId}:${filename}:${size}`;
+const fileFingerprint = (file: File) =&gt; `${file.name}:${file.size}:${file.lastModified}`;
+&nbsp;
+async function database(): Promise&lt;IDBDatabase | null&gt; {
+  if (typeof indexedDB === "undefined") return null;
+  return new Promise((resolve, reject) =&gt; {
+    const request = indexedDB.open(DB_NAME, 1);
+    request.onupgradeneeded = () =&gt; request.result.createObjectStore(STORE_NAME, { keyPath: "key" });
+    request.onsuccess = () =&gt; resolve(request.result);
+    request.onerror = <span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >r</span>eject(request.error);</span>
+  });
+}
+&nbsp;
+export async function savePersistedUpload(value: PersistedUpload) {
+  const db = await database();
+  if (!db) { memoryFallback.set(value.key, structuredClone(value)); return; }
+  await transactionPromise(db, "readwrite", (store) =&gt; store.put(value));
+  db.close();
+}
+&nbsp;
+export async function loadPersistedUpload(key: string): Promise&lt;PersistedUpload | undefined&gt; {
+  const db = await database();
+  if (!db) return memoryFallback.get(key);
+  const value = await transactionPromise&lt;PersistedUpload | undefined&gt;(
+    db, "readonly", (store) =&gt; store.get(key));
+  db.close();
+  return value;
+}
+&nbsp;
+export async function removePersistedUpload(key: string) {
+  const db = await database();
+  if (!db) { memoryFallback.delete(key); return; }
+  await transactionPromise(db, "readwrite", (store) =&gt; store.delete(key));
+  db.close();
+}
+&nbsp;
+function transactionPromise&lt;T = void&gt;(db: IDBDatabase, mode: IDBTransactionMode,
+  execute: (store: IDBObjectStore) =&gt; IDBRequest): Promise&lt;T&gt; {
+  return new Promise((resolve, reject) =&gt; {
+    const transaction = db.transaction(STORE_NAME, mode);
+    const request = execute(transaction.objectStore(STORE_NAME));
+    request.onsuccess = () =&gt; resolve(request.result as T);
+    request.onerror = <span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >r</span>eject(request.error);</span>
+    transaction.onerror = <span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >r</span>eject(transaction.error);</span>
+  });
+}
+&nbsp;</pre></td></tr></table></pre>
+
+                <div class='push'></div><!-- for sticky footer -->
+            </div><!-- /wrapper -->
+            <div class='footer quiet pad2 space-top1 center small'>
+                Code coverage generated by
+                <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
+                at 2026-08-20T15:44:36.035Z
+            </div>
+        <script src="../prettify.js"></script>
+        <script>
+            window.onload = function () {
+                prettyPrint();
+            };
+        </script>
+        <script src="../sorter.js"></script>
+        <script src="../block-navigation.js"></script>
+    </body>
+</html>
+    

@@ -7,12 +7,16 @@ name = "smme-tabular-automl"
 version = "0.1.5"
 description = "SMME-safe tabular AutoML platform with FastAPI, React, PostgreSQL, and Kubernetes."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.13",
+    "azure-identity>=1.19,<2",
+    "azure-storage-blob>=12.24,<13",
+    "boto3==1.43.56",
+    "botocore==1.43.56",
     "fastapi>=0.111",
+    "google-cloud-storage>=2.18,<4",
     "httpx>=0.27,<1",
-    "minio>=7.2",
     "numpy>=2.3,<3",
     "pandas==2.3.3",
     "polars==1.43.2",
@@ -20,9 +24,9 @@ dependencies = [
     "pydantic>=2.7",
     "python-multipart>=0.0.9",
     "pyarrow>=23.0.1,<25",
-    "ray[data,train,tune]==2.56.1",
+    "ray[data,default,train,tune]==2.56.1",
     "reportlab>=4.2",
-    "s3fs>=2024.6",
+    "s3fs==2026.7.0",
     "sqlalchemy>=2.0",
     "uvicorn[standard]>=0.30",
 ]
@@ -35,9 +39,9 @@ dev = [
 ]
 ml = [
     "catboost>=1.2",
-    "evidently>=0.4",
+    "evidently==0.7.21",
     "lightgbm>=4.3",
-    "mlflow>=3.14,<4",
+    "mlflow==3.14.0",
     "pandas==2.3.3",
     "scikit-learn==1.9.0",
     "scikit-optimize==0.10.2",
@@ -51,11 +55,11 @@ k8s = [
 training = [
     "catboost>=1.2",
     "lightgbm>=4.3",
-    "mlflow>=3.14,<4",
+    "mlflow==3.14.0",
     "openpyxl>=3.1",
     "polars==1.43.2",
     "pyarrow>=23.0.1",
-    "ray[data,train,tune]==2.56.1",
+    "ray[data,default,train,tune]==2.56.1",
     "scikit-learn==1.9.0",
     "scikit-optimize==0.10.2",
     "shap>=0.45,<1",

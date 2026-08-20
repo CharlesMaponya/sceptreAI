@@ -1,0 +1,39 @@
+{
+  "schema_revision": "sceptre-phase-1-quality-gates-v1",
+  "observed_at": "2026-08-20T12:30:26+02:00",
+  "required_each_percent": 90.01,
+  "backend": {
+    "command": "scripts/test_backend.sh",
+    "tests_passed": 816,
+    "statements": {"covered": 10247, "total": 10713, "percent": 95.650},
+    "branches": {"covered": 2413, "total": 2674, "percent": 90.239},
+    "coverage_json_sha256": "97671f9f722524ad86c4f5aad00d46dd78d0ef4fe717df4cc1e56d62acb375df",
+    "status": "passed"
+  },
+  "frontend": {
+    "command": "npm run test:coverage",
+    "tests_passed": 133,
+    "statements": {"covered": 1464, "total": 1542, "percent": 94.94},
+    "branches": {"covered": 1656, "total": 1837, "percent": 90.14},
+    "functions": {"covered": 577, "total": 622, "percent": 92.76},
+    "lines": {"covered": 1185, "total": 1228, "percent": 96.49},
+    "coverage_summary_sha256": "3eba1a78fdeef39809af3e12471f97baf2fa5ebf373efbee174a462c87400cc6",
+    "status": "passed"
+  },
+  "other": {
+    "ruff": "passed",
+    "compileall": "passed",
+    "frontend_lint": "passed",
+    "frontend_build": "passed_with_plotly_chunk_advisory",
+    "frontend_runtime_image_build": "passed",
+    "api_image_imports": "passed",
+    "training_image_ray_default_data_train_tune_imports": "passed",
+    "python_312_dependency_resolution": "passed",
+    "helm_profiles_rendered": 10,
+    "helm_lint": "passed",
+    "helm_smoke_test": "passed",
+    "task_index_entries_validated": 420,
+    "guide_sha256": "84896d560e5eda60a9bd1e059e0a44136aa87029b21eba739d0d81cbc42575d0"
+  },
+  "status": "passed"
+}

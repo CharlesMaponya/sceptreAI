@@ -29,6 +29,47 @@ _REPORTED_CONTAINER_WAITING_FAILURE_REASONS = {
 }
 
 
+def object_store_workload_environment(settings: Settings) -> list[dict[str, Any]]:
+    driver = settings.object_store_type.strip().lower()
+    if driver == "minio":
+        driver = "s3_compatible"
+    environment: list[dict[str, Any]] = [
+        {"name": "OBJECT_STORE_TYPE", "value": driver},
+        {"name": "OBJECT_STORE_ENDPOINT", "value": settings.object_store_endpoint or ""},
+        {"name": "OBJECT_STORE_BUCKET", "value": settings.object_store_bucket},
+        {"name": "OBJECT_STORE_REGION", "value": settings.object_store_region or ""},
+        {"name": "GCS_PROJECT", "value": settings.gcs_project or ""},
+        {
+            "name": "AZURE_STORAGE_ACCOUNT",
+            "value": settings.azure_storage_account or "",
+        },
+    ]
+    if driver == "s3_compatible":
+        environment.extend(
+            [
+                {
+                    "name": "OBJECT_STORE_ACCESS_KEY",
+                    "valueFrom": {
+                        "secretKeyRef": {
+                            "name": settings.object_store_secret_name,
+                            "key": settings.object_store_access_key_secret_key,
+                        }
+                    },
+                },
+                {
+                    "name": "OBJECT_STORE_SECRET_KEY",
+                    "valueFrom": {
+                        "secretKeyRef": {
+                            "name": settings.object_store_secret_name,
+                            "key": settings.object_store_secret_key_secret_key,
+                        }
+                    },
+                },
+            ]
+        )
+    return environment
+
+
 @dataclass(frozen=True)
 class NodeCapability:
     name: str
@@ -445,30 +486,7 @@ class KubernetesTrainingClient:
                         }
                     },
                 },
-                {"name": "OBJECT_STORE_TYPE", "value": "minio"},
-                {
-                    "name": "OBJECT_STORE_ENDPOINT",
-                    "value": settings.object_store_endpoint or "",
-                },
-                {"name": "OBJECT_STORE_BUCKET", "value": settings.object_store_bucket},
-                {
-                    "name": "OBJECT_STORE_ACCESS_KEY",
-                    "valueFrom": {
-                        "secretKeyRef": {
-                            "name": settings.object_store_secret_name,
-                            "key": settings.object_store_access_key_secret_key,
-                        }
-                    },
-                },
-                {
-                    "name": "OBJECT_STORE_SECRET_KEY",
-                    "valueFrom": {
-                        "secretKeyRef": {
-                            "name": settings.object_store_secret_name,
-                            "key": settings.object_store_secret_key_secret_key,
-                        }
-                    },
-                },
+                *object_store_workload_environment(settings),
                 {
                     "name": "MLFLOW_TRACKING_URI",
                     "value": settings.mlflow_tracking_uri,
@@ -659,37 +677,7 @@ class KubernetesTrainingClient:
                                             "name": "DEPLOYMENT_ENVIRONMENT",
                                             "value": environment,
                                         },
-                                        {"name": "OBJECT_STORE_TYPE", "value": "minio"},
-                                        {
-                                            "name": "OBJECT_STORE_ENDPOINT",
-                                            "value": self.settings.object_store_endpoint or "",
-                                        },
-                                        {
-                                            "name": "OBJECT_STORE_BUCKET",
-                                            "value": self.settings.object_store_bucket,
-                                        },
-                                        {
-                                            "name": "OBJECT_STORE_ACCESS_KEY",
-                                            "valueFrom": {
-                                                "secretKeyRef": {
-                                                    "name": self.settings.object_store_secret_name,
-                                                    "key": (
-                                                        self.settings.object_store_access_key_secret_key
-                                                    ),
-                                                }
-                                            },
-                                        },
-                                        {
-                                            "name": "OBJECT_STORE_SECRET_KEY",
-                                            "valueFrom": {
-                                                "secretKeyRef": {
-                                                    "name": self.settings.object_store_secret_name,
-                                                    "key": (
-                                                        self.settings.object_store_secret_key_secret_key
-                                                    ),
-                                                }
-                                            },
-                                        },
+                                        *object_store_workload_environment(self.settings),
                                     ],
                                     "resources": {
                                         "requests": {

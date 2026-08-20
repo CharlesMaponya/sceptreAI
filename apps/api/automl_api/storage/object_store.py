@@ -1,21 +1,23 @@
 from __future__ import annotations
 
-import io
-from dataclasses import dataclass
-from pathlib import Path
-from urllib.parse import urlparse
-
 from automl_api.core.config import Settings, get_settings
+from automl_api.storage.azure import AzureBlobObjectStoreDriver
+from automl_api.storage.contracts import (
+    ObjectMetadata,
+    ObjectStoreDriver,
+    RayDataSourceDescriptor,
+)
+from automl_api.storage.embedded import EmbeddedObjectStoreDriver
+from automl_api.storage.gcs import GCSObjectStoreDriver
+from automl_api.storage.s3 import S3ObjectStoreDriver
 
-
-@dataclass(frozen=True)
-class StoredObject:
-    uri: str
-    storage_path: Path | None = None
+type StoredObject = ObjectMetadata
 
 
 class ObjectStore:
-    def put_bytes(self, key: str, content: bytes) -> StoredObject:
+    """Deprecated compatibility facade; concrete callers use ObjectStoreDriver."""
+
+    def put_bytes(self, key: str, content: bytes):
         raise NotImplementedError
 
     def read_bytes(self, uri: str) -> bytes:
@@ -27,7 +29,7 @@ class ObjectStore:
     def exists(self, uri: str) -> bool:
         raise NotImplementedError
 
-    def dataframe_source(self, uri: str) -> tuple[str, dict[str, object]]:
+    def dataframe_source(self, uri: str):
         raise NotImplementedError
 
     def delete(self, uri: str) -> None:
@@ -40,232 +42,79 @@ class ObjectStore:
         raise NotImplementedError
 
 
-class EmbeddedObjectStore(ObjectStore):
+class EmbeddedObjectStore(EmbeddedObjectStoreDriver):
+    """Compatibility name retained while callers migrate to ObjectStoreDriver."""
+
     def __init__(self, settings: Settings) -> None:
-        self.bucket = settings.object_store_bucket
-        self.root = settings.local_object_store_path
-
-    def put_bytes(self, key: str, content: bytes) -> StoredObject:
-        normalized_key = key.strip("/")
-        storage_path = self.root / self.bucket / normalized_key
-        storage_path.parent.mkdir(parents=True, exist_ok=True)
-        storage_path.write_bytes(content)
-        return StoredObject(
-            uri=f"minio://{self.bucket}/{normalized_key}",
-            storage_path=storage_path,
-        )
-
-    def read_bytes(self, uri: str) -> bytes:
-        prefix = f"minio://{self.bucket}/"
-        if not uri.startswith(prefix):
-            raise ValueError("Object URI does not belong to the configured embedded store.")
-        key = uri.removeprefix(prefix).strip("/")
-        return (self.root / self.bucket / key).read_bytes()
-
-    def read_head(self, uri: str, length: int = 4096) -> bytes:
-        prefix = f"minio://{self.bucket}/"
-        if not uri.startswith(prefix):
-            raise ValueError("Object URI does not belong to the configured embedded store.")
-        key = uri.removeprefix(prefix).strip("/")
-        with (self.root / self.bucket / key).open("rb") as source:
-            return source.read(length)
-
-    def exists(self, uri: str) -> bool:
-        prefix = f"minio://{self.bucket}/"
-        if not uri.startswith(prefix):
-            return False
-        key = uri.removeprefix(prefix).strip("/")
-        return (self.root / self.bucket / key).is_file()
-
-    def dataframe_source(self, uri: str) -> tuple[str, dict[str, object]]:
-        prefix = f"minio://{self.bucket}/"
-        if not uri.startswith(prefix):
-            raise ValueError("Object URI does not belong to the configured embedded store.")
-        key = uri.removeprefix(prefix).strip("/")
-        return str((self.root / self.bucket / key).resolve()), {}
-
-    def delete(self, uri: str) -> None:
-        prefix = f"minio://{self.bucket}/"
-        if not uri.startswith(prefix):
-            raise ValueError("Object URI does not belong to the configured embedded store.")
-        key = uri.removeprefix(prefix).strip("/")
-        path = self.root / self.bucket / key
-        path.unlink(missing_ok=True)
-
-    def healthcheck(self) -> None:
-        (self.root / self.bucket).mkdir(parents=True, exist_ok=True)
-
-    def size(self, uri: str) -> int:
-        prefix = f"minio://{self.bucket}/"
-        if not uri.startswith(prefix):
-            raise ValueError("Object URI does not belong to the configured embedded store.")
-        key = uri.removeprefix(prefix).strip("/")
-        return (self.root / self.bucket / key).stat().st_size
+        super().__init__(root=settings.local_object_store_path, bucket=settings.object_store_bucket)
 
 
-class MinioObjectStore(ObjectStore):
+class MinioObjectStore(S3ObjectStoreDriver):
+    """Legacy name for the supported public-SDK S3-compatible driver."""
+
     def __init__(self, settings: Settings) -> None:
-        from minio import Minio
-
-        if not settings.object_store_endpoint:
-            raise ValueError("OBJECT_STORE_ENDPOINT is required for remote S3-compatible storage.")
-        if not settings.object_store_access_key or not settings.object_store_secret_key:
-            raise ValueError("Object-store access and secret keys are required.")
-
-        parsed_endpoint = urlparse(settings.object_store_endpoint)
-        endpoint = parsed_endpoint.netloc or parsed_endpoint.path
-        self.endpoint_url = settings.object_store_endpoint
-        self.access_key = settings.object_store_access_key
-        self.secret_key = settings.object_store_secret_key
-        self.bucket = settings.object_store_bucket
-        self.fallback = EmbeddedObjectStore(settings)
-        self.client = Minio(
-            endpoint,
+        super().__init__(
+            bucket=settings.object_store_bucket,
+            endpoint_url=settings.object_store_endpoint,
+            public_endpoint_url=settings.object_store_public_endpoint,
+            region=settings.object_store_region,
             access_key=settings.object_store_access_key,
             secret_key=settings.object_store_secret_key,
-            secure=parsed_endpoint.scheme == "https",
+            compatible=True,
         )
 
-    def put_bytes(self, key: str, content: bytes) -> StoredObject:
-        normalized_key = key.strip("/")
-        if not self.client.bucket_exists(self.bucket):
-            self.client.make_bucket(self.bucket)
-        self.client.put_object(
-            self.bucket,
-            normalized_key,
-            io.BytesIO(content),
-            length=len(content),
-            content_type="application/octet-stream",
-        )
-        return StoredObject(uri=f"minio://{self.bucket}/{normalized_key}")
 
-    def read_bytes(self, uri: str) -> bytes:
-        prefix = f"minio://{self.bucket}/"
-        if not uri.startswith(prefix):
-            raise ValueError("Object URI does not belong to the configured remote store.")
-        key = uri.removeprefix(prefix).strip("/")
-        response = None
-        try:
-            response = self.client.get_object(self.bucket, key)
-            return response.read()
-        except Exception as exc:
-            fallback_path = self.fallback.root / self.bucket / key
-            if fallback_path.exists():
-                return fallback_path.read_bytes()
-            raise OSError(f"Could not read object-store object '{key}': {exc}") from exc
-        finally:
-            if response is not None:
-                response.close()
-                response.release_conn()
-
-    def read_head(self, uri: str, length: int = 4096) -> bytes:
-        prefix = f"minio://{self.bucket}/"
-        if not uri.startswith(prefix):
-            raise ValueError("Object URI does not belong to the configured remote store.")
-        key = uri.removeprefix(prefix).strip("/")
-        response = None
-        try:
-            response = self.client.get_object(self.bucket, key, length=length)
-            return response.read()
-        except Exception as exc:
-            fallback_path = self.fallback.root / self.bucket / key
-            if fallback_path.exists():
-                with fallback_path.open("rb") as source:
-                    return source.read(length)
-            raise OSError(f"Could not read object-store object '{key}': {exc}") from exc
-        finally:
-            if response is not None:
-                response.close()
-                response.release_conn()
-
-    def exists(self, uri: str) -> bool:
-        prefix = f"minio://{self.bucket}/"
-        if not uri.startswith(prefix):
-            return False
-        key = uri.removeprefix(prefix).strip("/")
-        try:
-            self.client.stat_object(self.bucket, key)
-            return True
-        except Exception:
-            return False
-
-    def dataframe_source(self, uri: str) -> tuple[str, dict[str, object]]:
-        prefix = f"minio://{self.bucket}/"
-        if not uri.startswith(prefix):
-            raise ValueError("Object URI does not belong to the configured remote store.")
-        key = uri.removeprefix(prefix).strip("/")
-        try:
-            self.client.stat_object(self.bucket, key)
-        except Exception as exc:
-            fallback_path = self.fallback.root / self.bucket / key
-            if fallback_path.exists():
-                return str(fallback_path.resolve()), {}
-            raise OSError(f"Could not locate object-store object '{key}': {exc}") from exc
-        return (
-            f"s3://{self.bucket}/{key}",
-            {
-                "key": self.access_key,
-                "secret": self.secret_key,
-                "client_kwargs": {"endpoint_url": self.endpoint_url},
-            },
-        )
-
-    def delete(self, uri: str) -> None:
-        prefix = f"minio://{self.bucket}/"
-        if not uri.startswith(prefix):
-            raise ValueError("Object URI does not belong to the configured remote store.")
-        key = uri.removeprefix(prefix).strip("/")
-        try:
-            self.client.remove_object(self.bucket, key)
-        except Exception as exc:
-            fallback_path = self.fallback.root / self.bucket / key
-            if fallback_path.exists():
-                fallback_path.unlink()
-                return
-            raise OSError(f"Could not delete object-store object '{key}': {exc}") from exc
-
-    def healthcheck(self) -> None:
-        if not self.client.bucket_exists(self.bucket):
-            self.client.make_bucket(self.bucket)
-
-    def size(self, uri: str) -> int:
-        prefix = f"minio://{self.bucket}/"
-        if not uri.startswith(prefix):
-            raise ValueError("Object URI does not belong to the configured remote store.")
-        key = uri.removeprefix(prefix).strip("/")
-        try:
-            return int(self.client.stat_object(self.bucket, key).size)
-        except Exception as exc:
-            fallback_path = self.fallback.root / self.bucket / key
-            if fallback_path.exists():
-                return fallback_path.stat().st_size
-            raise OSError(f"Could not stat object-store object '{key}': {exc}") from exc
-
-
-def get_object_store(settings: Settings | None = None) -> ObjectStore:
+def get_object_store(settings: Settings | None = None) -> ObjectStoreDriver:
     settings = settings or get_settings()
-    driver = settings.object_store_type.lower()
+    driver = settings.object_store_type.strip().lower()
     if driver == "minio":
-        missing = [
-            name
-            for name, value in (
-                ("OBJECT_STORE_ENDPOINT", settings.object_store_endpoint),
-                ("OBJECT_STORE_ACCESS_KEY", settings.object_store_access_key),
-                ("OBJECT_STORE_SECRET_KEY", settings.object_store_secret_key),
-            )
-            if not value
-        ]
-        if missing:
-            raise ValueError(
-                "Remote object storage is configured but required settings are missing: "
-                + ", ".join(missing)
-                + ". Set them before uploading datasets; refusing to fall back to the "
-                "local embedded store prevents training pods from losing access to uploads."
-            )
-        return MinioObjectStore(settings)
-    if settings.environment.lower() in {"production", "staging"}:
-        raise ValueError(
-            f"Unsupported production object-store driver '{settings.object_store_type}'. "
-            "Refusing to fall back to embedded storage."
+        driver = "s3_compatible"
+
+    if driver == "embedded":
+        if settings.environment.lower() in {"production", "staging"}:
+            raise ValueError("Embedded storage is forbidden in staging and production.")
+        return EmbeddedObjectStoreDriver(
+            root=settings.local_object_store_path,
+            bucket=settings.object_store_bucket,
         )
-    return EmbeddedObjectStore(settings)
+    if driver == "s3_compatible":
+        return S3ObjectStoreDriver(
+            bucket=settings.object_store_bucket,
+            endpoint_url=settings.object_store_endpoint,
+            public_endpoint_url=settings.object_store_public_endpoint,
+            region=settings.object_store_region,
+            access_key=settings.object_store_access_key,
+            secret_key=settings.object_store_secret_key,
+            compatible=True,
+        )
+    if driver == "aws_s3":
+        return S3ObjectStoreDriver(
+            bucket=settings.object_store_bucket,
+            region=settings.object_store_region,
+            compatible=False,
+        )
+    if driver == "gcs":
+        return GCSObjectStoreDriver(
+            bucket=settings.object_store_bucket,
+            project=settings.gcs_project,
+        )
+    if driver == "azure_blob":
+        if not settings.azure_storage_account or not settings.object_store_endpoint:
+            raise ValueError(
+                "Azure Blob storage requires AZURE_STORAGE_ACCOUNT and OBJECT_STORE_ENDPOINT."
+            )
+        return AzureBlobObjectStoreDriver(
+            account_url=settings.object_store_endpoint,
+            account_name=settings.azure_storage_account,
+            container=settings.object_store_bucket,
+        )
+    raise ValueError(
+        f"Unknown object-store driver '{settings.object_store_type}'. "
+        "Expected embedded, s3_compatible, aws_s3, gcs, or azure_blob."
+    )
+
+
+def legacy_dataframe_source(driver: ObjectStoreDriver, uri: str) -> tuple[str, dict[str, object]]:
+    """Temporary tuple facade for code not yet migrated to RayDataSourceDescriptor."""
+    descriptor: RayDataSourceDescriptor = driver.dataframe_source(uri)
+    return descriptor.path, descriptor.filesystem_options

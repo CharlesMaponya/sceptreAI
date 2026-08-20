@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 import uuid
 
 from sqlalchemy import create_engine, text
@@ -15,6 +16,7 @@ SUPPORTED_STARTS = (
     "0002_expand_artifact_kind",
     "0003_security_controls",
     "0004_resumable_dataset_uploads",
+    "0007_phase1_attempt_lineage",
 )
 UPLOAD_SEED_ROWS = int(os.environ.get("PHASE1_REHEARSAL_UPLOAD_ROWS", "10000"))
 
@@ -36,12 +38,12 @@ def main() -> int:
             connection.execute(text(f'CREATE DATABASE "{database_name}"'))
         target_url = source.set(database=database_name).render_as_string(hide_password=False)
         try:
-            _run(target_url, "alembic", "upgrade", revision)
+            _run(target_url, sys.executable, "-m", "alembic", "upgrade", revision)
             _seed_legacy_rows(target_url, revision)
-            _run(target_url, "alembic", "upgrade", "head")
+            _run(target_url, sys.executable, "-m", "alembic", "upgrade", "head")
             _verify_seeded_rows(target_url, revision)
-            _run(target_url, "python", "scripts/verify_database_schema.py")
-            _run(target_url, "alembic", "check")
+            _run(target_url, sys.executable, "scripts/verify_database_schema.py")
+            _run(target_url, sys.executable, "-m", "alembic", "check")
             print(f"migration rehearsal passed: {revision} -> head")
         finally:
             with admin.connect() as connection:
@@ -76,7 +78,7 @@ def _seed_legacy_rows(database_url: str, revision: str) -> None:
             ),
             {"id": project_id, "user": user_id},
         )
-        if revision == "0004_resumable_dataset_uploads":
+        if revision in {"0004_resumable_dataset_uploads", "0007_phase1_attempt_lineage"}:
             rows = [
                 {
                     "id": uuid.uuid4(),
@@ -106,16 +108,30 @@ def _seed_legacy_rows(database_url: str, revision: str) -> None:
 
 
 def _verify_seeded_rows(database_url: str, revision: str) -> None:
-    if revision != "0004_resumable_dataset_uploads":
+    if revision not in {"0004_resumable_dataset_uploads", "0007_phase1_attempt_lineage"}:
         return
     engine = create_engine(database_url)
     with engine.connect() as connection:
-        actual = connection.scalar(text("SELECT count(*) FROM dataset_upload_sessions"))
+        row = connection.execute(
+            text(
+                "SELECT count(*), min(provider_driver), min(protocol), "
+                "min(content_policy_revision), min(byte_size) "
+                "FROM dataset_upload_sessions"
+            )
+        ).one()
     engine.dispose()
+    actual, driver, protocol, policy, byte_size = row
     if actual != UPLOAD_SEED_ROWS:
         raise RuntimeError(
             f"migration row-count mismatch: expected {UPLOAD_SEED_ROWS}, observed {actual}"
         )
+    if (driver, protocol, policy, byte_size) != (
+        "s3_compatible",
+        "multipart",
+        "legacy-v1",
+        10 * 1024 * 1024 * 1024,
+    ):
+        raise RuntimeError("Phase 2 legacy upload backfill does not preserve its contract.")
 
 
 if __name__ == "__main__":

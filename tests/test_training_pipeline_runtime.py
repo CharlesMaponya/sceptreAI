@@ -161,6 +161,12 @@ def test_execute_training_run_handles_terminal_missing_and_failed_runs(monkeypat
         pipeline.execute_training_run(active.id)
     failed.assert_called_once()
 
+    monkeypatch.setenv("AUTOML_ATTEMPT_ID", str(uuid.uuid4()))
+    failed.reset_mock()
+    with pytest.raises(RuntimeError, match="corrupt object"):
+        pipeline.execute_training_run(active.id)
+    failed.assert_not_called()
+
 
 @pytest.mark.parametrize(
     ("filename", "reader"),
@@ -525,6 +531,16 @@ def test_training_persistence_is_fenced_and_records_metrics(monkeypatch) -> None
     assert len(session.added) == 1
     assert session.added[0].name == "rmse"
     assert session.added[0].higher_is_better is False
+
+    fenced = _run(status=RunStatus.RUNNING)
+    fenced_result = _result()
+    fenced_result.leaderboard[0]["model_artifact_uri"] = "s3://models/fenced"
+    monkeypatch.setenv("AUTOML_ATTEMPT_ID", str(uuid.uuid4()))
+    monkeypatch.setattr(pipeline, "get_session_factory", lambda: lambda: _Session(fenced))
+    assert pipeline._persist_training_success(fenced.id, fenced_result, "fenced-parent")
+    assert fenced.status == RunStatus.RUNNING
+    assert fenced.finished_at is None
+    assert fenced.tags["winner_model_artifact_uri"] == "s3://models/fenced"
 
     terminal = _run(status=RunStatus.CANCELLED)
     monkeypatch.setattr(pipeline, "get_session_factory", lambda: lambda: _Session(terminal))

@@ -571,7 +571,7 @@ def deploy_registered_model(
         registry_entry_id=entry.id,
     )
     dockerfile_key = f"projects/{project_id}/deployments/{deployment_run.id}/Dockerfile"
-    dockerfile_uri = f"minio://{get_settings().object_store_bucket}/{dockerfile_key}"
+    dockerfile_uri = f"pending://{get_settings().object_store_bucket}/{dockerfile_key}"
     db.add(
         RunArtifact(
             project_id=project_id,
