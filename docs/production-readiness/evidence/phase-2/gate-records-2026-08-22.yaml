@@ -1,0 +1,325 @@
+schema_revision: sceptre-gate-record-v1
+candidate_git_commit: 08cc84caa12aaf600d143931fdab8a406c9717b2
+common_artifacts: &artifacts
+  git_sha: sha256:f3a87736b3a0f3f4c88dcb996aa46127834855d4ec22dab4c0d3cb86b4672eaa
+  baseline_revision: sha256:52e857347a1948600e978a1daa2f3d9630fe1200fff98b78c21ca4fdf59a7578
+  artifact_manifest: null
+  qualification_attestation: null
+  release_channel_pointer: null
+  channel_publication_receipt: null
+  chart: sha256:690b697c67c6bc3e18201e7b8fd544ded0fec024c1d1c5bfa91ecb38ada5e269
+  images:
+    api_and_reconciler: sha256:31124495d5923700a3efef17bb3ddc1af41b75c6ecf1fd2a4c20ae4790b148d5
+    ui: sha256:1b695cfae6933322c08521f1a009a59bfd29b87d3dc5e50ff01e6ef555d28a7e
+  migration_range: 0007_phase1_attempt_lineage..0009_phase2_storage_default
+  dependency_lock: sha256:60ee4e4e8053794717ae5184a61e087b15cb4d028d3712e432b13a2f9e0fff2c
+  catalog_revision: null
+  feature_revisions: {contract: null, registry: null, recipe: null}
+  split_revision: null
+  ray_runtime_revision: sha256:5c45e64153af1ea8fb8d4ae970bf0f205009b39b63c58c08e832246142fa1216
+common_not_applicable_reasons: &not_applicable
+  artifact_manifest: Phase 8 creates the immutable release artifact manifest.
+  qualification_attestation: Phase 13 creates the qualification attestation.
+  release_channel_pointer: Only a Phase 13 promotion gate publishes the channel pointer.
+  channel_publication_receipt: Only a Phase 13 promotion gate has a publication receipt.
+  catalog_revision: The estimator catalog is owned by Phase 4.
+  feature_revisions: Feature contract, registry, and recipe revisions are owned by Phase 3.
+  split_revision: The immutable task split is owned by Phase 3.
+common_evidence: &evidence
+  manifest: sha256:c92b90fff93cf3f41a9657ac76968e49ddeebf5db1062c7dc4325612a718e06a
+  files:
+    - path: docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
+      digest: sha256:5eac838b6f324251e56b555cab6ce4bce3b920d121a184f3c3ef02579cf19119
+    - path: docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
+      digest: sha256:0991576f75e5aaa1d526178ad5046c4c26d6484478f4dcc581e8b77dfa0e0cad
+    - path: docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-22.yaml
+      digest: sha256:b778391f5d195ec3c182621619aba6067ed2736517afad715a2a45ebc622f3bf
+    - path: docs/production-readiness/task-index.yaml
+      digest: sha256:8fdd5974af1e2aa7c92acf80f7b5ae9d5fe56d87a03e5f59137d4e9bc2576ebd
+  immutable_sink_receipt: null
+common_prerequisites: &phase1_prerequisites
+  - P1-G01
+  - P1-G02
+  - P1-G03
+  - P1-G04
+  - P1-G05
+  - P1-G06
+  - P1-G07
+  - P1-G08
+common_environment: &environment
+  profile: evaluation
+  provider: local-s3-compatible
+  region: local-k3d
+  namespace: sceptre
+common_waiver: &waiver
+  allowed: false
+  reason: null
+  approver: null
+  expires_at: null
+records:
+  - gate_id: P2-G01
+    title: Provider contract and failure semantics pass on every required storage target
+    owner: backend, cloud integration, and security
+    reviewer: unassigned
+    status: failed
+    prerequisites: *phase1_prerequisites
+    environment: *environment
+    artifacts: *artifacts
+    not_applicable_reasons: *not_applicable
+    procedure:
+      command_or_workflow: >-
+        Run the capability-aware provider suite on local S3-compatible storage,
+        then repeat it in isolated AWS, GCP, and Azure developer accounts.
+      fixture_manifest: sha256:55528e51f38117dcba3b6e97a67334f0d7e905ffcb5b70bb6132c2ec29f034b8
+      workload_parameters: {required_native_providers: [aws_s3, gcs, azure_blob]}
+      capacity_profile: local-k3d-plus-isolated-provider-accounts
+    thresholds:
+      local_s3_compatible_failures: 0
+      native_provider_failures: 0
+      required_native_provider_count: 3
+    expected_failures:
+      - Native provider credentials and signed spend authorization are absent.
+      - The signed Phase 0A decision authorizes only Phase 1 and no cloud spend.
+    observed_results:
+      candidate_git_commit: 08cc84caa12aaf600d143931fdab8a406c9717b2
+      python_runtime: 3.12.13
+      local_phase2_provider_and_object_store_tests: {passed: 66, failed: 0}
+      native_aws_s3: not_run
+      native_gcs: not_run
+      native_azure_blob: not_run
+    evidence: *evidence
+    rollback_procedure: Disable new resumable sessions and retain provider-neutral session evidence.
+    requalification_triggers: [driver, SDK, CORS, checksum, lifecycle, provider identity]
+    started_at: "2026-08-20T16:45:04+02:00"
+    completed_at: "2026-08-22T11:29:12+02:00"
+    expires_at: null
+    approvals: []
+    waiver: *waiver
+  - gate_id: P2-G02
+    title: Fifteen concurrent exact 10-GiB direct uploads satisfy capacity, RSS, and proxy limits
+    owner: backend, UI, cloud integration, and security
+    reviewer: unassigned
+    status: failed
+    prerequisites: *phase1_prerequisites
+    environment: *environment
+    artifacts: *artifacts
+    not_applicable_reasons: *not_applicable
+    procedure:
+      command_or_workflow: >-
+        python3 scripts/benchmark_phase2_ingestion.py --objects 15
+        --object-bytes 10737418240 --available-capacity-bytes 44253073408
+        --headroom-fraction 0.2; run only after capacity and signed RSS preflights pass.
+      fixture_manifest: sha256:55528e51f38117dcba3b6e97a67334f0d7e905ffcb5b70bb6132c2ec29f034b8
+      workload_parameters:
+        object_count: 15
+        object_bytes: 10737418240
+        capacity_headroom_fraction: 0.20
+      capacity_profile:
+        object_store_pvc_bytes: 10737418240
+        available_storage_path_bytes: 44253073408
+    thresholds:
+      required_capacity_bytes: 193273528320
+      minimum_goodput_bits_per_second: 500000000
+      payload_bytes_proxied_through_api_or_ui: 0
+      peak_api_ui_rss_bytes: signed_control_plane_rss_bound_bytes
+    expected_failures:
+      - Available capacity is below the exact preflight requirement.
+      - The signed Phase 0A control-plane RSS bound is absent.
+      - The signed Phase 0A decision authorizes only Phase 1.
+    observed_results:
+      candidate_git_commit: 08cc84caa12aaf600d143931fdab8a406c9717b2
+      available_capacity_bytes: 44253073408
+      required_capacity_bytes: 193273528320
+      preflight_passed: false
+      preflight_exit_code: 2
+      signed_control_plane_rss_bound_bytes: null
+      exact_campaign_started: false
+      correctness_smoke:
+        objects: 2
+        aggregate_payload_bytes: 10485766
+        payload_bytes_proxied_through_api_or_ui: 0
+        api_peak_rss_bytes: 381087744
+        ui_peak_rss_bytes: 12562432
+    evidence: *evidence
+    rollback_procedure: Abort qualification sessions and remove systems fixtures after retention checks.
+    requalification_triggers: [part size, checksum, browser client, storage class, RSS bound]
+    started_at: "2026-08-22T11:20:00+02:00"
+    completed_at: "2026-08-22T11:29:12+02:00"
+    expires_at: null
+    approvals: []
+    waiver: *waiver
+  - gate_id: P2-G03
+    title: Transport copies remain systems fixtures and never become independent ML datasets
+    owner: backend and ML engineering
+    reviewer: unassigned
+    status: not_started
+    prerequisites: [P2-G02]
+    environment: *environment
+    artifacts: *artifacts
+    not_applicable_reasons: *not_applicable
+    procedure:
+      command_or_workflow: Validate the exact P2-G02 report and registered dataset tags.
+      fixture_manifest: sha256:55528e51f38117dcba3b6e97a67334f0d7e905ffcb5b70bb6132c2ec29f034b8
+      workload_parameters: {fixture_kind: systems, statistical_dataset: false}
+      capacity_profile: exact-P2-G02-campaign
+    thresholds:
+      systems_fixture_count: 15
+      statistical_dataset_true_count: 0
+    expected_failures:
+      - P2-G02 has not produced the exact campaign report.
+    observed_results:
+      candidate_git_commit: 08cc84caa12aaf600d143931fdab8a406c9717b2
+      correctness_smoke_fixture_kind: systems
+      correctness_smoke_statistical_dataset: false
+      exact_campaign_report: null
+    evidence: *evidence
+    rollback_procedure: Delete mislabeled fixtures and invalidate any dependent experiment.
+    requalification_triggers: [fixture labeling, benchmark dataset identity]
+    started_at: null
+    completed_at: null
+    expires_at: null
+    approvals: []
+    waiver: *waiver
+  - gate_id: P2-G04
+    title: Confirmed upload bytes survive every required interruption without retransmission
+    owner: backend, UI, and cloud integration
+    reviewer: unassigned
+    status: failed
+    prerequisites: [P2-G01]
+    environment: *environment
+    artifacts: *artifacts
+    not_applicable_reasons: *not_applicable
+    procedure:
+      command_or_workflow: >-
+        Run Playwright interruption coverage and inject API/UI restarts, UI pod
+        eviction, network loss, expiration, throttling, and database failover.
+      fixture_manifest: sha256:55528e51f38117dcba3b6e97a67334f0d7e905ffcb5b70bb6132c2ec29f034b8
+      workload_parameters: {confirmed_offset_probe_bytes: 20971523}
+      capacity_profile: local-k3d
+    thresholds:
+      retransmitted_confirmed_bytes: 0
+      required_interruption_case_failures: 0
+    expected_failures:
+      - Formal pass requires an independent reviewer and immutable evidence-sink receipt.
+    observed_results:
+      candidate_git_commit: 08cc84caa12aaf600d143931fdab8a406c9717b2
+      technical_result: passed
+      browser_reload: passed
+      ui_pod_eviction: passed
+      network_interruption: passed
+      api_pod_replacement: passed
+      database_pod_replacement: passed
+      expired_instruction_http_status: 403
+      provider_throttling_put_attempts: 2
+      provider_throttling_upload_begin_requests: 1
+      confirmed_offset_bytes: 20971523
+      retransmitted_confirmed_bytes: 0
+    evidence: *evidence
+    rollback_procedure: Stop new sessions and roll API/UI images back together.
+    requalification_triggers: [driver, scanner, browser client, session state machine]
+    started_at: "2026-08-22T09:45:00+02:00"
+    completed_at: "2026-08-22T11:03:00+02:00"
+    expires_at: null
+    approvals: []
+    waiver: *waiver
+  - gate_id: P2-G05
+    title: Corrupted transfer units and final objects are rejected or quarantined
+    owner: backend and security
+    reviewer: unassigned
+    status: failed
+    prerequisites: [P2-G01]
+    environment: *environment
+    artifacts: *artifacts
+    not_applicable_reasons: *not_applicable
+    procedure:
+      command_or_workflow: Inject corrupt transfer units and a same-size final digest mismatch.
+      fixture_manifest: sha256:55528e51f38117dcba3b6e97a67334f0d7e905ffcb5b70bb6132c2ec29f034b8
+      workload_parameters: {corruption_cases: [transfer_unit, final_object]}
+      capacity_profile: local-k3d
+    thresholds:
+      accepted_corrupted_objects: 0
+      unquarantined_final_digest_mismatches: 0
+    expected_failures:
+      - Formal pass requires an independent reviewer and immutable evidence-sink receipt.
+    observed_results:
+      candidate_git_commit: 08cc84caa12aaf600d143931fdab8a406c9717b2
+      technical_result: passed
+      corrupt_transfer_units: rejected_by_contract_suite
+      corrupt_final_object: quarantined
+      accepted_corrupted_objects: 0
+    evidence: *evidence
+    rollback_procedure: Quarantine affected prefixes and disable completion until rollback.
+    requalification_triggers: [checksum, scanner, quarantine policy]
+    started_at: "2026-08-22T10:00:00+02:00"
+    completed_at: "2026-08-22T10:45:00+02:00"
+    expires_at: null
+    approvals: []
+    waiver: *waiver
+  - gate_id: P2-G06
+    title: Cleanup leaves no abandoned upload or unreferenced completed object after grace
+    owner: backend and cloud integration
+    reviewer: unassigned
+    status: failed
+    prerequisites: [P2-G01]
+    environment: *environment
+    artifacts: *artifacts
+    not_applicable_reasons: *not_applicable
+    procedure:
+      command_or_workflow: Abort multipart uploads, expire quarantine, and run cleanup reconciliation.
+      fixture_manifest: sha256:55528e51f38117dcba3b6e97a67334f0d7e905ffcb5b70bb6132c2ec29f034b8
+      workload_parameters: {post_grace_reconciliation: true}
+      capacity_profile: local-k3d
+    thresholds:
+      abandoned_uploads_after_grace: 0
+      unreferenced_completed_objects_after_grace: 0
+    expected_failures:
+      - Formal pass requires an independent reviewer and immutable evidence-sink receipt.
+    observed_results:
+      candidate_git_commit: 08cc84caa12aaf600d143931fdab8a406c9717b2
+      technical_result: passed
+      active_multipart_uploads_after_cleanup: 0
+      quarantined_object_exists_after_cleanup: false
+      remaining_probe_objects: 0
+      terminal_state_after_retention_cleanup: failed
+    evidence: *evidence
+    rollback_procedure: Disable cleanup writers and restore the previous reconciler image.
+    requalification_triggers: [cleanup grace, lifecycle rule, retention, completion recovery]
+    started_at: "2026-08-22T10:00:00+02:00"
+    completed_at: "2026-08-22T10:45:00+02:00"
+    expires_at: null
+    approvals: []
+    waiver: *waiver
+  - gate_id: P2-G07
+    title: Real-provider and release-candidate campaigns repeat the complete Phase 2 gate
+    owner: cloud integration and release engineering
+    reviewer: unassigned
+    status: not_started
+    prerequisites: [P2-G01, P2-G02, P2-G03, P2-G04, P2-G05, P2-G06]
+    environment:
+      profile: production-qualification
+      provider: aws-gcp-azure-and-release-candidate
+      region: future-provider-regions
+      namespace: sceptre
+    artifacts: *artifacts
+    not_applicable_reasons: *not_applicable
+    procedure:
+      command_or_workflow: Execute the complete Phase 2 gate in Phases 10, 11, 12, and 13.
+      fixture_manifest: sha256:55528e51f38117dcba3b6e97a67334f0d7e905ffcb5b70bb6132c2ec29f034b8
+      workload_parameters: {required_phases: [10, 11, 12, 13]}
+      capacity_profile: future-provider-qualification
+    thresholds:
+      required_phase_repetitions: 4
+      failed_phase_repetitions: 0
+    expected_failures:
+      - Phases 10 through 13 have not started.
+    observed_results:
+      candidate_git_commit: 08cc84caa12aaf600d143931fdab8a406c9717b2
+      completed_phase_repetitions: 0
+    evidence: *evidence
+    rollback_procedure: Do not approve or publish a release-channel pointer.
+    requalification_triggers: [provider, release candidate, artifact manifest]
+    started_at: null
+    completed_at: null
+    expires_at: null
+    approvals: []
+    waiver: *waiver

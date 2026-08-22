@@ -1,91 +1,104 @@
 schema_revision: sceptre-phase-2-evidence-summary-v1
-status: blocked
-observed_at: "2026-08-20T17:45:58+02:00"
+status: blocked_external_qualification_inputs
+observed_at: "2026-08-22T11:29:12+02:00"
 source:
-  git_sha: 02fbac51d3ff5409f1b5c9988d365b47a17e6f00
-  worktree_clean: false
-  evidence_revision: phase-2-local-2026-08-20
+  candidate_git_sha: 08cc84caa12aaf600d143931fdab8a406c9717b2
+  attestation_commit: evidence_only_descendant
+  evidence_revision: phase-2-local-2026-08-22
+  task_index_sha256: 8fdd5974af1e2aa7c92acf80f7b5ae9d5fe56d87a03e5f59137d4e9bc2576ebd
 guide:
   path: docs/production-readiness/implementation-guide.md
   sha256: 84896d560e5eda60a9bd1e059e0a44136aa87029b21eba739d0d81cbc42575d0
 implementation:
   pathway: Polars and Ray
   dask_allowed: false
-  object_store_drivers:
-    - embedded
-    - s3_compatible
-    - aws_s3
-    - gcs
-    - azure_blob
-  shared_browser_client_uses:
-    - primary_dataset
-    - validation
-    - drift
-    - offline_scoring
+  object_store_drivers: [embedded, s3_compatible, aws_s3, gcs, azure_blob]
+  shared_browser_client_uses: [primary_dataset, validation, drift, offline_scoring]
   load_harness: scripts/benchmark_phase2_ingestion.py
+  candidate_code_status: passed
 quality:
-  backend_full_suite_tests: 857
-  backend_new_load_harness_tests: 14
-  backend_phase2_focused_tests: 58
-  backend_changed_path_tests: 255
-  backend_statement_coverage_percent: 95.569
-  backend_branch_coverage_percent: 90.080
-  backend_changed_path_statement_coverage_percent: 95.200
-  backend_changed_path_branch_coverage_percent: 90.924
+  backend_full_suite_tests: 896
+  backend_failures: 0
+  backend_statement_coverage_percent: 95.578
+  backend_branch_coverage_percent: 90.117
   frontend_tests: 163
+  frontend_failures: 0
   frontend_statement_coverage_percent: 94.67
   frontend_branch_coverage_percent: 90.10
   minimum_independent_dimension_percent: 90.01
+  task_index: {status: passed, entry_count: 420}
+  phase2_gate_records: {status: passed, record_count: 7}
   ruff: passed
   compileall: passed
   frontend_lint: passed
   frontend_build: passed_with_plotly_chunk_advisory
-  helm: passed
-  playwright: passed
-  verified_upload_schema_handoff: passed
-  deployment_region_resolution_and_enforcement: passed
-  stale_completed_object_cleanup: passed
-  scanner_startup_timeout_and_secret_isolation: passed
-  provider_neutral_storage_default: passed
-  provider_neutral_training_dependencies: passed
-  workload_identity_object_store_environment: passed
-  harness_region_resolution_and_goodput_gate: passed
-  quota_reservation_and_session_locking_contract: passed
-  provider_completion_crash_recovery: passed
-  scanner_total_deadline_and_version_evidence: passed
+  helm_lint_render_and_test: passed
+  playwright_default: {passed: 4, skipped_live_cases: 4}
+  playwright_live_phase2: {passed: 2, failed: 0}
 local_k3d:
   status: passed
-  evidence: docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml
-  direct_browser_payload_bytes: 41943046
-  payload_bytes_proxied_through_api_or_ui: 0
+  evidence: docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-22.yaml
+  namespace: sceptre
+  helm_release_revision: 25
+  phase1_kuberay_foundation: passed
   exact_origin_cors: passed
-  restart_resume: passed
-  database_recovery: passed
+  concurrent_direct_upload: passed
+  payload_bytes_proxied_through_api_or_ui: 0
+  browser_reload_and_ui_pod_eviction: passed
+  provider_throttling_retry: passed
+  api_restart_resume: passed
+  database_failover_resume: passed
+  reconciler_survived_database_failover_without_restart: passed
+  expired_instruction: passed
   digest_quarantine: passed
   cleanup: passed
   log_redaction: passed
-blocking_gates:
-  - gate: P2-G01
-    condition: Native AWS S3, GCS, Azure, and lifecycle/versioning semantics have not run.
-    required_change: Provide isolated non-production provider accounts and a signed spend authorization.
-  - gate: P2-G02
-    condition: The exact workload requires 193273528320 bytes with headroom; k3d has 10737418240 bytes and the host has 53410689024 free bytes.
-    required_change: Provide a reference object store with at least 180 GiB available capacity.
-  - gate: P2-G02
-    condition: The signed Phase 0A evidence does not define control_plane_rss_bound_bytes.
-    required_change: Approve and sign an explicit per-pod or aggregate API/UI RSS bound before the campaign.
-  - gate: P2-G03
-    condition: It depends on completion of the exact P2-G02 campaign.
-    required_change: Run the checked-in harness after the P2-G02 preflight passes.
-gate_status:
-  P2-G01: blocked
-  P2-G02: blocked
-  P2-G03: blocked_by_P2-G02
-  P2-G04: passed
-  P2-G05: passed
-  P2-G06: passed
-  P2-G07: not_applicable_until_phases_10_to_13
+formal_gates:
+  P2-G01:
+    status: failed_external_prerequisites
+    local_s3_compatible_contract: passed
+    native_aws_s3: not_run_no_isolated_account
+    native_gcs: not_run_no_isolated_account
+    native_azure_blob: not_run_no_isolated_account
+  P2-G02:
+    status: failed_preflight
+    required_capacity_bytes: 193273528320
+    available_capacity_bytes: 44253073408
+    signed_control_plane_rss_bound_bytes: null
+    exact_campaign_started: false
+  P2-G03:
+    status: blocked_by_P2-G02
+    smoke_fixture_kind: systems
+    smoke_statistical_dataset: false
+  P2-G04:
+    status: technically_passed_pending_independent_approval
+    retransmitted_confirmed_bytes: 0
+  P2-G05:
+    status: technically_passed_pending_independent_approval
+    accepted_corrupted_objects: 0
+  P2-G06:
+    status: technically_passed_pending_independent_approval
+    active_multipart_uploads_after_cleanup: 0
+    unreferenced_probe_objects_after_cleanup: 0
+  P2-G07:
+    status: not_started_future_phases_10_to_13
+blocking_inputs:
+  - owner: workspace_user
+    condition: The signed Phase 0A decision authorizes only Phase 1 and no external spend.
+    required_change: Sign Phase 2/native-provider authorization and the current task-index binding.
+  - owner: workspace_user
+    condition: No isolated AWS, GCP, or Azure developer credentials are configured.
+    required_change: Provide isolated non-production provider accounts and a signed spend ceiling.
+  - owner: workspace_user
+    condition: The exact load needs 193273528320 bytes; the local path has 44253073408 bytes available.
+    required_change: Provide a designated object store with at least 193273528320 bytes available.
+  - owner: workspace_user
+    condition: No signed control_plane_rss_bound_bytes exists.
+    required_change: Approve an explicit per-pod or aggregate API/UI RSS bound.
+  - owner: independent_reviewer
+    condition: No reviewer approval or immutable evidence-sink receipt exists.
+    required_change: Review the gate records and publish the evidence bundle to an immutable sink.
 rollback: >-
   Disable new resumable sessions, allow active provider sessions to finish or
-  abort, roll API and UI images back, and retain provider-neutral session rows
-  and object evidence for audit.
+  abort, roll API and UI images back together, and retain provider-neutral
+  session rows and object evidence for audit.

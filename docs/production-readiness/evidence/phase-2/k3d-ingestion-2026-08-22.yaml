@@ -1,0 +1,127 @@
+schema_revision: sceptre-phase-2-k3d-ingestion-v1
+status: passed_with_external_qualification_blockers
+observed_at: "2026-08-22T11:29:12+02:00"
+candidate_binding: evidence-manifest-2026-08-22.yaml
+environment:
+  cluster: sceptre-local
+  distribution: k3d
+  namespace: sceptre
+  helm_release_revision: 25
+  storage_driver: s3_compatible
+  storage_implementation: SeaweedFS S3 API
+  storage_pvc_capacity_bytes: 10737418240
+  storage_path_available_bytes: 44253073408
+  api_image: sceptre-registry.localhost:5111/sceptreai:api-phase2-candidate-8b0f131-r3
+  api_image_digest: sha256:31124495d5923700a3efef17bb3ddc1af41b75c6ecf1fd2a4c20ae4790b148d5
+  reconciler_image: sceptre-registry.localhost:5111/sceptreai:api-phase2-candidate-8b0f131-r3
+  reconciler_image_digest: sha256:31124495d5923700a3efef17bb3ddc1af41b75c6ecf1fd2a4c20ae4790b148d5
+  ui_image: sceptre-registry.localhost:5111/sceptreai:ui-phase2-candidate-8b0f131
+  ui_image_digest: sha256:1b695cfae6933322c08521f1a009a59bfd29b87d3dc5e50ff01e6ef555d28a7e
+phase_1_foundation:
+  database_schema: {status: passed, tables: 42, revision: 0009_phase2_storage_default}
+  helm_test: passed
+  kuberay_operator: {status: passed, version: 1.6.2, ready: 1, expected: 1}
+  ray_crd_storage_versions: {rayjobs.ray.io: v1, rayclusters.ray.io: v1}
+  rayjob_lifecycle_and_fencing: passed
+  expired_lease_takeover: passed
+  rbac:
+    api_create_rayjob: false
+    reconciler_create_rayjob: true
+    reconciler_get_secrets: false
+rollout:
+  api: {ready: 2, expected: 2, candidate_restarts: 0}
+  ui: {ready: 2, expected: 2, candidate_restarts: 0}
+  reconciler: {ready: 3, expected: 3, candidate_restarts: 0}
+  object_store: {ready: 1, expected: 1, historical_restarts: 1}
+  postgresql: {ready: 1, expected: 1, candidate_restarts: 0}
+checks:
+  exact_origin_cors:
+    status: passed
+    approved_origin: {origin: "http://localhost:8080", http_status: 200, allow_origin: "http://localhost:8080"}
+    denied_origin: {origin: "https://evil.example", http_status: 403, allow_origin: null}
+  concurrent_direct_upload_smoke:
+    status: passed
+    object_count: 2
+    object_bytes_each: 5242883
+    aggregate_payload_bytes: 10485766
+    payload_hosts: ["storage.localhost:8080"]
+    payload_bytes_proxied_through_api_or_ui: 0
+    elapsed_seconds: 3.552
+    goodput_bits_per_second: 23614312.971
+    fixture_kind: systems
+    statistical_dataset: false
+    api_peak_rss_bytes: 381087744
+    ui_peak_rss_bytes: 12562432
+    note: Correctness and control-plane smoke only; not the exact scale campaign.
+  concurrent_admission_deadlock_regression:
+    status: passed
+    object_count: 2
+    object_bytes_each: 20971520
+    postgres_deadlocks: 0
+  browser_reload_ui_pod_eviction_and_network_loss:
+    status: passed
+    runner: Playwright Chromium against the live k3d ingress
+    upload_begin_requests: 1
+    retransmitted_confirmed_bytes: 0
+  browser_provider_throttling:
+    status: passed
+    injected_http_status: 429
+    retry_after_seconds: 0
+    provider_put_attempts: 2
+    upload_begin_requests: 1
+  api_and_database_restart_resume:
+    status: passed
+    confirmed_before_restart_bytes: 20971523
+    confirmed_after_api_restart_bytes: 20971523
+    confirmed_after_database_restart_bytes: 20971523
+    retransmitted_confirmed_bytes: 0
+    terminal_status: ready
+  database_failover_reconciler_availability:
+    status: passed
+    reconciler_pods_before: 3
+    reconciler_pods_after: 3
+    pod_uid_changes: 0
+    restart_count_after: 0
+    transient_database_retry_logs: 3
+  expired_instruction:
+    status: passed
+    signature_lifetime_seconds: 1
+    put_after_expiry_http_status: 403
+    active_multipart_uploads_after_abort: 0
+  corrupted_object:
+    status: passed
+    injected_corruption: same-size first-byte mutation
+    terminal_status_before_retention: quarantined
+    terminal_status_after_retention_cleanup: failed
+    object_exists_after_cleanup: false
+  cleanup:
+    status: passed
+    remaining_probe_objects: 0
+    active_multipart_uploads: 0
+  log_redaction:
+    status: passed
+    lookback_hours: 2
+    x_amz_signature_findings: 0
+    x_amz_credential_findings: 0
+    upload_id_query_findings: 0
+    sas_signature_findings: 0
+    pending_rollback_findings: 0
+    deadlock_findings: 0
+  exact_scale_preflight:
+    status: rejected_insufficient_capacity_as_required
+    object_count: 15
+    object_bytes_each: 10737418240
+    payload_bytes: 161061273600
+    headroom_fraction: 0.20
+    required_capacity_bytes: 193273528320
+    available_capacity_bytes: 44253073408
+    harness_exit_code: 2
+    campaign_started: false
+external_qualification_blockers:
+  - Native AWS S3, GCS, and Azure Blob credentials are absent.
+  - The signed Phase 0A decision authorizes no cloud spend and only authorizes Phase 1 implementation.
+  - The signed Phase 0A record does not define control_plane_rss_bound_bytes.
+  - No independent reviewer approval or immutable evidence-sink receipt is configured.
+limitations:
+  - Local k3d proves functional portability and recovery, not production capacity.
+  - Native-provider semantics and the exact 15-by-10-GiB campaign remain separate hard gates.

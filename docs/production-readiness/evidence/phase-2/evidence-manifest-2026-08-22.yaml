@@ -1,0 +1,28 @@
+schema_revision: sceptre-phase-2-evidence-manifest-v1
+generated_at: "2026-08-22T11:29:12+02:00"
+candidate:
+  git_commit: 08cc84caa12aaf600d143931fdab8a406c9717b2
+  source_archive_sha256: f3a87736b3a0f3f4c88dcb996aa46127834855d4ec22dab4c0d3cb86b4672eaa
+  chart_archive_sha256: 690b697c67c6bc3e18201e7b8fd544ded0fec024c1d1c5bfa91ecb38ada5e269
+  dependency_lock_sha256: 60ee4e4e8053794717ae5184a61e087b15cb4d028d3712e432b13a2f9e0fff2c
+  fixture_manifest_sha256: 55528e51f38117dcba3b6e97a67334f0d7e905ffcb5b70bb6132c2ec29f034b8
+  ray_runtime_sha256: 5c45e64153af1ea8fb8d4ae970bf0f205009b39b63c58c08e832246142fa1216
+guide:
+  path: docs/production-readiness/implementation-guide.md
+  sha256: 84896d560e5eda60a9bd1e059e0a44136aa87029b21eba739d0d81cbc42575d0
+baseline:
+  path: docs/production-readiness/evidence/phase-0a/go-no-go-2026-08-13.yaml
+  sha256: 52e857347a1948600e978a1daa2f3d9630fe1200fff98b78c21ca4fdf59a7578
+files:
+  - path: docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
+    sha256: 5eac838b6f324251e56b555cab6ce4bce3b920d121a184f3c3ef02579cf19119
+  - path: docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
+    sha256: 0991576f75e5aaa1d526178ad5046c4c26d6484478f4dcc581e8b77dfa0e0cad
+  - path: docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-22.yaml
+    sha256: b778391f5d195ec3c182621619aba6067ed2736517afad715a2a45ebc622f3bf
+  - path: docs/production-readiness/task-index.yaml
+    sha256: 8fdd5974af1e2aa7c92acf80f7b5ae9d5fe56d87a03e5f59137d4e9bc2576ebd
+immutable_sink_receipt: null
+immutable_sink_reason: >-
+  No immutable evidence sink is configured for the local evaluation profile.
+  This absence prevents formal gate approval and promotion and is not waived.

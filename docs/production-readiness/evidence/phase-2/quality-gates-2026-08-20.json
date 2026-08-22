@@ -1,75 +1,88 @@
 {
   "schema_revision": "sceptre-phase-2-quality-gates-v1",
-  "observed_at": "2026-08-20T17:45:58+02:00",
-  "overall_status": "blocked",
+  "observed_at": "2026-08-22T11:29:12+02:00",
+  "overall_status": "blocked_external_qualification_inputs",
   "guide": {
     "path": "docs/production-readiness/implementation-guide.md",
     "sha256": "84896d560e5eda60a9bd1e059e0a44136aa87029b21eba739d0d81cbc42575d0"
   },
+  "source": {
+    "candidate_git_sha": "08cc84caa12aaf600d143931fdab8a406c9717b2",
+    "live_runtime_candidate_bound": true,
+    "live_evidence": "docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-22.yaml",
+    "task_index_sha256": "8fdd5974af1e2aa7c92acf80f7b5ae9d5fe56d87a03e5f59137d4e9bc2576ebd",
+    "signed_phase0a_task_index_binding": "stale",
+    "signed_phase0a_scope": "phase1_only"
+  },
   "gates": {
     "P2-G01": {
-      "status": "blocked",
+      "status": "failed",
       "local_s3_compatible_contract": "passed",
       "native_s3": "not_run_no_isolated_account",
       "native_gcs": "not_run_no_isolated_account",
       "native_azure": "not_run_no_isolated_account",
       "native_lifecycle_and_versioning": "not_run_no_isolated_account",
-      "reason": "No isolated provider credentials are configured and the signed Phase 0A decision authorizes zero external spend."
+      "reason": "Native provider credentials and signed external-spend authorization are absent."
     },
     "P2-G02": {
-      "status": "blocked",
+      "status": "failed",
       "required_object_count": 15,
       "required_object_bytes_each": 10737418240,
       "required_payload_bytes": 161061273600,
       "required_capacity_bytes_with_20_percent_headroom": 193273528320,
-      "k3d_object_store_capacity_bytes": 10737418240,
-      "host_free_bytes_observed": 53410689024,
-      "capacity_preflight": "failed_as_required",
+      "k3d_object_store_pvc_capacity_bytes": 10737418240,
+      "available_capacity_bytes": 44253073408,
+      "capacity_preflight": "rejected_insufficient_capacity_as_required",
+      "capacity_preflight_exit_code": 2,
       "signed_control_plane_rss_bound_bytes": null,
-      "reason": "The reference environment lacks capacity and the signed Phase 0A evidence does not define the RSS bound named by the gate."
+      "exact_campaign_started": false
     },
     "P2-G03": {
-      "status": "blocked_by_P2-G02",
-      "harness_fixture_kind": "systems",
-      "harness_statistical_dataset": false,
-      "reason": "The harness enforces the required identity labels, but the exact load campaign has not run."
+      "status": "not_started",
+      "smoke_harness_fixture_kind": "systems",
+      "smoke_harness_statistical_dataset": false,
+      "reason": "The exact P2-G02 campaign has not run."
     },
     "P2-G04": {
-      "status": "passed",
+      "status": "failed_pending_evidence_approval",
+      "technical_result": "passed",
       "browser_reload": "passed_live",
+      "ui_pod_eviction": "passed_live",
       "api_pod_replacement": "passed_live",
       "network_interruption": "passed_live",
       "database_pod_replacement": "passed_live",
-      "confirmed_offset_preserved_bytes": 134217728,
-      "expired_and_throttled_contracts": "passed_contract_suite"
+      "expired_instruction": "passed_live",
+      "provider_throttling": "passed_live",
+      "confirmed_offset_preserved_bytes": 20971523,
+      "retransmitted_confirmed_bytes": 0
     },
     "P2-G05": {
-      "status": "passed",
+      "status": "failed_pending_evidence_approval",
+      "technical_result": "passed",
       "corrupt_final_object": "quarantined_live",
-      "corrupt_transfer_units": "rejected_contract_suite"
+      "corrupt_transfer_units": "rejected_contract_suite",
+      "accepted_corrupted_objects": 0
     },
     "P2-G06": {
-      "status": "passed",
+      "status": "failed_pending_evidence_approval",
+      "technical_result": "passed",
       "active_multipart_uploads_after_cleanup": 0,
       "quarantined_object_exists_after_grace": false,
+      "remaining_probe_objects": 0,
       "database_terminal_state": "failed_after_retention_cleanup"
     },
     "P2-G07": {
-      "status": "not_applicable_until_phases_10_to_13",
-      "reason": "This gate explicitly requires future real-provider and release-candidate repetitions."
+      "status": "not_started",
+      "reason": "This gate explicitly belongs to future Phases 10 through 13."
     }
   },
   "quality": {
-    "backend_full_suite_tests": 857,
-    "backend_full_suite_status": "passed_before_disruptive_database_restart",
-    "backend_new_phase2_harness_tests": 14,
-    "backend_phase2_focused_tests": 58,
-    "backend_changed_path_tests": 255,
-    "backend_statement_coverage_percent": 95.569,
-    "backend_branch_coverage_percent": 90.080,
-    "backend_changed_path_statement_coverage_percent": 95.200,
-    "backend_changed_path_branch_coverage_percent": 90.924,
+    "backend_full_suite_tests": 896,
+    "backend_full_suite_failures": 0,
+    "backend_statement_coverage_percent": 95.578,
+    "backend_branch_coverage_percent": 90.117,
     "frontend_tests": 163,
+    "frontend_failures": 0,
     "frontend_statement_coverage_percent": 94.67,
     "frontend_branch_coverage_percent": 90.10,
     "independent_minimum_percent": 90.01,
@@ -77,20 +90,16 @@
     "compileall": "passed",
     "frontend_lint": "passed",
     "frontend_build": "passed_with_plotly_chunk_advisory",
-    "playwright_default": {"passed": 4, "skipped": 2},
-    "playwright_live_phase2": {"passed": 1, "failed": 0},
-    "helm_lint_and_render": "passed",
-    "verified_upload_schema_handoff": "passed",
-    "deployment_region_resolution_and_enforcement": "passed",
-    "stale_completed_object_cleanup": "passed",
-    "scanner_startup_timeout_and_secret_isolation": "passed",
-    "provider_neutral_storage_default": "passed",
-    "provider_neutral_training_dependencies": "passed",
-    "workload_identity_object_store_environment": "passed",
-    "harness_region_resolution_and_goodput_gate": "passed",
-    "quota_reservation_and_session_locking_contract": "passed",
-    "provider_completion_crash_recovery": "passed",
-    "scanner_total_deadline_and_version_evidence": "passed"
+    "playwright_default": {"passed": 4, "skipped_live_cases": 4},
+    "playwright_live_phase2": {"passed": 2, "failed": 0},
+    "helm_lint_render_and_test": "passed",
+    "task_index_entries": 420,
+    "phase2_gate_record_count": 7
   },
-  "sandbox_note": "After the live database restart proof, the continuation sandbox denied local socket creation. A later full-suite rerun therefore errored only in five PostgreSQL fixtures and hung at asyncio.to_thread; these are sandbox restrictions, not recorded as green rerun evidence."
+  "promotion_controls": {
+    "independent_reviewer": null,
+    "immutable_sink_receipt": null,
+    "waiver": null,
+    "promotion_allowed": false
+  }
 }
