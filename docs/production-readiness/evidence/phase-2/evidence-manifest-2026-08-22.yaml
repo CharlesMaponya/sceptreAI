@@ -1,15 +1,15 @@
 schema_revision: sceptre-phase-2-evidence-manifest-v1
-generated_at: "2026-08-22T11:29:12+02:00"
+generated_at: "2026-08-22T13:20:00+02:00"
 candidate:
-  git_commit: 08cc84caa12aaf600d143931fdab8a406c9717b2
-  source_archive_sha256: f3a87736b3a0f3f4c88dcb996aa46127834855d4ec22dab4c0d3cb86b4672eaa
-  chart_archive_sha256: 690b697c67c6bc3e18201e7b8fd544ded0fec024c1d1c5bfa91ecb38ada5e269
+  git_commit: 7eb134c8de0786e6e134262ccf1c25492cc2913a
+  source_archive_sha256: 0d15f82382d83d06cc16f3d1398c2500f8e5424ee0545e721d05709984b6bccb
+  chart_archive_sha256: ebc263a8c4c7bcc40fda375dfdc445cd50bc532ee9a53053a68db8dc4ade2e88
   dependency_lock_sha256: 60ee4e4e8053794717ae5184a61e087b15cb4d028d3712e432b13a2f9e0fff2c
   fixture_manifest_sha256: 55528e51f38117dcba3b6e97a67334f0d7e905ffcb5b70bb6132c2ec29f034b8
   ray_runtime_sha256: 5c45e64153af1ea8fb8d4ae970bf0f205009b39b63c58c08e832246142fa1216
 guide:
   path: docs/production-readiness/implementation-guide.md
-  sha256: 84896d560e5eda60a9bd1e059e0a44136aa87029b21eba739d0d81cbc42575d0
+  sha256: 90f9845cea2930dfa340e1624bc5c77f5b47b648033cb7c1549ea44313592a2d
 baseline:
   path: docs/production-readiness/evidence/phase-0a/go-no-go-2026-08-13.yaml
   sha256: 52e857347a1948600e978a1daa2f3d9630fe1200fff98b78c21ca4fdf59a7578
@@ -21,7 +21,7 @@ files:
   - path: docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-22.yaml
     sha256: b778391f5d195ec3c182621619aba6067ed2736517afad715a2a45ebc622f3bf
   - path: docs/production-readiness/task-index.yaml
-    sha256: 8fdd5974af1e2aa7c92acf80f7b5ae9d5fe56d87a03e5f59137d4e9bc2576ebd
+    sha256: c8193deae9e3cf936a9f84d436015081030dc389d7d057a22871060fd7419d08
 immutable_sink_receipt: null
 immutable_sink_reason: >-
   No immutable evidence sink is configured for the local evaluation profile.
