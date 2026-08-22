@@ -15,9 +15,9 @@ baseline:
   sha256: 52e857347a1948600e978a1daa2f3d9630fe1200fff98b78c21ca4fdf59a7578
 files:
   - path: docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml
-    sha256: 5eac838b6f324251e56b555cab6ce4bce3b920d121a184f3c3ef02579cf19119
+    sha256: bf1bbc5438bb7b936713c56a1a15ce0a9b0ae9c92918fd3f7d4a3ea0b529c334
   - path: docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json
-    sha256: 0991576f75e5aaa1d526178ad5046c4c26d6484478f4dcc581e8b77dfa0e0cad
+    sha256: 2de32a7f1e15df4c26a9488a0995b8f1595662150925ad1cc6f07e7f879e73a4
   - path: docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-22.yaml
     sha256: b778391f5d195ec3c182621619aba6067ed2736517afad715a2a45ebc622f3bf
   - path: docs/production-readiness/task-index.yaml

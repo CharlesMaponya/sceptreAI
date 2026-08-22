@@ -77,7 +77,7 @@
     }
   },
   "quality": {
-    "backend_full_suite_tests": 896,
+    "backend_full_suite_tests": 898,
     "backend_full_suite_failures": 0,
     "backend_statement_coverage_percent": 95.578,
     "backend_branch_coverage_percent": 90.117,
