@@ -35,10 +35,16 @@ from automl_api.models.workflows import (
 )
 from automl_api.services import final_test_authority as authority
 from automl_api.services import workflow_state as state
+from automl_api.services.idempotency import durable_mutation
+from pydantic import BaseModel
 from sqlalchemy import create_engine, delete, func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+
+
+class MutationResult(BaseModel):
+    id: uuid.UUID
 
 
 @pytest.fixture
@@ -367,6 +373,39 @@ def test_concurrent_idempotency_creates_exactly_one_command(
     assert len({command_id for command_id, _ in results}) == 1
     assert [replayed for _, replayed in results].count(False) == 1
     assert [replayed for _, replayed in results].count(True) == workers - 1
+
+
+def test_concurrent_project_serialization_avoids_command_foreign_key_deadlocks(
+    phase1_engine: Engine, committed_tenant: tuple[uuid.UUID, uuid.UUID]
+) -> None:
+    user_id, project_id = committed_tenant
+    workers = 4
+    start = Barrier(workers)
+
+    def issue(worker: int) -> uuid.UUID:
+        with Session(phase1_engine) as db:
+            user = db.get(User, user_id)
+            assert user is not None
+            start.wait(timeout=5)
+            result = durable_mutation(
+                db,
+                user,
+                project_id,
+                operation="dataset.upload.begin",
+                idempotency_key=f"concurrent-upload-{worker}",
+                payload={"worker": worker},
+                execute=lambda: MutationResult(id=uuid.uuid4()),
+                response_model=MutationResult,
+                response_status=201,
+                serialize_project=True,
+            )
+            db.commit()
+            return result.id
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        result_ids = list(executor.map(issue, range(workers)))
+
+    assert len(set(result_ids)) == workers
 
 
 def test_concurrent_consumers_skip_locked_and_connection_loss_releases_claim(

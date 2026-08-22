@@ -278,7 +278,9 @@ def _assign_ids(
                     "tests/test_phase2_upload_policy.py",
                     "tests/test_phase2_upload_services.py",
                     "tests/test_phase2_load_harness.py",
+                    "tests/test_phase2_evidence.py",
                     "tests/test_inference_gateway.py",
+                    "python scripts/validate_phase2_evidence.py",
                     "npm run test:coverage --prefix apps/ui/react_app",
                     "python scripts/benchmark_phase2_ingestion.py",
                     "helm lint infra/helm/sceptre -f infra/helm/sceptre/values-k3d.yaml",
@@ -287,6 +289,9 @@ def _assign_ids(
                     "docs/production-readiness/evidence/phase-2/phase-2-summary-2026-08-20.yaml",
                     "docs/production-readiness/evidence/phase-2/quality-gates-2026-08-20.json",
                     "docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-20.yaml",
+                    "docs/production-readiness/evidence/phase-2/k3d-ingestion-2026-08-22.yaml",
+                    "docs/production-readiness/evidence/phase-2/evidence-manifest-2026-08-22.yaml",
+                    "docs/production-readiness/evidence/phase-2/gate-records-2026-08-22.yaml",
                 ],
                 "rollback": (
                     "Disable new resumable sessions, allow active provider sessions to finish or "

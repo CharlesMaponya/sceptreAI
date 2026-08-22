@@ -76,6 +76,7 @@ def begin_resumable_upload(
         ),
         response_model=ResumableUploadRead,
         response_status=status.HTTP_201_CREATED,
+        serialize_project=True,
     )
     db.commit()
     return response

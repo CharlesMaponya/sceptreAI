@@ -40,6 +40,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -73,6 +76,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -92,6 +98,11 @@ jobs:
           python scripts/verify_database_schema.py
           alembic check
           python scripts/rehearse_phase1_migrations.py
+
+      - name: Validate production-readiness records
+        run: |
+          python scripts/generate_production_task_index.py --check
+          python scripts/validate_phase2_evidence.py
 
       - name: Run tests with coverage
         env:

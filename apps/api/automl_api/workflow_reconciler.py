@@ -25,24 +25,61 @@ def run_once(
     worker_id: str,
     limit: int = 1,
 ) -> int:
-    with session_factory() as db:
-        entry_ids = [row.id for row in claim_outbox(db, worker_id=worker_id, limit=limit)]
-        db.commit()
+    try:
+        with session_factory() as db:
+            entry_ids = [row.id for row in claim_outbox(db, worker_id=worker_id, limit=limit)]
+            db.commit()
+    except Exception as exc:
+        # A StatefulSet failover can invalidate every pooled connection at the
+        # same instant.  The next checkout will reconnect, so keep the daemon
+        # alive instead of turning a transient database outage into a restart
+        # storm across every reconciler replica.
+        LOGGER.error(
+            "outbox claim cycle unavailable",
+            extra={"error_type": type(exc).__name__},
+        )
+        return 0
 
     for entry_id in entry_ids:
-        with session_factory() as db:
-            entry = db.get(OutboxEntry, entry_id)
-            if entry is None:
-                continue
-            try:
-                reconcile_entry(db, entry, worker_id=worker_id)
-            except Exception as exc:
-                LOGGER.error(
-                    "outbox reconciliation failed",
-                    extra={"entry_id": str(entry_id), "error_type": type(exc).__name__},
-                )
-            finally:
-                db.commit()
+        try:
+            with session_factory() as db:
+                entry = db.get(OutboxEntry, entry_id)
+                if entry is None:
+                    continue
+                try:
+                    reconcile_entry(db, entry, worker_id=worker_id)
+                except Exception as exc:
+                    LOGGER.error(
+                        "outbox reconciliation failed",
+                        extra={"entry_id": str(entry_id), "error_type": type(exc).__name__},
+                    )
+                    # ``reconcile_entry`` normally rolls back the failed side effect and
+                    # records a durable retry before re-raising.  A concurrent delete or
+                    # stale ORM row can make that recovery flush fail too, leaving the
+                    # session in SQLAlchemy's partial-rollback state.  Committing such a
+                    # session terminates the long-running reconciler.  Preserve a valid
+                    # retry transaction, but roll back an invalid one so lease expiry can
+                    # hand the row to another replica.
+                    if db.is_active:
+                        try:
+                            db.commit()
+                        except Exception:
+                            db.rollback()
+                            LOGGER.exception(
+                                "outbox failure transaction could not be committed",
+                                extra={"entry_id": str(entry_id)},
+                            )
+                    else:
+                        db.rollback()
+                else:
+                    db.commit()
+        except Exception as exc:
+            # A committed claim remains protected by its lease and is safely
+            # retried after expiry if the database disappears mid-delivery.
+            LOGGER.error(
+                "outbox processing transaction unavailable",
+                extra={"entry_id": str(entry_id), "error_type": type(exc).__name__},
+            )
     return len(entry_ids)
 
 

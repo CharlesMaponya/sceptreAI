@@ -6,10 +6,12 @@ from typing import Any
 
 from fastapi import HTTPException
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from automl_api.models.enums import CommandStatus
 from automl_api.models.iam import User
+from automl_api.models.projects import Project
 from automl_api.services.workflow_state import (
     IdempotencyConflict,
     begin_command,
@@ -33,8 +35,19 @@ def durable_mutation[ResponseModel: BaseModel](
     outbox_payload: Callable[[ResponseModel], Mapping[str, Any] | None] | None = None,
     aggregate_type: str | None = None,
     resource_id: uuid.UUID | Callable[[ResponseModel], uuid.UUID] | None = None,
+    serialize_project: bool = False,
 ) -> ResponseModel:
     """Execute one mutation and persist a replayable typed response atomically."""
+    if serialize_project:
+        # Upload admission must atomically reserve project quota.  Acquire the
+        # project row before inserting the command: PostgreSQL foreign-key
+        # checks otherwise take a KEY SHARE lock for each command first, and
+        # concurrent requests can deadlock when both later request FOR UPDATE.
+        locked_project_id = db.scalar(
+            select(Project.id).where(Project.id == project_id).with_for_update()
+        )
+        if locked_project_id is None:
+            raise HTTPException(status_code=404, detail="Project not found.")
     try:
         command, replayed = begin_command(
             db,

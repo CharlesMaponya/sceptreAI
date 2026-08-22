@@ -232,7 +232,10 @@ def test_begin_route_uses_a_deterministic_provider_identity(monkeypatch) -> None
     monkeypatch.setattr(
         dataset_routes,
         "durable_mutation",
-        lambda *_args, **kwargs: kwargs["execute"](),
+        lambda *_args, **kwargs: (
+            observed.update({"serialize_project": kwargs["serialize_project"]})
+            or kwargs["execute"]()
+        ),
     )
     result = dataset_routes.begin_resumable_upload(
         project_id,
@@ -248,6 +251,7 @@ def test_begin_route_uses_a_deterministic_provider_identity(monkeypatch) -> None
         project_id,
         f"dataset.upload.begin:{user.id}:stable-key",
     )
+    assert observed["serialize_project"] is True
     db.commit.assert_called_once()
 
 

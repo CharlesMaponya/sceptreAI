@@ -68,6 +68,62 @@ def test_run_once_commits_requeue_after_handler_failure(monkeypatch) -> None:
     worker_session.commit.assert_called_once()
 
 
+def test_run_once_rolls_back_partial_failure_without_crashing_worker(monkeypatch) -> None:
+    entry_id = uuid.uuid4()
+    claim_session = MagicMock()
+    worker_session = MagicMock()
+    worker_session.get.return_value = SimpleNamespace(id=entry_id)
+    worker_session.is_active = False
+    sessions = iter([claim_session, worker_session])
+    monkeypatch.setattr(
+        workflow_reconciler,
+        "claim_outbox",
+        lambda *_args, **_kwargs: [SimpleNamespace(id=entry_id)],
+    )
+    monkeypatch.setattr(
+        workflow_reconciler,
+        "reconcile_entry",
+        MagicMock(side_effect=RuntimeError("stale ORM row")),
+    )
+
+    assert workflow_reconciler.run_once(lambda: _Context(next(sessions)), worker_id="worker") == 1
+    worker_session.rollback.assert_called_once()
+    worker_session.commit.assert_not_called()
+
+
+def test_run_once_survives_transient_database_failover(monkeypatch, caplog) -> None:
+    monkeypatch.setattr(
+        workflow_reconciler,
+        "claim_outbox",
+        MagicMock(side_effect=RuntimeError("database offline")),
+    )
+
+    assert workflow_reconciler.run_once(lambda: _Context(MagicMock()), worker_id="worker") == 0
+    assert "outbox claim cycle unavailable" in caplog.text
+
+
+def test_run_once_leaves_claim_for_lease_recovery_when_database_fails_mid_delivery(
+    monkeypatch, caplog
+) -> None:
+    entry_id = uuid.uuid4()
+    claim_session = MagicMock()
+    sessions = iter([_Context(claim_session), RuntimeError("database offline")])
+    monkeypatch.setattr(
+        workflow_reconciler,
+        "claim_outbox",
+        lambda *_args, **_kwargs: [SimpleNamespace(id=entry_id)],
+    )
+
+    def factory():
+        value = next(sessions)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    assert workflow_reconciler.run_once(factory, worker_id="worker") == 1
+    assert "outbox processing transaction unavailable" in caplog.text
+
+
 def test_observe_once_commits_success_and_rolls_back_failure(monkeypatch) -> None:
     session = MagicMock()
     observer = MagicMock(return_value=2)

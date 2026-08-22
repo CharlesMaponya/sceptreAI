@@ -11,6 +11,9 @@ else
   coverage_python=python3
 fi
 
+"$coverage_python" scripts/generate_production_task_index.py --check
+"$coverage_python" scripts/validate_phase2_evidence.py
+
 "$coverage_python" -m pytest tests/ -v --tb=short \
   --cov \
   --cov-branch \
