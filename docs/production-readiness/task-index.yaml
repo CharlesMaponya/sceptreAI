@@ -2,8 +2,8 @@ schema_revision: sceptre-production-task-index-v1
 status: draft
 guide:
   path: docs/production-readiness/implementation-guide.md
-  commit: 871c50569e3fe8c98c201d989fc44d1e30aa2544
-  sha256: 84896d560e5eda60a9bd1e059e0a44136aa87029b21eba739d0d81cbc42575d0
+  commit: 52956e847c2ac08adb2bb78d8a6dd7ea30c19ad6
+  sha256: 90f9845cea2930dfa340e1624bc5c77f5b47b648033cb7c1549ea44313592a2d
 entry_count: 420
 entries:
 - id: P0-W01
@@ -6339,17 +6339,18 @@ entries:
   rollback: null
   requalification_triggers: []
   supersedes: []
-- id: P5-W06
+- id: P5-W20
   phase: '5'
   kind: work
   heading_path:
   - 'Phase 5: Portable Helm runtime'
   - Work
-  text: Pin the KubeRay operator and custom resource definitions in a separately owned platform layer.
-    Define install and upgrade ordering, conversion tests, namespace scope, and least-privilege permissions
-    for `RayCluster`, `RayJob`, and their status/finalizer paths. This release does not use `RayService`.
-  fingerprint: 8f45567e03aec5f1be7ad89ef59ad5350e78e87c3b8a0ad9e882bd3a84ab25fb
-  guide_commit: 871c50569e3fe8c98c201d989fc44d1e30aa2544
+  text: Pin the KubeRay operator and custom resource definitions as an enabled-by- default dependency
+    of the Sceptre Helm chart. Define install and upgrade ordering, conversion tests, namespace scope,
+    and least-privilege permissions for `RayCluster`, `RayJob`, and their status/finalizer paths. Permit
+    an external compatible operator only through an explicit chart value. This release does not use `RayService`.
+  fingerprint: 37de5c94c0f0e32b232692458f5088a18f2b72f3e5f0bf1b279c377e384c3b22
+  guide_commit: 52956e847c2ac08adb2bb78d8a6dd7ea30c19ad6
   prerequisites:
   - "Phases 0 and 0A for scaffolding; its final gate depends on completed Phase 1\u20134 static and dynamic\
     \ workload contracts."
@@ -6574,16 +6575,17 @@ entries:
   rollback: null
   requalification_triggers: []
   supersedes: []
-- id: P5-W16
+- id: P5-W21
   phase: '5'
   kind: work
   heading_path:
   - 'Phase 5: Portable Helm runtime'
   - Work
   text: Add optional `ServiceMonitor`, `PrometheusRule`, and OpenTelemetry Collector. Render KubeRay application
-    resources only when the separately installed, pinned operator capability is present.
-  fingerprint: fae9bbd5a41ad02a639b10119a4c6386d3a12741ab19477031b7abfd1575dc7a
-  guide_commit: 871c50569e3fe8c98c201d989fc44d1e30aa2544
+    resources when the chart-managed pinned operator is enabled or an explicitly declared compatible external
+    operator is present.
+  fingerprint: 545ce43846d50ee25eb21234027b0e28ff0b5ed44fa12786dd2b7b11b3155824
+  guide_commit: 52956e847c2ac08adb2bb78d8a6dd7ea30c19ad6
   prerequisites:
   - "Phases 0 and 0A for scaffolding; its final gate depends on completed Phase 1\u20134 static and dynamic\
     \ workload contracts."
@@ -9010,16 +9012,16 @@ entries:
   rollback: null
   requalification_triggers: []
   supersedes: []
-- id: P9-W09
+- id: P9-W19
   phase: '9'
   kind: work
   heading_path:
   - 'Phase 9: Local runtimes and Railway'
   - Local work
-  text: Install the pinned KubeRay operator and use the same Ray custom-resource contract as managed clusters,
-    with smaller CPU-only worker limits.
-  fingerprint: 898f2fe1373e8b836ee9e1c30020986873cb4f96ec0b73975436be81ec757324
-  guide_commit: 871c50569e3fe8c98c201d989fc44d1e30aa2544
+  text: Install the chart-pinned KubeRay operator through the same Sceptre release and use the same Ray
+    custom-resource contract as managed clusters, with smaller CPU-only worker limits.
+  fingerprint: 0cc9cfcef95166fc84adc38c65c971b1d2c674c30b1a7e5b48e5eac4b88f51c8
+  guide_commit: 52956e847c2ac08adb2bb78d8a6dd7ea30c19ad6
   prerequisites:
   - "Phases 0, 0A, and 1\u20138 for the full workflow; individual preflight work may begin after Phase\
     \ 5."
@@ -9441,17 +9443,17 @@ entries:
   rollback: null
   requalification_triggers: []
   supersedes: []
-- id: P10-W06
+- id: P10-W15
   phase: '10'
   kind: work
   heading_path:
   - 'Phase 10: AWS EKS implementation and prequalification'
   - Provision
-  text: Install the pinned KubeRay operator and map Ray worker groups to the approved Karpenter pools.
+  text: Enable the chart-pinned KubeRay operator and map Ray worker groups to the approved Karpenter pools.
     Configure object-store memory, `/dev/shm`, encrypted spill, ephemeral-storage limits, placement constraints,
     and Ray autoscaler bounds.
-  fingerprint: 447865086a9b514e6d3727b1bc43d03b9c5e34864da15b324692206f0822fe20
-  guide_commit: 871c50569e3fe8c98c201d989fc44d1e30aa2544
+  fingerprint: fe971293409893e681eb4caedea911478851b4d3e28f8f7820aba39ff75f63e1
+  guide_commit: 52956e847c2ac08adb2bb78d8a6dd7ea30c19ad6
   prerequisites:
   - "Phases 0, 0A, and 1\u20138; Phase 4 capacity model and reference profile must be frozen."
   evidence_schema_revision: sceptre-work-record-v1
@@ -9853,17 +9855,17 @@ entries:
   rollback: null
   requalification_triggers: []
   supersedes: []
-- id: P11-W06
+- id: P11-W13
   phase: '11'
   kind: work
   heading_path:
   - 'Phase 11: Google GKE implementation and prequalification'
   - Provision
-  text: Install the pinned KubeRay operator and map Ray worker groups to the approved GKE node pools.
+  text: Enable the chart-pinned KubeRay operator and map Ray worker groups to the approved GKE node pools.
     Configure object-store memory, `/dev/shm`, encrypted spill, ephemeral-storage limits, placement constraints,
     and Ray autoscaler bounds.
-  fingerprint: db63784b1142ed495fa997e4fe6c4522d9cc85bccc2d51c88d34f6979d18eafa
-  guide_commit: 871c50569e3fe8c98c201d989fc44d1e30aa2544
+  fingerprint: 432f5fe751644c6b0de6beaefcf3af15eb6f9875a45995f0a480e1617b72593c
+  guide_commit: 52956e847c2ac08adb2bb78d8a6dd7ea30c19ad6
   prerequisites:
   - "Phases 0, 0A, and 1\u20138; Phase 4 capacity model and reference profile must be frozen."
   evidence_schema_revision: sceptre-work-record-v1
@@ -10223,17 +10225,17 @@ entries:
   rollback: null
   requalification_triggers: []
   supersedes: []
-- id: P12-W06
+- id: P12-W14
   phase: '12'
   kind: work
   heading_path:
   - 'Phase 12: Azure AKS implementation and prequalification'
   - Provision
-  text: Install the pinned KubeRay operator and map Ray worker groups to the approved AKS node pools.
+  text: Enable the chart-pinned KubeRay operator and map Ray worker groups to the approved AKS node pools.
     Configure object-store memory, `/dev/shm`, encrypted spill, ephemeral-storage limits, placement constraints,
     and Ray autoscaler bounds.
-  fingerprint: 062920095d1ba09fe3bbc04e911581e2faaf593135b8e62b7647d2ff80b3e352
-  guide_commit: 871c50569e3fe8c98c201d989fc44d1e30aa2544
+  fingerprint: 7514c9a5e9b8b95f229968650ddfb5fa505dd37f8e6916600c85476cdbec7b91
+  guide_commit: 52956e847c2ac08adb2bb78d8a6dd7ea30c19ad6
   prerequisites:
   - "Phases 0, 0A, and 1\u20138; Phase 4 capacity model and reference profile must be frozen."
   evidence_schema_revision: sceptre-work-record-v1

@@ -9,6 +9,7 @@ Minikube, kind, k3d, MicroK8s, Docker Desktop, or any cluster-specific CLI.
 - PostgreSQL and durable metadata storage, or an external database connection
 - SeaweedFS and durable dataset/model storage, or an external S3-compatible endpoint
 - MLflow and durable artifacts, or an external tracking server
+- KubeRay 1.6.2 CRDs and a namespace-scoped KubeRay operator
 - Idempotent database bootstrap and Alembic migration Jobs
 - FastAPI and React/Nginx Deployments and ClusterIP Services
 - Namespace-scoped RBAC for Jobs, pod status/logs, inference workloads, quotas,
@@ -41,6 +42,7 @@ the long-running API; bounded drift computations remain Kubernetes Jobs.
 - Helm 3 or 4
 - A default dynamic StorageClass, unless storage classes are set explicitly
 - Internet access to the public `maponyacharles/sceptreai` Docker Hub repository
+- Permission to install the cluster-scoped KubeRay CRDs on the first release
 
 The default release needs roughly 2 CPU cores, 3 GiB RAM, and 25 GiB of
 provisionable storage before training workloads are considered.
@@ -79,6 +81,11 @@ helm upgrade --install sceptre oci://registry-1.docker.io/maponyacharles/sceptre
   --set environment=local \
   --wait --wait-for-jobs --timeout 15m
 ```
+
+That single release installs the application data plane and KubeRay operator.
+Do not install KubeRay separately. If a cluster administrator already manages a
+compatible KubeRay 1.6.2 operator that watches the Sceptre namespace, opt out
+explicitly with `--set kuberay-operator.enabled=false`.
 
 Provide secure credentials through a private values file or existing Secrets;
 the defaults are only suitable for a local evaluation. Contributors can replace

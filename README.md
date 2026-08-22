@@ -538,7 +538,8 @@ helm show chart oci://registry-1.docker.io/maponyacharles/sceptre \
 
 The selected chart pulls its matching application images from the public
 `maponyacharles/sceptreai` Docker Hub repository. No local build, image import,
-private registry, or source-code checkout is required.
+private registry, source-code checkout, separate KubeRay install, or qualification
+namespace is required.
 
 #### Linux 5: Generate local-only secrets and install everything
 
@@ -568,11 +569,14 @@ helm upgrade --install sceptre oci://registry-1.docker.io/maponyacharles/sceptre
   --set environment=local \
   --values .env.sceptre-local.yaml \
   --wait --wait-for-jobs --timeout 30m
-
 helm status sceptre --namespace sceptre
 kubectl --namespace sceptre get pods,jobs,pvc
 helm test sceptre --namespace sceptre
 ```
+
+The `helm upgrade --install` invocation is the only application installation
+command: the Sceptre chart includes the KubeRay 1.6.2 CRDs and namespace-scoped
+operator used by Ray/Polars jobs.
 
 #### Linux 6: Open Sceptre
 

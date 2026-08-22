@@ -1,4 +1,9 @@
 Sceptre was installed into namespace {{ .Release.Namespace }}.
+{{- if index .Values "kuberay-operator" "enabled" }}
+KubeRay operator: installed by this release and scoped to {{ .Release.Namespace }}.
+{{- else }}
+KubeRay operator: externally managed; it must watch {{ .Release.Namespace }}.
+{{- end }}
 
 {{- if .Values.ingress.enabled }}
 UI: {{ ternary "https" "http" .Values.ingress.tls.enabled }}://{{ .Values.ingress.host }}
@@ -8,5 +13,5 @@ No ingress is required. Access the complete UI/API through a local port-forward:
   Open http://127.0.0.1:8080
 {{- end }}
 
-Optional capabilities are not installed by this chart. Metrics Server, ingress
-controllers, GPU device plugins, and storage provisioners remain cluster-owner concerns.
+Metrics Server, ingress controllers, GPU device plugins, and storage provisioners
+remain cluster-owner concerns.

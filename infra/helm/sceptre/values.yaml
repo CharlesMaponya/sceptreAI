@@ -6,6 +6,32 @@ global:
   imageRegistry: docker.io/maponyacharles
   imagePullSecrets: []
 
+# KubeRay is part of the default Sceptre release. The operator uses namespaced
+# RBAC and watches only the namespace containing this Helm release. Disable this
+# dependency only when a cluster-owned KubeRay 1.6.2 operator already watches
+# the Sceptre namespace.
+kuberay-operator:
+  enabled: true
+  fullnameOverride: sceptre-kuberay-operator
+  singleNamespaceInstall: true
+  crNamespacedRbacEnable: true
+  leaderElectionEnabled: true
+  reconcileConcurrency: 1
+  image:
+    repository: quay.io/kuberay/operator
+    tag: v1.6.2
+    pullPolicy: IfNotPresent
+  serviceAccount:
+    create: true
+    name: sceptre-kuberay-operator
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: false
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+
 api:
   replicaCount: 1
   autoscaling:

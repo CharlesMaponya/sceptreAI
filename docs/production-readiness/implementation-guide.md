@@ -1508,7 +1508,7 @@ boundary.
 | Browser upload and training UX | `apps/ui/react_app/src/` with Web Worker code kept outside React render paths |
 | Database changes | `alembic/versions/`, ORM models, and database integration tests |
 | Portable deployment | `infra/helm/sceptre/` |
-| KubeRay operator and CRDs | separately pinned platform layer with install, upgrade, RBAC, and conversion tests |
+| KubeRay operator and CRDs | pinned dependency of `infra/helm/sceptre/`, enabled by default with namespace-scoped RBAC plus install, upgrade, and conversion tests; an explicit external-operator opt-out is supported |
 | Cloud infrastructure | `infra/tofu/modules/{aws-eks,gcp-gke,azure-aks}` and environment compositions |
 | Local runtime automation | `infra/{k3d,kind,minikube,microk8s}/` and `sceptrectl` commands |
 | Release and qualification | `.github/workflows/`, `scripts/`, `tests/`, and non-secret evidence indexes |
@@ -2354,11 +2354,13 @@ managed providers and local conformance targets.
 ### Platform bootstrap milestone
 
 Complete this milestone after Phase 0A and before Phase 3. Install the pinned
-KubeRay operator and CRDs in a separately owned platform layer; freeze the
-operator namespace/RBAC, conversion and rollback procedure, Ray image digest,
-embedded-cluster templates, network baseline, autoscaler ownership, and
-project-and-stage workload-identity pattern. Phase 5 remains open until the
-final conformance gate validates the completed Phase 1–4 workload contract.
+KubeRay operator and CRDs through the same Sceptre Helm chart, enabled by
+default and scoped to the release namespace. Freeze the operator namespace/RBAC,
+conversion and rollback procedure, Ray image digest, embedded-cluster templates,
+network baseline, autoscaler ownership, and project-and-stage workload-identity
+pattern. A cluster-owned compatible operator is supported only through an
+explicit chart opt-out. Phase 5 remains open until the final conformance gate
+validates the completed Phase 1–4 workload contract.
 
 **Bootstrap gate:**
 
@@ -2402,10 +2404,12 @@ final conformance gate validates the completed Phase 1–4 workload contract.
   SLO. Attempts receive short-lived pod tokens plus brokered object credentials
   for the exact attempt; Phase 0A measures principal/service-account quotas,
   delegation latency, expiry, and revocation.
-- Pin the KubeRay operator and custom resource definitions in a separately
-  owned platform layer. Define install and upgrade ordering, conversion tests,
-  namespace scope, and least-privilege permissions for `RayCluster`, `RayJob`,
-  and their status/finalizer paths. This release does not use `RayService`.
+- Pin the KubeRay operator and custom resource definitions as an enabled-by-
+  default dependency of the Sceptre Helm chart. Define install and upgrade
+  ordering, conversion tests, namespace scope, and least-privilege permissions
+  for `RayCluster`, `RayJob`, and their status/finalizer paths. Permit an
+  external compatible operator only through an explicit chart value. This
+  release does not use `RayService`.
 - Replace the hand-built static Ray head and worker Deployments with one
   reconciler-created `RayJob` and embedded ephemeral `RayCluster` per splitter,
   preparation, training-run, champion-refit, or champion-evaluation attempt. Ray
@@ -2435,8 +2439,8 @@ final conformance gate validates the completed Phase 1–4 workload contract.
   three stateless MLflow replicas backed by external database and object store.
 - Repair smoke tests for disabled bundled services and external dependencies.
 - Add optional `ServiceMonitor`, `PrometheusRule`, and OpenTelemetry Collector.
-  Render KubeRay application resources only when the separately installed,
-  pinned operator capability is present.
+  Render KubeRay application resources when the chart-managed pinned operator
+  is enabled or an explicitly declared compatible external operator is present.
 - Keep all inference traffic behind the authenticated project gateway; forbid
   public per-model Services or Ingress in production.
 - Include Kubernetes version and API-deprecation checks for the selected common
@@ -2858,8 +2862,9 @@ Railway data-service adapters without misrepresenting Railway as Kubernetes.
   Gateway implementation.
 - Use port-forwarding as the universal exposure fallback.
 - Bundle SeaweedFS/MinIO, PostgreSQL, and MLflow only in evaluation mode.
-- Install the pinned KubeRay operator and use the same Ray custom-resource
-  contract as managed clusters, with smaller CPU-only worker limits.
+- Install the chart-pinned KubeRay operator through the same Sceptre release and
+  use the same Ray custom-resource contract as managed clusters, with smaller
+  CPU-only worker limits.
 - Add a single-node evaluation profile for an 8-core, 24 GB workstation. Limit
   Ray plus application memory to a measured safe bound, enable spill to an
   explicit workspace path, stream Polars batches, and publish the largest
@@ -2929,8 +2934,8 @@ Railway bucket behavior changes require that target's conformance suite again.
 - A three-node managed system pool.
 - Karpenter-managed CPU, high-memory, pairwise, and optional GPU pools with
   taints, disruption budgets, consolidation rules, and qualification maxima.
-- Install the pinned KubeRay operator and map Ray worker groups to the approved
-  Karpenter pools. Configure object-store memory, `/dev/shm`, encrypted spill,
+- Enable the chart-pinned KubeRay operator and map Ray worker groups to the
+  approved Karpenter pools. Configure object-store memory, `/dev/shm`, encrypted spill,
   ephemeral-storage limits, placement constraints, and Ray autoscaler bounds.
 - ECR repositories with immutable release policy and scanning.
 - EKS Pod Identity association per service account; use the SDK default
@@ -3008,8 +3013,8 @@ Gateway, WAF, or quota changes invalidate the affected EKS evidence.
   autoscaled general, high-memory, pairwise, and optional GPU pools. Use total
   node-count settings; do not mistake a per-zone count of three for three total.
 - Workload Identity Federation for GKE with distinct Google service accounts.
-- Install the pinned KubeRay operator and map Ray worker groups to the approved
-  GKE node pools. Configure object-store memory, `/dev/shm`, encrypted spill,
+- Enable the chart-pinned KubeRay operator and map Ray worker groups to the
+  approved GKE node pools. Configure object-store memory, `/dev/shm`, encrypted spill,
   ephemeral-storage limits, placement constraints, and Ray autoscaler bounds.
 - Artifact Registry with immutable digest promotion.
 - Native GCS driver, bucket versioning/retention/lifecycle, CMEK where required,
@@ -3090,8 +3095,8 @@ affected GKE evidence.
 - Azure CNI Overlay with Cilium network policy.
 - A three-node system pool plus autoscaled general, high-memory, pairwise, and
   optional tainted GPU pools.
-- Install the pinned KubeRay operator and map Ray worker groups to the approved
-  AKS node pools. Configure object-store memory, `/dev/shm`, encrypted spill,
+- Enable the chart-pinned KubeRay operator and map Ray worker groups to the
+  approved AKS node pools. Configure object-store memory, `/dev/shm`, encrypted spill,
   ephemeral-storage limits, placement constraints, and Ray autoscaler bounds.
 - ACR with immutable release policy and digest deployment.
 - Native Azure Blob block-upload driver using user-delegation SAS. Enable

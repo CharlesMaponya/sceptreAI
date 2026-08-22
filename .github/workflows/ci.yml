@@ -277,6 +277,7 @@ jobs:
       - name: Lint and render every supported profile
         run: |
           version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml)"
+          helm dependency build infra/helm/sceptre
           helm package infra/helm/sceptre --destination /tmp \
             --version "$version" --app-version "$version"
           chart="/tmp/sceptre-${version}.tgz"
@@ -323,6 +324,12 @@ jobs:
           image=docker.io/maponyacharles/sceptreai
           version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml)"
           ! grep -q 'kind: ClusterRole' "$rendered"
+          grep -Fq 'name: sceptre-kuberay-operator' "$rendered"
+          grep -Fq 'image: "quay.io/kuberay/operator:v1.6.2"' "$rendered"
+          grep -A1 -F -- '- --watch-namespace' "$rendered" | grep -Fq -- '- sceptre'
+          grep -Fq '  - rayclusters' "$rendered"
+          grep -Fq '  - rayjobs' "$rendered"
+          grep -Fq '  - rayservices' "$rendered"
           ! grep -q 'nodeSelector:' "$rendered"
           ! grep -qi 'minikube' "$rendered"
           grep -q 'INFERENCE_SERVICE_TYPE: "ClusterIP"' "$rendered"
@@ -676,6 +683,7 @@ jobs:
             --username maponyacharles --password-stdin
           sed -i "s/SCEPTRE_RELEASE_VERSION/${VERSION}/g" \
             infra/helm/sceptre/Chart.yaml
+          helm dependency build infra/helm/sceptre
           helm package infra/helm/sceptre --destination "$RUNNER_TEMP" \
             --version "$VERSION" --app-version "$VERSION"
           helm push "$RUNNER_TEMP/sceptre-${VERSION}.tgz" \
