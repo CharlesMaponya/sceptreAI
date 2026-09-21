@@ -19,6 +19,7 @@ from automl_api.core.config import get_settings
 from automl_api.models.enums import ProjectRole, RunKind, RunStatus
 from automl_api.models.iam import User
 from automl_api.models.runs import ModelRun
+from automl_api.security.deployments import deployment_token
 from automl_api.services.projects import require_project_role
 from automl_api.services.uploads import get_upload_session
 from automl_api.storage.object_store import get_object_store
@@ -59,6 +60,14 @@ _MAX_OBJECT_REQUEST_BYTES = 16 * 1024
 class DeploymentInferenceTarget:
     service_name: str
     namespace: str
+    deployment_id: uuid.UUID | None = None
+
+    def authenticated_headers(self) -> dict[str, str]:
+        return (
+            {"X-Sceptre-Deployment-Token": deployment_token(self.deployment_id)}
+            if self.deployment_id
+            else {}
+        )
 
     def url_for(self, path: str) -> str:
         return f"http://{self.service_name}.{self.namespace}.svc:8080/{path}"
@@ -112,6 +121,7 @@ def resolve_deployment_inference_target(
     return DeploymentInferenceTarget(
         service_name=service_name,
         namespace=namespace,
+        deployment_id=run.id,
     )
 
 
@@ -147,7 +157,10 @@ async def proxy_deployment_inference(
     upstream_request = client.build_request(
         request.method,
         upstream_url,
-        headers=_selected_headers(request.headers, _FORWARDED_REQUEST_HEADERS),
+        headers={
+            **_selected_headers(request.headers, _FORWARDED_REQUEST_HEADERS),
+            **target.authenticated_headers(),
+        },
         content=request.stream(),
     )
     upstream_response = await _send_upstream(client, upstream_request, target)
@@ -217,7 +230,7 @@ async def proxy_object_backed_offline_inference(
     upstream_request = client.build_request(
         "POST",
         upstream_url,
-        headers=headers,
+        headers={**headers, **target.authenticated_headers()},
         content=_multipart_object_body(
             source,
             boundary=boundary,

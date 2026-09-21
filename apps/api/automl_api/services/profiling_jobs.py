@@ -15,8 +15,15 @@ from sqlalchemy.orm import Session
 from automl_api.core.config import get_settings
 from automl_api.db.session import get_session_factory
 from automl_api.models.datasets import DatasetVersion, ProfilingJob
-from automl_api.models.enums import DatasetFormat, DatasetStatus, ProjectRole
+from automl_api.models.enums import (
+    CommandStatus,
+    DatasetFormat,
+    DatasetStatus,
+    ProjectRole,
+    WorkflowStage,
+)
 from automl_api.models.iam import User
+from automl_api.models.workflows import WorkflowAttempt
 from automl_api.schemas.profiling import (
     ColumnProfileRead,
     DatasetProfileRead,
@@ -33,11 +40,17 @@ from automl_api.services.profiling import (
     build_dataset_profile,
 )
 from automl_api.services.projects import require_project_role
+from automl_api.services.workflow_state import (
+    begin_command,
+    enqueue_outbox,
+    transition_command,
+)
 from automl_api.storage.object_store import get_object_store
 
 FEATURE_BATCH_SIZE = 5
 PROFILE_ALGORITHM_VERSION = 4
 TERMINAL_STATUSES = {"succeeded", "failed", "cancelled"}
+MAX_CONTROL_PLANE_PROFILE_BYTES = 100 * 1024 * 1024
 
 _executor = ThreadPoolExecutor(
     max_workers=max(1, get_settings().max_concurrent_jobs),
@@ -59,8 +72,23 @@ def create_profiling_job(
 ) -> tuple[ProfilingJob, bool]:
     require_project_role(db, user, project_id, ProjectRole.VIEWER)
     version = _get_version(db, project_id, dataset_id, dataset_version_id)
+    distributed = requires_distributed_profile(version) or bool(payload.time_column)
+    if distributed and version.format == DatasetFormat.EXCEL:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Distributed profiling does not accept Excel workbooks. "
+                "Export the workbook as CSV, JSONL/NDJSON, or Parquet and upload it again."
+            ),
+        )
     target_column = payload.target_column.strip() if payload.target_column else None
     columns = _version_columns(version)
+    if payload.time_column and (
+        payload.time_column not in columns or payload.time_column == target_column
+    ):
+        raise HTTPException(
+            status_code=422, detail="Choose a time column that exists and differs from the target."
+        )
     if target_column and target_column not in columns:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -79,6 +107,7 @@ def create_profiling_job(
         not payload.force
         and latest_job is not None
         and latest_job.target_column == target_column
+        and latest_job.overview_json.get("time_column") == payload.time_column
         and latest_job.status in {"queued", "running", "succeeded"}
         and latest_job.overview_json.get("profile_algorithm_version") == PROFILE_ALGORITHM_VERSION
     ):
@@ -142,6 +171,8 @@ def create_profiling_job(
         "replaces_job_id": str(latest_job.id) if latest_job else None,
         "features_reused_from_job_id": (str(reusable_job.id) if reusable_job else None),
         "profile_algorithm_version": PROFILE_ALGORITHM_VERSION,
+        "execution_mode": "kuberay" if distributed else "control_plane",
+        "time_column": payload.time_column,
     }
     if task_inference_json is not None:
         overview_json["task_inference"] = task_inference_json
@@ -175,7 +206,93 @@ def create_profiling_job(
     )
     db.add(job)
     db.flush()
+    if distributed:
+        _enqueue_distributed_profile(db, user, version, job)
     return job, True
+
+
+def requires_distributed_profile(version: DatasetVersion) -> bool:
+    return bool(
+        get_settings().distributed_preparation_enabled
+        or (version.byte_size is not None and version.byte_size > MAX_CONTROL_PLANE_PROFILE_BYTES)
+    )
+
+
+def is_distributed_profile(job: ProfilingJob) -> bool:
+    return job.overview_json.get("execution_mode") == "kuberay"
+
+
+def _enqueue_distributed_profile(
+    db: Session,
+    user: User,
+    version: DatasetVersion,
+    job: ProfilingJob,
+) -> WorkflowAttempt:
+    request = {
+        "profiling_job_id": str(job.id),
+        "dataset_version_id": str(version.id),
+        "target_column": job.target_column,
+        "profile_algorithm_version": PROFILE_ALGORITHM_VERSION,
+    }
+    command, replayed = begin_command(
+        db,
+        project_id=job.project_id,
+        actor_id=user.id,
+        operation="dataset.profile",
+        idempotency_key=f"profiling-job:{job.id}",
+        payload=request,
+    )
+    if replayed:
+        existing = db.scalar(
+            select(WorkflowAttempt).where(
+                WorkflowAttempt.project_id == job.project_id,
+                WorkflowAttempt.logical_key == f"profile:{job.id}:splitter",
+                WorkflowAttempt.generation == 1,
+            )
+        )
+        if existing is None:
+            raise RuntimeError("The distributed profiling command has no splitter attempt.")
+        return existing
+
+    attempt = WorkflowAttempt(
+        project_id=job.project_id,
+        stage=WorkflowStage.SPLITTER,
+        logical_key=f"profile:{job.id}:splitter",
+        dataset_version_id=version.id,
+        workload_identity="sceptre-dataset-splitter",
+        generation=1,
+        fencing_token=uuid.uuid4().hex,
+    )
+    db.add(attempt)
+    db.flush()
+    enqueue_outbox(
+        db,
+        command,
+        topic="ray.dataset.split.submit",
+        aggregate_type="profiling_job",
+        aggregate_id=job.id,
+        payload={
+            "profiling_job_id": str(job.id),
+            "attempt_id": str(attempt.id),
+            "fencing_token": attempt.fencing_token,
+        },
+    )
+    command.resource_type = "profiling_job"
+    command.resource_id = job.id
+    command.response_status = status.HTTP_202_ACCEPTED
+    command.response_payload = {
+        "profiling_job_id": str(job.id),
+        "attempt_id": str(attempt.id),
+        "stage": WorkflowStage.SPLITTER.value,
+    }
+    transition_command(command, CommandStatus.RUNNING)
+    job.overview_json = {
+        **job.overview_json,
+        "workflow_attempt_id": str(attempt.id),
+        "workflow_generation": attempt.generation,
+    }
+    db.flush()
+    return attempt
 
 
 def get_profiling_job(
@@ -229,13 +346,14 @@ def schedule_profiling_job(job_id: uuid.UUID) -> bool:
 def resume_incomplete_profiling_jobs() -> int:
     session_factory = get_session_factory()
     with session_factory() as db:
-        job_ids = list(
+        incomplete_jobs = list(
             db.scalars(
-                select(ProfilingJob.id).where(
+                select(ProfilingJob).where(
                     ProfilingJob.status.in_(["queued", "running"]),
                 )
             ).all()
         )
+        job_ids = [job.id for job in incomplete_jobs if not is_distributed_profile(job)]
         if job_ids:
             db.query(ProfilingJob).filter(ProfilingJob.id.in_(job_ids)).update(
                 {
@@ -253,9 +371,9 @@ def _job_finished(job_id: uuid.UUID, future: Future[None]) -> None:
         _scheduled_jobs.discard(job_id)
     try:
         future.result()
-    except Exception:
+    except Exception:  # noqa: BLE001 - the worker persists the failure before re-raising
         # The worker persists the user-facing failure before re-raising.
-        pass
+        pass  # nosec B110 - failure already recorded on the job by the worker
 
 
 def _run_profiling_job(job_id: uuid.UUID) -> None:
@@ -307,7 +425,9 @@ def _run_profiling_job(job_id: uuid.UUID) -> None:
                 _set_stage(job, job.current_stage, "failed")
                 version = db.get(DatasetVersion, job.dataset_version_id)
                 if version is not None:
-                    version.status = DatasetStatus.FAILED
+                    # Profiling produces a derived artifact. A failed profile must not
+                    # invalidate an upload that was already verified successfully.
+                    version.status = DatasetStatus.READY
                 db.commit()
         raise
 
@@ -323,9 +443,11 @@ def _run_partitioned_stages(job_id: uuid.UUID) -> None:
     session_factory = get_session_factory()
     with session_factory() as db:
         job = db.get(ProfilingJob, job_id)
-        assert job is not None
+        if job is None:
+            raise ValueError(f"Profiling job {job_id} was not found.")
         version = db.get(DatasetVersion, job.dataset_version_id)
-        assert version is not None
+        if version is None:
+            raise ValueError("The profiling job's dataset version was not found.")
         dataset = _load_dataset(version)
         row_count = job.row_count or dataset.count()
         columns = [str(column) for column in dataset.schema().names]
@@ -344,7 +466,8 @@ def _run_partitioned_stages(job_id: uuid.UUID) -> None:
         batch_profiles = [_profile_column(dataset, column, row_count) for column in batch]
         with session_factory() as db:
             job = db.get(ProfilingJob, job_id)
-            assert job is not None
+            if job is None:
+                return
             merged_profiles = dict(job.feature_profiles_json)
             merged_profiles.update(
                 {profile.name: profile.model_dump(mode="json") for profile in batch_profiles}
@@ -362,8 +485,7 @@ def _run_partitioned_stages(job_id: uuid.UUID) -> None:
 
     with session_factory() as db:
         job = db.get(ProfilingJob, job_id)
-        assert job is not None
-        if job.status == "cancelled":
+        if job is None or job.status == "cancelled":
             return
         if "features" not in job.artifact_uris_json:
             job.artifact_uris_json = _store_stage_artifact(
@@ -398,17 +520,14 @@ def _run_partitioned_stages(job_id: uuid.UUID) -> None:
     )
     with session_factory() as db:
         job = db.get(ProfilingJob, job_id)
-        assert job is not None
-        if job.status == "cancelled":
+        if job is None or job.status == "cancelled":
             return
         relationship_payload = [
             relationship.model_dump(mode="json") for relationship in relationships
         ]
         job.relationships_json = relationship_payload
         job.warnings_json = list(
-            dict.fromkeys(
-                [*job.warnings_json, *relationship_warnings, *leakage_analysis.warnings]
-            )
+            dict.fromkeys([*job.warnings_json, *relationship_warnings, *leakage_analysis.warnings])
         )
         job.overview_json = {
             **job.overview_json,
@@ -432,11 +551,11 @@ def _finish_preparation(job_id: uuid.UUID) -> None:
     session_factory = get_session_factory()
     with session_factory() as db:
         job = db.get(ProfilingJob, job_id)
-        assert job is not None
-        if job.status == "cancelled":
+        if job is None or job.status == "cancelled":
             return
         version = db.get(DatasetVersion, job.dataset_version_id)
-        assert version is not None
+        if version is None:
+            raise ValueError("The profiling job's dataset version was not found.")
         profiles = [
             ColumnProfileRead.model_validate(profile)
             for profile in job.feature_profiles_json.values()
@@ -500,11 +619,12 @@ def _run_monolithic_fallback(job_id: uuid.UUID) -> None:
     session_factory = get_session_factory()
     with session_factory() as db:
         job = db.get(ProfilingJob, job_id)
-        assert job is not None
+        if job is None:
+            raise ValueError(f"Profiling job {job_id} was not found.")
         user = db.get(User, job.created_by_id)
-        assert user is not None
         version = db.get(DatasetVersion, job.dataset_version_id)
-        assert version is not None
+        if user is None or version is None:
+            raise ValueError("The profiling job's lineage was not found.")
         features_fully_reused = bool(
             job.total_columns
             and job.completed_columns == job.total_columns

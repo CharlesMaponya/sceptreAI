@@ -200,7 +200,7 @@ function DeploymentEvidence({ deployment, configure, govern }: {
           }]} layout={{ autosize: true, height: 250, margin: { l: 48, r: 18, t: 18, b: 40 },
             paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(244,247,252,.7)", showlegend: false,
             xaxis: { showgrid: false }, yaxis: { gridcolor: "#e3e8f1", zeroline: false },
-            font: { family: "Manrope Variable, system-ui, sans-serif", color: "#657089", size: 10 },
+            font: { family: "Open Sans Variable, system-ui, sans-serif", color: "#657089", size: 10 },
           }} config={{ displayModeBar: false, responsive: true }} useResizeHandler style={{ width: "100%" }} />
         </Suspense> : <div className="monitoring-no-series"><BarChart3 /><b>No production series yet</b>
           <span>Configure monitoring, then send deployment metrics through the authenticated metrics endpoint.</span></div>}

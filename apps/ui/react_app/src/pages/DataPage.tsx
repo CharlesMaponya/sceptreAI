@@ -7,7 +7,7 @@ import { formatBytes, titleCase } from "../lib";
 import type { Dataset, DatasetVersion, LeakageAnalysis, LeakageFinding, ProfileJob } from "../types";
 import { useNavigate, useParams } from "react-router";
 import { buildWordCloudTrace, formatStatistic } from "./presentation";
-import { createResumableUpload, type ResumableUploadController, type UploadTelemetry, waitForVerifiedUpload } from "../resumableUpload";
+import { createResumableUpload, type ResumableUploadController, type UploadTelemetry, waitForUploadResult } from "../resumableUpload";
 
 type ProfileResult = ProfileJob & {
   feature_profiles_json: Record<string, {
@@ -50,10 +50,16 @@ export function DataPage() {
       });
       uploadController.current = controller;
       const result = await controller.result;
-      if (!result.dataset || !result.version) {
-        await waitForVerifiedUpload(projectId, result.session.id);
-      }
-      return result;
+      setUploadTelemetry((current) => ({
+        stage: "verifying",
+        confirmedBytes: current?.totalBytes || values.file.size,
+        totalBytes: current?.totalBytes || values.file.size,
+        percent: 100,
+        bytesPerSecond: 0,
+        retry: 0,
+        expiresAt: current?.expiresAt,
+      }));
+      return waitForUploadResult<Dataset, DatasetVersion>(projectId, result.session.id);
     },
     onSuccess: (result) => {
       client.invalidateQueries({ queryKey: ["datasets", projectId] });
@@ -106,7 +112,8 @@ export function DataPage() {
           <progress aria-label="Dataset upload progress" value={uploadProgress} max={100} />
           <p>{uploadTelemetry?.bytesPerSecond ? `${formatBytes(uploadTelemetry.bytesPerSecond)}/s · ` : ""}
             {uploadTelemetry?.retry ? `Retry ${uploadTelemetry.retry} · ` : ""}
-            Confirmed {formatBytes(uploadTelemetry?.confirmedBytes || 0)} of {formatBytes(uploadTelemetry?.totalBytes || file?.size || 0)}.</p>
+            {uploadTelemetry?.stage === "hashing" ? "Hashed" : uploadTelemetry?.stage === "verifying" ? "Uploaded" : "Confirmed"} {formatBytes(uploadTelemetry?.confirmedBytes || 0)} of {formatBytes(uploadTelemetry?.totalBytes || file?.size || 0)}.
+            {uploadTelemetry?.stage === "verifying" ? " Server checksum verification is still running." : ""}</p>
           <div className="modal__actions">{uploadTelemetry?.stage === "paused"
             ? <Button variant="secondary" type="button" onClick={() => uploadController.current?.resume()}><Play size={15} />Resume</Button>
             : <Button variant="secondary" type="button" onClick={() => uploadController.current?.pause()}><Pause size={15} />Pause</Button>}
@@ -145,8 +152,9 @@ function DatasetDetail({
     refetchInterval: (query) => query.state.data && ["queued", "running"].includes(query.state.data.status) ? 2000 : false,
   });
   const result = useQuery({
-    queryKey: ["profile-result", profile.data?.id], enabled: profile.data?.status === "succeeded",
+    queryKey: ["profile-result", profile.data?.id], enabled: Boolean(profile.data?.id),
     queryFn: () => api<ProfileResult>(`${profilePath}/profile-jobs/${profile.data!.id}/result`),
+    refetchInterval: profile.data && ["queued", "running"].includes(profile.data.status) ? 2000 : false,
   });
   const retryProfile = useMutation({
     mutationFn: () => api<ProfileJob>(`${profilePath}/profile-jobs`, json("POST", {
@@ -175,7 +183,10 @@ function DatasetDetail({
               ? <Button variant="secondary" onClick={() => navigate(`/projects/${projectId}`)}>Choose target & profile</Button>
               : null}</div>
       {profile.isLoading || result.isLoading ? <Loading label="Checking profile…" /> : profile.data && ["queued", "running"].includes(profile.data.status) ?
-        <div className="progress-panel"><div><b>{titleCase(profile.data.current_stage || "Preparing")}</b><span>{Math.round((profile.data.progress || 0) * 100)}%</span></div><progress value={profile.data.progress || 0} max={1} /><p>Profiling {profile.data.completed_columns || 0} of {profile.data.total_columns || 0} columns. You can leave this page safely.</p></div>
+        <><div className="progress-panel"><div><b>{titleCase(profile.data.current_stage || "Preparing")}</b><span>{Math.round((profile.data.progress || 0) * 100)}%</span></div><progress value={profile.data.progress || 0} max={1} /><p>{profile.data.overview_json?.execution_mode === "kuberay" && ["splitter", "preparation"].includes(profile.data.current_stage || "")
+          ? `KubeRay generation ${profile.data.overview_json.workflow_generation || 1} is preparing immutable train and validation artifacts. You can leave this page safely.`
+          : `Profiling ${profile.data.completed_columns || 0} of ${profile.data.total_columns || 0} columns. You can leave this page safely.`}</p></div>
+          {columns.length > 0 && <FeatureAccordions columns={columns} target={result.data?.target_column} relationships={result.data?.relationships_json || []} preparation={result.data?.preparation_json || []} leakageFindings={result.data?.overview_json?.leakage_analysis?.findings || []} />}</>
         : result.data ? <><div className="profile-summary"><div><span>Inferred task</span><strong>{titleCase(result.data.overview_json?.task_inference?.task_type || "Pending")}</strong></div>
           <div><span>Confidence</span><strong>{Math.round((result.data.overview_json?.task_inference?.confidence || 0) * 100)}%</strong></div><p>{result.data.overview_json?.task_inference?.rationale}</p></div>
           <LeakageSummary analysis={result.data.overview_json?.leakage_analysis} />
@@ -242,9 +253,9 @@ function FeatureDistribution({ column }: { column: FeatureColumn }) {
   if (!isText && !distribution.length) return <Notice>A distribution is not available.</Notice>;
   const chart = isText
     ? [buildWordCloudTrace(words)]
-    : [{ type: "bar" as const, x: distribution.map((item) => item.label), y: distribution.map((item) => item.count), marker: { color: "#3159e8" }, hovertemplate: "%{x}<br>Count: %{y}<extra></extra>" }];
+    : [{ type: "bar" as const, x: distribution.map((item) => item.label), y: distribution.map((item) => item.count), marker: { color: "#cb0c9f" }, hovertemplate: "%{x}<br>Count: %{y}<extra></extra>" }];
   const cloudAxis = { visible: false, fixedrange: true, range: [-340, 340] };
-  return <Suspense fallback={<Loading label="Loading visualization…" />}><PlotlyChart className={`feature-plot${isText ? " feature-word-cloud" : ""}`} data={chart} layout={{ autosize: true, height: 260, margin: isText ? { l: 8, r: 8, t: 8, b: 8 } : { l: 45, r: 10, t: 10, b: 65 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: isText ? "rgba(0,0,0,0)" : "#f8f9fc", showlegend: false, hovermode: "closest", xaxis: isText ? cloudAxis : { visible: true, automargin: true }, yaxis: isText ? { ...cloudAxis, range: [-120, 120] } : { visible: true, automargin: true }, font: { family: "Inter, system-ui, sans-serif", size: 10, color: "#4e5870" } }} config={{ displayModeBar: false, responsive: true }} useResizeHandler style={{ width: "100%" }} /></Suspense>;
+  return <Suspense fallback={<Loading label="Loading visualization…" />}><PlotlyChart className={`feature-plot${isText ? " feature-word-cloud" : ""}`} data={chart} layout={{ autosize: true, height: 260, margin: isText ? { l: 8, r: 8, t: 8, b: 8 } : { l: 45, r: 10, t: 10, b: 65 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: isText ? "rgba(0,0,0,0)" : "#f8f9fc", showlegend: false, hovermode: "closest", xaxis: isText ? cloudAxis : { visible: true, automargin: true }, yaxis: isText ? { ...cloudAxis, range: [-120, 120] } : { visible: true, automargin: true }, font: { family: "Open Sans Variable, system-ui, sans-serif", size: 10, color: "#4e5870" } }} config={{ displayModeBar: false, responsive: true }} useResizeHandler style={{ width: "100%" }} /></Suspense>;
 }
 
 function StatisticsTable({ statistics }: { statistics: Record<string, unknown> }) {

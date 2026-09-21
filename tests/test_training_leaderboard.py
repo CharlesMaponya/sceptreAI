@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import builtins
 import uuid
+from datetime import time
 from types import SimpleNamespace
 
 import automl_api.training.pipeline as training_pipeline
@@ -256,14 +257,22 @@ def test_mlflow_model_logging_uses_the_sceptre_skops_allowlist(monkeypatch) -> N
     assert logged["model"] == "model"
     assert logged["artifact_path"] == "model"
     assert logged["skops_trusted_types"] == list(_SKOPS_TRUSTED_TYPES)
+    assert any(item.startswith("scikit-learn==") for item in logged["pip_requirements"])
 
 
-def test_sceptre_supervised_pipelines_round_trip_with_mlflow_skops(tmp_path) -> None:
+def test_sceptre_supervised_pipelines_round_trip_with_mlflow_skops(tmp_path, monkeypatch) -> None:
+    def unexpected_inference(*args, **kwargs):
+        raise AssertionError("Saving must not launch dependency inference and reload the model")
+
+    monkeypatch.setattr(
+        training_pipeline.mlflow.models, "infer_pip_requirements", unexpected_inference,
+    )
     features = pd.DataFrame(
         {
             "amount": [float(index) for index in range(40)],
             "score": [float((index * 7) % 13) for index in range(40)],
             "segment": ["a", "b", "c", "d"] * 10,
+            "transaction_clock": [time(8, 30), time(12, 0), time(17, 45), time(23, 15)] * 10,
         }
     )
     models = [
@@ -294,6 +303,7 @@ def test_sceptre_supervised_pipelines_round_trip_with_mlflow_skops(tmp_path) -> 
             model,
             model_path,
             skops_trusted_types=list(_SKOPS_TRUSTED_TYPES),
+            pip_requirements=list(training_pipeline._model_pip_requirements()),
         )
         restored = mlflow_sklearn.load_model(model_path)
 

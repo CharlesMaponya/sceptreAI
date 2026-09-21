@@ -93,7 +93,7 @@ class PasswordChangeRequest(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str = Field(min_length=16)
+    refresh_token: str | None = Field(default=None, min_length=16)
 
 
 class LogoutRequest(BaseModel):

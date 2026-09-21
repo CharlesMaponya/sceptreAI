@@ -7,6 +7,7 @@ __pycache__
 .pytest_cache
 .ruff_cache
 .venv
+.venv-ci312
 node_modules
 dist
 *.tsbuildinfo
@@ -14,4 +15,17 @@ dist
 output
 tests
 docs
-infra
+infra/*
+!infra/locks/
+infra/locks/*
+!infra/locks/requirements-training.lock
+!infra/locks/requirements-training-cpu.lock
+!infra/locks/requirements-inference.lock
+!infra/locks/requirements-inference-upload.lock
+
+!infra/locks/requirements-api.lock
+artifacts
+htmlcov
+coverage.*
+apps/ui/react_app/coverage
+apps/ui/react_app/test-results

@@ -7,17 +7,15 @@ ENV PYTHONUNBUFFERED=1 \
     SCEPTRE_VERSION=${SCEPTRE_VERSION}
 
 WORKDIR /app
-COPY requirements-training.txt ./
+COPY infra/locks/requirements-training-cpu.lock ./
 RUN --mount=type=cache,target=/root/.cache/pip \
     apt-get update \
     && apt-get install --no-install-recommends --yes libgomp1 \
     && rm -rf /var/lib/apt/lists/* \
     && python -m pip install --upgrade pip==26.1.2 \
-    && sed '/^torch==/d' requirements-training.txt > /tmp/requirements-training-cpu.txt \
-    && python -m pip install -r /tmp/requirements-training-cpu.txt \
-    && python -m pip install \
-       --index-url https://download.pytorch.org/whl/cpu \
-       torch==2.9.1
+    && python -m pip install --require-hashes \
+       --extra-index-url https://download.pytorch.org/whl/cpu \
+       -r requirements-training-cpu.lock
 
 COPY apps/api ./apps/api
 COPY packages ./packages

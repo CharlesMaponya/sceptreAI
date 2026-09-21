@@ -288,6 +288,31 @@ def test_outbox_retry_budget_dead_letters_and_operator_replay() -> None:
     assert command.replayed_by == actor_id
 
 
+def test_dead_outbox_replays_after_command_response_was_already_succeeded() -> None:
+    command = _command(status=CommandStatus.SUCCEEDED, max_retries=5)
+    command.id = uuid.uuid4()
+    command.retry_count = 5
+    command.terminal_reason = "asynchronous delivery failed"
+    entry = SimpleNamespace(
+        id=uuid.uuid4(),
+        status=OutboxStatus.DEAD,
+        command_id=command.id,
+        delivery_attempts=5,
+        delivered_at=None,
+        last_error="asynchronous delivery failed",
+    )
+    db = MagicMock()
+    db.scalar.side_effect = [entry, command]
+
+    replayed = state.replay_dead_outbox(db, entry.id, actor_id=uuid.uuid4())
+
+    assert replayed.status == OutboxStatus.PENDING
+    assert replayed.delivery_attempts == 0
+    assert command.status == CommandStatus.SUCCEEDED
+    assert command.retry_count == 0
+    assert command.terminal_reason is None
+
+
 def test_dead_letter_replay_rejects_missing_or_live_rows() -> None:
     db = MagicMock()
     db.scalar.return_value = None

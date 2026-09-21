@@ -20,7 +20,8 @@ COPY --from=build /app/dist /usr/share/nginx/html
 RUN mkdir -p /run/nginx /var/lib/nginx/tmp /etc/nginx/http.d \
     && sed -i '/^user /d' /etc/nginx/nginx.conf \
     && chown -R nginx:nginx /run/nginx /var/lib/nginx /etc/nginx/http.d
-ENV NGINX_ENVSUBST_FILTER=API_SERVICE_HOST \
+ENV NGINX_ENVSUBST_FILTER="^(API_SERVICE_HOST|NGINX_LOCAL_RESOLVERS)$" \
+    NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
     NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx/http.d \
     API_SERVICE_HOST=api
 USER 101

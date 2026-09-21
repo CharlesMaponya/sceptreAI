@@ -86,7 +86,9 @@ def test_monitoring_resource_class_scales_drift_job_and_respects_capacity() -> N
         cpu_limit_cores=2.0,
         memory_request_mb=1024,
         memory_limit_mb=2048,
-        capacity=SimpleNamespace(available_cpu_cores=3.0, available_memory_mb=6000),
+        capacity=SimpleNamespace(
+            source="namespace_resource_quota", available_cpu_cores=3.0, available_memory_mb=6000
+        ),
         blockers=[],
         can_launch=True,
     )
@@ -103,6 +105,14 @@ def test_monitoring_resource_class_scales_drift_job_and_respects_capacity() -> N
     assert estimate.memory_request_mb == 8192
     assert estimate.can_launch is False
     assert "available CPU" in " ".join(estimate.blockers)
+
+    estimate.capacity = SimpleNamespace(
+        source="kubernetes", available_cpu_cores=0, available_memory_mb=0
+    )
+    estimate.blockers = []
+    estimate.can_launch = True
+    _apply_monitoring_resource_floor(estimate, "standard")
+    assert estimate.can_launch is True
 
 
 def test_drift_rejects_external_data_missing_training_features(monkeypatch) -> None:
@@ -645,6 +655,9 @@ class _ScalarResult:
 
 
 class _SequenceSession:
+    def get(self, _model, _id):
+        return SimpleNamespace(settings={})
+
     bind = None
 
     def __init__(self, *, scalars=None, scalar=None):
@@ -855,7 +868,7 @@ def test_cleanup_preview_protects_active_deployment_artifacts() -> None:
     assert not db.deleted
 
 
-def test_register_model_persists_artifact_and_version(monkeypatch) -> None:
+def test_register_model_persists_selected_nonwinning_artifact_and_version(monkeypatch) -> None:
     project_id = uuid.uuid4()
     user = SimpleNamespace(id=uuid.uuid4())
     parent = SimpleNamespace(
@@ -873,9 +886,18 @@ def test_register_model_persists_artifact_and_version(monkeypatch) -> None:
         "leaderboard_primary_metric": "accuracy",
         "leaderboard": [
             {
+                "model": "RandomForestClassifier",
+                "status": "succeeded",
+                "rank": 1,
+                "model_artifact_uri": "s3://models/winner.joblib",
+                "model_artifact_sha256": "b" * 64,
+                "metrics": {"accuracy": 0.99},
+            },
+            {
                 "model": "LogisticRegression",
                 "status": "succeeded",
                 "model_artifact_uri": "s3://models/model.joblib",
+                "model_artifact_sha256": "a" * 64,
                 "metrics": {"accuracy": 0.91},
             }
         ],
@@ -923,6 +945,9 @@ def test_register_model_persists_artifact_and_version(monkeypatch) -> None:
     assert entry.stage == ModelStage.CANDIDATE
     assert isinstance(db.added[0], RunArtifact)
     assert db.added[0].byte_size == 123
+    assert entry.model_name == "LogisticRegression"
+    assert db.added[0].object_uri == "s3://models/model.joblib"
+    assert db.added[0].content_hash == "a" * 64
 
 
 @pytest.mark.parametrize(
@@ -1018,7 +1043,7 @@ def test_stop_deployment_is_idempotent_for_kubernetes_404(monkeypatch) -> None:
         SimpleNamespace(),
         run.project_id,
         run.id,
-        SimpleNamespace(delete_model_deployment=missing),
+        SimpleNamespace(shutdown_model_deployment=missing),
     )
     assert stopped.status == RunStatus.CANCELLED
     assert stopped.finished_at is not None
@@ -1094,7 +1119,9 @@ def _operations_estimate(*, can_launch=True):
     )
 
 
-def test_drift_launch_submits_a_resource_bounded_job(monkeypatch) -> None:
+def test_drift_launch_prepares_a_resource_bounded_job_without_external_mutation(
+    monkeypatch,
+) -> None:
     project_id = uuid.uuid4()
     source_version_id = uuid.uuid4()
     source = SimpleNamespace(
@@ -1161,7 +1188,9 @@ def test_drift_launch_submits_a_resource_bounded_job(monkeypatch) -> None:
     assert result.run.status == RunStatus.QUEUED
     assert result.run.gpu_requested is False
     assert result.run.params["monitoring_resource_class"] == "standard"
-    assert client.created == [result.manifest]
+    assert client.created == []
+    assert result.run.tags["desired_state"] == "kubernetes_submission_pending"
+    assert result.run.params["source_training_run_id"] == str(source.id)
     assert added[0].run_kind == RunKind.DRIFT
 
 
@@ -1215,6 +1244,7 @@ def _deployable_entry(project_id):
     artifact = SimpleNamespace(
         object_uri="s3://models/model.joblib",
         byte_size=1024,
+        content_hash="a" * 64,
     )
     return SimpleNamespace(
         id=uuid.uuid4(),
@@ -1456,3 +1486,101 @@ def test_drift_listing_syncs_active_runs_and_stops_after_api_failure(monkeypatch
 
     assert result == [active, queued]
     assert calls == [active.id]
+
+
+def test_shutdown_preserves_runtime_and_cleanup_requires_shutdown(monkeypatch):
+    from unittest.mock import MagicMock
+
+    run = _deployment_run()
+    db = SimpleNamespace(scalar=lambda _: run, flush=lambda: None)
+    client = MagicMock()
+    monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
+    with pytest.raises(HTTPException) as failure:
+        operations_service.cleanup_model_deployment(
+            db, SimpleNamespace(), run.project_id, run.id, client
+        )
+    assert failure.value.status_code == 409
+    client.delete_model_deployment.assert_not_called()
+    operations_service.stop_model_deployment(db, SimpleNamespace(), run.project_id, run.id, client)
+    client.shutdown_model_deployment.assert_called_once_with(run.k8s_job_name)
+    client.delete_model_deployment.assert_not_called()
+    assert run.tags["desired_state"] == "deployment_stopped"
+    operations_service.cleanup_model_deployment(
+        db, SimpleNamespace(), run.project_id, run.id, client
+    )
+    operations_service.cleanup_model_deployment(
+        db, SimpleNamespace(), run.project_id, run.id, client
+    )
+    client.delete_model_deployment.assert_called_once_with(run.k8s_job_name)
+    assert run.tags["runtime_cleaned_at"]
+    assert run.tags["desired_state"] == "deployment_cleaned"
+
+
+def test_stopped_deployment_can_resume_until_runtime_is_cleaned(monkeypatch):
+    from unittest.mock import MagicMock
+
+    run = _deployment_run()
+    run.status = RunStatus.CANCELLED
+    run.tags = {"desired_state": "deployment_stopped"}
+    run.params = {"replicas": 2}
+    db = SimpleNamespace(scalar=lambda _: run, flush=lambda: None)
+    client = MagicMock()
+    monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
+    operations_service.start_model_deployment(db, SimpleNamespace(), run.project_id, run.id, client)
+    client.start_model_deployment.assert_called_once_with(run.k8s_job_name, 2)
+    assert run.status == RunStatus.RUNNING
+    assert run.finished_at is None
+    operations_service.start_model_deployment(db, SimpleNamespace(), run.project_id, run.id, client)
+    client.start_model_deployment.assert_called_once()
+    operations_service.stop_model_deployment(db, SimpleNamespace(), run.project_id, run.id, client)
+    operations_service.cleanup_model_deployment(
+        db, SimpleNamespace(), run.project_id, run.id, client
+    )
+    with pytest.raises(HTTPException) as failure:
+        operations_service.start_model_deployment(
+            db, SimpleNamespace(), run.project_id, run.id, client
+        )
+    assert failure.value.status_code == 409
+
+
+def test_stopped_deployment_cannot_start_with_an_active_replacement(monkeypatch):
+    from unittest.mock import MagicMock
+
+    run = _deployment_run()
+    run.status = RunStatus.CANCELLED
+    run.tags = {"registry_entry_id": str(uuid.uuid4())}
+    db = MagicMock()
+    db.scalar.side_effect = [run, uuid.uuid4()]
+    client = MagicMock()
+    monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
+    monkeypatch.setattr(operations_service, "_lock_training_admission", lambda *_: None)
+
+    with pytest.raises(HTTPException) as failure:
+        operations_service.start_model_deployment(
+            db, SimpleNamespace(), run.project_id, run.id, client
+        )
+
+    assert failure.value.status_code == 409
+    assert "already has an active deployment" in failure.value.detail
+    client.start_model_deployment.assert_not_called()
+    assert run.status == RunStatus.CANCELLED
+
+
+@pytest.mark.parametrize("launch_status", [RunStatus.QUEUED, RunStatus.PRECHECK_RUNNING])
+def test_pending_deployment_remains_provisioning_until_resources_exist(monkeypatch, launch_status):
+    run = _deployment_run()
+    run.status = launch_status
+    run.tags = {"desired_state": "deployment_pending"}
+    db = _SequenceSession(scalars=[[run]])
+    client = SimpleNamespace(
+        settings=Settings(training_namespace="fallback"),
+        model_deployment_state=lambda _: "missing",
+    )
+    monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
+
+    result = list_model_deployments(db, SimpleNamespace(), run.project_id, client)
+
+    assert result[0].status == launch_status
+    assert result[0].runtime_state == "progressing"
+    assert run.failure_code is None
+    assert run.finished_at is None

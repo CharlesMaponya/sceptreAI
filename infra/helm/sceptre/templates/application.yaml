@@ -19,7 +19,9 @@ metadata:
   labels:
     {{- include "sceptre.labels" . | nindent 4 }}
 spec:
+  {{- if not .Values.api.autoscaling.enabled }}
   replicas: {{ .Values.api.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "sceptre.selectorLabels" . | nindent 6 }}
@@ -33,6 +35,8 @@ spec:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
     spec:
       serviceAccountName: {{ include "sceptre.apiServiceAccount" . }}
+      {{- include "sceptre.topologySpread" (dict "root" . "component" "api") | nindent 6 }}
+      terminationGracePeriodSeconds: 45
       securityContext:
         seccompProfile: {type: RuntimeDefault}
       {{- with .Values.global.imagePullSecrets }}
@@ -116,9 +120,26 @@ spec:
                 secretKeyRef:
                   name: {{ include "sceptre.objectStoreSecretName" . }}
                   key: {{ include "sceptre.objectStoreSecretKey" . }}
+            # PyArrow's supported S3 credential chain is inherited by local Ray
+            # workers; keep provider descriptors free of static credentials.
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sceptre.objectStoreSecretName" . }}
+                  key: {{ include "sceptre.objectStoreAccessKey" . }}
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sceptre.objectStoreSecretName" . }}
+                  key: {{ include "sceptre.objectStoreSecretKey" . }}
             {{- end }}
           ports:
             - {name: http, containerPort: 8000}
+          lifecycle:
+            preStop:
+              exec:
+                # Allow endpoint changes to reach the UI proxy before shutdown.
+                command: ["sleep", "5"]
           startupProbe:
             httpGet: {path: /health/ready, port: http}
             periodSeconds: 5
@@ -126,7 +147,8 @@ spec:
           readinessProbe:
             httpGet: {path: /health/ready, port: http}
             periodSeconds: 5
-            failureThreshold: 3
+            timeoutSeconds: 3
+            failureThreshold: 12
           livenessProbe:
             httpGet: {path: /health/live, port: http}
             periodSeconds: 15
@@ -165,6 +187,7 @@ spec:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
     spec:
       serviceAccountName: {{ include "sceptre.reconcilerServiceAccount" . }}
+      {{- include "sceptre.topologySpread" (dict "root" . "component" "reconciler") | nindent 6 }}
       securityContext:
         seccompProfile: {type: RuntimeDefault}
       containers:
@@ -240,6 +263,8 @@ spec:
         app.kubernetes.io/component: ui
     spec:
       automountServiceAccountToken: false
+      {{- include "sceptre.topologySpread" (dict "root" . "component" "ui") | nindent 6 }}
+      terminationGracePeriodSeconds: 45
       securityContext:
         fsGroup: 101
         fsGroupChangePolicy: OnRootMismatch
@@ -254,14 +279,20 @@ spec:
         - name: ui
           image: {{ include "sceptre.image" (dict "root" . "image" .Values.ui.image) | quote }}
           imagePullPolicy: {{ .Values.ui.image.pullPolicy }}
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 5"]
           env:
-            - {name: API_SERVICE_HOST, value: {{ printf "%s-api" (include "sceptre.fullname" .) | quote }}}
-            - {name: NGINX_ENVSUBST_FILTER, value: API_SERVICE_HOST}
+            - {name: API_SERVICE_HOST, value: {{ printf "%s-api.%s.svc.cluster.local" (include "sceptre.fullname" .) .Release.Namespace | quote }}}
+            - {name: NGINX_ENVSUBST_FILTER, value: "^(API_SERVICE_HOST|NGINX_LOCAL_RESOLVERS)$"}
+            - {name: NGINX_ENTRYPOINT_LOCAL_RESOLVERS, value: "1"}
           ports:
             - {name: http, containerPort: 80}
           readinessProbe:
-            httpGet: {path: /, port: http}
+            httpGet: {path: /health/ready, port: http}
             periodSeconds: 5
+            timeoutSeconds: 5
             failureThreshold: 3
           livenessProbe:
             httpGet: {path: /, port: http}

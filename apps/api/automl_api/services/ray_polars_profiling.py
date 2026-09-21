@@ -6,6 +6,7 @@ import json
 import math
 import os
 from collections import Counter
+from collections.abc import Callable
 from typing import Any
 from urllib.parse import urlparse
 
@@ -38,7 +39,12 @@ from automl_api.storage.object_store import get_object_store
 
 MISSING_MARKERS = ("", "na", "n/a", "null", "none")
 RAY_BATCH_ROWS = 8_192
-PER_BATCH_DISTINCT_LIMIT = 4_096
+# The semantic split only needs exact cardinality through 20. Keeping thousands
+# of hashes for every column in every partition made a 792-column batch emit
+# roughly 41 MiB and eventually exhausted the Ray driver's memory. This bound
+# remains exact for low-cardinality inference and marks larger batches as an
+# approximation without accumulating gigabytes of intermediate JSON.
+PER_BATCH_DISTINCT_LIMIT = 256
 GLOBAL_DISTINCT_LIMIT = 100_000
 PER_BATCH_TOP_VALUES = 32
 PER_BATCH_WORDS = 256
@@ -50,6 +56,9 @@ MAX_CRAMERS_V_CELLS = 1_000_000
 def profile_dataset_with_ray(
     version: DatasetVersion,
     target_column: str | None,
+    *,
+    progress_callback: Callable[[str], None] | None = None,
+    feature_callback: Callable[[ColumnProfileRead, int, int, int], None] | None = None,
 ) -> tuple[
     int,
     list[ColumnProfileRead],
@@ -59,10 +68,20 @@ def profile_dataset_with_ray(
 ]:
     dataset = _load_dataset(version)
     row_count = dataset.count()
-    columns = [str(column) for column in dataset.schema().names]
-    profiles = [_profile_column(dataset, column, row_count) for column in columns]
+    if progress_callback is not None:
+        progress_callback("row_counted")
+    excluded = set(getattr(version, "excluded_profile_columns", set()))
+    columns = [str(column) for column in dataset.schema().names if str(column) not in excluded]
+    profile_source = dataset.select_columns(columns)
+    profiles = _profile_columns_in_distributed_passes(
+        profile_source,
+        columns,
+        row_count,
+        progress_callback=progress_callback,
+        feature_callback=feature_callback,
+    )
     profile_by_name = {profile.name: profile for profile in profiles}
-    sample_rows = _sample_rows(dataset)
+    sample_rows = _sample_rows(profile_source)
     relationships, relationship_warnings = _relationships_from_rows(
         sample_rows,
         profile_by_name,
@@ -70,6 +89,8 @@ def profile_dataset_with_ray(
         row_count,
     )
     leakage_analysis = detect_target_leakage(pd.DataFrame(sample_rows), target_column)
+    if progress_callback is not None:
+        progress_callback("relationships_complete")
     warnings = [
         (
             f"Processed all {row_count} rows with Ray Data and bounded Arrow-to-Polars "
@@ -80,6 +101,145 @@ def profile_dataset_with_ray(
         *leakage_analysis.warnings,
     ]
     return row_count, profiles, relationships, leakage_analysis, warnings
+
+
+def _profile_columns_in_distributed_passes(
+    dataset: Dataset,
+    columns: list[str],
+    row_count: int,
+    *,
+    progress_callback: Callable[[str], None] | None = None,
+    feature_callback: Callable[[ColumnProfileRead, int, int, int], None] | None = None,
+) -> list[ColumnProfileRead]:
+    if not columns:
+        if progress_callback is not None:
+            progress_callback("summaries_complete")
+            progress_callback("histograms_complete")
+        return []
+    summary_rows = dataset.map_batches(
+        _summarize_dataset_batch,
+        batch_format="pyarrow",
+        batch_size=RAY_BATCH_ROWS,
+        fn_kwargs={"columns": columns},
+        zero_copy_batch=True,
+    ).take_all()
+    if progress_callback is not None:
+        progress_callback("summaries_complete")
+    grouped: dict[str, list[dict[str, Any]]] = {column: [] for column in columns}
+    for row in summary_rows:
+        grouped[str(row["column"])].append(json.loads(str(row["summary_json"])))
+    merged = {column: _merge_summaries(grouped[column]) for column in columns}
+    semantics = {
+        column: _semantic_type(summary, int(summary["distinct_count"]))
+        for column, summary in merged.items()
+    }
+    configurations = _histogram_configurations(merged, semantics)
+    histogram_counts: dict[str, np.ndarray] = {
+        column: np.zeros(len(config["edges"]) - 1, dtype=int)
+        for column, config in configurations.items()
+    }
+    active = {
+        column: config
+        for column, config in configurations.items()
+        if config["edges"][0] != config["edges"][-1]
+    }
+    if active:
+        rows = dataset.map_batches(
+            _histograms_batch,
+            batch_format="pyarrow",
+            batch_size=RAY_BATCH_ROWS,
+            fn_kwargs={"configurations": active},
+            zero_copy_batch=True,
+        ).take_all()
+        for row in rows:
+            column = str(row["column"])
+            histogram_counts[column] += np.asarray(json.loads(str(row["counts_json"])), dtype=int)
+    for column, config in configurations.items():
+        if config["edges"][0] == config["edges"][-1]:
+            histogram_counts[column][0] = int(config["count"])
+    profiles: list[ColumnProfileRead] = []
+    for column in columns:
+        profile = _column_profile_from_summary(
+            column,
+            row_count,
+            merged[column],
+            semantics[column],
+            configurations.get(column),
+            histogram_counts.get(column),
+        )
+        profiles.append(profile)
+        if feature_callback is not None:
+            feature_callback(profile, len(profiles), len(columns), row_count)
+    if progress_callback is not None:
+        progress_callback("histograms_complete")
+    return profiles
+
+
+def _summarize_dataset_batch(batch: pa.Table, *, columns: list[str]) -> pa.Table:
+    names: list[str] = []
+    summaries: list[str] = []
+    for column in columns:
+        result = _summarize_column_batch(batch.select([column]), column=column)
+        names.append(column)
+        summaries.append(str(result["summary_json"][0].as_py()))
+    return pa.table({"column": names, "summary_json": summaries})
+
+
+def _histogram_configurations(
+    summaries: dict[str, dict[str, Any]],
+    semantics: dict[str, tuple[str, str | None]],
+) -> dict[str, dict[str, Any]]:
+    configurations: dict[str, dict[str, Any]] = {}
+    for column, (semantic_type, timestamp_unit) in semantics.items():
+        summary = summaries[column]
+        if semantic_type.startswith("numerical") or (
+            semantic_type == "temporal" and timestamp_unit
+        ):
+            moments = summary["numeric"]
+            mode = "numeric"
+        elif semantic_type == "text":
+            moments = summary["length"]
+            mode = "length"
+        else:
+            continue
+        count = int(moments["count"])
+        if count == 0:
+            continue
+        minimum = float(moments["min"])
+        maximum = float(moments["max"])
+        bin_count = (
+            1
+            if minimum == maximum
+            else min(
+                INTERNAL_HISTOGRAM_BINS,
+                max(HISTOGRAM_BINS, math.ceil(math.sqrt(count))),
+            )
+        )
+        configurations[column] = {
+            "mode": mode,
+            "count": count,
+            "edges": np.linspace(minimum, maximum, bin_count + 1).tolist(),
+        }
+    return configurations
+
+
+def _histograms_batch(
+    batch: pa.Table,
+    *,
+    configurations: dict[str, dict[str, Any]],
+) -> pa.Table:
+    columns: list[str] = []
+    counts: list[str] = []
+    for column, config in configurations.items():
+        result = _histogram_batch(
+            batch.select([column]),
+            column=column,
+            edges=config["edges"],
+            mode=str(config["mode"]),
+        )
+        columns.append(column)
+        counts.append(str(result["counts_json"][0].as_py()))
+    return pa.table({"column": columns, "counts_json": counts})
 
 
 def _ensure_ray() -> None:
@@ -93,11 +253,18 @@ def _ensure_ray() -> None:
     DataContext.get_current().enable_progress_bars = False
 
 
-def _load_dataset(version: DatasetVersion) -> Dataset:
+def _load_dataset(
+    version: DatasetVersion,
+    *,
+    override_num_blocks: int | None = None,
+) -> Dataset:
     _ensure_ray()
     store = get_object_store()
     source, storage_options = store.dataframe_source(version.object_uri)
     source, filesystem = _ray_source(source, storage_options)
+    block_options = (
+        {"override_num_blocks": override_num_blocks} if override_num_blocks is not None else {}
+    )
     if version.format == DatasetFormat.CSV:
         dialect = _detect_csv_dialect(store.read_head(version.object_uri))
         return ray.data.read_csv(
@@ -111,12 +278,13 @@ def _load_dataset(version: DatasetVersion) -> Dataset:
                 strings_can_be_null=True,
                 null_values=list(MISSING_MARKERS),
             ),
+            **block_options,
         )
     if version.format == DatasetFormat.JSON:
-        return ray.data.read_json(source, filesystem=filesystem, lines=True)
-    raise ValueError(
-        f"Ray/Polars profiling does not support {version.format.value} datasets."
-    )
+        return ray.data.read_json(source, filesystem=filesystem, lines=True, **block_options)
+    if version.format == DatasetFormat.PARQUET:
+        return ray.data.read_parquet(source, filesystem=filesystem, **block_options)
+    raise ValueError(f"Ray/Polars profiling does not support {version.format.value} datasets.")
 
 
 def _ray_source(
@@ -130,11 +298,18 @@ def _ray_source(
     client_options = storage_options.get("client_kwargs") or {}
     endpoint_url = str(client_options.get("endpoint_url") or "")
     parsed_endpoint = urlparse(endpoint_url)
+    filesystem_options: dict[str, object] = {
+        "endpoint_override": parsed_endpoint.netloc or None,
+        "scheme": parsed_endpoint.scheme or "https",
+    }
+    if storage_options.get("key"):
+        filesystem_options["access_key"] = str(storage_options["key"])
+    if storage_options.get("secret"):
+        filesystem_options["secret_key"] = str(storage_options["secret"])
+    if storage_options.get("region"):
+        filesystem_options["region"] = str(storage_options["region"])
     filesystem = pa_fs.S3FileSystem(
-        access_key=str(storage_options.get("key") or ""),
-        secret_key=str(storage_options.get("secret") or ""),
-        endpoint_override=parsed_endpoint.netloc or None,
-        scheme=parsed_endpoint.scheme or "https",
+        **filesystem_options,
     )
     return source.removeprefix("s3://"), filesystem
 
@@ -211,8 +386,7 @@ def _profile_column(
             "max": statistics.get("max", 0.0),
             "approximate_quantiles": True,
             "word_frequencies": [
-                {"word": word, "count": count}
-                for word, count in merged["words"].most_common(40)
+                {"word": word, "count": count} for word, count in merged["words"].most_common(40)
             ],
         }
         distribution_type = "histogram"
@@ -223,12 +397,85 @@ def _profile_column(
             "top_values": [[str(value), int(count)] for value, count in top_values[:10]],
             "approximate_top_values": bool(merged["summary_count"] > 1),
         }
-        distribution = [
-            {"label": str(value), "count": int(count)} for value, count in top_values
-        ]
+        distribution = [{"label": str(value), "count": int(count)} for value, count in top_values]
         distribution_type = "bar"
         has_outliers = False
 
+    return ColumnProfileRead(
+        name=column,
+        semantic_type=semantic_type,
+        missing_count=missing_count,
+        missing_ratio=0.0 if row_count == 0 else round(missing_count / row_count, 4),
+        distinct_count=distinct_count,
+        sample_values=list(merged["sample_values"]),
+        statistics=statistics,
+        distribution_type=distribution_type,
+        distribution=distribution,
+        quality_flags=_quality_flags(
+            column,
+            semantic_type,
+            missing_count,
+            row_count,
+            distinct_count,
+            has_outliers,
+        ),
+    )
+
+
+def _column_profile_from_summary(
+    column: str,
+    row_count: int,
+    merged: dict[str, Any],
+    semantic: tuple[str, str | None],
+    histogram: dict[str, Any] | None,
+    counts: np.ndarray | None,
+) -> ColumnProfileRead:
+    present_count = int(merged["present_count"])
+    missing_count = max(0, row_count - present_count)
+    distinct_count = int(merged["distinct_count"])
+    semantic_type, timestamp_unit = semantic
+    if histogram is not None and counts is not None:
+        edges = np.asarray(histogram["edges"], dtype=float)
+        moments = merged["length"] if histogram["mode"] == "length" else merged["numeric"]
+        statistics, distribution, has_outliers = _numeric_profile_from_histogram(
+            moments,
+            edges,
+            counts,
+        )
+        distribution_type = "histogram"
+        if semantic_type == "temporal" and timestamp_unit:
+            statistics = _unix_temporal_statistics(statistics, timestamp_unit)
+            distribution = [
+                {**bucket, "label": _unix_histogram_label(bucket["label"], timestamp_unit)}
+                for bucket in distribution
+            ]
+            has_outliers = False
+        elif semantic_type == "text":
+            statistics = {
+                "count": statistics.get("count", 0),
+                "avg_length": statistics.get("mean", 0.0),
+                "max_length": int(statistics.get("max", 0)),
+                "min": statistics.get("min", 0.0),
+                "q1": statistics.get("q1", 0.0),
+                "median": statistics.get("median", 0.0),
+                "q3": statistics.get("q3", 0.0),
+                "max": statistics.get("max", 0.0),
+                "approximate_quantiles": True,
+                "word_frequencies": [
+                    {"word": word, "count": count}
+                    for word, count in merged["words"].most_common(40)
+                ],
+            }
+            has_outliers = False
+    else:
+        top_values = merged["top_values"].most_common(15)
+        statistics = {
+            "top_values": [[str(value), int(count)] for value, count in top_values[:10]],
+            "approximate_top_values": bool(merged["summary_count"] > 1),
+        }
+        distribution = [{"label": str(value), "count": int(count)} for value, count in top_values]
+        distribution_type = "bar"
+        has_outliers = False
     return ColumnProfileRead(
         name=column,
         semantic_type=semantic_type,
@@ -254,26 +501,39 @@ def _summarize_column_batch(batch: pa.Table, *, column: str) -> pa.Table:
     frame = pl.from_arrow(batch)
     if not isinstance(frame, pl.DataFrame):
         frame = frame.to_frame()
-    raw = frame.get_column(column).cast(pl.String, strict=False).str.strip_chars()
+    source = frame.get_column(column)
+    numeric_type = source.dtype.is_numeric() or source.dtype == pl.Boolean
+    temporal_type = source.dtype.base_type() in {pl.Date, pl.Datetime}
+    raw = source.cast(pl.String, strict=False).str.strip_chars()
     lower = raw.str.to_lowercase()
     present = raw.filter(raw.is_not_null() & ~lower.is_in(MISSING_MARKERS))
     present_values = [str(value) for value in present.to_list()]
     unique_values = list(dict.fromkeys(present_values))
     distinct_overflow = len(unique_values) > PER_BATCH_DISTINCT_LIMIT
     distinct_hashes = [
-        _stable_value_hash(value)
-        for value in unique_values[:PER_BATCH_DISTINCT_LIMIT]
+        _stable_value_hash(value) for value in unique_values[:PER_BATCH_DISTINCT_LIMIT]
     ]
 
     numeric = present.cast(pl.Float64, strict=False).drop_nulls()
     numeric = numeric.filter(numeric.is_finite())
     numeric_values = numeric.to_numpy()
     lengths = present.str.len_chars().cast(pl.Float64).to_numpy()
-    temporal_count = _temporal_value_count(present)
-    text_count = sum(
-        1 for value in present_values if len(value.split()) >= 6 or len(value) > 80
+    # Arrow has already parsed these types. Re-running string date inference on
+    # every numeric value dominates large-table profiling and adds no evidence.
+    temporal_count = (
+        len(present_values)
+        if temporal_type
+        else 0
+        if numeric_type
+        else _temporal_value_count(present)
     )
-    words = text_word_counter(present_values, maximum_terms=PER_BATCH_WORDS)
+    text_count = 0
+    words: Counter[str] = Counter()
+    if not numeric_type and not temporal_type:
+        text_count = sum(
+            1 for value in present_values if len(value.split()) >= 6 or len(value) > 80
+        )
+        words = text_word_counter(present_values, maximum_terms=PER_BATCH_WORDS)
     summary = {
         "row_count": frame.height,
         "present_count": len(present_values),
@@ -285,8 +545,7 @@ def _summarize_column_batch(batch: pa.Table, *, column: str) -> pa.Table:
         "numeric": _moments(numeric_values),
         "numeric_sample": [float(value) for value in numeric_values[:128]],
         "decimal_seen": bool(
-            numeric_values.size
-            and np.any(np.abs(np.mod(numeric_values, 1.0)) > 1e-12)
+            numeric_values.size and np.any(np.abs(np.mod(numeric_values, 1.0)) > 1e-12)
         ),
         "temporal_count": temporal_count,
         "text_count": text_count,
@@ -447,6 +706,19 @@ def _numeric_profile(
     minimum = float(moments["min"])
     maximum = float(moments["max"])
     edges, counts = _distributed_histogram(dataset, column, minimum, maximum, count, mode)
+    return _numeric_profile_from_histogram(moments, edges, counts)
+
+
+def _numeric_profile_from_histogram(
+    moments: dict[str, Any],
+    edges: np.ndarray,
+    counts: np.ndarray,
+) -> tuple[dict[str, Any], list[dict[str, Any]], bool]:
+    count = int(moments["count"])
+    if count == 0:
+        return {}, [], False
+    minimum = float(moments["min"])
+    maximum = float(moments["max"])
     q1 = _histogram_quantile(edges, counts, 0.25)
     median = _histogram_quantile(edges, counts, 0.5)
     q3 = _histogram_quantile(edges, counts, 0.75)
@@ -618,8 +890,10 @@ def _relationships_from_rows(
     if not target_column or target_column not in profiles:
         return [], []
     warnings = []
+    relationship_profiles = {}
     for column, profile in profiles.items():
         if column == target_column:
+            relationship_profiles[column] = profile
             continue
         possible_cells = profile.distinct_count * profiles[target_column].distinct_count
         if (
@@ -630,9 +904,11 @@ def _relationships_from_rows(
                 f"Skipped Cramer's V for {column}: the contingency table could contain "
                 f"{possible_cells:,} cells."
             )
+            continue
+        relationship_profiles[column] = profile
     from automl_api.services.profiling import _relationships_against_target
 
-    relationships = _relationships_against_target(rows, profiles, target_column)
+    relationships = _relationships_against_target(rows, relationship_profiles, target_column)
     if row_count > len(rows):
         warnings.append(
             f"Relationship and leakage analysis used the first {len(rows):,} rows of "

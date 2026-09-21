@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from automl_api.api.deps import get_current_user
@@ -11,20 +11,29 @@ from automl_api.db.session import get_db
 from automl_api.models.iam import User
 from automl_api.schemas.projects import (
     ProjectCreate,
+    ProjectInvitationRead,
+    ProjectJourneyRead,
     ProjectMemberRead,
+    ProjectPageRead,
     ProjectRead,
     ProjectShareAccept,
     ProjectShareLinkCreate,
     ProjectShareLinkRead,
     ProjectUpdate,
 )
+from automl_api.services.deletion import request_deletion
 from automl_api.services.projects import (
     accept_project_share_link,
     create_project,
     create_project_share_link,
     get_project_for_user,
+    list_project_invitations,
     list_project_members,
     list_visible_projects,
+    page_visible_projects,
+    project_journey,
+    remove_project_member,
+    revoke_project_invitation,
     update_project,
 )
 
@@ -53,6 +62,17 @@ def create(
     return ProjectRead.model_validate(project)
 
 
+@router.get("/page", response_model=ProjectPageRead)
+def project_page(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=6, ge=1, le=100),
+    search: str = Query(default="", max_length=180),
+) -> dict:
+    return page_visible_projects(db, current_user, offset=offset, limit=limit, search=search)
+
+
 @router.get("/{project_id}", response_model=ProjectRead)
 def get_project(
     project_id: uuid.UUID,
@@ -61,6 +81,15 @@ def get_project(
 ) -> ProjectRead:
     project = get_project_for_user(db, current_user, project_id)
     return ProjectRead.model_validate(project)
+
+
+@router.get("/{project_id}/journey", response_model=ProjectJourneyRead)
+def journey(
+    project_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> ProjectJourneyRead:
+    return project_journey(db, current_user, project_id)
 
 
 @router.patch("/{project_id}", response_model=ProjectRead)
@@ -81,6 +110,8 @@ def members(
     project_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=100),
 ) -> list[ProjectMemberRead]:
     get_project_for_user(db, current_user, project_id)
     return [
@@ -93,7 +124,7 @@ def members(
             accepted_at=membership.accepted_at,
             expires_at=membership.expires_at,
         )
-        for membership in list_project_members(db, project_id)
+        for membership in list_project_members(db, project_id, offset=offset, limit=limit)
     ]
 
 
@@ -140,3 +171,54 @@ def accept_share_link(
     db.commit()
     db.refresh(project)
     return ProjectRead.model_validate(project)
+
+
+@router.get("/{project_id}/share-links", response_model=list[ProjectInvitationRead])
+def invitations(
+    project_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=100),
+) -> list[ProjectInvitationRead]:
+    return [
+        ProjectInvitationRead.model_validate(row)
+        for row in list_project_invitations(
+            db, current_user, project_id, offset=offset, limit=limit
+        )
+    ]
+
+
+@router.delete("/{project_id}/share-links/{invitation_id}", response_model=ProjectInvitationRead)
+def revoke_invitation(
+    project_id: uuid.UUID,
+    invitation_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> ProjectInvitationRead:
+    invite = revoke_project_invitation(db, current_user, project_id, invitation_id)
+    db.commit()
+    return ProjectInvitationRead.model_validate(invite)
+
+
+@router.delete("/{project_id}/members/{membership_id}", status_code=204)
+def remove_member(
+    project_id: uuid.UUID,
+    membership_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> Response:
+    remove_project_member(db, current_user, project_id, membership_id)
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.delete("/{project_id}", status_code=202)
+def delete_projects(
+    project_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> dict:
+    result = request_deletion(db, current_user, project_id)
+    db.commit()
+    return result

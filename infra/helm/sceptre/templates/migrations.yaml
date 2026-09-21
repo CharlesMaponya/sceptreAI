@@ -102,12 +102,22 @@ spec:
               done
               alembic upgrade head
               python scripts/verify_database_schema.py
+              {{- if and .Values.postgresql.enabled (not .Values.platform.workerDatabase.existingSecret) }}
+              python scripts/provision_worker_database.py
+              {{- end }}
           env:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
                   name: {{ include "sceptre.platformSecretName" . }}
                   key: {{ .Values.platform.databaseUrlKey }}
+            {{- if and .Values.postgresql.enabled (not .Values.platform.workerDatabase.existingSecret) }}
+            - name: WORKER_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sceptre.workerDatabaseSecretName" . }}
+                  key: {{ .Values.platform.workerDatabase.urlKey }}
+            {{- end }}
           resources:
             requests: {cpu: 25m, memory: 64Mi}
             limits: {cpu: 250m, memory: 256Mi}

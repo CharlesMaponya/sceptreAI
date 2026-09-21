@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import sys
 import uuid
 from types import SimpleNamespace
@@ -153,7 +154,9 @@ def test_drift_execution_validates_reference_and_common_features(
     run = _run(
         RunKind.DRIFT, params={"reference_dataset_version_id": str(reference_id), "max_rows": 1}
     )
-    current = SimpleNamespace(id=uuid.uuid4())
+    current = SimpleNamespace(
+        id=uuid.uuid4(), object_uri="current.csv", original_filename="current.csv"
+    )
     with pytest.raises(ValueError, match="required"):
         analysis._execute_drift(_run(RunKind.DRIFT), current)
 
@@ -164,7 +167,14 @@ def test_drift_execution_validates_reference_and_common_features(
         id(reference): pd.DataFrame({"a": range(150), "target": range(150)}),
         id(current): pd.DataFrame({"a": range(150), "target": range(150)}),
     }
-    monkeypatch.setattr(analysis, "_load_dataframe", lambda version: frames[id(version)].copy())
+    monkeypatch.setattr(analysis, "_analysis_training_uri", lambda run: "train.parquet")
+    monkeypatch.setattr(
+        analysis,
+        "sample_source",
+        lambda uri, filename, *, max_rows, seed: (
+            frames[id(reference) if uri == "train.parquet" else id(current)].head(max_rows).copy()
+        ),
+    )
     monkeypatch.setattr(
         analysis,
         "_run_evidently_report",
@@ -245,23 +255,9 @@ def test_evidently_report_supports_snapshot_and_legacy_report(
 
 
 def test_model_loading_paths_and_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    run = _run(RunKind.VALIDATION, params={"model_mlflow_run_id": "123"})
-    monkeypatch.setattr(analysis.mlflow_sklearn, "load_model", lambda _uri: {"source": "mlflow"})
-    assert analysis._load_model(run) == {"source": "mlflow"}
-
-    monkeypatch.setattr(
-        analysis.mlflow_sklearn,
-        "load_model",
-        lambda _uri: (_ for _ in ()).throw(RuntimeError("offline")),
-    )
-    with pytest.raises(ValueError, match="MLflow model loading failed"):
-        analysis._load_model(run)
-    with pytest.raises(ValueError, match="no persisted artifact"):
-        analysis._load_model(_run(RunKind.VALIDATION))
-
-    explanation = _run(RunKind.EXPLAINABILITY)
-    monkeypatch.setattr(analysis, "_rebuild_historical_model", lambda *_args: {"source": "rebuilt"})
-    assert analysis._load_model(explanation, object()) == {"source": "rebuilt"}
+    for params in [{}, {"model_mlflow_run_id": "123"}, {"model_artifact_uri": "s3://model"}]:
+        with pytest.raises(ValueError, match="no verified artifact"):
+            analysis._load_model(_run(RunKind.EXPLAINABILITY, params=params), object())
 
 
 def test_clustering_predictor_and_dense_transform_boundaries() -> None:
@@ -382,8 +378,34 @@ def test_load_model_reads_object_store_mirror(monkeypatch: pytest.MonkeyPatch) -
         lambda: SimpleNamespace(read_bytes=lambda _uri: payload),
     )
     monkeypatch.setattr(analysis.joblib, "load", lambda stream: stream.read())
-    run = _run(RunKind.VALIDATION, params={"model_artifact_uri": "s3://model"})
+    run = _run(
+        RunKind.VALIDATION,
+        params={
+            "model_artifact_uri": "s3://model",
+            "model_artifact_sha256": hashlib.sha256(payload).hexdigest(),
+        },
+    )
     assert analysis._load_model(run) == payload
+
+
+def test_model_digest_mismatch_never_deserializes(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        analysis, "get_object_store", lambda: SimpleNamespace(read_bytes=lambda _: b"tampered")
+    )
+
+    def forbidden_load(_stream):
+        pytest.fail("Unverified model bytes reached the deserializer")
+
+    monkeypatch.setattr(analysis.joblib, "load", forbidden_load)
+    run = _run(
+        RunKind.VALIDATION,
+        params={
+            "model_artifact_uri": "s3://model",
+            "model_artifact_sha256": hashlib.sha256(b"trusted").hexdigest(),
+        },
+    )
+    with pytest.raises(ValueError, match="SHA-256 does not match"):
+        analysis._load_model(run)
 
 
 def test_rebuild_historical_model_validates_metadata_source_and_entry(

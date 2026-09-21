@@ -218,9 +218,7 @@ class AzureBlobObjectStoreDriver:
         return io.BytesIO(blob.download_blob(**kwargs).readall())
 
     def put_stream(self, uri: str, source) -> ObjectMetadata:
-        self.container.get_blob_client(self._key_from_uri(uri)).upload_blob(
-            source, overwrite=True
-        )
+        self.container.get_blob_client(self._key_from_uri(uri)).upload_blob(source, overwrite=True)
         return self.stat(uri)
 
     def put_bytes(self, key: str, value: bytes) -> ObjectMetadata:
@@ -259,6 +257,11 @@ class AzureBlobObjectStoreDriver:
         except Exception as exc:
             return HealthcheckResult(False, self.driver_name, type(exc).__name__)
         return HealthcheckResult(True, self.driver_name)
+
+    def delete_prefix(self, prefix: str) -> None:
+        prefix = self._key(prefix).rstrip("/") + "/"
+        for blob in self.container.list_blobs(name_starts_with=prefix):
+            self.container.delete_blob(blob.name, delete_snapshots="include")
 
     def delete(self, uri: str) -> None:
         self.container.get_blob_client(self._key_from_uri(uri)).delete_blob(

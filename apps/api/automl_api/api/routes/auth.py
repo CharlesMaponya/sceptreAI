@@ -39,9 +39,17 @@ from automl_api.services.auth import (
     update_user_profile,
 )
 from automl_api.services.email import send_password_reset_email
+from automl_api.security.browser_sessions import (
+    REFRESH_COOKIE, clear_browser_session, require_same_origin, set_browser_session,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
+
+
+def _require_local_auth() -> None:
+    if not get_settings().simple_auth_enabled:
+        raise HTTPException(status_code=403, detail="Password authentication is disabled.")
 
 
 def _client_context(request: Request) -> tuple[str | None, str | None]:
@@ -81,7 +89,9 @@ def login(
     payload: LoginRequest,
     request: Request,
     db: Annotated[Session, Depends(get_db)],
+    response: Response = None,
 ) -> AuthResponse:
+    _require_local_auth()
     user = authenticate_user(db, payload.email, payload.password)
     if user is None:
         raise HTTPException(
@@ -92,6 +102,8 @@ def login(
     user_agent, ip_address = _client_context(request)
     tokens = issue_token_pair(db, user, user_agent=user_agent, ip_address=ip_address)
     db.commit()
+    if response is not None:
+        set_browser_session(response, tokens)
     return AuthResponse(user=UserRead.model_validate(user), tokens=tokens)
 
 
@@ -100,15 +112,24 @@ def refresh(
     payload: RefreshRequest,
     request: Request,
     db: Annotated[Session, Depends(get_db)],
+    response: Response = None,
 ) -> TokenPair:
+    token = payload.refresh_token
+    if not token:
+        require_same_origin(request)
+        token = request.cookies.get(REFRESH_COOKIE)
+    if not token:
+        raise HTTPException(status_code=401, detail="A refresh session is required.")
     user_agent, ip_address = _client_context(request)
     tokens = rotate_refresh_token(
         db,
-        payload.refresh_token,
+        token,
         user_agent=user_agent,
         ip_address=ip_address,
     )
     db.commit()
+    if response is not None:
+        set_browser_session(response, tokens)
     return tokens
 
 
@@ -117,11 +138,15 @@ def logout(
     payload: LogoutRequest,
     db: Annotated[Session, Depends(get_db)],
     _current_user: Annotated[User, Depends(get_current_user)],
+    request: Request = None,
 ) -> Response:
-    if payload.refresh_token:
-        logout_refresh_token(db, payload.refresh_token)
+    token = payload.refresh_token or (request.cookies.get(REFRESH_COOKIE) if request else None)
+    if token:
+        logout_refresh_token(db, token)
         db.commit()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    response = Response(status_code=status.HTTP_204_NO_CONTENT)
+    clear_browser_session(response)
+    return response
 
 
 @router.get("/me", response_model=UserRead)
@@ -158,6 +183,7 @@ def change_password(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> AuthResponse:
+    _require_local_auth()
     user = change_user_password(db, current_user, payload)
     user_agent, ip_address = _client_context(request)
     tokens = issue_token_pair(db, user, user_agent=user_agent, ip_address=ip_address)
@@ -171,6 +197,7 @@ def request_password_reset(
     payload: PasswordResetRequest,
     db: Annotated[Session, Depends(get_db)],
 ) -> PasswordResetResponse:
+    _require_local_auth()
     reset_token = create_password_reset_token(db, payload.email)
     db.commit()
 
@@ -180,10 +207,7 @@ def request_password_reset(
         except (OSError, smtplib.SMTPException):
             logger.exception("Password reset email delivery failed")
 
-    response = PasswordResetResponse()
-    if get_settings().environment != "production":
-        response.reset_token_for_dev = reset_token
-    return response
+    return PasswordResetResponse()
 
 
 @router.post("/password-reset/confirm", status_code=status.HTTP_204_NO_CONTENT)
@@ -191,6 +215,7 @@ def reset_password(
     payload: PasswordResetConfirm,
     db: Annotated[Session, Depends(get_db)],
 ) -> Response:
+    _require_local_auth()
     confirm_password_reset(db, payload.token, payload.new_password)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

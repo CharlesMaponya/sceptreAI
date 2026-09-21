@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+import math
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from fastapi import HTTPException, status
 from kubernetes.client import ApiException
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
+from automl_api.core.config import get_settings
+from automl_api.core.run_names import versioned_run_name
 from automl_api.models.datasets import DatasetVersion, ProfilingJob
 from automl_api.models.enums import (
+    AttemptStatus,
     CommandStatus,
     ProjectRole,
     RunKind,
@@ -49,12 +54,18 @@ from automl_api.schemas.training import (
 from automl_api.services.kubernetes_training import KubernetesTrainingClient
 from automl_api.services.model_evidence import build_model_pipeline
 from automl_api.services.projects import require_project_role
+from automl_api.services.run_admission import (
+    AdmissionRequest,
+    admission_policy_for,
+    evaluate_admission,
+)
 from automl_api.services.workflow_state import (
     IdempotencyConflict,
     begin_command,
     canonical_request_hash,
     enqueue_outbox,
     seal_promotional_scope,
+    transition_attempt,
     transition_command,
 )
 from automl_api.storage.object_store import get_object_store
@@ -62,7 +73,9 @@ from automl_api.training.evaluation import (
     metric_direction,
     resolve_primary_metric,
 )
+from automl_api.training.feature_selection import FEATURE_STATISTICS_MAX_ROWS
 from automl_api.training.model_catalog import (
+    PAIRWISE_SAMPLE_MODELS,
     candidate_catalog,
     estimator_catalog_payload,
     select_candidates,
@@ -79,6 +92,100 @@ _IMAGE_PULL_BACKOFF_FIRST_SEEN_TAG = "image_pull_backoff_first_seen_at"
 _IMAGE_PULL_BACKOFF_GRACE = timedelta(minutes=2)
 
 
+def _training_runtime_baseline_mb(memory_limit_mb: int) -> float:
+    """Reserve Ray/Python overhead without making small development nodes unusable."""
+    return max(700.0, min(1_800.0, memory_limit_mb * 0.35))
+
+
+def _common_sample_tier_rows(
+    full_rows: int,
+    task_type: TaskType,
+    selected_specs: list[Any],
+    *,
+    memory_limit_mb: int,
+    dataset_bytes: int,
+    column_count: int,
+    optimization_iterations: int,
+) -> int:
+    """Return the largest row count that fits the observed single-pod envelope."""
+    if full_rows <= 0:
+        return 0
+    task_multiplier = {
+        TaskType.REGRESSION: 1.25,
+        TaskType.CLASSIFICATION: 1.3,
+        TaskType.TIME_SERIES: 1.4,
+        TaskType.CLUSTERING: 1.6,
+    }.get(task_type, 1.3)
+    scalable_specs = [item for item in selected_specs if item.name not in PAIRWISE_SAMPLE_MODELS]
+    cost_weights = {"low": 1.0, "medium": 1.25, "high": 1.75}
+    model_factor = max(
+        (cost_weights[item.cost_tier] for item in scalable_specs),
+        default=1.0,
+    )
+    search_multiplier = 1 + min(max(optimization_iterations, 1), 25) * 0.01
+    source_bytes_per_row = dataset_bytes / full_rows if dataset_bytes > 0 else 0
+    working_bytes_per_row = (
+        max(
+            source_bytes_per_row * 2,
+            max(column_count, 1) * 8 * 3,
+        )
+        * task_multiplier
+        * model_factor
+        * search_multiplier
+    )
+    usable_bytes = max(
+        0,
+        (memory_limit_mb * 0.60 - _training_runtime_baseline_mb(memory_limit_mb)) * 1024**2,
+    )
+    if working_bytes_per_row <= 0:
+        return full_rows
+    rows = min(full_rows, int(usable_bytes / working_bytes_per_row))
+    if rows == full_rows:
+        return full_rows
+    if rows >= 1_000:
+        rows = rows // 1_000 * 1_000
+    return max(1, rows)
+
+
+def _pairwise_sample_rows(full_rows: int, memory_limit_mb: int) -> int:
+    usable_bytes = max(
+        0,
+        (memory_limit_mb * 0.60 - _training_runtime_baseline_mb(memory_limit_mb)) * 1024**2,
+    )
+    rows = min(full_rows, math.isqrt(max(0, int(usable_bytes / (4 * 8)))))
+    if rows == full_rows:
+        return full_rows
+    if rows >= 100:
+        rows = rows // 100 * 100
+    return max(1, rows)
+
+
+def _estimate_split_counts(db, project_id, version, split_revision_id):
+    if split_revision_id is None:
+        return None
+    split = db.scalar(
+        select(DatasetSplitRevision).where(
+            DatasetSplitRevision.project_id == project_id,
+            DatasetSplitRevision.id == split_revision_id,
+        )
+    )
+    if split is None or split.dataset_version_id != version.id or split.sealed_at is None:
+        raise HTTPException(
+            status_code=409, detail="Select a sealed split for this dataset version."
+        )
+    counts = split.specification.get("split_counts") or (
+        split.specification.get("identity") or {}
+    ).get("split_counts", {})
+    if any(
+        not isinstance(counts.get(role), int) or counts[role] < 0
+        for role in ("train", "validation", "final_test")
+    ):
+        raise HTTPException(
+            status_code=409, detail="The split has no valid row counts. Reprofile the dataset."
+        )
+    return {role: counts[role] for role in ("train", "validation", "final_test")}
+
+
 def estimate_training_run(
     db: Session,
     user: User,
@@ -91,8 +198,11 @@ def estimate_training_run(
     require_project_role(db, user, project_id, ProjectRole.EDITOR)
     payload = _resolve_estimate_identity(db, project_id, payload)
     _validate_catalog_selection(payload)
-    assert payload.dataset_version_id is not None
-    assert payload.task_type is not None
+    if payload.dataset_version_id is None or payload.task_type is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="A resolved dataset version and task type are required.",
+        )
     version = _get_dataset_version(db, project_id, payload.dataset_version_id)
     _validate_target(version, payload.target_column)
     try:
@@ -103,6 +213,14 @@ def estimate_training_run(
             detail=str(exc),
         ) from exc
     _validate_evaluation_column(version, payload)
+    if payload.target_column in payload.excluded_columns:
+        raise HTTPException(status_code=422, detail="The target cannot be an excluded feature.")
+    available_columns = {item["name"] for item in (version.schema_json or {}).get("columns", [])}
+    unknown_exclusions = sorted(set(payload.excluded_columns) - available_columns)
+    if unknown_exclusions:
+        raise HTTPException(
+            status_code=422, detail="Unknown excluded columns: " + ", ".join(unknown_exclusions)
+        )
     _validate_candidate_models(payload)
     catalog = candidate_catalog(payload.task_type)
     selected_candidate_count = (
@@ -127,14 +245,43 @@ def estimate_training_run(
     }
     cost_weights = {"low": 1.0, "medium": 1.25, "high": 1.75}
     model_cost_factor = (
-        sum(cost_weights[candidate.cost_tier] for candidate in selected_specs) / len(selected_specs)
+        max(cost_weights[candidate.cost_tier] for candidate in selected_specs)
         if selected_specs
         else 1.0
     )
+    settings = get_settings()
+    split_counts = _estimate_split_counts(db, project_id, version, payload.split_revision_id)
+    source_rows = int(version.row_count or 0)
+    full_rows = split_counts["train"] if split_counts is not None else source_rows
+    validation_rows = min(split_counts["validation"] if split_counts else full_rows, 10_000)
+    training_bytes = round((version.byte_size or 0) * full_rows / max(1, source_rows))
     k8s = client or KubernetesTrainingClient()
+    capacity_probe = k8s.estimate(
+        dataset_bytes=1,
+        dataset_rows=0,
+        column_count=int(version.column_count or 0),
+        expected_minutes=payload.expected_minutes,
+        prefer_gpu=payload.prefer_gpu,
+        task_type=payload.task_type,
+        candidate_limit=selected_candidate_count,
+        optimization_iterations=payload.optimization_iterations,
+        model_cost_factor=model_cost_factor,
+        gpu_compatible_vendors=compatible_gpu_vendors,
+    )
+    sample_rows = _common_sample_tier_rows(
+        full_rows,
+        payload.task_type,
+        selected_specs,
+        memory_limit_mb=capacity_probe.memory_limit_mb,
+        dataset_bytes=training_bytes,
+        column_count=int(version.column_count or 0),
+        optimization_iterations=payload.optimization_iterations,
+    )
+    pairwise_rows = _pairwise_sample_rows(full_rows, capacity_probe.memory_limit_mb)
+    sample_ratio = sample_rows / full_rows if full_rows > 0 and sample_rows > 0 else 1.0
     estimate = k8s.estimate(
-        dataset_bytes=version.byte_size or 0,
-        dataset_rows=version.row_count or 0,
+        dataset_bytes=max(1, round(training_bytes * sample_ratio)),
+        dataset_rows=sample_rows,
         column_count=version.column_count or 0,
         expected_minutes=payload.expected_minutes,
         prefer_gpu=payload.prefer_gpu,
@@ -208,22 +355,89 @@ def estimate_training_run(
         )
         or 0
     )
-    if active_project_runs >= 1 and payload.evaluation_scope_id is None:
+    if active_project_runs:
         estimate.blockers = [
             *estimate.blockers,
-            "This project already has an active training run. "
-            "Wait for it to finish so other projects can share the cluster.",
+            "This project already has an active training or analysis run. "
+            "Wait for it to finish or stop it before launching another run.",
         ]
+        estimate.can_launch = False
+    active_user_runs = int(
+        db.scalar(
+            select(func.count(ModelRun.id)).where(
+                ModelRun.created_by_id == user.id,
+                ModelRun.status.in_(active_statuses),
+                ModelRun.run_kind.in_(BATCH_RUN_KINDS),
+            )
+        )
+        or 0
+    )
+    active_resource_class_runs = active_db_runs
+    decision = evaluate_admission(
+        admission_policy_for(settings.environment),
+        AdmissionRequest(
+            project_id=str(project_id),
+            user_id=str(user.id),
+            resource_class="training",
+            evaluation_scope_id=(
+                str(payload.evaluation_scope_id) if payload.evaluation_scope_id else None
+            ),
+        ),
+        active_global=active_db_runs,
+        active_for_project=active_project_runs,
+        active_for_user=active_user_runs,
+        active_for_resource_class=active_resource_class_runs,
+    )
+    if not decision.can_launch:
+        estimate.blockers = [*estimate.blockers, *decision.blockers]
         estimate.can_launch = False
     catalog_revision = _resolved_catalog_revision(db, project_id, payload)
     estimate.catalog_revision = catalog_revision.content_digest if catalog_revision else None
-    estimate.capacity_profile_revision = "local-capacity-v1"
+    estimate.capacity_profile_revision = (
+        f"kubernetes-node-v2:{estimate.selected_node or 'unobserved'}:{estimate.memory_limit_mb}Mi"
+    )
     estimate.candidate_count = selected_candidate_count
+    estimate.sample_tier_summary = {
+        "policy": "capacity_adaptive_random_family_v2",
+        "row_count": sample_rows,
+        "pairwise_row_count": pairwise_rows,
+        "validation_row_count": validation_rows,
+        "full_row_count": full_rows,
+        "feature_statistics_max_rows": FEATURE_STATISTICS_MAX_ROWS,
+        "sampled": bool(sample_rows and full_rows and sample_rows < full_rows),
+        "selected_node": estimate.selected_node,
+        "pod_memory_limit_mb": estimate.memory_limit_mb,
+        "order": (
+            "source_ordinal" if payload.task_type == TaskType.TIME_SERIES else "stable_row_id"
+        ),
+    }
+    if split_counts is not None:
+        estimate.sample_tier_summary.update(
+            {
+                "split_counts": split_counts,
+                "source_row_count": source_rows,
+                "split_revision_id": str(payload.split_revision_id),
+            }
+        )
+    if sample_rows > FEATURE_STATISTICS_MAX_ROWS:
+        estimate.warnings = [
+            *estimate.warnings,
+            f"Feature statistics use at most {FEATURE_STATISTICS_MAX_ROWS:,} "
+            "seeded training rows per fold. "
+            "The model is fitted on all admitted training rows in that fold.",
+        ]
+    if estimate.sample_tier_summary["sampled"]:
+        estimate.warnings = [
+            *estimate.warnings,
+            f"Node capacity permits {sample_rows:,} seeded random training rows for "
+            f"scalable models and {pairwise_rows:,} target-aware rows for quadratic "
+            f"models in one {estimate.memory_limit_mb:,} MiB pod. Every model is evaluated "
+            f"on the same seeded sample of up to {validation_rows:,} validation rows.",
+        ]
     estimate.resource_class_slot_demand = {
         tier: sum(candidate.cost_tier == tier for candidate in selected_specs)
         for tier in ("low", "medium", "high")
     }
-    estimate.sample_tier_summary = {"policy": "full_or_qualified_tier"}
     estimate.required_node_quotas = {
         "cpu_millis": int(estimate.cpu_limit_cores * 1000),
         "memory_bytes": estimate.memory_limit_mb * 1024 * 1024,
@@ -234,7 +448,10 @@ def estimate_training_run(
         "minimum": round(estimate.estimated_core_hours * 0.02, 4),
         "maximum": round(estimate.estimated_core_hours * 0.20, 4),
     }
+    estimate.cpu_request_cores = estimate.cpu_limit_cores
+    estimate.memory_request_mb = estimate.memory_limit_mb
     estimate.deadline_seconds = payload.deadline_seconds
+    estimate.active_deadline_seconds = payload.deadline_seconds
     estimate.environment_qualified = not estimate.blockers
     digest_payload = {
         "request": payload.model_dump(mode="json"),
@@ -296,7 +513,21 @@ def launch_training_run(
     *,
     idempotency_key: str,
 ) -> TrainingLaunchRead:
+    require_project_role(db, user, project_id, ProjectRole.EDITOR)
     _lock_training_admission(db)
+    try:
+        command, replayed = begin_command(
+            db,
+            project_id=project_id,
+            actor_id=user.id,
+            operation="training.launch",
+            idempotency_key=idempotency_key,
+            payload=payload.model_dump(mode="json"),
+        )
+    except IdempotencyConflict as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if replayed and command.response_payload:
+        return TrainingLaunchRead.model_validate(command.response_payload)
     payload = _resolve_estimate_identity(db, project_id, payload)
     k8s = client or KubernetesTrainingClient()
     estimate_payload = TrainingEstimateRequest.model_validate(
@@ -324,26 +555,15 @@ def launch_training_run(
             },
         )
 
-    try:
-        command, replayed = begin_command(
-            db,
-            project_id=project_id,
-            actor_id=user.id,
-            operation="training.launch",
-            idempotency_key=idempotency_key,
-            payload=payload.model_dump(mode="json"),
-        )
-    except IdempotencyConflict as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    if replayed and command.response_payload:
-        return TrainingLaunchRead.model_validate(command.response_payload)
-
     revisions = _resolve_launch_revisions(db, project_id, payload)
     supplied_reservation = _validate_launch_reservation(db, project_id, payload, estimate)
 
     now = datetime.now(UTC)
-    assert payload.task_type is not None
-    assert payload.dataset_version_id is not None
+    if payload.task_type is None or payload.dataset_version_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="A resolved dataset version and task type are required.",
+        )
     selected_candidates = (
         candidate_catalog(payload.task_type)
         if payload.catalog_mode == "all"
@@ -353,6 +573,15 @@ def launch_training_run(
             len(payload.candidate_models) if payload.candidate_models else payload.candidate_limit,
         )
     )
+    disabled = {item.estimator for item in payload.estimator_overrides if not item.enabled}
+    selected_candidates = [item for item in selected_candidates if item.name not in disabled]
+    if not selected_candidates:
+        raise HTTPException(status_code=422, detail="At least one estimator must be enabled.")
+    if any(item.enabled and item.resource_class for item in payload.estimator_overrides):
+        raise HTTPException(
+            status_code=422,
+            detail="Per-estimator resource classes are not supported by this runtime yet.",
+        )
     primary_metric = resolve_primary_metric(
         payload.task_type,
         payload.primary_metric,
@@ -374,6 +603,12 @@ def launch_training_run(
             "diagnostics": {},
             "best_params": {},
             "duration_seconds": None,
+            "training_rows": (
+                estimate.sample_tier_summary.get("pairwise_row_count")
+                if candidate.name in PAIRWISE_SAMPLE_MODELS
+                else estimate.sample_tier_summary.get("row_count")
+            ),
+            "validation_rows": estimate.sample_tier_summary.get("validation_row_count"),
             "error": None,
             "mlflow_run_id": None,
         }
@@ -398,23 +633,30 @@ def launch_training_run(
         estimated_core_hours=estimate.estimated_core_hours,
         params={
             "expected_minutes": payload.expected_minutes,
+            "deadline_seconds": payload.deadline_seconds,
             "prefer_gpu": payload.prefer_gpu,
-            "candidate_limit": (
-                len(payload.candidate_models)
-                if payload.candidate_models
-                else payload.candidate_limit
-            ),
-            "candidate_models": payload.candidate_models,
+            # Persist the resolved catalog, not the request defaults. In
+            # catalog_mode=all the request intentionally omits candidate_limit;
+            # the worker must still receive every catalog entry.
+            "candidate_limit": len(selected_candidates),
+            "candidate_models": [candidate.name for candidate in selected_candidates],
             "optimization_iterations": payload.optimization_iterations,
             "cv_folds": payload.cv_folds,
             "evaluation_column": payload.evaluation_column,
             "positive_label": payload.positive_label,
             "primary_metric": primary_metric,
             "excluded_leakage_columns": excluded_leakage_columns,
+            "excluded_columns": payload.excluded_columns,
             "leakage_profile_job_id": str(leakage_profile.id) if leakage_profile else None,
             "gpu_vendor": estimate.gpu_vendor,
             "gpu_resource": estimate.gpu_resource,
             "selected_node": estimate.selected_node,
+            "sample_tier_rows": estimate.sample_tier_summary.get("row_count"),
+            "pairwise_sample_rows": estimate.sample_tier_summary.get("pairwise_row_count"),
+            "validation_sample_rows": estimate.sample_tier_summary.get("validation_row_count"),
+            "sample_tier_policy": estimate.sample_tier_summary.get("policy"),
+            "sample_tier_order": estimate.sample_tier_summary.get("order"),
+            "feature_statistics_max_rows": FEATURE_STATISTICS_MAX_ROWS,
             "split_revision_id": str(payload.split_revision_id),
             "feature_contract_revision_id": str(payload.feature_contract_revision_id),
             "feature_registry_revision_id": str(payload.feature_registry_revision_id),
@@ -483,7 +725,9 @@ def launch_training_run(
             cpu_millis=int(estimate.cpu_limit_cores * 1000),
             memory_bytes=estimate.memory_limit_mb * 1024 * 1024,
             gpu_count=1 if estimate.gpu_requested else 0,
-            expires_at=now + timedelta(seconds=estimate.active_deadline_seconds),
+            # This is a launch reservation, not an execution deadline. Consumed
+            # reservations do not expire running work (including unlimited runs).
+            expires_at=now + timedelta(minutes=10),
         )
         db.add(reservation)
     else:
@@ -547,10 +791,27 @@ def _lock_training_admission(db: Session) -> None:
         )
 
 
+def get_active_training_run(db: Session, user: User, project_id: uuid.UUID) -> ModelRun | None:
+    require_project_role(db, user, project_id, ProjectRole.VIEWER)
+    return db.scalar(
+        select(ModelRun)
+        .where(
+            ModelRun.project_id == project_id,
+            ModelRun.run_kind == RunKind.TRAINING,
+            ModelRun.status.in_([RunStatus.QUEUED, RunStatus.PRECHECK_RUNNING, RunStatus.RUNNING]),
+        )
+        .order_by(ModelRun.created_at, ModelRun.id)
+        .limit(1)
+    )
+
+
 def list_training_runs(
     db: Session,
     user: User,
     project_id: uuid.UUID,
+    *,
+    offset: int = 0,
+    limit: int = 100,
 ) -> list[ModelRun]:
     require_project_role(db, user, project_id, ProjectRole.VIEWER)
     return list(
@@ -560,7 +821,9 @@ def list_training_runs(
                 ModelRun.project_id == project_id,
                 ModelRun.run_kind == RunKind.TRAINING,
             )
-            .order_by(ModelRun.created_at.desc())
+            .order_by(ModelRun.created_at.desc(), ModelRun.id.desc())
+            .offset(offset)
+            .limit(limit)
         ).all()
     )
 
@@ -598,6 +861,8 @@ def cancel_training_run(
 ) -> ModelRun:
     require_project_role(db, user, project_id, ProjectRole.EDITOR)
     run = get_training_run(db, user, project_id, run_id, sync=False)
+    ray_managed = (run.tags or {}).get("orchestrator") == "kuberay"
+    attempt = _lock_latest_training_attempt(db, run) if ray_managed else None
     db.refresh(run, with_for_update=True)
     if run.status in {RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.PREEMPTED}:
         return run
@@ -607,7 +872,42 @@ def cancel_training_run(
         run.finished_at = run.finished_at or now
         db.flush()
         return run
-    if run.k8s_job_name:
+    if ray_managed and attempt is not None:
+        command, _ = begin_command(
+            db,
+            project_id=project_id,
+            actor_id=user.id,
+            operation="training.cancel",
+            idempotency_key=f"training.cancel:{run.id}",
+            payload={"run_id": str(run.id)},
+        )
+        if attempt.status in {
+            AttemptStatus.PENDING,
+            AttemptStatus.CLAIMED,
+            AttemptStatus.SUBMITTED,
+            AttemptStatus.RUNNING,
+        }:
+            transition_attempt(
+                attempt,
+                AttemptStatus.CANCELLED,
+                fencing_token=attempt.fencing_token,
+                terminal_reason="cancelled by user",
+            )
+        enqueue_outbox(
+            db,
+            command,
+            topic="ray.training.cancel",
+            aggregate_type="model_run",
+            aggregate_id=run.id,
+            payload={"attempt_id": str(attempt.id), "fencing_token": attempt.fencing_token},
+        )
+        command.resource_type = "model_run"
+        command.resource_id = run.id
+        command.response_status = status.HTTP_200_OK
+        command.response_payload = {"run_id": str(run.id), "status": "cancelled"}
+        transition_command(command, CommandStatus.RUNNING)
+        transition_command(command, CommandStatus.SUCCEEDED)
+    elif not ray_managed and run.k8s_job_name:
         try:
             (client or KubernetesTrainingClient()).delete_job(run.k8s_job_name)
         except ApiException as exc:
@@ -618,6 +918,26 @@ def cancel_training_run(
     run.finished_at = now
     db.flush()
     return run
+
+
+def _lock_latest_training_attempt(db: Session, run: ModelRun) -> WorkflowAttempt | None:
+    # Workers and recovery lock the attempt before the run. Recheck the latest
+    # generation because recovery may have replaced it while this request waited.
+    latest = (
+        select(WorkflowAttempt)
+        .where(
+            WorkflowAttempt.project_id == run.project_id,
+            WorkflowAttempt.model_run_id == run.id,
+            WorkflowAttempt.stage == WorkflowStage.TRAINING_RUN,
+        )
+        .order_by(WorkflowAttempt.generation.desc())
+        .limit(1)
+    )
+    while True:
+        attempt = db.scalar(latest.with_for_update().execution_options(populate_existing=True))
+        current = db.scalar(latest)
+        if attempt is None or current.id == attempt.id:
+            return attempt
 
 
 def _cancelled_training_tags(
@@ -686,6 +1006,9 @@ def restart_training_run(
     payload = TrainingLaunchRequest(
         dataset_version_id=source.dataset_version_id,
         target_column=source.target_column,
+        excluded_columns=list(source_params.get("excluded_columns") or []),
+        catalog_mode=source_params.get("catalog_mode", "selected"),
+        estimator_overrides=list(source_params.get("estimator_overrides") or []),
         evaluation_column=source_params.get("evaluation_column"),
         positive_label=source_params.get("positive_label"),
         task_type=source.task_type,
@@ -696,7 +1019,11 @@ def restart_training_run(
         candidate_models=list(source_params.get("candidate_models") or []),
         optimization_iterations=int(source_params.get("optimization_iterations", 5)),
         cv_folds=int(source_params.get("cv_folds", 3)),
-        run_name=f"{source.run_name or source.id} restart"[:255],
+        run_name=versioned_run_name(
+            source.run_name or str(source.id),
+            legacy_restart=bool((source.tags or {}).get("restarted_from_run_id")),
+            increment=True,
+        ),
         split_revision_id=_bound_revision_uuid(source_params, "split_revision_id"),
         feature_contract_revision_id=_bound_revision_uuid(
             source_params, "feature_contract_revision_id"
@@ -723,7 +1050,8 @@ def restart_training_run(
         idempotency_key=f"restart:{source.id}",
     )
     restarted = db.get(ModelRun, result.run.id)
-    assert restarted is not None
+    if restarted is None:
+        raise LookupError("The restarted run disappeared before tagging.")
     restarted.tags = {
         **restarted.tags,
         "restarted_from_run_id": str(source.id),
@@ -789,6 +1117,7 @@ def add_models_to_training_run(
     payload = TrainingLaunchRequest(
         dataset_version_id=parent.dataset_version_id,
         target_column=parent.target_column,
+        excluded_columns=list(source_params.get("excluded_columns") or []),
         evaluation_column=source_params.get("evaluation_column"),
         positive_label=source_params.get("positive_label"),
         task_type=parent.task_type,
@@ -826,7 +1155,8 @@ def add_models_to_training_run(
         idempotency_key=f"add-models:{parent.id}:{','.join(requested_models)}",
     )
     extension = db.get(ModelRun, result.run.id)
-    assert extension is not None
+    if extension is None:
+        raise LookupError("The extended run disappeared before tagging.")
     extension.tags = {
         **extension.tags,
         "leaderboard_parent_run_id": str(parent.id),
@@ -894,6 +1224,10 @@ def training_resources(
         "peak_memory_usage_mb": peak_memory or None,
         "sampled_at": datetime.now(UTC).isoformat(),
     }
+    # A healthy current pod has no status reason. Persist that absence so a
+    # previous transient lookup failure cannot remain visible in the UI.
+    if "status_reason" in snapshot:
+        stored["status_reason"] = snapshot["status_reason"]
     tags["resource_usage"] = stored
     run.tags = tags
     db.flush()
@@ -1010,6 +1344,15 @@ def training_leaderboard(
             },
             run.finished_at or datetime.now(UTC),
         )["leaderboard"]
+    elif run.status in {RunStatus.FAILED, RunStatus.PREEMPTED}:
+        for entry in entries:
+            if entry.get("status") in {"running", "pending", "queued"}:
+                started = entry.get("status") == "running"
+                entry["status"] = "failed" if started else "skipped"
+                entry["error"] = entry.get("error") or (
+                    "Training stopped before this candidate completed."
+                    if started else "Training stopped before this candidate started."
+                )
     if primary_metric:
         entries = _rank_combined_leaderboard(entries, primary_metric)
     active_candidate = run.tags.get("current_candidate") or leaderboard_run.tags.get(
@@ -1028,14 +1371,34 @@ def training_leaderboard(
             str(entry.get("status", "pending")),
             parameters=dict(entry.get("best_params") or {}),
             excluded_columns=excluded_columns,
+            prepared_split=bool(leaderboard_run.params.get("split_revision_id")),
             current_phase=(
-                str(active_phase)
-                if entry.get("model") == active_candidate and active_phase
+                str(entry["phase"])
+                if entry.get("status") in {"running", "pending"} and entry.get("phase")
+                else str(active_phase)
+                if entry.get("status") == "running"
+                and entry.get("model") == active_candidate and active_phase
                 else None
             ),
         )
     successful = [entry for entry in entries if entry.get("status") == "succeeded"]
     metric_names = {name for entry in entries for name in entry.get("metrics", {})}
+    split_counts = None
+    split_id = leaderboard_run.params.get("split_revision_id")
+    if split_id:
+        split = db.scalar(select(DatasetSplitRevision).where(
+            DatasetSplitRevision.id == split_id,
+            DatasetSplitRevision.project_id == project_id,
+            DatasetSplitRevision.dataset_version_id == leaderboard_run.dataset_version_id,
+            DatasetSplitRevision.sealed_at.is_not(None),
+        ))
+        if split is not None:
+            counts = split.specification.get("split_counts") or (
+                split.specification.get("identity") or {}
+            ).get("split_counts", {})
+            roles = ("train", "validation", "final_test")
+            if all(isinstance(counts.get(role), int) and counts[role] >= 0 for role in roles):
+                split_counts = {role: counts[role] for role in roles}
     return TrainingLeaderboardRead(
         run_id=run.id,
         status=run.status,
@@ -1043,6 +1406,7 @@ def training_leaderboard(
         winner=successful[0]["model"] if successful else None,
         metric_directions={name: metric_direction(name) for name in sorted(metric_names)},
         entries=entries,
+        split_counts=split_counts,
     )
 
 
@@ -1110,7 +1474,21 @@ def _sync_run_status(
     db: Session,
     run: ModelRun,
     client: KubernetesTrainingClient,
+    *,
+    observe_managed: bool = False,
 ) -> None:
+    # Ray attempts are observed and fenced by the workflow reconciler. Looking
+    # up their CR name through the legacy batch/v1 Job client incorrectly
+    # reports a healthy RayJob as missing.
+    desired_state = str((run.tags or {}).get("desired_state") or "")
+    if desired_state.startswith("ray_"):
+        return
+    # An API read can arrive before the outbox creates the Job. Only the
+    # reconciler may observe managed batch jobs, after submission is committed.
+    if desired_state.startswith("kubernetes_") and (
+        not observe_managed or desired_state != "kubernetes_submitted"
+    ):
+        return
     state = client.job_state(run.k8s_job_name or "")
     db.refresh(run, with_for_update=True)
     if run.status not in {
@@ -1141,10 +1519,17 @@ def _sync_run_status(
     if state == "running":
         run.status = RunStatus.RUNNING
         run.started_at = run.started_at or now
+        run.failure_code = None
+        run.failure_message = None
+        run.plain_english_failure = None
+        run.finished_at = None
     elif state == "succeeded":
         run.status = RunStatus.SUCCEEDED
         run.started_at = run.started_at or run.queued_at
         run.finished_at = now
+        run.failure_code = None
+        run.failure_message = None
+        run.plain_english_failure = None
     elif state in {"failed", "missing", "terminal_waiting_failure"}:
         if state in {"failed", "terminal_waiting_failure"}:
             failure_code, failure_message = client.job_failure_details(run.k8s_job_name or "")

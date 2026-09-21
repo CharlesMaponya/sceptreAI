@@ -202,7 +202,11 @@ def test_remote_store_round_trip_and_credentials(monkeypatch, tmp_path) -> None:
     assert store.size(stored.uri) == 13
     source, options = store.dataframe_source(stored.uri)
     assert source == "s3://datasets/project/data.parquet"
-    assert options == {"client_kwargs": {"endpoint_url": "http://minio.test:9000"}}
+    assert options == {
+        "client_kwargs": {"endpoint_url": "http://minio.test:9000"},
+        "key": "access",
+        "secret": "secret",
+    }
     assert store.healthcheck().healthy
     store.delete(stored.uri)
     assert not store.exists(stored.uri)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 from automl_api.core.config import get_settings
 from automl_api.db.session import get_db
 from automl_api.models.iam import User
+from automl_api.models.enums import AuthProvider
+from automl_api.security.browser_sessions import ACCESS_COOKIE, require_same_origin
 from automl_api.security.tokens import TokenError, decode_token
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -19,7 +21,12 @@ bearer_scheme = HTTPBearer(auto_error=False)
 def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
     db: Annotated[Session, Depends(get_db)],
+    request: Request = None,
 ) -> User:
+    cookie = request.cookies.get(ACCESS_COOKIE) if request is not None else None
+    if credentials is None and cookie:
+        require_same_origin(request)
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=cookie)
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -46,6 +53,9 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User is inactive or no longer exists.",
         )
+
+    if not settings.simple_auth_enabled and user.auth_provider != AuthProvider.SSO:
+        raise HTTPException(status_code=401, detail="Password sessions are disabled.")
 
     if int(payload.get("ver", -1)) != user.token_version:
         raise HTTPException(

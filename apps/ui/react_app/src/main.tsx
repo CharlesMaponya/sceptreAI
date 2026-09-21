@@ -16,8 +16,9 @@ import { RunsPage } from "./pages/RunsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TrainingPage } from "./pages/TrainingPage";
 import { NotFound } from "./NotFound";
-import "@fontsource-variable/manrope/wght.css";
+import "@fontsource-variable/open-sans/wght.css";
 import "./styles.css";
+import "./soft-dashboard.css";
 import { useAuthState } from "./useAuthState";
 
 const queryClient = new QueryClient({

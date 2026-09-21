@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -144,7 +144,7 @@ def test_capacity_snapshot_iterates_across_multiple_ready_nodes() -> None:
     client._priority_class_is_ready = lambda _name: True
     snapshot = client.capacity_snapshot()
     assert snapshot.capacity.ready_nodes == 2
-    assert [item.name for item in snapshot.nodes] == ["gpu"]
+    assert [item.name for item in snapshot.nodes] == ["cpu", "gpu"]
 
 
 def test_estimate_accumulates_capacity_and_dependency_blockers() -> None:
@@ -441,6 +441,46 @@ def test_training_resource_usage_unavailable_empty_metrics_and_failure() -> None
     assert client.training_resource_usage(uuid.uuid4())["telemetry_available"] is False
 
 
+def test_training_resource_usage_prefers_ray_head_over_newer_submitter() -> None:
+    client = _client()
+    now = datetime.now(UTC)
+
+    def pod(name: str, node_type: str | None, created: datetime, memory: str) -> SimpleNamespace:
+        labels = {"ray.io/node-type": node_type} if node_type else {}
+        return SimpleNamespace(
+            metadata=SimpleNamespace(name=name, creation_timestamp=created, labels=labels),
+            spec=SimpleNamespace(node_name=f"{name}-node"),
+            status=SimpleNamespace(
+                phase="Running", reason=None, container_statuses=[], conditions=[]
+            ),
+            memory=memory,
+        )
+
+    head = pod("head", "head", now, "3Gi")
+    submitter = pod("submitter", None, now + timedelta(seconds=1), "128Mi")
+    client.core = SimpleNamespace(
+        list_namespaced_pod=lambda **_kw: SimpleNamespace(items=[head, submitter])
+    )
+    client.custom = SimpleNamespace(
+        get_namespaced_custom_object=lambda **kw: {
+            "containers": [
+                {
+                    "usage": {
+                        "cpu": "1",
+                        "memory": head.memory if kw["name"] == "head" else submitter.memory,
+                    }
+                }
+            ]
+        }
+    )
+
+    usage = client.training_resource_usage(uuid.uuid4())
+
+    assert usage["pod_name"] == "head"
+    assert usage["node_name"] == "head-node"
+    assert usage["memory_usage_mb"] == 3072
+
+
 def test_resource_existence_helpers_fail_closed() -> None:
     client = _client()
     client.core = SimpleNamespace(
@@ -581,6 +621,37 @@ def test_build_job_manifest_optional_storage_gpu_and_ttl_contract() -> None:
     assert {item["name"] for item in container["env"]} >= {"CUML_ACCEL_ENABLED"}
 
 
+def test_training_jobs_receive_restricted_worker_database_credential() -> None:
+    """P6-W12: training jobs never receive the full application DATABASE_URL."""
+    settings = Settings()
+    client = _client(settings)
+    estimate = kube.TrainingEstimateRead(
+        capacity=_capacity(),
+        estimated_working_set_mb=512,
+        cpu_request_cores=1,
+        cpu_limit_cores=2,
+        memory_request_mb=512,
+        memory_limit_mb=1024,
+        gpu_requested=False,
+        expected_minutes=1,
+        active_deadline_seconds=120,
+        estimated_core_hours=0.1,
+        max_concurrent_jobs=1,
+        can_launch=True,
+    )
+    manifest = client.build_job_manifest(
+        run_id=uuid.uuid4(), project_id=uuid.uuid4(), estimate=estimate
+    )
+    env = {
+        item["name"]: item for item in manifest["spec"]["template"]["spec"]["containers"][0]["env"]
+    }
+    secret_ref = env["DATABASE_URL"]["valueFrom"]["secretKeyRef"]
+
+    assert secret_ref["name"] == settings.worker_database_secret_name
+    assert secret_ref["key"] == settings.worker_database_secret_key
+    assert secret_ref["name"] != settings.database_secret_name
+
+
 def test_model_manifest_and_creation_include_ingress_tls() -> None:
     client = _client(
         Settings(
@@ -608,9 +679,7 @@ def test_model_manifest_and_creation_include_ingress_tls() -> None:
     client.apps = SimpleNamespace(
         create_namespaced_deployment=lambda **_kw: calls.append("deployment")
     )
-    client.core = SimpleNamespace(
-        create_namespaced_service=lambda **_kw: calls.append("service")
-    )
+    client.core = SimpleNamespace(create_namespaced_service=lambda **_kw: calls.append("service"))
     client.networking = SimpleNamespace(
         create_namespaced_ingress=lambda **_kw: calls.append("ingress")
     )
@@ -625,16 +694,12 @@ def test_model_deployment_urls_ingress_and_error_paths() -> None:
             inference_ingress_tls_secret_name="tls",
         )
     )
-    client.core = SimpleNamespace(
-        read_namespaced_service=lambda **_kw: _service("ClusterIP")
-    )
+    client.core = SimpleNamespace(read_namespaced_service=lambda **_kw: _service("ClusterIP"))
     ingress = SimpleNamespace(
         status=SimpleNamespace(load_balancer=SimpleNamespace(ingress=[object()])),
         spec=SimpleNamespace(rules=[SimpleNamespace(host="model.example.test")]),
     )
-    client.networking = SimpleNamespace(
-        read_namespaced_ingress_status=lambda **_kw: ingress
-    )
+    client.networking = SimpleNamespace(read_namespaced_ingress_status=lambda **_kw: ingress)
     assert client.model_deployment_urls("model")["base_url"] == "https://model.example.test"
     client.networking.read_namespaced_ingress_status = lambda **_kw: _raise(404)
     assert client.model_deployment_urls("model") is None
@@ -645,9 +710,7 @@ def test_model_deployment_urls_ingress_and_error_paths() -> None:
 
 def test_delete_and_cleanup_propagate_non_not_found_errors() -> None:
     client = _client(Settings(inference_ingress_enabled=True))
-    client.networking = SimpleNamespace(
-        delete_namespaced_ingress=lambda **_kw: _raise(500)
-    )
+    client.networking = SimpleNamespace(delete_namespaced_ingress=lambda **_kw: _raise(500))
     with pytest.raises(ApiException):
         client.delete_model_deployment("model")
 
@@ -656,9 +719,7 @@ def test_delete_and_cleanup_propagate_non_not_found_errors() -> None:
         metadata=SimpleNamespace(name="done"),
         status=SimpleNamespace(succeeded=1, failed=0),
     )
-    client.batch = SimpleNamespace(
-        list_namespaced_job=lambda **_kw: SimpleNamespace(items=[job])
-    )
+    client.batch = SimpleNamespace(list_namespaced_job=lambda **_kw: SimpleNamespace(items=[job]))
     client.delete_job = lambda _name: _raise(500)
     with pytest.raises(ApiException):
         client.cleanup_finished_jobs(uuid.uuid4())
@@ -682,9 +743,7 @@ def test_job_state_detects_fatal_and_retriable_waiting_states() -> None:
         list_namespaced_pod=lambda **_kw: SimpleNamespace(items=[pod("InvalidImageName")])
     )
     assert client.job_state("job") == "terminal_waiting_failure"
-    client.core.list_namespaced_pod = lambda **_kw: SimpleNamespace(
-        items=[pod("ImagePullBackOff")]
-    )
+    client.core.list_namespaced_pod = lambda **_kw: SimpleNamespace(items=[pod("ImagePullBackOff")])
     assert client.job_state("job") == "image_pull_backoff"
 
 
@@ -692,11 +751,7 @@ def test_job_failure_details_deadline_oom_waiting_and_conditions() -> None:
     client = _client()
     deadline = SimpleNamespace(
         status=SimpleNamespace(
-            conditions=[
-                SimpleNamespace(
-                    type="Failed", reason="DeadlineExceeded", message=None
-                )
-            ]
+            conditions=[SimpleNamespace(type="Failed", reason="DeadlineExceeded", message=None)]
         )
     )
     client.batch = SimpleNamespace(read_namespaced_job_status=lambda **_kw: deadline)
@@ -723,9 +778,7 @@ def test_job_failure_details_deadline_oom_waiting_and_conditions() -> None:
             conditions=[SimpleNamespace(status="False", message="condition")],
         )
     )
-    client.core = SimpleNamespace(
-        list_namespaced_pod=lambda **_kw: SimpleNamespace(items=[pod])
-    )
+    client.core = SimpleNamespace(list_namespaced_pod=lambda **_kw: SimpleNamespace(items=[pod]))
     code, message = client.job_failure_details("job")
     assert code == "POD_OOM_KILLED"
     assert all(item in message for item in ("exit code 137", "why", "condition"))
@@ -756,21 +809,15 @@ def test_job_logs_decode_bytes_and_resource_usage_terminated_reason() -> None:
             conditions=[],
         ),
     )
-    client.core = SimpleNamespace(
-        list_namespaced_pod=lambda **_kw: SimpleNamespace(items=[pod])
-    )
-    client.custom = SimpleNamespace(
-        get_namespaced_custom_object=lambda **_kw: {"containers": []}
-    )
+    client.core = SimpleNamespace(list_namespaced_pod=lambda **_kw: SimpleNamespace(items=[pod]))
+    client.custom = SimpleNamespace(get_namespaced_custom_object=lambda **_kw: {"containers": []})
     assert client.training_resource_usage(uuid.uuid4())["status_reason"] == "Completed"
 
 
 def test_non_not_found_api_errors_propagate_and_ingress_delete_is_optional() -> None:
     client = _client(Settings(inference_ingress_enabled=False))
     deleted: list[str] = []
-    client.core = SimpleNamespace(
-        delete_namespaced_service=lambda **_kw: deleted.append("service")
-    )
+    client.core = SimpleNamespace(delete_namespaced_service=lambda **_kw: deleted.append("service"))
     client.apps = SimpleNamespace(
         delete_namespaced_deployment=lambda **_kw: deleted.append("deployment")
     )
@@ -803,9 +850,7 @@ def test_failure_details_skips_non_deadline_condition_and_default_message() -> N
             conditions=[],
         )
     )
-    client.core = SimpleNamespace(
-        list_namespaced_pod=lambda **_kw: SimpleNamespace(items=[pod])
-    )
+    client.core = SimpleNamespace(list_namespaced_pod=lambda **_kw: SimpleNamespace(items=[pod]))
     assert client.job_failure_details("job") == (
         "KUBERNETES_JOB_FAILED",
         "Kubernetes Job failed.",
@@ -817,9 +862,7 @@ def test_resource_usage_handles_waiting_without_reason_and_unscheduled_without_m
     statuses = [
         SimpleNamespace(
             restart_count=None,
-            state=SimpleNamespace(
-                waiting=SimpleNamespace(reason=None), terminated=None
-            ),
+            state=SimpleNamespace(waiting=SimpleNamespace(reason=None), terminated=None),
         )
     ]
     pod = SimpleNamespace(
@@ -830,18 +873,12 @@ def test_resource_usage_handles_waiting_without_reason_and_unscheduled_without_m
             reason=None,
             container_statuses=statuses,
             conditions=[
-                SimpleNamespace(
-                    type="PodScheduled", status="False", reason=None, message=None
-                )
+                SimpleNamespace(type="PodScheduled", status="False", reason=None, message=None)
             ],
         ),
     )
-    client.core = SimpleNamespace(
-        list_namespaced_pod=lambda **_kw: SimpleNamespace(items=[pod])
-    )
-    client.custom = SimpleNamespace(
-        get_namespaced_custom_object=lambda **_kw: {"containers": []}
-    )
+    client.core = SimpleNamespace(list_namespaced_pod=lambda **_kw: SimpleNamespace(items=[pod]))
+    client.custom = SimpleNamespace(get_namespaced_custom_object=lambda **_kw: {"containers": []})
     usage = client.training_resource_usage(uuid.uuid4())
     assert usage["status_reason"] == "Unschedulable"
     assert usage["restart_count"] == 0
@@ -874,9 +911,7 @@ def test_manifest_creation_without_ingress_and_tls_without_class() -> None:
     client.apps = SimpleNamespace(
         create_namespaced_deployment=lambda **_kw: calls.append("deployment")
     )
-    client.core = SimpleNamespace(
-        create_namespaced_service=lambda **_kw: calls.append("service")
-    )
+    client.core = SimpleNamespace(create_namespaced_service=lambda **_kw: calls.append("service"))
     client.create_model_deployment(
         {
             "deployment": {"metadata": {"name": "model"}},
@@ -911,9 +946,7 @@ def test_manifest_creation_without_ingress_and_tls_without_class() -> None:
 
 def test_external_url_requires_admitted_host() -> None:
     client = _client(Settings(inference_service_type="LoadBalancer"))
-    client.core = SimpleNamespace(
-        read_namespaced_service=lambda **_kw: _service("LoadBalancer")
-    )
+    client.core = SimpleNamespace(read_namespaced_service=lambda **_kw: _service("LoadBalancer"))
     assert client.model_deployment_urls("model") is None
     service = _service("LoadBalancer", host="ignored")
     service.status.load_balancer.ingress[0].hostname = None
@@ -978,15 +1011,62 @@ def test_resource_usage_ignores_unrelated_conditions_and_partial_quota() -> None
             conditions=[SimpleNamespace(type="Ready", status="True", reason=None, message=None)],
         ),
     )
-    client.core = SimpleNamespace(
-        list_namespaced_pod=lambda **_kw: SimpleNamespace(items=[pod])
-    )
-    client.custom = SimpleNamespace(
-        get_namespaced_custom_object=lambda **_kw: {"containers": []}
-    )
+    client.core = SimpleNamespace(list_namespaced_pod=lambda **_kw: SimpleNamespace(items=[pod]))
+    client.custom = SimpleNamespace(get_namespaced_custom_object=lambda **_kw: {"containers": []})
     assert client.training_resource_usage(uuid.uuid4())["status_reason"] is None
 
     memory_only = SimpleNamespace(
         status=SimpleNamespace(hard={"memory": "1Gi"}, used={"memory": "0"})
     )
     assert kube._namespace_quota_capacity([memory_only]) is None
+
+
+def test_training_resource_usage_selects_model_worker_from_current_generation() -> None:
+    client = _client()
+    now = datetime.now(UTC)
+
+    def pod(name, role, generation, isolated):
+        return SimpleNamespace(
+            metadata=SimpleNamespace(
+                name=name,
+                creation_timestamp=now,
+                labels={
+                    "ray.io/node-type": role,
+                    "automl.platform/generation": str(generation),
+                },
+            ),
+            spec=SimpleNamespace(
+                node_name=name,
+                containers=[
+                    SimpleNamespace(
+                        env=[
+                            SimpleNamespace(
+                                name="AUTOML_MODEL_PODS", value="1" if isolated else "0"
+                            ),
+                        ]
+                    )
+                ],
+            ),
+            status=SimpleNamespace(
+                phase="Running", reason=None, container_statuses=[], conditions=[]
+            ),
+        )
+
+    client.core = SimpleNamespace(
+        list_namespaced_pod=lambda **kw: SimpleNamespace(
+            items=[
+                pod("old-head", "head", 1, False),
+                pod("current-head", "head", 2, True),
+                pod("current-worker", "worker", 2, True),
+                pod("submitter", "", 2, True),
+            ]
+        )
+    )
+    client.custom = SimpleNamespace(
+        get_namespaced_custom_object=lambda **kw: {
+            "containers": [{"usage": {"cpu": "1950m", "memory": "2Gi"}}],
+        }
+    )
+    usage = client.training_resource_usage(uuid.uuid4())
+    assert usage["pod_name"] == "current-worker"
+    assert usage["cpu_usage_cores"] == 1.95

@@ -152,6 +152,25 @@ HIGH_COST_MODELS = {
     "TheilSenRegressor",
 }
 
+PAIRWISE_SAMPLE_MODELS = frozenset(
+    {
+        "AffinityPropagation",
+        "GaussianProcessClassifier",
+        "GaussianProcessRegressor",
+        "KernelRidge",
+        "KNeighborsClassifier",
+        "KNeighborsRegressor",
+        "NuSVC",
+        "NuSVR",
+        "RadiusNeighborsClassifier",
+        "RadiusNeighborsRegressor",
+        "SVC",
+        "SVR",
+        "SpectralClustering",
+        "TheilSenRegressor",
+    }
+)
+
 MEDIUM_COST_MODELS = {
     "BaggingClassifier",
     "BaggingRegressor",
@@ -202,8 +221,10 @@ def candidate_catalog(task_type: TaskType) -> tuple[CandidateSpec, ...]:
             continue
         try:
             estimator = _instantiate_estimator(estimator_class)
-        except Exception:
-            continue
+        except Exception:  # noqa: BLE001 - third-party estimators fail in arbitrary ways
+            # Catalog discovery must skip any estimator that cannot be built
+            # with default parameters; failures are expected and non-fatal.
+            continue  # nosec B112 - intentional skip of unbuildable catalog entries
         if _is_multioutput_only(estimator) or not hasattr(estimator, "fit"):
             continue
         if task_type == TaskType.CLUSTERING:

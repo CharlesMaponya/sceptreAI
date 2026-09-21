@@ -19,6 +19,7 @@ SUPPORTED_EXTENSIONS = {
     ".xls": DatasetFormat.EXCEL,
     ".json": DatasetFormat.JSON,
     ".jsonl": DatasetFormat.JSON,
+    ".ndjson": DatasetFormat.JSON,
 }
 PREVIEW_SAMPLE_SIZE = 512
 
@@ -32,6 +33,12 @@ class InspectionResult:
     schema_json: dict[str, Any]
     inferred_types_json: dict[str, Any]
     quality_report_json: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class ColumnSampleResult:
+    profile: dict[str, Any]
+    sampled_rows: int
 
 
 @dataclass
@@ -58,9 +65,12 @@ class ColumnAccumulator:
             self.missing_count += 1
             return
 
-        assert self.distinct_values is not None
-        assert self.sample_values is not None
-        assert self.preview_values is not None
+        if (
+            self.distinct_values is None
+            or self.sample_values is None
+            or self.preview_values is None
+        ):
+            raise RuntimeError("The column accumulator was not initialized.")
         value_text = str(value).strip()
         self.present_count += 1
         self.distinct_values.add(value_text)
@@ -80,9 +90,12 @@ class ColumnAccumulator:
             self.text_count += 1
 
     def profile(self) -> dict[str, Any]:
-        assert self.distinct_values is not None
-        assert self.sample_values is not None
-        assert self.preview_values is not None
+        if (
+            self.distinct_values is None
+            or self.sample_values is None
+            or self.preview_values is None
+        ):
+            raise RuntimeError("The column accumulator was not initialized.")
         semantic_type = _infer_type_from_counts(self)
         return {
             "name": self.name,
@@ -126,6 +139,77 @@ def inspect_tabular_bytes(filename: str, content: bytes) -> InspectionResult:
             ],
         },
     )
+
+
+def inspect_column_sample(
+    filename: str,
+    content: bytes,
+    column: str,
+    *,
+    maximum_rows: int = PREVIEW_SAMPLE_SIZE,
+) -> ColumnSampleResult:
+    """Inspect one column from a bounded object prefix.
+
+    Target selection needs an early statistical signal, not a full dataset
+    profile. Keeping both bytes and rows bounded makes this safe for multi-GiB
+    uploads and ensures the result is clearly sample evidence.
+    """
+    if maximum_rows <= 0:
+        raise ValueError("The target preview row limit must be positive.")
+    dataset_format = detect_dataset_format(filename)
+    accumulator = ColumnAccumulator(column)
+    sampled_rows = 0
+
+    if dataset_format == DatasetFormat.CSV:
+        sample = content[:4096].decode("utf-8-sig", errors="replace")
+        try:
+            dialect = csv.Sniffer().sniff(sample) if sample.strip() else csv.excel
+        except csv.Error:
+            dialect = csv.excel
+        text_stream = io.TextIOWrapper(
+            io.BytesIO(content), encoding="utf-8-sig", newline=""
+        )
+        reader = csv.DictReader(text_stream, dialect=dialect)
+        if column not in (reader.fieldnames or []):
+            raise ValueError(f"Target column '{column}' was not found in the dataset.")
+        for row in reader:
+            accumulator.add(row.get(column))
+            sampled_rows += 1
+            if sampled_rows >= maximum_rows:
+                break
+    elif dataset_format == DatasetFormat.JSON and filename.lower().endswith(
+        (".jsonl", ".ndjson")
+    ):
+        lines = content.splitlines()
+        if content and not content.endswith((b"\n", b"\r")):
+            lines = lines[:-1]
+        column_found = False
+        for line in lines:
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(row, dict):
+                continue
+            column_found = column_found or column in row
+            accumulator.add(row.get(column))
+            sampled_rows += 1
+            if sampled_rows >= maximum_rows:
+                break
+        if not column_found:
+            raise ValueError(f"Target column '{column}' was not found in the dataset sample.")
+    else:
+        raise ValueError(
+            "Instant target preview currently supports CSV and JSONL/NDJSON datasets."
+        )
+
+    if sampled_rows == 0:
+        raise ValueError("The dataset sample contains no data rows.")
+    profile = accumulator.profile()
+    profile["preview_sample_size"] = sampled_rows
+    return ColumnSampleResult(profile=profile, sampled_rows=sampled_rows)
 
 
 def _inspect_csv(content: bytes) -> InspectionResult:
@@ -355,7 +439,8 @@ def _infer_type_from_counts(accumulator: ColumnAccumulator) -> str:
     if accumulator.numeric_count >= threshold:
         if accumulator.decimal_seen:
             return "numerical_continuous"
-        assert accumulator.distinct_values is not None
+        if accumulator.distinct_values is None:
+            raise RuntimeError("The column accumulator was not initialized.")
         return (
             "numerical_discrete"
             if len(accumulator.distinct_values) <= 20

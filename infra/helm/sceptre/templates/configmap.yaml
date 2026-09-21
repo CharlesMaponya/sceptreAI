@@ -17,6 +17,7 @@ metadata:
   labels:
     {{- include "sceptre.labels" . | nindent 4 }}
 data:
+  INTERNAL_API_URL: {{ printf "http://%s-api:8000" (include "sceptre.fullname" .) | quote }}
   ENVIRONMENT: {{ .Values.environment | quote }}
   PUBLIC_APP_URL: {{ .Values.auth.publicAppUrl | quote }}
   SMTP_HOST: {{ .Values.auth.passwordResetEmail.host | quote }}
@@ -50,6 +51,8 @@ data:
   UPLOAD_SCANNER_SIGNATURE_VERSION: {{ .Values.uploads.scanner.signatureVersion | quote }}
   DATABASE_SECRET_NAME: {{ include "sceptre.platformSecretName" . | quote }}
   DATABASE_SECRET_KEY: {{ .Values.platform.databaseUrlKey | quote }}
+  WORKER_DATABASE_SECRET_NAME: {{ include "sceptre.workerDatabaseSecretName" . | quote }}
+  WORKER_DATABASE_SECRET_KEY: {{ .Values.platform.workerDatabase.urlKey | quote }}
   QUALIFICATION_DATABASE_SECRET_KEY: {{ .Values.platform.qualificationDatabaseUrlKey | quote }}
   DATABASE_POOL_SIZE: {{ .Values.platform.database.poolSize | quote }}
   DATABASE_MAX_OVERFLOW: {{ .Values.platform.database.maxOverflow | quote }}
@@ -75,12 +78,17 @@ data:
   TRAINING_CPU_LIMIT_CORES: {{ .Values.training.cpu.limitCores | quote }}
   TRAINING_MEMORY_REQUEST_MB: {{ .Values.training.cpu.memoryRequestMb | quote }}
   TRAINING_MEMORY_LIMIT_MB: {{ .Values.training.cpu.memoryLimitMb | quote }}
+  TRAINING_ADAPTIVE_NODE_SIZING_ENABLED: {{ .Values.training.adaptiveNodeSizing.enabled | quote }}
+  TRAINING_NODE_MEMORY_FRACTION: {{ .Values.training.adaptiveNodeSizing.memoryFraction | quote }}
   TRAINING_ACTIVE_DEADLINE_SECONDS: {{ .Values.training.activeDeadlineSeconds | quote }}
   TRAINING_MAX_ACTIVE_DEADLINE_SECONDS: {{ .Values.training.maxActiveDeadlineSeconds | quote }}
   TRAINING_DEADLINE_MULTIPLIER: {{ .Values.training.deadlineMultiplier | quote }}
   TRAINING_JOB_TTL_SECONDS: {{ .Values.training.jobTtlSeconds | quote }}
   MAX_CONCURRENT_JOBS: {{ .Values.training.maxConcurrentJobs | quote }}
+  TRAINING_MAX_CONCURRENT_TRIALS: {{ .Values.training.maxConcurrentTrials | quote }}
+  RAY_MAX_WORKERS: {{ .Values.training.rayMaxWorkers | quote }}
   DATASET_CACHE_SIZE_GB: {{ .Values.training.cache.emptyDirSizeGb | quote }}
+  DISTRIBUTED_PREPARATION_ENABLED: "true"
   DATASET_CACHE_PVC_NAME: {{ ternary (default (printf "%s-dataset-cache" (include "sceptre.fullname" .)) .Values.training.cache.existingClaim) "" (eq .Values.training.cache.mode "shared-pvc") | quote }}
   GPU_ENABLED: {{ or .Values.training.nvidia.enabled .Values.training.intel.enabled | quote }}
   CLUSTER_OBSERVER_ENABLED: {{ .Values.capabilities.clusterObserver.enabled | quote }}

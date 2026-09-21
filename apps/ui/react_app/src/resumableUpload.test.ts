@@ -495,6 +495,14 @@ describe("resumable browser uploads", () => {
       .resolves.toMatchObject({ status: "ready" });
   });
 
+  it("retries a transient API outage while verification is durable", async () => {
+    vi.spyOn(apiModule, "api")
+      .mockRejectedValueOnce(new Error("Request failed (502)"))
+      .mockResolvedValueOnce({ ...session, status: "ready" });
+    await expect(waitForVerifiedUpload(projectId, session.id, { attempts: 2, intervalMs: 0 }))
+      .resolves.toMatchObject({ status: "ready" });
+  });
+
   it("returns fresh dataset metadata after verification", async () => {
     vi.spyOn(apiModule, "api")
       .mockResolvedValueOnce({ ...session, status: "ready" })

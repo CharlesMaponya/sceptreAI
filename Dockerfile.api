@@ -10,19 +10,26 @@ WORKDIR /app
 COPY pyproject.toml README.md alembic.ini ./
 RUN apt-get update \
     && apt-get install --no-install-recommends --yes libgomp1 \
+    # Patch OS packages flagged by trivy (util-linux family, perl-base, gzip)
+    # at build time so every image ships the fixed Debian releases.
+    && apt-get upgrade --no-install-recommends --yes \
+       bsdutils libblkid1 liblastlog2-2 libmount1 libsmartcols1 libuuid1 \
+       login mount util-linux perl-base gzip libacl1 libncursesw6 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 sceptre \
     && mkdir -p apps/api/automl_api packages/automl_shared \
     && touch apps/api/automl_api/__init__.py packages/automl_shared/__init__.py
+COPY infra/locks/requirements-api.lock ./requirements-api.lock
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --upgrade pip==26.1.2 \
-    && python -m pip install ".[k8s,ml]"
+    && python -m pip install --require-hashes -r requirements-api.lock
 
 COPY alembic ./alembic
 COPY apps/api ./apps/api
 COPY apps/ui/react_app/public/sceptre-icon.png ./apps/ui/react_app/public/sceptre-icon.png
 COPY packages ./packages
 COPY scripts/verify_database_schema.py ./scripts/verify_database_schema.py
+COPY scripts/provision_worker_database.py ./scripts/provision_worker_database.py
 
 USER 10001
 EXPOSE 8000

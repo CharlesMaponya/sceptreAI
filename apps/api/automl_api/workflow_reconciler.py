@@ -12,7 +12,13 @@ from sqlalchemy.orm import Session
 from automl_api.db.session import get_session_factory
 from automl_api.models.workflows import OutboxEntry
 from automl_api.services.kubernetes_training import KubernetesTrainingClient
-from automl_api.services.reconciler import observe_training_ray_jobs, reconcile_entry
+from automl_api.services.reconciler import (
+    observe_analysis_jobs,
+    observe_dataset_ray_jobs,
+    observe_training_ray_jobs,
+    reconcile_entry,
+)
+from automl_api.services.retention import purge_expired_audit_events
 from automl_api.services.uploads import cleanup_abandoned_uploads
 from automl_api.services.workflow_state import claim_outbox
 
@@ -90,10 +96,13 @@ def observe_once(
 ) -> int:
     with session_factory() as db:
         try:
-            observed = observe_training_ray_jobs(db, k8s or KubernetesTrainingClient())
+            client = k8s or KubernetesTrainingClient()
+            observed = observe_training_ray_jobs(db, client)
+            observed += observe_dataset_ray_jobs(db, client)
+            observed += observe_analysis_jobs(db, client)
         except Exception:
             db.rollback()
-            LOGGER.exception("RayJob observation failed")
+            LOGGER.exception("Workflow job observation failed")
             return 0
         db.commit()
         return observed
@@ -105,12 +114,22 @@ def cleanup_uploads_once(session_factory: Callable[[], Session]) -> int:
             result = cleanup_abandoned_uploads(db)
         except Exception as exc:
             db.rollback()
-            LOGGER.error(
-                "upload cleanup failed", extra={"error_type": type(exc).__name__}
-            )
+            LOGGER.error("upload cleanup failed", extra={"error_type": type(exc).__name__})
             return 0
         db.commit()
         return sum(result.values())
+
+
+def cleanup_retention_once(session_factory: Callable[[], Session]) -> int:
+    with session_factory() as db:
+        try:
+            deleted = purge_expired_audit_events(db)
+        except Exception as exc:
+            db.rollback()
+            LOGGER.error("retention cleanup failed", extra={"error_type": type(exc).__name__})
+            return 0
+        db.commit()
+        return deleted
 
 
 def main() -> None:
@@ -121,18 +140,24 @@ def main() -> None:
     interval = max(0.1, float(os.environ.get("RECONCILER_POLL_SECONDS", "1")))
     session_factory = get_session_factory()
     k8s = KubernetesTrainingClient()
-    cleanup_interval = max(
-        60.0, float(os.environ.get("UPLOAD_RECONCILE_INTERVAL_SECONDS", "900"))
+    cleanup_interval = max(60.0, float(os.environ.get("UPLOAD_RECONCILE_INTERVAL_SECONDS", "900")))
+    retention_interval = max(
+        300.0,
+        float(os.environ.get("RETENTION_RECONCILE_INTERVAL_SECONDS", "86400")),
     )
     next_cleanup = time.monotonic()
+    next_retention = time.monotonic()
     while True:
         processed = run_once(session_factory, worker_id=worker_id)
-        observed = observe_once(session_factory, k8s=k8s)
-        cleaned = 0
+        observe_once(session_factory, k8s=k8s)
         if time.monotonic() >= next_cleanup:
-            cleaned = cleanup_uploads_once(session_factory)
+            cleanup_uploads_once(session_factory)
             next_cleanup = time.monotonic() + cleanup_interval
-        if processed == 0 and observed == 0 and cleaned == 0:
+        if time.monotonic() >= next_retention:
+            cleanup_retention_once(session_factory)
+            next_retention = time.monotonic() + retention_interval
+        # Active observations are not new work; rate-limit steady-state polling.
+        if processed == 0:
             time.sleep(interval)
 
 

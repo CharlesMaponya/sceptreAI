@@ -25,7 +25,6 @@ export function Auth() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [devResetToken, setDevResetToken] = useState("");
 
   function setMode(next: AuthMode, token?: string) {
     setModeState(next);
@@ -59,7 +58,6 @@ export function Auth() {
       } else if (mode === "forgot") {
         const response = await requestPasswordReset(data.email);
         setSuccess(response.message);
-        setDevResetToken(response.reset_token_for_dev || "");
       } else {
         const token = searchParams.get("token") || "";
         if (!token) throw new Error("This reset link is incomplete. Request a new one.");
@@ -112,7 +110,6 @@ export function Auth() {
           {mode === "login" ? "Sign in" : mode === "register" ? "Create account" : mode === "forgot" ? "Send reset instructions" : "Update password"}
           {mode === "forgot" || mode === "reset" ? <KeyRound size={16} /> : <ArrowRight size={16} />}
         </Button>
-        {mode === "forgot" && devResetToken && <Button type="button" variant="secondary" onClick={() => setMode("reset", devResetToken)}>Continue to reset password</Button>}
         {(mode === "login" || mode === "register") && <p className="auth-form__switch">{mode === "login" ? "New to Sceptre?" : "Already have an account?"}
           <button type="button" onClick={() => setMode(mode === "login" ? "register" : "login")}>
             {mode === "login" ? "Create an account" : "Sign in"}

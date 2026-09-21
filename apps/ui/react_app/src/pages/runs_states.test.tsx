@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setSession } from "../api";
 import { RunsPage } from "./RunsPage";
 
@@ -44,6 +44,7 @@ const resources = {
 };
 
 describe("run evidence qualification states", () => {
+  afterEach(() => vi.unstubAllEnvs());
   beforeEach(() => {
     setSession(null);
     vi.restoreAllMocks();
@@ -65,10 +66,25 @@ describe("run evidence qualification states", () => {
     );
   });
 
+  it("omits the Logs tab and log requests from production builds", async () => {
+    vi.stubEnv("DEV", false);
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
+      if (url.endsWith("/training/runs")) return response([run]);
+      if (url.endsWith("/leaderboard")) return response({ entries: [], winner: null });
+      if (url.endsWith("/resources")) return response(resources);
+      return response([]);
+    });
+    renderRuns();
+    expect(await screen.findByRole("tab", { name: "Validate & explain" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Logs" })).not.toBeInTheDocument();
+    expect(fetch.mock.calls.some(([url]) => String(url).endsWith("/logs"))).toBe(false);
+  });
+
   it("restarts a failed run and preserves both operator-facing failure messages", async () => {
     let restarted = false;
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/restart")) {
         restarted = true;
         return response({ ...run, status: "queued" }, 202);
@@ -97,7 +113,7 @@ describe("run evidence qualification states", () => {
 
   it("renders unavailable telemetry and multiclass evidence fallbacks", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/training/runs")) return response([run]);
       if (url.endsWith("/leaderboard")) return response({
         run_id: "run-1", status: "succeeded", primary_metric: "f1_macro",
@@ -123,7 +139,7 @@ describe("run evidence qualification states", () => {
     renderRuns();
 
     await user.click(await screen.findByRole("button", { name: /LinearSVC/ }));
-    expect(screen.getByText("A non-fatal convergence warning was recorded.")).toBeInTheDocument();
+    expect(screen.getByText(/A non-fatal convergence warning was recorded\./)).toBeInTheDocument();
     expect(screen.getByText("Results are still being collected")).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "Diagnostics" }));
     expect(await screen.findByRole("heading", { name: "Per-class quality" })).toBeInTheDocument();
@@ -138,7 +154,7 @@ describe("run evidence qualification states", () => {
     let leaderboardFails = true;
     let resourceFails = true;
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/training/runs")) return response([run]);
       if (url.endsWith("/leaderboard")) return leaderboardFails
         ? response({ detail: "Leaderboard unavailable" }, 503)
@@ -165,7 +181,7 @@ describe("run evidence qualification states", () => {
 
   it("shows missing correlation evidence and a fully completed estimator catalog", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/training/runs")) return response([run]);
       if (url.endsWith("/leaderboard")) return response({
         run_id: "run-1", status: "succeeded", primary_metric: "accuracy",
@@ -195,7 +211,7 @@ describe("run evidence qualification states", () => {
   it("recovers log polling and blocks analysis when no model succeeded", async () => {
     let logsFail = true;
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/training/runs")) return response([run]);
       if (url.endsWith("/leaderboard")) return response({
         run_id: "run-1", status: "failed", primary_metric: "accuracy", winner: null,

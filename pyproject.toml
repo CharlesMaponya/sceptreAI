@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.13",
+    "argon2-cffi>=23.1",
     "azure-identity>=1.19,<2",
     "azure-storage-blob>=12.24,<13",
     "boto3==1.43.56",
@@ -21,10 +22,17 @@ dependencies = [
     "pandas==2.3.3",
     "polars==1.43.2",
     "psycopg[binary]>=3.1",
+    # Transitive via azure-*/mlflow/google-auth; floored to the patched
+    # release for trivy HIGH findings. mlflow caps cryptography<50, so
+    # CVE-2026-69249 is fixed by 49.0.0 while CVE-2026-69247 (fix 50.0.0)
+    # stays a documented residual until mlflow lifts its cap.
+    "cryptography>=49.0.0,<50",
+    "mlflow>=3.15.1,<4",
     "pydantic>=2.7",
+    "PyJWT[crypto]==2.13.0",
     "python-multipart>=0.0.9",
     "pyarrow>=23.0.1,<25",
-    "ray[data,default,train,tune]==2.56.1",
+    "ray[data,default,train,tune]==2.58.0",
     "reportlab>=4.2",
     "s3fs==2026.7.0",
     "sqlalchemy>=2.0",
@@ -41,7 +49,7 @@ ml = [
     "catboost>=1.2",
     "evidently==0.7.21",
     "lightgbm>=4.3",
-    "mlflow==3.14.0",
+    "mlflow==3.15.1",
     "pandas==2.3.3",
     "scikit-learn==1.9.0",
     "scikit-optimize==0.10.2",
@@ -55,11 +63,11 @@ k8s = [
 training = [
     "catboost>=1.2",
     "lightgbm>=4.3",
-    "mlflow==3.14.0",
+    "mlflow==3.15.1",
     "openpyxl>=3.1",
     "polars==1.43.2",
     "pyarrow>=23.0.1",
-    "ray[data,default,train,tune]==2.56.1",
+    "ray[data,default,train,tune]==2.58.0",
     "scikit-learn==1.9.0",
     "scikit-optimize==0.10.2",
     "shap>=0.45,<1",

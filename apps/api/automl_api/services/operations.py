@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -47,6 +48,8 @@ from automl_api.services.training import (
     estimate_training_run,
 )
 from automl_api.storage.object_store import get_object_store
+
+logger = logging.getLogger(__name__)
 
 _STAGE_TRANSITIONS = {
     ModelStage.CANDIDATE: {ModelStage.STAGING, ModelStage.REJECTED, ModelStage.ARCHIVED},
@@ -113,6 +116,14 @@ def register_model(
             status_code=status.HTTP_409_CONFLICT,
             detail="The selected model does not have a durable model artifact.",
         )
+    model_digest = str(candidate.get("model_artifact_sha256") or "")
+    if len(model_digest) != 64 or any(char not in "0123456789abcdef" for char in model_digest):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "This model predates integrity verification. Train a new model before registration."
+            ),
+        )
     store = get_object_store()
     try:
         artifact_size = store.size(model_uri)
@@ -127,7 +138,7 @@ def register_model(
         kind=ArtifactKind.MODEL_OBJECT,
         name=f"{request.model_name}.joblib",
         object_uri=model_uri,
-        content_hash=None,
+        content_hash=model_digest,
         byte_size=artifact_size,
         artifact_metadata={
             "model_name": request.model_name,
@@ -179,12 +190,17 @@ def list_registry_entries(
     db: Session,
     user: User,
     project_id: uuid.UUID,
+    *,
+    offset: int = 0,
+    limit: int = 100,
 ) -> list[RegistryEntryRead]:
     require_project_role(db, user, project_id, ProjectRole.VIEWER)
     entries = db.scalars(
         select(ModelRegistryEntry)
         .where(ModelRegistryEntry.project_id == project_id)
-        .order_by(ModelRegistryEntry.created_at.desc())
+        .order_by(ModelRegistryEntry.created_at.desc(), ModelRegistryEntry.id.desc())
+        .offset(offset)
+        .limit(limit)
     ).all()
     return [registry_entry_read(entry) for entry in entries]
 
@@ -300,6 +316,7 @@ def launch_drift_check(
         value for value in (source.target_column, source.params.get("evaluation_column")) if value
     }
     excluded_columns.update(source.params.get("excluded_leakage_columns") or [])
+    excluded_columns.update(source.params.get("excluded_columns") or [])
     required_columns = {
         str(item.get("name"))
         for item in source.dataset_version.schema_json.get("columns", [])
@@ -388,6 +405,8 @@ def launch_drift_check(
             "registry_entry_id": str(entry.id),
             "deployment_run_id": str(linked_deployment.id) if linked_deployment else None,
             "reference_dataset_version_id": str(source.dataset_version_id),
+            "source_training_run_id": str(source.id),
+            "excluded_columns": sorted(excluded_columns),
             "evaluation_column": source.params.get("evaluation_column"),
             "max_rows": request.max_rows,
             "monitoring_resource_class": monitoring_resource_class,
@@ -406,18 +425,8 @@ def launch_drift_check(
         estimate=estimate,
     )
     run.k8s_job_name = manifest["metadata"]["name"]
-    try:
-        k8s.create_job(manifest)
-    except Exception as exc:
-        run.status = RunStatus.FAILED
-        run.failure_code = "KUBERNETES_JOB_CREATE_FAILED"
-        run.failure_message = str(exc)
-        run.finished_at = datetime.now(UTC)
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="The cluster rejected the drift job.",
-        ) from exc
     run.status = RunStatus.QUEUED
+    run.tags = {**run.tags, "desired_state": "kubernetes_submission_pending"}
     db.flush()
     return DriftLaunchRead(
         run=ModelRunRead.model_validate(run),
@@ -439,12 +448,13 @@ def _apply_monitoring_resource_floor(
     estimate.memory_request_mb = max(estimate.memory_request_mb, memory_floor)
     estimate.memory_limit_mb = max(estimate.memory_limit_mb, memory_floor)
     blockers = list(estimate.blockers)
-    if estimate.cpu_request_cores > estimate.capacity.available_cpu_cores:
+    quota_known = estimate.capacity.source == "namespace_resource_quota"
+    if quota_known and estimate.cpu_request_cores > estimate.capacity.available_cpu_cores:
         blockers.append(
             f"The {resource_class} monitoring class needs "
             f"{estimate.cpu_request_cores:g} available CPU cores."
         )
-    if estimate.memory_request_mb > estimate.capacity.available_memory_mb:
+    if quota_known and estimate.memory_request_mb > estimate.capacity.available_memory_mb:
         blockers.append(
             f"The {resource_class} monitoring class needs "
             f"{estimate.memory_request_mb} MiB available memory."
@@ -548,6 +558,12 @@ def deploy_registered_model(
     db.add(deployment_run)
     db.flush()
     image = request.image or k8s.settings.inference_image
+    if image != k8s.settings.inference_image:
+        raise HTTPException(
+            status_code=422, detail="Only the operator-approved inference image may be deployed."
+        )
+    if not entry.model_artifact.content_hash:
+        raise HTTPException(status_code=409, detail="The registered model has no integrity digest.")
     manifests = k8s.build_model_deployment_manifest(
         deployment_id=deployment_run.id,
         project_id=project_id,
@@ -555,6 +571,7 @@ def deploy_registered_model(
         environment=k8s.settings.environment,
         model_name=entry.model_name,
         model_uri=entry.model_artifact.object_uri,
+        model_digest=entry.model_artifact.content_hash,
         image=image,
         replicas=request.replicas,
         cpu_request=request.cpu_request,
@@ -646,6 +663,9 @@ def list_model_deployments(
     user: User,
     project_id: uuid.UUID,
     client: KubernetesTrainingClient | None = None,
+    *,
+    offset: int = 0,
+    limit: int = 100,
 ) -> list[DeploymentStatusRead]:
     require_project_role(db, user, project_id, ProjectRole.VIEWER)
     k8s = client or KubernetesTrainingClient()
@@ -655,11 +675,18 @@ def list_model_deployments(
             ModelRun.project_id == project_id,
             ModelRun.run_kind == RunKind.DEPLOYMENT,
         )
-        .order_by(ModelRun.created_at.desc())
+        .order_by(ModelRun.created_at.desc(), ModelRun.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .with_for_update()
     ).all()
     result = []
     for run in runs:
-        runtime_state = "unknown"
+        runtime_state = (
+            ("cleaned" if run.tags.get("runtime_cleaned_at") else "stopped")
+            if run.status == RunStatus.CANCELLED
+            else "unknown"
+        )
         service_name = run.tags.get("service_name") or run.k8s_job_name
         namespace = run.k8s_namespace or k8s.settings.training_namespace
         internal_urls: dict[str, str] = {}
@@ -679,8 +706,8 @@ def list_model_deployments(
                     for key in ("endpoint", "base_url", "docs_url", "openapi_url"):
                         tags.pop(key, None)
                     run.tags = {**tags, **urls}
-                except Exception:
-                    pass
+                except Exception as tag_error:  # noqa: BLE001 - best-effort tagging
+                    logger.debug("Deployment URL tagging skipped: %s", tag_error)
                 if service_name and namespace:
                     internal_urls = _internal_model_deployment_urls(
                         service_name,
@@ -690,6 +717,13 @@ def list_model_deployments(
                         project_id,
                         run.id,
                     )
+            elif (
+                runtime_state == "missing"
+                and run.status in {RunStatus.QUEUED, RunStatus.PRECHECK_RUNNING}
+                and run.tags.get("desired_state") == "deployment_pending"
+            ):
+                # The durable launch command has not created Kubernetes resources yet.
+                runtime_state = "progressing"
             elif runtime_state == "missing":
                 run.status = RunStatus.FAILED
                 run.failure_code = "KUBERNETES_DEPLOYMENT_MISSING"
@@ -749,6 +783,9 @@ def list_drift_runs(
     user: User,
     project_id: uuid.UUID,
     client: KubernetesTrainingClient | None = None,
+    *,
+    offset: int = 0,
+    limit: int = 100,
 ) -> list[ModelRun]:
     require_project_role(db, user, project_id, ProjectRole.VIEWER)
     runs = list(
@@ -758,7 +795,9 @@ def list_drift_runs(
                 ModelRun.project_id == project_id,
                 ModelRun.run_kind == RunKind.DRIFT,
             )
-            .order_by(ModelRun.created_at.desc())
+            .order_by(ModelRun.created_at.desc(), ModelRun.id.desc())
+            .offset(offset)
+            .limit(limit)
         ).all()
     )
     k8s = client or KubernetesTrainingClient()
@@ -775,6 +814,24 @@ def list_drift_runs(
     return runs
 
 
+def _locked_deployment(
+    db: Session, user: User, project_id: uuid.UUID, run_id: uuid.UUID
+) -> ModelRun:
+    require_project_role(db, user, project_id, ProjectRole.ADMIN)
+    run = db.scalar(
+        select(ModelRun)
+        .where(
+            ModelRun.project_id == project_id,
+            ModelRun.id == run_id,
+            ModelRun.run_kind == RunKind.DEPLOYMENT,
+        )
+        .with_for_update()
+    )
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deployment not found.")
+    return run
+
+
 def stop_model_deployment(
     db: Session,
     user: User,
@@ -782,24 +839,123 @@ def stop_model_deployment(
     run_id: uuid.UUID,
     client: KubernetesTrainingClient | None = None,
 ) -> ModelRun:
-    require_project_role(db, user, project_id, ProjectRole.ADMIN)
-    run = db.scalar(
-        select(ModelRun).where(
-            ModelRun.project_id == project_id,
-            ModelRun.id == run_id,
-            ModelRun.run_kind == RunKind.DEPLOYMENT,
-        )
-    )
-    if run is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deployment not found.")
-    if run.k8s_job_name and run.status != RunStatus.CANCELLED:
+    run = _locked_deployment(db, user, project_id, run_id)
+    if run.status == RunStatus.CANCELLED:
+        return run
+    if run.k8s_job_name:
         try:
-            (client or KubernetesTrainingClient()).delete_model_deployment(run.k8s_job_name)
+            (client or KubernetesTrainingClient()).shutdown_model_deployment(run.k8s_job_name)
         except ApiException as exc:
             if exc.status != 404:
                 raise
     run.status = RunStatus.CANCELLED
     run.finished_at = datetime.now(UTC)
+    run.tags = {**run.tags, "desired_state": "deployment_stopped"}
+    db.flush()
+    return run
+
+
+def start_model_deployment(
+    db: Session,
+    user: User,
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    client: KubernetesTrainingClient | None = None,
+) -> ModelRun:
+    run = _locked_deployment(db, user, project_id, run_id)
+    if run.status in {RunStatus.RUNNING, RunStatus.SUCCEEDED, RunStatus.QUEUED}:
+        return run
+    if run.status != RunStatus.CANCELLED:
+        raise HTTPException(
+            status_code=409, detail="Shut down this deployment before starting it again."
+        )
+    if run.tags.get("runtime_cleaned_at") or not run.k8s_job_name:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Runtime resources were cleaned up. Deploy the saved model again from the registry."
+            ),
+        )
+    registry_id = run.tags.get("registry_entry_id")
+    if registry_id:
+        _lock_training_admission(db)
+        active = db.scalar(
+            select(ModelRun.id)
+            .where(
+                ModelRun.project_id == project_id,
+                ModelRun.id != run.id,
+                ModelRun.run_kind == RunKind.DEPLOYMENT,
+                ModelRun.tags["registry_entry_id"].astext == str(registry_id),
+                ModelRun.status.in_(
+                    [
+                        RunStatus.QUEUED,
+                        RunStatus.PRECHECK_RUNNING,
+                        RunStatus.RUNNING,
+                        RunStatus.SUCCEEDED,
+                    ]
+                ),
+            )
+            .limit(1)
+        )
+        if active:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "This model version already has an active deployment. "
+                    "Shut it down before starting this one."
+                ),
+            )
+    try:
+        (client or KubernetesTrainingClient()).start_model_deployment(
+            run.k8s_job_name,
+            max(1, int(run.params.get("replicas", 1))),
+        )
+    except ApiException as exc:
+        if exc.status == 404:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Deployment resources no longer exist. "
+                    "Deploy the saved model again from the registry."
+                ),
+            ) from exc
+        raise
+    run.status = RunStatus.RUNNING
+    run.finished_at = None
+    run.failure_code = None
+    run.failure_message = None
+    run.tags = {
+        **run.tags,
+        "desired_state": "deployment_active",
+        "resumed_at": datetime.now(UTC).isoformat(),
+    }
+    db.flush()
+    return run
+
+
+def cleanup_model_deployment(
+    db: Session,
+    user: User,
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    client: KubernetesTrainingClient | None = None,
+) -> ModelRun:
+    run = _locked_deployment(db, user, project_id, run_id)
+    if run.status != RunStatus.CANCELLED:
+        raise HTTPException(status_code=409, detail="Shut down this deployment before cleanup.")
+    if run.tags.get("runtime_cleaned_at"):
+        return run
+    if run.k8s_job_name:
+        try:
+            (client or KubernetesTrainingClient()).delete_model_deployment(run.k8s_job_name)
+        except ApiException as exc:
+            if exc.status != 404:
+                raise
+    run.tags = {
+        **run.tags,
+        "desired_state": "deployment_cleaned",
+        "runtime_cleaned_at": datetime.now(UTC).isoformat(),
+    }
     db.flush()
     return run
 
@@ -962,6 +1118,7 @@ def registry_entry_read(entry: ModelRegistryEntry) -> RegistryEntryRead:
                 entry.model_run.target_column,
                 entry.model_run.params.get("evaluation_column"),
                 *list(entry.model_run.params.get("excluded_leakage_columns") or []),
+                *list(entry.model_run.params.get("excluded_columns") or []),
             }
         ],
     )

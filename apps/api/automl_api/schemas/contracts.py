@@ -19,7 +19,7 @@ class RevisionCreate(BaseModel):
 
 class FeatureContractCreate(RevisionCreate):
     task_type: TaskType
-    target_column: str = Field(min_length=1, max_length=255)
+    target_column: str | None = Field(default=None, min_length=1, max_length=255)
 
 
 class SearchSpaceCreate(RevisionCreate):
@@ -127,6 +127,11 @@ class CapabilitiesRead(BaseModel):
     deployment_target: str
     upload_data_region: str
     upload_storage_driver: str
+    # P6-W02: runtime auth capabilities so the UI can hide registration and
+    # password flows entirely in OIDC-only environments.
+    registration_enabled: bool = True
+    password_login_enabled: bool = True
+    password_reset_enabled: bool = True
 
 
 class CursorPage(BaseModel):

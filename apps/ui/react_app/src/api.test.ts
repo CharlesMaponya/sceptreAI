@@ -113,6 +113,15 @@ describe("API response parsing", () => {
     );
   });
 
+  it("shows the explanation and blockers from a rejected precheck", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(JSON.stringify({ detail: {
+      message: "Drift precheck failed.", blockers: ["The namespace quota has no available memory."],
+    } }), { status: 409 }));
+    await expect(api("/operations/drift")).rejects.toThrow(
+      "Drift precheck failed. The namespace quota has no available memory.",
+    );
+  });
+
   it("accepts empty and plain-text success responses", async () => {
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
@@ -286,5 +295,46 @@ describe("authenticated binary downloads", () => {
       .mockResolvedValueOnce(new Response("invalid", { status: 401 }));
     await expect(apiBlob("/api/v1/offline")).rejects.toThrow("session has expired");
     expect(getSession()).toBeNull();
+  });
+});
+
+
+describe("concurrent polling session rotation", () => {
+  beforeEach(() => { setSession(null); vi.restoreAllMocks(); });
+  const tokens = { access_token: "expired", refresh_token: "refresh-1", token_type: "bearer", expires_in: 60 };
+
+  it("shares one rotation across JSON and binary requests", async () => {
+    setSession({ user, tokens });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (path, options) => {
+      if (String(path).endsWith("/auth/refresh")) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return Response.json({ ...tokens, access_token: "fresh", refresh_token: "refresh-2" });
+      }
+      if (new Headers(options?.headers).get("Authorization") === "Bearer expired") {
+        return Response.json({ detail: "Expired" }, { status: 401 });
+      }
+      return Response.json({ status: "succeeded" });
+    });
+    const [run, journey, download] = await Promise.all([
+      api("/runs"), api("/journey"), apiBlob("/api/v1/export"),
+    ]);
+    expect(run).toEqual({ status: "succeeded" });
+    expect(journey).toEqual(run);
+    expect(download.blob.size).toBeGreaterThan(0);
+    expect(fetchMock.mock.calls.filter(([path]) => String(path).endsWith("/auth/refresh"))).toHaveLength(1);
+    expect(getSession()?.tokens.refresh_token).toBe("refresh-2");
+  });
+
+  it.each([false, true])("does not restore a previous login after a session change (new account: %s)", async (newAccount) => {
+    setSession({ user, tokens });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (path) => {
+      if (String(path).endsWith("/auth/refresh")) {
+        setSession(newAccount ? { user: { ...user, id: "different-user" }, tokens } : null);
+        return Response.json({ ...tokens, access_token: "fresh" });
+      }
+      return Response.json({ detail: "Expired" }, { status: 401 });
+    });
+    await expect(api("/runs")).rejects.toThrow("session has expired");
+    expect(getSession()?.user.id ?? null).toBe(newAccount ? "different-user" : null);
   });
 });

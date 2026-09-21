@@ -69,12 +69,16 @@ spec:
         - name: seaweedfs
           image: {{ include "sceptre.image" (dict "root" . "image" .Values.seaweedfs.image) | quote }}
           imagePullPolicy: {{ .Values.seaweedfs.image.pullPolicy }}
-          args: ["mini", "-dir=/data"]
+          args:
+            - mini
+            - -dir=/data
+            - {{ printf "-s3.cacheCapacityMB=%v" .Values.seaweedfs.s3CacheCapacityMB | quote }}
           envFrom:
             - secretRef:
                 name: {{ include "sceptre.objectStoreSecretName" . }}
           env:
             - {name: S3_BUCKET, value: {{ .Values.seaweedfs.bucket | quote }}}
+            - {name: GOMEMLIMIT, value: {{ .Values.seaweedfs.goMemoryLimit | quote }}}
           ports:
             - {name: s3, containerPort: 8333}
           startupProbe:
@@ -122,7 +126,7 @@ metadata:
     app.kubernetes.io/component: object-store-bootstrap
 spec:
   backoffLimit: 10
-  activeDeadlineSeconds: 300
+  activeDeadlineSeconds: 900
   ttlSecondsAfterFinished: 300
   template:
     metadata:

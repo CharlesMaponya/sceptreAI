@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,7 +7,7 @@ import { setSession } from "../api";
 import { ProjectOverview } from "./ProjectOverview";
 
 vi.mock("../components/PlotlyChart", () => ({
-  default: () => <div data-testid="target-chart" />,
+  default: ({ data }: { data: unknown }) => <div data-testid="target-chart">{JSON.stringify(data)}</div>,
 }));
 
 const response = (data: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(data), {
@@ -19,8 +19,7 @@ const project = {
   updated_at: "2026-01-01T00:00:00Z",
 };
 
-function renderOverview() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderOverview(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(<QueryClientProvider client={client}>
     <MemoryRouter initialEntries={["/projects/project-1"]}>
       <Routes><Route path="/projects/:projectId" element={<ProjectOverview />} /></Routes>
@@ -36,7 +35,7 @@ describe("project overview qualification states", () => {
 
   it("guides an empty project to its first immutable dataset", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/projects/project-1")) return response(project);
       return response([]);
     });
@@ -53,13 +52,16 @@ describe("project overview qualification states", () => {
 
   it("shows active temporal profiling progress without allowing target changes", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/projects/project-1")) return response(project);
       if (url.endsWith("/training/runs")) return response([{
         id: "run-active", run_name: "temporal-active", task_type: "time_series", status: "running",
         created_at: "2026-01-02T00:00:00Z",
       }]);
       if (url.endsWith("/projects/project-1/datasets")) return response([{
+        id: "drift-data", name: "Latest drift upload", latest_version_number: 1,
+        tags: { purpose: "drift" },
+      }, {
         id: "dataset-1", name: "Events", latest_version_number: 1,
       }]);
       if (url.endsWith("/datasets/dataset-1/versions")) return response([{
@@ -89,7 +91,7 @@ describe("project overview qualification states", () => {
   it("surfaces a failed profile and permits an explicit retry", async () => {
     let body: unknown;
     vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/projects/project-1")) return response(project);
       if (url.endsWith("/training/runs")) return response([]);
       if (url.endsWith("/projects/project-1/datasets")) return response([{
@@ -115,12 +117,12 @@ describe("project overview qualification states", () => {
 
     expect(await screen.findByText("Worker capacity was reclaimed.")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Start profile" }));
-    await waitFor(() => expect(body).toEqual({ target_column: "churned", force: false }));
+    await waitFor(() => expect(body).toEqual({ target_column: "churned", time_column: null, force: false }));
   });
 
   it("renders completed classification evidence and leakage exclusions", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/projects/project-1")) return response(project);
       if (url.endsWith("/training/runs")) return response([{
         id: "run-1", run_name: null, task_type: "classification", status: "succeeded",
@@ -154,14 +156,14 @@ describe("project overview qualification states", () => {
 
     expect(await screen.findByRole("heading", { name: "Classification task identified" }))
       .toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Class balance" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Class balance" })).toBeInTheDocument();
     expect(await screen.findByText(/post_outcome_code/)).toBeInTheDocument();
     expect(screen.getByText("run-1")).toBeInTheDocument();
   });
 
   it("handles a dataset with no usable version", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/projects/project-1")) return response(project);
       if (url.endsWith("/training/runs")) return response([]);
       if (url.endsWith("/projects/project-1/datasets")) return response([{
@@ -175,4 +177,41 @@ describe("project overview qualification states", () => {
     await screen.findByText("The selected dataset has no available version.");
     expect(screen.getByLabelText("Target column")).toBeDisabled();
   });
+});
+
+
+it("does not cache partial target counts or switch back to the upload sample after training starts", async () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const profile = { id: "profile-stable", status: "running", target_column: "is_fraud", row_count: 700,
+    overview_json: { execution_mode: "kuberay", task_inference: { task_type: "classification", confidence: .9, rationale: "Binary target" } } };
+  let active = false;
+  let finishResult: (response: Response) => void = () => {};
+  const result = new Promise<Response>(resolve => { finishResult = resolve; });
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(input => {
+    const url = String(input);
+    if (url.endsWith("/projects/project-1")) return response(project);
+    if (url.endsWith("/training/runs")) return response(active ? [{ id: "run-1", status: "running", created_at: "2026-01-01", task_type: "classification" }] : []);
+    if (url.endsWith("/datasets")) return response([{ id: "dataset-1", name: "Transactions" }]);
+    if (url.endsWith("/versions")) return response([{ id: "version-1", version_number: 1, schema_json: { columns: [{ name: "is_fraud", semantic_type: "categorical", preview_distribution: [{ label: "1", count: 5 }] }] } }]);
+    if (url.endsWith("/profile-jobs/latest")) return response(profile);
+    if (url.endsWith("/profile-stable/result")) return result;
+    return response([]);
+  });
+  const view = renderOverview(client);
+  expect(await screen.findByTestId("target-chart")).toHaveTextContent('"y":[5]');
+  expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/profile-stable/result"))).toBe(false);
+  profile.status = "succeeded";
+  await act(async () => { client.setQueryData(["profile", "version-1"], { ...profile }); });
+  expect(await screen.findByText("Loading the completed target profile…")).toBeInTheDocument();
+  expect(screen.queryByTestId("target-chart")).not.toBeInTheDocument();
+  await act(async () => { finishResult(new Response(JSON.stringify({ row_count: 700, feature_profiles_json: { is_fraud: { name: "is_fraud", statistics: {}, missing_count: 20, distribution: [{ label: "1", count: 680 }] } } }), { headers: { "Content-Type": "application/json" } })); });
+  expect(await screen.findByTestId("target-chart")).toHaveTextContent('"y":[680]');
+  expect(screen.getByText(/20 rows have no target value/)).toBeInTheDocument();
+  active = true;
+  await act(async () => { await client.invalidateQueries({ queryKey: ["runs", "project-1"] }); });
+  expect(screen.getByTestId("target-chart")).toHaveTextContent('"y":[680]');
+  view.unmount();
+  renderOverview(client);
+  expect(await screen.findByTestId("target-chart")).toHaveTextContent('"y":[680]');
+  expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/profile-stable/result"))).toHaveLength(1);
 });

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import io
 import sys
 import uuid
@@ -88,20 +89,16 @@ def test_external_regression_validation_returns_residuals(
     assert result["diagnostics"]["external_rows"] == 20
 
 
-def test_model_loading_falls_back_to_minio_mirror(monkeypatch) -> None:
+def test_model_loading_uses_verified_mirror(monkeypatch) -> None:
     buffer = io.BytesIO()
     joblib.dump({"model": "persisted"}, buffer)
     store = SimpleNamespace(read_bytes=lambda _: buffer.getvalue())
     monkeypatch.setattr(analysis, "get_object_store", lambda: store)
-    monkeypatch.setattr(
-        analysis.mlflow_sklearn,
-        "load_model",
-        lambda _: (_ for _ in ()).throw(RuntimeError("artifact missing")),
-    )
     run = SimpleNamespace(
         params={
             "model_mlflow_run_id": "missing-run",
             "model_artifact_uri": "minio://automl/model.joblib",
+            "model_artifact_sha256": hashlib.sha256(buffer.getvalue()).hexdigest(),
         }
     )
 
@@ -122,13 +119,14 @@ def test_candidate_model_is_mirrored_with_stable_key(monkeypatch) -> None:
     )
     run = SimpleNamespace(project_id="project", id="run")
 
-    uri = pipeline._persist_candidate_model(
+    uri, digest = pipeline._persist_candidate_model(
         run,
         "Model With Spaces",
         {"fitted": True},
     )
 
     assert uri.endswith("/models/Model-With-Spaces.joblib")
+    assert digest == __import__("hashlib").sha256(captured["content"]).hexdigest()
     assert joblib.load(io.BytesIO(captured["content"])) == {"fitted": True}
 
 
@@ -210,7 +208,7 @@ def test_explainability_result_includes_global_and_sample_percentages(
         "_load_model",
         lambda *_: SimpleNamespace(predict=lambda values: values["first"].to_numpy()),
     )
-    monkeypatch.setattr(analysis, "_load_dataframe", lambda _: frame.copy())
+    monkeypatch.setattr(analysis, "_load_explanation_dataframe", lambda _: frame.copy())
     run = SimpleNamespace(
         target_column="target",
         params={"max_rows": 4},
@@ -281,6 +279,7 @@ def test_failed_training_run_allows_shap_for_successful_candidate(monkeypatch) -
 
 def test_external_validation_rejects_missing_training_columns() -> None:
     source = SimpleNamespace(
+        params={},
         dataset_version=SimpleNamespace(
             schema_json={
                 "columns": [{"name": "age"}, {"name": "income"}, {"name": "target"}],
@@ -295,6 +294,8 @@ def test_external_validation_rejects_missing_training_columns() -> None:
 
     with pytest.raises(HTTPException, match="Missing columns: income"):
         validation_service._require_matching_validation_columns(source, external)
+    source.params = {"excluded_columns": ["income"]}
+    validation_service._require_matching_validation_columns(source, external)
 
 
 def test_non_predictive_cluster_model_uses_fitted_centroids() -> None:
@@ -627,3 +628,40 @@ def test_explainability_launch_reuses_active_attempt(monkeypatch) -> None:
 
     assert result.cached is True
     assert result.run.id == existing.id
+
+
+def test_shap_reads_bounded_prepared_training_rows_without_raw_access(tmp_path, monkeypatch):
+    from contextlib import nullcontext
+
+    from automl_api.storage.contracts import RayDataSourceDescriptor
+
+    path = tmp_path / "train.parquet"
+    pd.DataFrame({"row_id": [str(i) for i in range(2000)], "feature": range(2000)}).to_parquet(path)
+    source = SimpleNamespace(id=uuid.uuid4(), project_id=uuid.uuid4())
+    run = SimpleNamespace(
+        project_id=source.project_id,
+        params={"source_training_run_id": str(source.id), "max_rows": 20},
+    )
+    db = SimpleNamespace(get=lambda *_: source)
+    monkeypatch.setattr(analysis, "get_session_factory", lambda: lambda: nullcontext(db))
+    monkeypatch.setattr(
+        analysis,
+        "_bound_split_revision",
+        lambda *_: SimpleNamespace(
+            specification={"uris": {"train": str(path), "final_label": "forbidden"}}
+        ),
+    )
+    requested = []
+
+    def descriptor(uri):
+        requested.append(uri)
+        return RayDataSourceDescriptor(path=uri, filesystem_options={}, provider="local")
+
+    monkeypatch.setattr(
+        analysis, "get_object_store", lambda: SimpleNamespace(dataframe_source=descriptor)
+    )
+    monkeypatch.setattr(analysis, "_ray_source", lambda path, _: (path, None))
+    result = analysis._load_explanation_dataframe(run)
+    assert requested == [str(path)]
+    assert len(result) == 1000
+    assert list(result.columns) == ["feature"]

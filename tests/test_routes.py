@@ -29,6 +29,7 @@ def test_phase_two_routes_are_registered() -> None:
         "/api/v1/projects/{project_id}/datasets/upload",
         "/api/v1/projects/{project_id}/datasets/{dataset_id}",
         "/api/v1/projects/{project_id}/datasets/{dataset_id}/versions",
+        "/api/v1/projects/{project_id}/datasets/{dataset_id}/versions/{dataset_version_id}/target-preview",
         "/api/v1/projects/{project_id}/datasets/{dataset_id}/versions/{dataset_version_id}/profile",
         "/api/v1/projects/{project_id}/datasets/{dataset_id}/versions/{dataset_version_id}/profile-jobs",
         "/api/v1/projects/{project_id}/datasets/{dataset_id}/versions/{dataset_version_id}/profile-jobs/latest",

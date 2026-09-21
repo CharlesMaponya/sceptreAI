@@ -206,6 +206,7 @@ def build_model_pipeline(
     parameters: dict[str, Any] | None = None,
     excluded_columns: list[str] | None = None,
     current_phase: str | None = None,
+    prepared_split: bool = False,
 ) -> dict[str, Any]:
     processing = feature_processing_contract(model_name)
     statuses = _pipeline_statuses(state, current_phase)
@@ -215,6 +216,11 @@ def build_model_pipeline(
         TaskType.TIME_SERIES: "Ordered 80/20 holdout plus time-series cross-validation",
         TaskType.CLUSTERING: "K-fold stability evaluation on transformed features",
     }.get(task_type, "Task-aware holdout and cross-validation")
+    if prepared_split:
+        split = (
+            "Saved training and validation partitions; cross-validation uses training rows only. "
+            "The separate final-test partition remains sealed."
+        )
     stages = [
         _stage(
             "data",
@@ -354,6 +360,8 @@ def _pipeline_statuses(state: str, current_phase: str | None) -> list[str]:
             "cross_validating": 5,
             "fitting_final_model": 5,
             "evaluating": 6,
+            "learning_curve": 6,
+            "finalizing_run": 7,
             "logging_to_mlflow": 7,
             "saving_model": 7,
         }.get(current_phase or "", 5)

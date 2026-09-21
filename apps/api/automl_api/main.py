@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response, status
@@ -13,14 +14,18 @@ from automl_api.api.routes import (
     contracts,
     datasets,
     monitoring,
+    oidc,
     operations,
     profiling,
     projects,
+    serving_artifacts,
     training,
     validation,
 )
 from automl_api.core.config import get_settings
+from automl_api.core.structured_logging import bind_logging_context, configure_structured_logging
 from automl_api.db.session import get_engine
+from automl_api.security.authentication_policy import validate_authentication_configuration
 from automl_api.services.profiling_jobs import resume_incomplete_profiling_jobs
 from automl_api.services.upload_policy import (
     configured_upload_data_region,
@@ -32,6 +37,7 @@ from automl_api.storage.object_store import get_object_store
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    configure_structured_logging()
     resume_incomplete_profiling_jobs()
     yield
 
@@ -39,6 +45,7 @@ async def lifespan(_: FastAPI):
 def create_app() -> FastAPI:
     settings = get_settings()
     validate_scanner_configuration(settings)
+    validate_authentication_configuration(settings)
     configured_upload_data_region(settings)
     if hasattr(settings, "object_store_type"):
         get_object_store(settings)
@@ -123,6 +130,8 @@ def create_app() -> FastAPI:
         return {"status": "ok", "database": "ok", "object_store": "ok"}
 
     app.include_router(auth.router, prefix="/api/v1")
+    app.include_router(oidc.router, prefix="/api/v1")
+    app.include_router(serving_artifacts.router, prefix="/api/v1")
     app.include_router(contracts.router, prefix="/api/v1")
     app.include_router(projects.router, prefix="/api/v1")
     app.include_router(datasets.router, prefix="/api/v1")
@@ -131,6 +140,17 @@ def create_app() -> FastAPI:
     app.include_router(validation.router, prefix="/api/v1")
     app.include_router(operations.router, prefix="/api/v1")
     app.include_router(monitoring.router, prefix="/api/v1")
+
+    @app.middleware("http")
+    async def correlate_requests(request: Request, call_next):
+        header_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        bind_logging_context(request_id=header_id)
+        try:
+            response = await call_next(request)
+        finally:
+            bind_logging_context(request_id=None)
+        response.headers["X-Request-ID"] = header_id
+        return response
 
     return app
 

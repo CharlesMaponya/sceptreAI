@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import math
+from decimal import Decimal, InvalidOperation
+from numbers import Real
 from typing import Any
 
 import numpy as np
@@ -157,7 +159,8 @@ def classification_evaluation(
         if probabilities is not None:
             metrics["log_loss"] = float(log_loss(test_y, probabilities, labels=labels))
             if len(labels) == 2:
-                assert positive_index is not None
+                if positive_index is None:
+                    raise ValueError("Binary classification requires a positive class index.")
                 positive = probabilities[:, positive_index]
                 binary_y = (np.asarray(test_y) == labels[positive_index]).astype(int)
                 metrics["roc_auc"] = float(roc_auc_score(binary_y, positive))
@@ -209,7 +212,8 @@ def classification_evaluation(
                     for index, label in enumerate(labels)
                 ]
         elif scores is not None and len(labels) == 2:
-            assert positive_index is not None
+            if positive_index is None:
+                raise ValueError("Binary classification requires a positive class index.")
             binary_y = (np.asarray(test_y) == labels[positive_index]).astype(int)
             positive_scores = np.asarray(scores)
             if positive_index == 0:
@@ -250,6 +254,16 @@ def _binary_positive_index(
         for index, label in enumerate(labels):
             if str(label) == requested:
                 return index
+        # Estimators may expose integral numeric targets as floats (1 -> 1.0).
+        # Preserve exact matching for string categories such as "01" and "1".
+        try:
+            numeric = Decimal(requested)
+            if numeric.is_finite():
+                for index, label in enumerate(labels):
+                    if isinstance(label, Real) and Decimal(str(label)) == numeric:
+                        return index
+        except InvalidOperation:
+            pass
         raise ValueError(f"Positive label '{requested}' is not present in the fitted classes.")
     counts = np.asarray([np.sum(np.asarray(target) == label) for label in labels])
     return 1 if counts[1] <= counts[0] else 0

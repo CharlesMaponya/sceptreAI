@@ -64,11 +64,27 @@ def test_manifest_rejects_extension_type_size_and_spreadsheet_size() -> None:
             filename="data.csv", content_type="text/csv", byte_size=201 * 1024 * 1024,
             settings=_settings(),
         )
-    with pytest.raises(ValueError, match="spreadsheet"):
+    with pytest.raises(ValueError, match="large_excel_requires_conversion|spreadsheet"):
         validate_upload_manifest(
             filename="data.xlsx", content_type="application/zip", byte_size=101 * 1024 * 1024,
             settings=_settings(),
         )
+
+
+def test_manifest_large_excel_error_is_deterministic_and_actionable() -> None:
+    with pytest.raises(ValueError, match="large_excel_requires_conversion") as error:
+        validate_upload_manifest(
+            filename="data.xlsx",
+            content_type="application/zip",
+            byte_size=101 * 1024 * 1024,
+            settings=_settings(),
+        )
+
+    message = str(error.value)
+    assert "CSV" in message
+    assert "JSONL" in message or "NDJSON" in message
+    assert "Parquet" in message
+    assert "convert" in message.lower()
 
 
 def test_builtin_stream_inspection_hash_encoding_width_and_signatures() -> None:

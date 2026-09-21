@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from automl_api.core.config import Settings
 from automl_api.models.enums import CommandStatus, RunKind, RunStatus, ScopeStatus, TaskType
 from automl_api.schemas.training import (
     ClusterCapacityRead,
@@ -15,6 +16,7 @@ from automl_api.schemas.training import (
     TrainingLaunchRequest,
 )
 from automl_api.services import training
+from automl_api.training.model_catalog import CandidateSpec
 from fastapi import HTTPException
 from kubernetes.client import ApiException
 
@@ -210,6 +212,55 @@ def test_training_estimate_uses_catalog_cost_and_leakage_evidence(monkeypatch) -
     assert kwargs["optimization_iterations"] == 3
 
 
+def test_all_models_use_one_disclosed_pairwise_safe_tier(monkeypatch) -> None:
+    version = _version()
+    version.byte_size = 2 * 1024**3
+    version.row_count = 12_748_986
+    version.column_count = 19
+    estimate = _estimate()
+    client = MagicMock()
+    client.estimate.return_value = estimate
+    db = _Session(scalar_values=[version, 0, 0])
+    monkeypatch.setattr(training, "require_project_role", lambda *_args: None)
+    monkeypatch.setattr(
+        training,
+        "get_object_store",
+        lambda: SimpleNamespace(exists=lambda _: True),
+    )
+    monkeypatch.setattr(training, "_reconcile_active_runs", lambda *_args: None)
+    monkeypatch.setattr(training, "_latest_leakage_analysis", lambda *_args: (None, {}))
+
+    result = training.estimate_training_run(
+        db,
+        SimpleNamespace(id=uuid.uuid4()),
+        version.project_id,
+        _request(
+            dataset_version_id=version.id,
+            candidate_models=["GaussianProcessRegressor", "Ridge"],
+            candidate_limit=2,
+        ),
+        client,
+    )
+
+    kwargs = client.estimate.call_args.kwargs
+    assert kwargs["dataset_rows"] == 914_000
+    assert kwargs["dataset_bytes"] < version.byte_size
+    assert result.sample_tier_summary == {
+        "policy": "capacity_adaptive_random_family_v2",
+        "row_count": 914_000,
+        "pairwise_row_count": 4_000,
+        "validation_row_count": 10_000,
+        "feature_statistics_max_rows": 50_000,
+        "full_row_count": 12_748_986,
+        "sampled": True,
+        "selected_node": None,
+        "pod_memory_limit_mb": 2_048,
+        "order": "stable_row_id",
+    }
+    assert "permits 914,000" in " ".join(result.warnings)
+    assert "4,000 target-aware" in " ".join(result.warnings)
+
+
 def test_training_estimate_accepts_completed_clear_leakage_profile(monkeypatch) -> None:
     version = _version()
     client = MagicMock()
@@ -242,8 +293,13 @@ def test_training_estimate_blocks_missing_objects_and_concurrency(monkeypatch) -
     estimate = _estimate()
     client = MagicMock()
     client.estimate.return_value = estimate
-    db = _Session(scalar_values=[version, 2, 1])
+    db = _Session(scalar_values=[version, 15, 15, 5])
     monkeypatch.setattr(training, "require_project_role", lambda *_args: None)
+    monkeypatch.setattr(
+        training,
+        "get_settings",
+        lambda: Settings(environment="production"),
+    )
     monkeypatch.setattr(
         training,
         "get_object_store",
@@ -264,7 +320,7 @@ def test_training_estimate_blocks_missing_objects_and_concurrency(monkeypatch) -
     blockers = " ".join(result.blockers)
     assert "object is missing" in blockers
     assert "Database concurrency limit" in blockers
-    assert "already has an active" in blockers
+    assert "Project concurrency limit" in blockers
     assert "No completed leakage profile" in " ".join(result.warnings)
 
 
@@ -321,7 +377,8 @@ def _launch_request(version_id: uuid.UUID) -> TrainingLaunchRequest:
     )
 
 
-def _mock_durable_launch(monkeypatch, payload: TrainingLaunchRequest) -> None:
+def _mock_durable_launch(monkeypatch, payload: TrainingLaunchRequest):
+    monkeypatch.setattr(training, "require_project_role", lambda *_args: None)
     command = SimpleNamespace(
         id=uuid.uuid4(),
         status=CommandStatus.PENDING,
@@ -335,6 +392,29 @@ def _mock_durable_launch(monkeypatch, payload: TrainingLaunchRequest) -> None:
     monkeypatch.setattr(training, "begin_command", lambda *_args, **_kwargs: (command, False))
     monkeypatch.setattr(training, "_resolve_launch_revisions", lambda *_args: revisions)
     monkeypatch.setattr(training, "enqueue_outbox", MagicMock())
+    return command
+
+
+def test_launch_replay_returns_original_response_before_capacity_checks(monkeypatch):
+    version = _version()
+    payload = _launch_request(version.id)
+    command = _mock_durable_launch(monkeypatch, payload)
+    monkeypatch.setattr(training, "_lock_training_admission", MagicMock())
+    monkeypatch.setattr(training, "estimate_training_run", lambda *_: _estimate())
+    monkeypatch.setattr(training, "_latest_leakage_analysis", lambda *_: (None, {}))
+    user = SimpleNamespace(id=uuid.uuid4())
+    client = SimpleNamespace(settings=SimpleNamespace(training_namespace="sceptre"))
+    initial = training.launch_training_run(
+        _Session(), user, version.project_id, payload, client, idempotency_key="repeat"
+    )
+    monkeypatch.setattr(training, "begin_command", lambda *_, **__: (command, True))
+    precheck = MagicMock(side_effect=AssertionError("capacity must not be checked on replay"))
+    monkeypatch.setattr(training, "estimate_training_run", precheck)
+    replay = training.launch_training_run(
+        _Session(), user, version.project_id, payload, client, idempotency_key="repeat"
+    )
+    assert replay == initial
+    precheck.assert_not_called()
 
 
 def test_training_launch_builds_durable_pending_run_and_outbox_intent(monkeypatch) -> None:
@@ -374,6 +454,52 @@ def test_training_launch_builds_durable_pending_run_and_outbox_intent(monkeypatc
     training.enqueue_outbox.assert_called_once()
 
 
+def test_all_catalog_launch_persists_every_resolved_candidate(monkeypatch) -> None:
+    version = _version()
+    db = _Session()
+    client = MagicMock()
+    client.settings = SimpleNamespace(training_namespace="sceptre")
+    candidates = (
+        CandidateSpec("Ridge", MagicMock(), {}, "low", True),
+        CandidateSpec("GaussianProcessRegressor", MagicMock(), {}, "high", False),
+    )
+    estimate = _estimate().model_copy(
+        update={
+            "candidate_count": len(candidates),
+            "sample_tier_summary": {"row_count": 1_000, "policy": "test", "order": "row_id"},
+        }
+    )
+    monkeypatch.setattr(training, "_lock_training_admission", MagicMock())
+    monkeypatch.setattr(training, "estimate_training_run", lambda *_args: estimate)
+    monkeypatch.setattr(training, "_latest_leakage_analysis", lambda *_args: (None, {}))
+    monkeypatch.setattr(training, "candidate_catalog", lambda _task: candidates)
+    base = _launch_request(version.id).model_dump(
+        exclude={"candidate_limit", "candidate_models", "catalog_mode"}
+    )
+    payload = TrainingLaunchRequest(**base, catalog_mode="all")
+    _mock_durable_launch(monkeypatch, payload)
+
+    training.launch_training_run(
+        db,
+        SimpleNamespace(id=uuid.uuid4()),
+        version.project_id,
+        payload,
+        client,
+        idempotency_key="launch-all",
+    )
+
+    persisted = db.added[0]
+    assert persisted.params["candidate_limit"] == 2
+    assert persisted.params["candidate_models"] == [
+        "Ridge",
+        "GaussianProcessRegressor",
+    ]
+    assert [entry["model"] for entry in persisted.tags["leaderboard"]] == [
+        "Ridge",
+        "GaussianProcessRegressor",
+    ]
+
+
 def test_training_launch_does_not_call_cluster_in_request_transaction(monkeypatch) -> None:
     version = _version()
     db = _Session()
@@ -401,6 +527,8 @@ def test_training_launch_does_not_call_cluster_in_request_transaction(monkeypatc
 
 
 def test_training_launch_rejects_failed_precheck(monkeypatch) -> None:
+    payload = _launch_request(uuid.uuid4())
+    _mock_durable_launch(monkeypatch, payload)
     estimate = _estimate().model_copy(
         update={"can_launch": False, "blockers": ["capacity exhausted"]}
     )
@@ -411,7 +539,7 @@ def test_training_launch_rejects_failed_precheck(monkeypatch) -> None:
             _Session(),
             SimpleNamespace(id=uuid.uuid4()),
             uuid.uuid4(),
-            _launch_request(uuid.uuid4()),
+            payload,
             MagicMock(),
             idempotency_key="blocked",
         )
@@ -775,6 +903,7 @@ def test_training_resources_tracks_peaks_progress_and_degraded_telemetry(monkeyp
         "memory_usage_mb": 900,
         "peak_cpu_usage_cores": 1.5,
         "peak_memory_usage_mb": 1200,
+        "status_reason": "Training pod is no longer available.",
     }
     db = _Session()
     client = MagicMock()
@@ -785,6 +914,7 @@ def test_training_resources_tracks_peaks_progress_and_degraded_telemetry(monkeyp
         "cpu_usage_cores": 1.0,
         "memory_usage_mb": 1000,
         "restart_count": 1,
+        "status_reason": None,
     }
     monkeypatch.setattr(training, "get_training_run", lambda *_args, **_kwargs: run)
 
@@ -796,6 +926,8 @@ def test_training_resources_tracks_peaks_progress_and_degraded_telemetry(monkeyp
     assert usage.peak_memory_usage_mb == 1200
     assert usage.gpu_count == 1
     assert usage.telemetry_available is True
+    assert usage.status_reason is None
+    assert run.tags["resource_usage"]["status_reason"] is None
     assert db.refreshes == 1
 
     client.training_resource_usage.side_effect = ApiException(status=503, reason="metrics down")
@@ -945,18 +1077,38 @@ def test_sync_run_status_handles_success_missing_and_stale_observation() -> None
         ("missing", RunStatus.FAILED),
     ):
         run = _run(RunStatus.QUEUED)
+        if state != "missing":
+            run.failure_code = "KUBERNETES_JOB_MISSING"
+            run.failure_message = "stale"
+            run.plain_english_failure = "stale"
         client = MagicMock()
         client.job_state.return_value = state
         training._sync_run_status(_Session(), run, client)
         assert run.status == expected
         if state == "missing":
             assert run.failure_code == "KUBERNETES_JOB_MISSING"
+        else:
+            assert run.failure_code is None
+            assert run.failure_message is None
+            assert run.plain_english_failure is None
 
     stale = _run(RunStatus.CANCELLED)
     client = MagicMock()
     client.job_state.return_value = "succeeded"
     training._sync_run_status(_Session(), stale, client)
     assert stale.status == RunStatus.CANCELLED
+
+
+def test_sync_run_status_leaves_ray_attempts_to_the_fenced_reconciler() -> None:
+    run = _run(RunStatus.RUNNING)
+    run.k8s_job_name = "sceptre-run-example-g1"
+    run.tags = {"desired_state": "ray_submitted"}
+    client = MagicMock()
+
+    training._sync_run_status(_Session(), run, client)
+
+    client.job_state.assert_not_called()
+    assert run.status == RunStatus.RUNNING
 
 
 def test_sync_run_status_applies_image_pull_grace_and_terminal_cleanup() -> None:
@@ -1139,6 +1291,31 @@ def test_leaderboard_combines_parent_extension_and_cancelled_entries(monkeypatch
     assert cancelled.pipeline.model_name == "RandomForest"
 
 
+@pytest.mark.parametrize("status", [RunStatus.FAILED, RunStatus.PREEMPTED])
+def test_terminal_leaderboard_does_not_report_active_models(monkeypatch, status) -> None:
+    run = _run(status)
+    run.tags = {
+        "current_candidate": "Ridge", "candidate_phase": "hyperparameter_search",
+        "leaderboard": [
+            {"model": "Ridge", "status": "running", "metrics": {}},
+            {"model": "Lasso", "status": "pending", "metrics": {}},
+            {"model": "LinearRegression", "status": "succeeded", "metrics": {"rmse": 1.0}},
+        ],
+    }
+    monkeypatch.setattr(training, "get_training_run", lambda *_args: run)
+    monkeypatch.setattr(training, "_leaderboard_parent", lambda *_args: run)
+    monkeypatch.setattr(training, "select_candidates", lambda *_args: [])
+    for entry in run.tags["leaderboard"]:
+        entry.update(rank=None, primary_score=None, duration_seconds=None, error=None)
+    result = training.training_leaderboard(_Session(), SimpleNamespace(), run.project_id, run.id)
+    entries = {entry.model: entry for entry in result.entries}
+    assert entries["Ridge"].status == "failed"
+    assert entries["Lasso"].status == "skipped"
+    assert entries["LinearRegression"].status == "succeeded"
+    assert entries["Ridge"].pipeline.current_phase is None
+    assert run.tags["leaderboard"][0]["status"] == "running"
+
+
 def test_rank_leaderboard_supports_minimize_unranked_and_pending() -> None:
     entries = [
         {"model": "worse", "status": "succeeded", "metrics": {"rmse": 2.0}},
@@ -1221,6 +1398,25 @@ def test_standalone_leaderboard_without_metric_remains_unranked(monkeypatch) -> 
     assert result.entries[0].status == "running"
 
 
+@pytest.mark.parametrize("nested", [False, True])
+def test_leaderboard_reads_full_partition_counts_from_saved_split(monkeypatch, nested) -> None:
+    run = _run(RunStatus.RUNNING)
+    run.params = {"split_revision_id": str(uuid.uuid4())}
+    run.tags = {"leaderboard": []}
+    counts = {"train": 810, "validation": 170, "final_test": 180}
+    specification = {"split_counts": counts}
+    if nested:
+        specification = {"identity": specification}
+    monkeypatch.setattr(training, "get_training_run", lambda *_args: run)
+    monkeypatch.setattr(training, "_leaderboard_parent", lambda *_args: run)
+    monkeypatch.setattr(training, "select_candidates", lambda *_args: [])
+    result = training.training_leaderboard(
+        _Session(scalar_values=[SimpleNamespace(specification=specification)]),
+        SimpleNamespace(), run.project_id, run.id,
+    )
+    assert result.split_counts == counts
+
+
 def _successful_submission_client() -> MagicMock:
     client = MagicMock()
     client.settings = SimpleNamespace(training_namespace="sceptre")
@@ -1265,6 +1461,46 @@ def test_restart_legacy_run_requires_immutable_revision_bindings(monkeypatch) ->
     assert error.value.status_code == 409
 
 
+def test_restart_retains_feature_exclusions_and_estimator_overrides(monkeypatch) -> None:
+    source = _run(RunStatus.CANCELLED)
+    source.run_name = "taxi"
+    source.gpu_requested = False
+    source.dataset_version_id = uuid.uuid4()
+    source.params.update(
+        {
+            "candidate_models": ["Ridge"],
+            "excluded_columns": ["fare_amount", "tip_amount"],
+            "estimator_overrides": [{"estimator": "Lasso", "enabled": False}],
+        }
+    )
+    for key in [
+        "split_revision_id",
+        "feature_contract_revision_id",
+        "feature_registry_revision_id",
+        "feature_recipe_revision_id",
+        "feature_search_space_revision_id",
+        "estimator_catalog_revision_id",
+    ]:
+        source.params[key] = str(uuid.uuid4())
+    monkeypatch.setattr(training, "require_project_role", lambda *_args: None)
+    monkeypatch.setattr(training, "get_training_run", lambda *_args, **_kwargs: source)
+    monkeypatch.setattr(training, "_get_dataset_version", lambda *_args: _version())
+    monkeypatch.setattr(
+        training, "get_object_store", lambda: SimpleNamespace(exists=lambda _: True)
+    )
+    captured = []
+
+    def capture(_db, _user, _project, payload, *_args, **_kwargs):
+        captured.append(payload)
+        raise RuntimeError("captured restart")
+
+    monkeypatch.setattr(training, "launch_training_run", capture)
+    with pytest.raises(RuntimeError, match="captured restart"):
+        training.restart_training_run(_Session(), SimpleNamespace(), source.project_id, source.id)
+    assert captured[0].excluded_columns == ["fare_amount", "tip_amount"]
+    assert captured[0].estimator_overrides[0].enabled is False
+
+
 def test_add_models_to_legacy_run_requires_immutable_revision_bindings(monkeypatch) -> None:
     monkeypatch.setattr(training, "require_project_role", lambda *_args: None)
     parent = _run(RunStatus.SUCCEEDED)
@@ -1285,3 +1521,66 @@ def test_add_models_to_legacy_run_requires_immutable_revision_bindings(monkeypat
             db, SimpleNamespace(id=uuid.uuid4()), parent.project_id, parent.id, request, client
         )
     assert error.value.status_code == 409
+
+
+@pytest.mark.parametrize("active_project", [0, 1])
+def test_estimate_uses_sealed_role_counts_and_blocks_another_project_run(
+    monkeypatch, active_project
+):
+    version = _version()
+    version.row_count = 1_000_000
+    split = SimpleNamespace(
+        dataset_version_id=version.id,
+        sealed_at=datetime.now(UTC),
+        specification={
+            "split_counts": {"train": 800_000, "validation": 5_000, "final_test": 195_000}
+        },
+    )
+    db = _Session(scalar_values=[version, split, active_project, active_project, 0])
+    client = MagicMock()
+    client.estimate.return_value = _estimate()
+    monkeypatch.setattr(training, "require_project_role", lambda *_: None)
+    monkeypatch.setattr(
+        training, "get_object_store", lambda: SimpleNamespace(exists=lambda _: True)
+    )
+    monkeypatch.setattr(training, "_reconcile_active_runs", lambda *_: None)
+    monkeypatch.setattr(training, "_latest_leakage_analysis", lambda *_: (None, {}))
+    monkeypatch.setattr(training, "_common_sample_tier_rows", lambda rows, *_args, **_kwargs: rows)
+    result = training.estimate_training_run(
+        db,
+        SimpleNamespace(id=uuid.uuid4()),
+        version.project_id,
+        _request(dataset_version_id=version.id, split_revision_id=uuid.uuid4()),
+        client,
+    )
+    assert client.estimate.call_args.kwargs["dataset_rows"] == 800_000
+    assert result.sample_tier_summary["row_count"] == 800_000
+    assert result.sample_tier_summary["validation_row_count"] == 5_000
+    assert result.sample_tier_summary["source_row_count"] == 1_000_000
+    assert result.sample_tier_summary["split_counts"]["final_test"] == 195_000
+    if active_project:
+        assert not result.can_launch
+        assert any("already has an active" in item for item in result.blockers)
+
+
+@pytest.mark.parametrize("problem", ["missing", "wrong_dataset", "unsealed", "no_counts"])
+def test_estimate_rejects_an_unusable_split(problem):
+    version = _version()
+    split = SimpleNamespace(
+        dataset_version_id=version.id,
+        sealed_at=datetime.now(UTC),
+        specification={"split_counts": {"train": 70, "validation": 15, "final_test": 15}},
+    )
+    if problem == "missing":
+        split = None
+    elif problem == "wrong_dataset":
+        split.dataset_version_id = uuid.uuid4()
+    elif problem == "unsealed":
+        split.sealed_at = None
+    else:
+        split.specification = {}
+    with pytest.raises(HTTPException) as failure:
+        training._estimate_split_counts(
+            _Session(scalar_values=[split]), version.project_id, version, uuid.uuid4()
+        )
+    assert failure.value.status_code == 409

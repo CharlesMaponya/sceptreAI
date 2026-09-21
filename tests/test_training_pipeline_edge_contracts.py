@@ -106,7 +106,9 @@ def _mock_cluster_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(pipeline, "_log_metric_synchronously", lambda *_args: None)
     monkeypatch.setattr(pipeline, "_log_sklearn_model", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(pipeline, "_mirror_candidate_evidence_to_parent", lambda *_args: None)
-    monkeypatch.setattr(pipeline, "_persist_candidate_model", lambda *_args: "s3://model")
+    monkeypatch.setattr(
+        pipeline, "_persist_candidate_model", lambda *_args: ("s3://model", "a" * 64)
+    )
 
 
 def test_clustering_candidate_searches_cluster_count_and_persists(
@@ -189,8 +191,8 @@ def test_clustering_tournament_validation_success_and_total_failure(
 @pytest.mark.parametrize(
     ("task", "rows", "folds", "expected"),
     [
-        (TaskType.CLASSIFICATION, [0, 0, 1, 1, 1], 5, 2),
-        (TaskType.REGRESSION, list(range(100)), 5, 2),
+        (TaskType.CLASSIFICATION, [0, 0, 0, 1, 1, 1], 3, 3),
+        (TaskType.REGRESSION, list(range(100)), 7, 7),
     ],
 )
 def test_cross_validation_strategy_bounds(task, rows, folds, expected) -> None:
@@ -205,7 +207,11 @@ def test_cross_validation_strategy_rejects_too_little_data() -> None:
     with pytest.raises(ValueError, match="four training"):
         pipeline._cross_validation_strategy(pd.Series(range(3)), TaskType.REGRESSION, 3)
     strategy = pipeline._cross_validation_strategy(pd.Series(range(40)), TaskType.TIME_SERIES, 5)
-    assert isinstance(strategy, TimeSeriesSplit) and strategy.n_splits == 2
+    assert isinstance(strategy, TimeSeriesSplit) and strategy.n_splits == 5
+    with pytest.raises(ValueError, match="requested cross-validation folds"):
+        pipeline._cross_validation_strategy(pd.Series([0, 0, 1, 1]), TaskType.CLASSIFICATION, 5)
+    with pytest.raises(ValueError, match="fewer training rows"):
+        pipeline._cross_validation_strategy(pd.Series(range(4)), TaskType.REGRESSION, 5)
 
 
 def test_time_series_split_and_order_column_edges() -> None:

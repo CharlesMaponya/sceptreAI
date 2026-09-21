@@ -10,7 +10,7 @@ import select
 import shlex
 import shutil
 import signal
-import subprocess
+import subprocess  # nosec B404 - runs only the operator-configured scanner binary
 import tempfile
 import time
 import zipfile
@@ -90,8 +90,10 @@ def validate_upload_manifest(
         )
     if suffix in {".xlsx", ".xls"} and byte_size > settings.buffered_upload_max_bytes:
         raise ValueError(
-            "Compressed spreadsheet uploads above 100 MiB are rejected to bound "
-            "decompression and parser risk; convert the file to CSV or Parquet."
+            "422 large_excel_requires_conversion: Excel workbooks above "
+            f"{settings.buffered_upload_max_bytes} bytes are rejected to bound "
+            "decompression and parser risk. Convert the file to CSV, JSONL/NDJSON, "
+            "or Parquet before upload."
         )
     return suffix
 
@@ -400,7 +402,7 @@ def _validate_xlsx_archive(source: BinaryIO, settings: Settings) -> None:
 
 
 def _start_scanner(command: list[str]) -> subprocess.Popen[bytes]:
-    return subprocess.Popen(  # noqa: S603 - command is operator-configured, never shell-expanded.
+    return subprocess.Popen(  # noqa: S603 - command is operator-configured, never shell-expanded.  # nosec B603 - shlex-split, validated executable, shell=False
         command,
         stdin=subprocess.PIPE,
         stdout=subprocess.DEVNULL,

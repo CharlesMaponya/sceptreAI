@@ -51,6 +51,10 @@ def _begin_fenced_attempt(run_id: uuid.UUID) -> tuple[uuid.UUID, str] | None:
             raise ValueError(f"Run {run_id} was not found.")
         run.status = RunStatus.RUNNING
         run.started_at = run.started_at or datetime.now(UTC)
+        run.failure_code = None
+        run.failure_message = None
+        run.plain_english_failure = None
+        run.finished_at = None
         db.commit()
     return context
 

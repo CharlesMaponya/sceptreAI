@@ -85,8 +85,9 @@ def _mutation(
 @router.get("/capabilities", response_model=CapabilitiesRead)
 def capabilities() -> CapabilitiesRead:
     settings = get_settings()
+    simple_enabled = settings.simple_auth_enabled
     return CapabilitiesRead(
-        auth_modes=["simple"] if settings.simple_auth_enabled else ["sso"],
+        auth_modes=["simple"] if simple_enabled else [],
         upload_protocols=["multipart", "direct-object-store"],
         task_types=list(TaskType),
         active_catalog_revisions={},
@@ -95,6 +96,9 @@ def capabilities() -> CapabilitiesRead:
         deployment_target=settings.environment,
         upload_data_region=configured_upload_data_region(settings),
         upload_storage_driver=getattr(settings, "object_store_type", "embedded"),
+        registration_enabled=simple_enabled,
+        password_login_enabled=simple_enabled,
+        password_reset_enabled=simple_enabled,
     )
 
 

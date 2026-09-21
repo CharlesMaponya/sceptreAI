@@ -49,8 +49,9 @@ describe("project access and settings", () => {
     const requests: Array<{ url: string; options?: RequestInit }> = [];
     vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
       const url = String(input);
+      if (url.includes("/share-links?")) return response([]);
       requests.push({ url, options });
-      if (url.endsWith("/members")) return response([{
+      if (url.includes("/members?")) return response([{
         id: "membership-1", user_id: "user-1", email: "ada@example.com",
         full_name: "Ada Lovelace", role: "owner", accepted_at: "2026-01-01T00:00:00Z",
       }]);
@@ -96,7 +97,8 @@ describe("project access and settings", () => {
   it("renders unnamed members and reports invite creation failures", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
       const url = String(input);
-      if (url.endsWith("/members")) return response([{
+      if (url.includes("/share-links?")) return response([]);
+      if (url.includes("/members?")) return response([{
         id: "membership-2", user_id: "user-2", email: "member@example.com",
         full_name: "", role: "viewer", accepted_at: null,
       }]);

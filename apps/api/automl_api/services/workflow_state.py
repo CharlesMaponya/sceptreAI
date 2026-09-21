@@ -286,8 +286,13 @@ def replay_dead_outbox(
     )
     if command is None:
         raise LookupError("The outbox command was not found.")
-    transition_command(command, CommandStatus.PENDING)
-    transition_command(command, CommandStatus.RUNNING)
+    if command.status == CommandStatus.FAILED:
+        transition_command(command, CommandStatus.PENDING)
+        transition_command(command, CommandStatus.RUNNING)
+    elif command.status != CommandStatus.SUCCEEDED:
+        raise InvalidTransition(
+            f"Cannot replay a dead outbox entry for command status {command.status}."
+        )
     command.replayed_by = actor_id
     command.retry_count = 0
     command.terminal_reason = None
@@ -603,6 +608,7 @@ def cas_register_terminal_artifact(
             WorkflowAttempt.status.not_in(
                 {
                     AttemptStatus.SUCCEEDED,
+                    AttemptStatus.FAILED,
                     AttemptStatus.CANCELLED,
                     AttemptStatus.SUPERSEDED,
                 }

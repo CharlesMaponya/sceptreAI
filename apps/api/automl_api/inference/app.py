@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import io
 import os
 import tempfile
@@ -7,11 +9,12 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Any
 
+import httpx
 import joblib
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, status
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
@@ -52,7 +55,22 @@ def _load_model() -> Any:
     model_uri = os.getenv("MODEL_URI")
     if not model_uri:
         raise RuntimeError("MODEL_URI is required.")
-    payload = get_object_store().read_bytes(model_uri)
+    expected = os.getenv("MODEL_SHA256", "").removeprefix("sha256:").lower()
+    if len(expected) != 64:
+        raise RuntimeError("MODEL_SHA256 must identify the registered model bytes.")
+    download_url = os.getenv("MODEL_DOWNLOAD_URL")
+    if download_url:
+        response = httpx.get(
+            download_url,
+            headers={"X-Sceptre-Deployment-Token": os.getenv("INFERENCE_GATEWAY_TOKEN", "")},
+            timeout=120,
+        )
+        response.raise_for_status()
+        payload = response.content
+    else:
+        payload = get_object_store().read_bytes(model_uri)
+    if not hmac.compare_digest(hashlib.sha256(payload).hexdigest(), expected):
+        raise RuntimeError("Model integrity verification failed.")
     return joblib.load(io.BytesIO(payload))
 
 
@@ -96,9 +114,7 @@ def _uploaded_frames(upload: UploadFile, chunk_size: int) -> Any:
         for batch in parquet_file.iter_batches(batch_size=chunk_size):
             yield batch.to_pandas()
         return
-    raise ValueError(
-        "Unsupported file type. Upload CSV, JSONL, JSON, or Parquet."
-    )
+    raise ValueError("Unsupported file type. Upload CSV, JSONL, JSON, or Parquet.")
 
 
 def _prediction_output_frame(
@@ -144,9 +160,7 @@ def create_offline_prediction_file(
                 continue
             row_count += len(frame)
             if row_count > max_rows:
-                raise ValueError(
-                    f"Upload exceeds the {max_rows:,}-row offline prediction limit."
-                )
+                raise ValueError(f"Upload exceeds the {max_rows:,}-row offline prediction limit.")
             output = _prediction_output_frame(
                 model,
                 frame,
@@ -179,6 +193,15 @@ def create_app() -> FastAPI:
         ),
         version="1.0.0",
     )
+
+    @app.middleware("http")
+    async def authenticate_gateway(request: Request, call_next):
+        if request.url.path not in {"/health/live", "/health/ready"}:
+            expected = os.getenv("INFERENCE_GATEWAY_TOKEN", "")
+            actual = request.headers.get("X-Sceptre-Deployment-Token", "")
+            if not expected or not hmac.compare_digest(expected, actual):
+                return JSONResponse(status_code=401, content={"detail": "Authentication required."})
+        return await call_next(request)
 
     @app.get("/", include_in_schema=False)
     def index() -> RedirectResponse:
@@ -285,9 +308,7 @@ def create_app() -> FastAPI:
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Offline prediction failed: {exc}",
             ) from exc
-        output_name = (
-            f"{Path(file.filename or 'dataset').stem}-predictions.csv"
-        )
+        output_name = f"{Path(file.filename or 'dataset').stem}-predictions.csv"
         return FileResponse(
             path=output_path,
             media_type="text/csv",

@@ -9,8 +9,15 @@ from unittest.mock import MagicMock
 import automl_api.services.profiling_jobs as jobs
 import pytest
 from automl_api.models.datasets import DatasetVersion, ProfilingJob
-from automl_api.models.enums import DatasetFormat, DatasetStatus, TaskType
+from automl_api.models.enums import (
+    CommandStatus,
+    DatasetFormat,
+    DatasetStatus,
+    TaskType,
+    WorkflowStage,
+)
 from automl_api.models.iam import User
+from automl_api.models.workflows import WorkflowAttempt
 from automl_api.schemas.profiling import (
     ColumnProfileRead,
     DatasetProfileRead,
@@ -260,6 +267,7 @@ def _version() -> SimpleNamespace:
         id=uuid.uuid4(),
         project_id=uuid.uuid4(),
         dataset_id=uuid.uuid4(),
+        byte_size=1024,
         row_count=50,
         format=DatasetFormat.CSV,
         original_filename="records.csv",
@@ -352,19 +360,119 @@ def test_create_profile_job_rejects_unknown_target(monkeypatch) -> None:
     assert error.value.status_code == 422
 
 
+def test_create_profile_job_queues_large_profile_for_kuberay(monkeypatch) -> None:
+    version = _version()
+    version.byte_size = jobs.MAX_CONTROL_PLANE_PROFILE_BYTES + 1
+    monkeypatch.setattr(jobs, "require_project_role", lambda *_args: None)
+    enqueue = MagicMock()
+    monkeypatch.setattr(jobs, "_enqueue_distributed_profile", enqueue)
+
+    created_job, created = jobs.create_profiling_job(
+        _CreateSession(version, [version, None, None]),
+        SimpleNamespace(id=uuid.uuid4()),
+        version.project_id,
+        version.dataset_id,
+        version.id,
+        ProfilingJobCreate(target_column="amount"),
+    )
+
+    assert created is True
+    assert created_job.overview_json["execution_mode"] == "kuberay"
+    enqueue.assert_called_once()
+
+
+def test_create_profile_job_rejects_large_excel_before_queueing(monkeypatch) -> None:
+    version = _version()
+    version.byte_size = jobs.MAX_CONTROL_PLANE_PROFILE_BYTES + 1
+    version.format = DatasetFormat.EXCEL
+    monkeypatch.setattr(jobs, "require_project_role", lambda *_args: None)
+
+    with pytest.raises(HTTPException, match="does not accept Excel") as error:
+        jobs.create_profiling_job(
+            _CreateSession(version, [version]),
+            SimpleNamespace(id=uuid.uuid4()),
+            version.project_id,
+            version.dataset_id,
+            version.id,
+            ProfilingJobCreate(),
+        )
+
+    assert error.value.status_code == 422
+
+
+def test_enqueue_distributed_profile_creates_fenced_splitter_and_outbox(monkeypatch) -> None:
+    version = _version()
+    job = _job()
+    job.project_id = version.project_id
+    job.dataset_version_id = version.id
+    job.target_column = "amount"
+    job.overview_json = {"execution_mode": "kuberay"}
+    user = SimpleNamespace(id=uuid.uuid4())
+    command = SimpleNamespace(
+        id=uuid.uuid4(),
+        project_id=job.project_id,
+        operation="dataset.profile",
+        status=CommandStatus.PENDING,
+        resource_type=None,
+        resource_id=None,
+        response_status=None,
+        response_payload={},
+    )
+    db = _CreateSession(version, [])
+    begin = MagicMock(return_value=(command, False))
+    enqueue = MagicMock()
+    monkeypatch.setattr(jobs, "begin_command", begin)
+    monkeypatch.setattr(jobs, "enqueue_outbox", enqueue)
+
+    attempt = jobs._enqueue_distributed_profile(db, user, version, job)
+
+    assert isinstance(attempt, WorkflowAttempt)
+    assert attempt.stage == WorkflowStage.SPLITTER
+    assert attempt.dataset_version_id == version.id
+    assert attempt.workload_identity == "sceptre-dataset-splitter"
+    assert len(attempt.fencing_token) == 32
+    assert command.status == CommandStatus.RUNNING
+    assert job.overview_json["workflow_attempt_id"] == str(attempt.id)
+    assert enqueue.call_args.kwargs["topic"] == "ray.dataset.split.submit"
+    assert enqueue.call_args.kwargs["payload"]["fencing_token"] == attempt.fencing_token
+
+
+def test_enqueue_distributed_profile_replays_existing_splitter(monkeypatch) -> None:
+    version = _version()
+    job = _job()
+    job.project_id = version.project_id
+    job.dataset_version_id = version.id
+    user = SimpleNamespace(id=uuid.uuid4())
+    existing = SimpleNamespace()
+    db = _CreateSession(version, [existing])
+    monkeypatch.setattr(jobs, "begin_command", lambda *_args, **_kwargs: (object(), True))
+
+    assert jobs._enqueue_distributed_profile(db, user, version, job) is existing
+
+    db = _CreateSession(version, [None])
+    with pytest.raises(RuntimeError, match="no splitter attempt"):
+        jobs._enqueue_distributed_profile(db, user, version, job)
+
+
 def test_profile_job_queries_enforce_scope_and_not_found(monkeypatch) -> None:
     expected = _job()
     monkeypatch.setattr(jobs, "require_project_role", lambda *_args: None)
     user = SimpleNamespace(id=uuid.uuid4())
-    assert jobs.get_profiling_job(
-        _CreateSession(SimpleNamespace(), [expected]), user, expected.project_id, expected.id
-    ) is expected
-    assert jobs.latest_profiling_job(
-        _CreateSession(SimpleNamespace(), [expected]),
-        user,
-        expected.project_id,
-        expected.dataset_version_id,
-    ) is expected
+    assert (
+        jobs.get_profiling_job(
+            _CreateSession(SimpleNamespace(), [expected]), user, expected.project_id, expected.id
+        )
+        is expected
+    )
+    assert (
+        jobs.latest_profiling_job(
+            _CreateSession(SimpleNamespace(), [expected]),
+            user,
+            expected.project_id,
+            expected.dataset_version_id,
+        )
+        is expected
+    )
     with pytest.raises(HTTPException, match="not found") as error:
         jobs.get_profiling_job(
             _CreateSession(SimpleNamespace(), [None]), user, expected.project_id, expected.id
@@ -389,10 +497,14 @@ def test_profile_scheduler_deduplicates_submission_and_releases_slot(monkeypatch
 
 def test_resume_incomplete_jobs_requeues_and_schedules_each_once(monkeypatch) -> None:
     job_ids = [uuid.uuid4(), uuid.uuid4()]
+    pending_jobs = [
+        SimpleNamespace(id=job_id, overview_json={"execution_mode": "control_plane"})
+        for job_id in job_ids
+    ]
     query = MagicMock()
     session = MagicMock()
     session.__enter__.return_value = session
-    session.scalars.return_value.all.return_value = job_ids
+    session.scalars.return_value.all.return_value = pending_jobs
     session.query.return_value.filter.return_value = query
     monkeypatch.setattr(jobs, "get_session_factory", lambda: lambda: session)
     scheduled: list[uuid.UUID] = []
@@ -406,6 +518,20 @@ def test_resume_incomplete_jobs_requeues_and_schedules_each_once(monkeypatch) ->
     assert scheduled == job_ids
     query.update.assert_called_once()
     session.commit.assert_called_once()
+
+
+def test_resume_incomplete_jobs_leaves_kuberay_work_to_reconciler(monkeypatch) -> None:
+    distributed = SimpleNamespace(id=uuid.uuid4(), overview_json={"execution_mode": "kuberay"})
+    session = MagicMock()
+    session.__enter__.return_value = session
+    session.scalars.return_value.all.return_value = [distributed]
+    monkeypatch.setattr(jobs, "get_session_factory", lambda: lambda: session)
+    schedule = MagicMock()
+    monkeypatch.setattr(jobs, "schedule_profiling_job", schedule)
+
+    assert jobs.resume_incomplete_profiling_jobs() == 0
+    schedule.assert_not_called()
+    session.query.assert_not_called()
 
 
 def test_profile_worker_dispatches_partitioned_and_monolithic_paths(monkeypatch) -> None:
@@ -466,7 +592,7 @@ def test_profile_worker_persists_failure_and_preserves_cancellation(monkeypatch)
         jobs._run_profiling_job(job.id)
     assert job.status == "failed"
     assert job.failure_message == "profiling failed"
-    assert version.status == DatasetStatus.FAILED
+    assert version.status == DatasetStatus.READY
     assert job.overview_json["stages"][job.current_stage] == "failed"
 
     cancelled = _job()
@@ -481,9 +607,7 @@ def test_finish_preparation_promotes_complete_profile_atomically(monkeypatch) ->
     job = _job()
     job.row_count = 3
     job.target_column = None
-    job.feature_profiles_json = {
-        "amount": _profile(job).columns[0].model_dump(mode="json")
-    }
+    job.feature_profiles_json = {"amount": _profile(job).columns[0].model_dump(mode="json")}
     job.overview_json = {
         **job.overview_json,
         "leakage_analysis": LeakageAnalysisRead(status="not_applicable").model_dump(mode="json"),
@@ -531,9 +655,7 @@ def test_monolithic_fallback_reuses_features_but_recomputes_target_evidence(monk
     job.total_columns = 1
     job.completed_columns = 1
     job.row_count = 3
-    job.feature_profiles_json = {
-        "amount": _profile(job).columns[0].model_dump(mode="json")
-    }
+    job.feature_profiles_json = {"amount": _profile(job).columns[0].model_dump(mode="json")}
     job.artifact_uris_json = {"features": "s3://profiles/reused-features.json"}
     job.overview_json = {
         **job.overview_json,
@@ -614,3 +736,10 @@ def test_partitioned_ray_polars_stages_checkpoint_batches_and_complete(monkeypat
     assert job.status == "succeeded"
     assert stored == ["features", "relationships", "preparation", "complete"]
     assert version.status == DatasetStatus.READY
+
+
+def test_kubernetes_preparation_includes_small_datasets(monkeypatch):
+    monkeypatch.setattr(
+        jobs, "get_settings", lambda: SimpleNamespace(distributed_preparation_enabled=True)
+    )
+    assert jobs.requires_distributed_profile(SimpleNamespace(byte_size=1024))

@@ -48,22 +48,23 @@ describe("authentication experience", () => {
     expect(getSession()).toBeNull();
   });
 
-  it("supports the complete development password-reset flow", async () => {
+  it("requests recovery instructions and accepts the separately delivered reset link", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(new Response(JSON.stringify({
         message: "If the account exists, password reset instructions have been prepared.",
-        reset_token_for_dev: "development-reset-token-long-enough",
       }), { status: 200, headers: { "Content-Type": "application/json" } }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
-    renderAuth();
+    const rendered = renderAuth();
 
     await user.click(screen.getByRole("button", { name: "Forgot password?" }));
     await user.type(screen.getByLabelText("Work email"), "ada@example.com");
     await user.click(screen.getByRole("button", { name: /Send reset instructions/i }));
     expect(await screen.findByText(/password reset instructions have been prepared/i)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Continue to reset password" }));
+    expect(screen.queryByRole("button", { name: "Continue to reset password" })).not.toBeInTheDocument();
+    rendered.unmount();
+    renderAuth("/auth?mode=reset&token=development-reset-token-long-enough");
     await user.type(screen.getByLabelText("New password"), "new-correct-horse");
     await user.type(screen.getByLabelText("Confirm password"), "new-correct-horse");
     await user.click(screen.getByRole("button", { name: /Update password/i }));

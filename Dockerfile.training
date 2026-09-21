@@ -16,6 +16,10 @@ RUN apt-get update \
 COPY apps/api ./apps/api
 COPY packages ./packages
 
+# P8-W07: run as an unbound numeric non-root user; the RAPIDS base image does
+# not define a named non-root account.
+RUN chown -R 10001:10001 /app
 ENV PYTHONPATH=/app/apps/api:/app/packages
 ENV PYTHONUNBUFFERED=1
+USER 10001
 CMD ["python", "-m", "automl_api.training.worker", "--help"]

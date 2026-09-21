@@ -17,7 +17,7 @@ from automl_api.schemas.auth import (
     UserUpdateRequest,
     normalize_email,
 )
-from automl_api.security.passwords import hash_password, verify_password
+from automl_api.security.passwords import hash_password, verify_and_rehash, verify_password
 from automl_api.security.tokens import TokenError, create_signed_token, decode_token, token_hash
 
 
@@ -42,8 +42,13 @@ def authenticate_user(db: Session, email: str, password: str) -> User | None:
     user = db.scalar(select(User).where(User.email == normalize_email(email)))
     if user is None or not user.is_active:
         return None
-    if not verify_password(password, user.password_hash):
+    ok, upgraded_hash = verify_and_rehash(password, user.password_hash)
+    if not ok:
         return None
+    # Rehash-on-login (P6-W04): persist the upgraded Argon2id hash when the
+    # stored parameters no longer match the current profile.
+    if upgraded_hash:
+        user.password_hash = upgraded_hash
     user.last_login_at = _now()
     return user
 
@@ -57,6 +62,8 @@ def issue_token_pair(
     family_id: uuid.UUID | None = None,
 ) -> TokenPair:
     settings = get_settings()
+    if not settings.simple_auth_enabled and user.auth_provider != AuthProvider.SSO:
+        raise HTTPException(status_code=403, detail="Password sessions are disabled.")
     access_delta = timedelta(minutes=settings.jwt_access_token_minutes)
     refresh_delta = timedelta(hours=settings.jwt_refresh_rotation_hours)
     family_id = family_id or uuid.uuid4()
@@ -66,7 +73,7 @@ def issue_token_pair(
         email=user.email,
         token_version=user.token_version,
         secret=settings.jwt_secret_key,
-        token_type="access",
+        token_type="access",  # nosec B106 - token type label
         expires_delta=access_delta,
     )
     refresh_token = create_signed_token(
@@ -74,7 +81,7 @@ def issue_token_pair(
         email=user.email,
         token_version=user.token_version,
         secret=settings.jwt_secret_key,
-        token_type="refresh",
+        token_type="refresh",  # nosec B106 - token type label
         expires_delta=refresh_delta,
         extra={"family": str(family_id)},
     )
@@ -200,7 +207,7 @@ def create_password_reset_token(db: Session, email: str) -> str | None:
         email=user.email,
         token_version=user.token_version,
         secret=get_settings().jwt_secret_key,
-        token_type="password_reset",
+        token_type="password_reset",  # nosec B106 - token type label
         expires_delta=timedelta(minutes=30),
     )
     db.add(

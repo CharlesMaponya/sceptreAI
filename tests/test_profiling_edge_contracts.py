@@ -340,5 +340,9 @@ def test_relationship_math_non_degenerate_paths() -> None:
         [("a", "yes"), ("a", "yes"), ("b", "no"), ("b", "no")]
     )
     assert score == pytest.approx(1.0)
+    sparse_score = profiling._cramers_v(
+        [(f"row-{index}", "yes" if index % 2 else "no") for index in range(1_000)]
+    )
+    assert sparse_score == pytest.approx(1.0)
     assert profiling._skewness([1, 2, 3], 2, 1) == 0
     assert profiling._kurtosis([1, 2, 3], 2, 1) == pytest.approx(-7 / 3)

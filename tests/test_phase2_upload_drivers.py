@@ -208,6 +208,13 @@ def test_s3_compatible_and_failure_contracts() -> None:
         driver.complete_upload(upload, [TransferReceipt(2, 6, 4, "e2")])
     with pytest.raises(UploadContractError, match="ETag"):
         driver.complete_upload(upload, [TransferReceipt(1, 0, 10)])
+
+    descriptor = driver.dataframe_source("s3c://bucket/projects/p/raw/file.csv")
+    assert descriptor.filesystem_options == {
+        "client_kwargs": {"endpoint_url": "http://internal:8333"},
+        "key": "key",
+        "secret": "secret",
+    }
     with pytest.raises(ValueError, match="configured S3"):
         driver.stat("s3c://other/key")
 

@@ -35,11 +35,13 @@ from automl_api.schemas.training import (
     TrainingResourceUsageRead,
 )
 from automl_api.security.tokens import TokenError, decode_token
+from automl_api.services.deletion import request_deletion
 from automl_api.services.model_audit import model_audit_document
 from automl_api.services.training import (
     add_models_to_training_run,
     cancel_training_run,
     estimate_training_run,
+    get_active_training_run,
     get_training_run,
     launch_training_run,
     list_training_estimators,
@@ -66,6 +68,16 @@ def estimators(
         project_id,
         task_type,
     )
+
+
+@router.get("/active-run", response_model=ModelRunRead | None)
+def active_run(
+    project_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> ModelRunRead | None:
+    run = get_active_training_run(db, current_user, project_id)
+    return ModelRunRead.model_validate(run) if run else None
 
 
 @router.post("/estimate", response_model=TrainingEstimateRead)
@@ -111,9 +123,12 @@ def runs(
     project_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=100),
 ) -> list[ModelRunRead]:
     return [
-        ModelRunRead.model_validate(run) for run in list_training_runs(db, current_user, project_id)
+        ModelRunRead.model_validate(run)
+        for run in list_training_runs(db, current_user, project_id, offset=offset, limit=limit)
     ]
 
 
@@ -297,3 +312,15 @@ def _websocket_user_id(token: str) -> uuid.UUID:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired access token.",
         ) from exc
+
+
+@router.delete("/runs/{run_id}", status_code=202)
+def delete_training(
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> dict:
+    result = request_deletion(db, current_user, project_id, run_id)
+    db.commit()
+    return result

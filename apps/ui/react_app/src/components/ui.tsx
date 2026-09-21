@@ -1,5 +1,5 @@
-import { useEffect, useRef, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from "react";
-import { AlertCircle, CheckCircle2, LoaderCircle, Plus } from "lucide-react";
+import { useEffect, useEffectEvent, useRef, useState, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from "react";
+import { AlertCircle, AlertTriangle, CheckCircle2, LoaderCircle, Plus } from "lucide-react";
 import { cx, titleCase } from "../lib";
 
 export function Button({
@@ -60,8 +60,8 @@ export function Notice({ tone = "info", children }: {
   </div>;
 }
 
-export function Metric({ label, value, hint }: { label: string; value: ReactNode; hint?: string }) {
-  return <div className="metric"><span>{label}</span><strong>{value}</strong>{hint && <small>{hint}</small>}</div>;
+export function Metric({ label, value, hint, icon }: { label: string; value: ReactNode; hint?: string; icon?: ReactNode }) {
+  return <div className={cx("metric", Boolean(icon) && "metric--icon")}><span>{label}</span><strong>{value}</strong>{hint && <small>{hint}</small>}{icon && <i className="metric__icon" aria-hidden>{icon}</i>}</div>;
 }
 
 export function Modal({ title, description, children, onClose }: {
@@ -69,10 +69,12 @@ export function Modal({ title, description, children, onClose }: {
 }) {
   const closeButton = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLElement>(null);
+  // Capture the trigger before a child's autoFocus runs during mounting.
+  const [previousFocus] = useState(() => document.activeElement instanceof HTMLElement ? document.activeElement : null);
+  const close = useEffectEvent(onClose);
   useEffect(() => {
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") close();
       if (event.key !== "Tab" || !dialog.current) return;
       const focusable = Array.from(dialog.current.querySelectorAll<HTMLElement>(
         'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
@@ -95,7 +97,7 @@ export function Modal({ title, description, children, onClose }: {
       document.body.style.overflow = previousOverflow;
       previousFocus?.focus();
     };
-  }, [onClose]);
+  }, [previousFocus]);
   return <div className="modal-backdrop" onMouseDown={onClose}>
     <section ref={dialog} className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"
       aria-describedby={description ? "modal-description" : undefined} onMouseDown={(e) => e.stopPropagation()}>
@@ -108,4 +110,25 @@ export function Modal({ title, description, children, onClose }: {
 export function ErrorState({ error, retry }: { error: Error; retry?: () => void }) {
   return <Notice tone="danger"><strong>Something went wrong</strong><p>{error.message}</p>
     {retry && <Button variant="secondary" onClick={retry}>Try again</Button>}</Notice>;
+}
+
+export function ConfirmModal({ title, description, confirmLabel, action, close, danger = false }: {
+  title: string; description: string; confirmLabel: string; action: () => Promise<unknown>;
+  close: () => void; danger?: boolean;
+}) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  async function confirm() {
+    setPending(true); setError("");
+    try { await action(); } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The action failed."); setPending(false);
+    }
+  }
+  return <Modal title={title} description={description} onClose={close}>
+    <div className="stack">{danger && <Notice tone="danger"><AlertTriangle size={16} />
+      Review the impact before continuing.</Notice>}{error && <Notice tone="danger">{error}</Notice>}
+      <div className="modal__actions"><Button variant="ghost" disabled={pending} onClick={close}>Cancel</Button>
+        <Button variant={danger ? "danger" : "primary"} loading={pending} onClick={confirm}>{confirmLabel}</Button></div>
+    </div>
+  </Modal>;
 }

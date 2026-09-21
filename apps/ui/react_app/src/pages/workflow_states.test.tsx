@@ -42,6 +42,18 @@ const trainingRun = {
   failure_message: null, created_at: "2026-01-01T00:00:00Z", finished_at: "2026-01-01T00:10:00Z",
 };
 
+const launchBindings = {
+  split_revision_id: "split-1",
+  feature_contract_revision_id: "contract-1",
+  feature_registry_revision_id: "registry-1",
+  feature_recipe_revision_id: "recipe-1",
+  feature_search_space_revision_ids: {
+    balanced_accuracy: "search-balanced",
+    roc_auc: "search-roc",
+  },
+  estimator_catalog_revision_id: "catalog-1",
+};
+
 const monitoredDeployment = {
   project_id: "project-1", project_name: "Retention", deployment_run_id: "deploy-1",
   model_version_id: "model-v1", registry_entry_id: "registry-1", model_name: "RandomForestClassifier",
@@ -77,7 +89,7 @@ describe("governed workflow states", () => {
 
   it("renders rich profile evidence, leakage exclusions, and feature details", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/projects/project-1/datasets")) return response([{
         id: "dataset-1", name: "Retention signals", description: "Curated customer events",
         latest_version_number: 1,
@@ -160,7 +172,7 @@ describe("governed workflow states", () => {
       training_feature_columns: ["age", "tenure"],
     };
     vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (options?.method === "POST") {
         requests.push({ url, body: options.body ? JSON.parse(String(options.body)) : undefined });
         if (url.endsWith("/operations/cleanup")) {
@@ -211,9 +223,9 @@ describe("governed workflow states", () => {
       body: { replicas: 1, cpu_request: "500m", memory_request: "1Gi" },
     })));
 
-    await user.click(screen.getByRole("button", { name: "Stop" }));
-    await user.click(within(screen.getByRole("dialog", { name: "Stop this deployment?" }))
-      .getByRole("button", { name: "Stop deployment" }));
+    await user.click(screen.getByRole("button", { name: "Shutdown" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Shut down this deployment?" }))
+      .getByRole("button", { name: "Shutdown" }));
     await waitFor(() => expect(requests.some(({ url }) => url.endsWith("/deployments/deploy-1/stop"))).toBe(true));
 
     await user.click(screen.getByRole("button", { name: "Preview cleanup" }));
@@ -229,7 +241,7 @@ describe("governed workflow states", () => {
   it("registers a successful training candidate", async () => {
     let registrationBody: unknown;
     vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/operations/health")) return response(health);
       if (url.endsWith("/operations/registry") && options?.method === "POST") {
         registrationBody = JSON.parse(String(options.body));
@@ -268,7 +280,7 @@ describe("governed workflow states", () => {
       tokens: { access_token: "first-token", refresh_token: "refresh", token_type: "bearer", expires_in: 3600 },
     });
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/operations/health")) return response(health);
       if (url.endsWith("/operations/registry")) return response([]);
       if (url.endsWith("/operations/drift-runs")) return response([{ ...trainingRun,
@@ -331,7 +343,7 @@ describe("governed workflow states", () => {
 
   it("keeps a failed stop confirmation open with an actionable error", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/operations/health")) return response(health);
       if (url.endsWith("/operations/registry") || url.endsWith("/operations/drift-runs")) return response([]);
       if (url.endsWith("/operations/deployments") && !options?.method) return response([{
@@ -346,19 +358,19 @@ describe("governed workflow states", () => {
 
     const row = (await screen.findByText("stop-me")).closest("tr");
     expect(row).not.toBeNull();
-    await user.click(within(row!).getByRole("button", { name: "Stop" }));
-    await user.click(within(screen.getByRole("dialog", { name: "Stop this deployment?" }))
-      .getByRole("button", { name: "Stop deployment" }));
+    await user.click(within(row!).getByRole("button", { name: "Shutdown" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Shut down this deployment?" }))
+      .getByRole("button", { name: "Shutdown" }));
 
     expect(await screen.findByText("Deployment is protected.")).toBeInTheDocument();
-    expect(screen.getByRole("dialog", { name: "Stop this deployment?" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Shut down this deployment?" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByRole("dialog", { name: "Stop this deployment?" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Shut down this deployment?" })).not.toBeInTheDocument();
   });
 
   it("renders degraded capacity, registry fallbacks, and protected cleanup results", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/operations/health")) return response({
         ...health,
         capacity: { ...health.capacity, connected: false, ready_nodes: 0,
@@ -402,7 +414,7 @@ describe("governed workflow states", () => {
 
   it("clears a preselected registration request when the operator cancels", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/operations/health")) return response(health);
       if (url.endsWith("/training/runs/run-missing/leaderboard")) return response({ entries: [] });
       return response([]);
@@ -420,7 +432,7 @@ describe("governed workflow states", () => {
   it("adds governed candidates with the inherited search budget", async () => {
     let addBody: Record<string, unknown> | null = null;
     vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/training/runs")) return response([{
         ...trainingRun,
         params: { optimization_iterations: 5, cv_folds: 3, expected_minutes: 10 },
@@ -481,13 +493,14 @@ describe("governed workflow states", () => {
       .not.toBeInTheDocument());
   });
 
-  it("uploads schema-compatible validation data and renders the persisted result", async () => {
+  it.each([false, true])("selects newly launched validation while history refreshes (prior result: %s)", async (hasPriorResult) => {
     let finishUpload: (() => void) | undefined;
+    let finishHistory: (() => void) | undefined;
     let validationBody: unknown;
     let launched = false;
     let uploadAttempt = 0;
     vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/training/runs")) return response([trainingRun]);
       if (url.endsWith("/leaderboard")) return response({
         run_id: "run-1", status: "succeeded", primary_metric: "balanced_accuracy",
@@ -509,10 +522,22 @@ describe("governed workflow states", () => {
         id: "version-1", version_number: 1,
         schema_json: { columns: [{ name: "age" }, { name: "tenure" }] },
       }]);
-      if (url.endsWith("/analyses")) return response(launched ? [{
-        ...trainingRun, id: "validation-1", run_kind: "validation", status: "succeeded",
-        run_name: "External cohort", params: { model_name: "RandomForestClassifier" },
-      }] : []);
+      if (url.endsWith("/analyses")) {
+        if (launched) return new Promise<Response>((resolve) => {
+          finishHistory = () => resolve(new Response(JSON.stringify([{
+            ...trainingRun, id: "validation-1", run_kind: "validation", status: "succeeded",
+            run_name: "External cohort", params: { model_name: "RandomForestClassifier" },
+          }]), { headers: { "Content-Type": "application/json" } }));
+        });
+        return response(hasPriorResult ? [{
+          ...trainingRun, id: "validation-old", run_kind: "validation", status: "succeeded",
+          params: { model_name: "RandomForestClassifier" },
+        }] : []);
+      }
+      if (url.endsWith("/analyses/validation-old")) return response({
+        run_id: "validation-old", status: "succeeded", model_name: "RandomForestClassifier",
+        metrics: { balanced_accuracy: .12 }, diagnostics: {}, feature_importance: [], artifacts: [],
+      });
       if (url.endsWith("/validations") && options?.method === "POST") {
         validationBody = JSON.parse(String(options.body));
         launched = true;
@@ -559,6 +584,7 @@ describe("governed workflow states", () => {
     const { container } = renderRoute(<RunsPage />, "/projects/project-1/runs");
 
     await user.click(await screen.findByRole("tab", { name: "Validate & explain" }));
+    if (hasPriorResult) expect(await screen.findByText("0.1200")).toBeInTheDocument();
     const fileInput = container.querySelector<HTMLInputElement>('input[type="file"]');
     expect(fileInput).not.toBeNull();
     await user.upload(fileInput!, new File(["age,tenure,region\n30,4,north"], "cohort.csv", {
@@ -583,14 +609,19 @@ describe("governed workflow states", () => {
     }));
     expect(await screen.findByText("0.8800")).toBeInTheDocument();
     expect(screen.getByText("validation.json")).toBeInTheDocument();
+    expect(screen.queryByText("0.1200")).not.toBeInTheDocument();
+    act(() => finishHistory?.());
   });
 
   it("estimates and launches a governed training configuration", async () => {
     let estimateBody: Record<string, unknown> | null = null;
     let launchBody: Record<string, unknown> | null = null;
     vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/projects/project-1/datasets")) return response([{
+        id: "validation-data", name: "Newest validation upload", latest_version_number: 1,
+        tags: { purpose: "external_validation" },
+      }, {
         id: "dataset-1", name: "Retention signals", latest_version_number: 1,
       }]);
       if (url.endsWith("/datasets/dataset-1/versions")) return response([{
@@ -599,7 +630,7 @@ describe("governed workflow states", () => {
       }]);
       if (url.endsWith("/profile-jobs/latest")) return response({
         id: "profile-1", status: "succeeded", target_column: "churned",
-        overview_json: { task_inference: { task_type: "classification" } },
+        overview_json: { task_inference: { task_type: "classification" }, launch_bindings: launchBindings },
       });
       if (url.endsWith("/profile-jobs/profile-1/result")) return response({
         feature_profiles_json: { churned: { distribution: [
@@ -647,11 +678,13 @@ describe("governed workflow states", () => {
     await user.click(screen.getByRole("button", { name: "Estimate resources" }));
 
     await waitFor(() => expect(estimateBody).toEqual({
+      excluded_columns: [],
       dataset_version_id: "version-1", target_column: "churned", positive_label: "yes",
       evaluation_column: null, task_type: "classification", primary_metric: "roc_auc",
-      prefer_gpu: true, expected_minutes: 20, candidate_limit: 2,
+      prefer_gpu: true, expected_minutes: 20, deadline_seconds: null, candidate_limit: 2,
       candidate_models: ["RandomForestClassifier", "LogisticRegression"],
       optimization_iterations: 7, cv_folds: 4,
+      catalog_revision_id: "catalog-1", split_revision_id: "split-1",
     }));
     expect(await screen.findByText("Nvidia")).toBeInTheDocument();
     expect(screen.getByText("Capacity is reserved at launch.")).toBeInTheDocument();
@@ -660,7 +693,11 @@ describe("governed workflow states", () => {
     await user.click(screen.getByRole("button", { name: "Launch training" }));
 
     await waitFor(() => expect(launchBody).toEqual({
-      ...(estimateBody as Record<string, unknown>), run_name: "retention-qualified", params: {},
+      ...(estimateBody as Record<string, unknown>), run_name: "retention-qualified",
+      split_revision_id: "split-1", feature_contract_revision_id: "contract-1",
+      feature_registry_revision_id: "registry-1", feature_recipe_revision_id: "recipe-1",
+      feature_search_space_revision_id: "search-roc",
+      estimator_catalog_revision_id: "catalog-1",
     }));
   });
 
@@ -674,7 +711,7 @@ describe("governed workflow states", () => {
       target_column: null,
     };
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/training/runs")) return response([timeRun, clusterRun]);
       if (url.includes("/run-time/leaderboard")) return response({
         run_id: "run-time", status: "succeeded", primary_metric: "mae",
@@ -739,7 +776,7 @@ describe("governed workflow states", () => {
       training_feature_columns: ["age", "tenure"],
     };
     vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/operations/health")) return response(health);
       if (url.endsWith("/operations/registry")) return response([registryEntry]);
       if (url.endsWith("/operations/deployments") || url.endsWith("/operations/drift-runs")) return response([]);
@@ -799,7 +836,7 @@ describe("governed workflow states", () => {
       timeline: [], governance_reports: 0,
     };
     vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/monitoring/config") && options?.method === "PUT") {
         policyBody = JSON.parse(String(options.body));
         return response({ revision: 4 });
@@ -865,7 +902,7 @@ describe("governed workflow states", () => {
       preprocessing: ["imputation", { scaling: null }], empty_evidence: [],
     } };
     vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url === "/governance/report-1.json" || url === "/governance/report-1.html") {
         expect(new Headers(options?.headers).get("Authorization")).toBe("Bearer governance-token");
         return Promise.resolve(new Response("report", { status: 200 }));
@@ -896,4 +933,28 @@ describe("governed workflow states", () => {
     await user.click(screen.getByRole("button", { name: /Generate snapshot/ }));
     expect(await screen.findByText("SHA-256 abc123")).toBeInTheDocument();
   });
+});
+
+it.each([false, true])("preserves the chosen nonwinning model during registration (older run: %s)", async olderRun => {
+  let submitted: unknown;
+  vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
+    const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
+    if (url.endsWith("/operations/health")) return response(health);
+    if (url.endsWith("/operations/registry") && options?.method === "POST") {
+      submitted = JSON.parse(String(options.body));
+      return response({ id: "selected-model" }, 201);
+    }
+    if (url.endsWith("/training/runs")) return response(olderRun ? [] : [trainingRun]);
+    if (url.endsWith("/training/runs/run-1")) return response(trainingRun);
+    if (url.endsWith("/leaderboard")) return response({ winner: "RandomForestClassifier", entries: [
+      { model: "RandomForestClassifier", status: "succeeded" },
+      { model: "LogisticRegression", status: "succeeded" },
+    ] });
+    return response([]);
+  });
+  renderRoute(<OperationsPage />, "/projects/project-1/operations?trainingRunId=run-1&model=LogisticRegression");
+  const dialog = await screen.findByRole("dialog", { name: "Register a trained model" });
+  await waitFor(() => expect(within(dialog).getByLabelText("Successful candidate")).toHaveValue("LogisticRegression"));
+  await userEvent.click(within(dialog).getByRole("button", { name: "Register model" }));
+  await waitFor(() => expect(submitted).toEqual({ training_run_id: "run-1", model_name: "LogisticRegression" }));
 });

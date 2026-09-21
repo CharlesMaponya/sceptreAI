@@ -23,23 +23,23 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">90.9% </span>
+                <span class="strong">88.88% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>40/44</span>
+                <span class='fraction'>40/45</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">93.33% </span>
+                <span class="strong">86.11% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>28/30</span>
+                <span class='fraction'>31/36</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">81.81% </span>
+                <span class="strong">80.95% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>18/22</span>
+                <span class='fraction'>17/21</span>
             </div>
         
             
@@ -137,8 +137,7 @@
 <a name='L72'></a><a href='#L72'>72</a>
 <a name='L73'></a><a href='#L73'>73</a>
 <a name='L74'></a><a href='#L74'>74</a>
-<a name='L75'></a><a href='#L75'>75</a>
-<a name='L76'></a><a href='#L76'>76</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L75'></a><a href='#L75'>75</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -150,27 +149,26 @@
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">41x</span>
-<span class="cline-any cline-yes">41x</span>
-<span class="cline-any cline-yes">41x</span>
-<span class="cline-any cline-yes">41x</span>
-<span class="cline-any cline-yes">41x</span>
-<span class="cline-any cline-yes">41x</span>
-<span class="cline-any cline-yes">41x</span>
+<span class="cline-any cline-yes">60x</span>
+<span class="cline-any cline-yes">60x</span>
+<span class="cline-any cline-yes">60x</span>
+<span class="cline-any cline-yes">60x</span>
+<span class="cline-any cline-yes">60x</span>
+<span class="cline-any cline-yes">60x</span>
+<span class="cline-any cline-yes">60x</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">41x</span>
+<span class="cline-any cline-yes">60x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">41x</span>
-<span class="cline-any cline-yes">102x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">41x</span>
-<span class="cline-any cline-yes">41x</span>
-<span class="cline-any cline-yes">41x</span>
-<span class="cline-any cline-yes">41x</span>
+<span class="cline-any cline-yes">60x</span>
+<span class="cline-any cline-yes">60x</span>
+<span class="cline-any cline-yes">60x</span>
+<span class="cline-any cline-yes">60x</span>
+<span class="cline-any cline-yes">60x</span>
+<span class="cline-any cline-yes">60x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
@@ -180,7 +178,7 @@
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">41x</span>
+<span class="cline-any cline-yes">60x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
@@ -188,7 +186,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">75x</span>
+<span class="cline-any cline-yes">72x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -215,7 +213,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, FolderKanban, Link2, Plus, Search } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { api, json } from "../api";
 import { Badge, Button, Card, EmptyState, ErrorState, Loading, Modal, PageHeader } from "../components/ui";
@@ -230,7 +228,7 @@ export function ProjectsPage() {
   const [dialog, setDialog] = useState&lt;"create" | "invite" | null&gt;(null);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const projects = useQuery({ queryKey: ["projects"], queryFn: () =&gt; api&lt;Project[]&gt;("/projects") });
+  const projects = useQuery({ queryKey: ["projects", page, search], queryFn: () =&gt; api&lt;{ items: Project[]; total: number }&gt;(`/projects/page?offset=${(page - 1) * PAGE_SIZE}&amp;limit=${PAGE_SIZE}&amp;search=${encodeURIComponent(search)}`), refetchInterval: 5000 });
   const create = useMutation({
     mutationFn: (body: object) =&gt; api&lt;Project&gt;("/projects", json("POST", body)),
     onSuccess: (project) =&gt; { client.invalidateQueries({ queryKey: ["projects"] }); setDialog(null); navigate(`/projects/${project.id}`); },
@@ -239,13 +237,12 @@ export function ProjectsPage() {
     mutationFn: (invite_token: string) =&gt; api&lt;Project&gt;("/projects/share-links/accept", json("POST", { invite_token })),
     onSuccess: (project) =&gt; { client.invalidateQueries({ queryKey: ["projects"] }); setDialog(null); navigate(`/projects/${project.id}`); },
   });
-  const filtered = useMemo(() =&gt; projects.data?.filter((project) =&gt;
-    `${project.name} ${project.description}`.toLowerCase().includes(search.toLowerCase())
-  ), [projects.data, search]);
-  const pageCount = Math.max(1, Math.ceil((filtered?.length || 0) / PAGE_SIZE));
+  const total = projects.data?.total || 0;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
   const firstProject = (currentPage - 1) * PAGE_SIZE;
-  const visible = filtered?.slice(firstProject, firstProject + PAGE_SIZE);
+  const visible = projects.data?.items;
+  useEffect(() =&gt; { <span class="missing-if-branch" title="if path not taken" >I</span>if (projects.data &amp;&amp; page &gt; pageCount) <span class="cstat-no" title="statement not covered" >setPage(pageCount); }</span>, [projects.data, page, pageCount]);
 &nbsp;
   function submitCreate(event: FormEvent&lt;HTMLFormElement&gt;) {
     event.preventDefault(); const values = Object.fromEntries(new FormData(event.currentTarget));
@@ -260,16 +257,16 @@ export function ProjectsPage() {
       action={&lt;div className="button-row"&gt;&lt;Button variant="secondary" onClick={() =&gt; setDialog("invite")}&gt;&lt;Link2 size={16} /&gt;Join project&lt;/Button&gt;
         &lt;Button onClick={() =&gt; setDialog("create")}&gt;&lt;Plus size={16} /&gt;New project&lt;/Button&gt;&lt;/div&gt;} /&gt;
     &lt;div className="toolbar"&gt;&lt;label className="search"&gt;&lt;Search size={17} /&gt;&lt;input value={search} onChange={(e) =&gt; { setSearch(e.target.value); setPage(1); }} placeholder="Search projects…" aria-label="Search projects" /&gt;&lt;/label&gt;
-      &lt;span&gt;{projects.data?.length || 0} project{projects.data?.length === 1 ? "" : "s"}&lt;/span&gt;&lt;/div&gt;
+      &lt;span&gt;{total} project{total === 1 ? "" : "s"}&lt;/span&gt;&lt;/div&gt;
     {projects.isLoading ? &lt;Loading /&gt; : projects.error ? &lt;ErrorState error={projects.error} retry={() =&gt; projects.refetch()} /&gt; :
-      filtered?.length ? &lt;&gt;&lt;div className="project-grid"&gt;{visible?.map((project) =&gt;
+      visible?.length ? &lt;&gt;&lt;div className="project-grid"&gt;{visible?.map((project) =&gt;
         &lt;Link className="card project-card" key={project.id} to={`/projects/${project.id}`}&gt;
-          &lt;div className="project-card__top"&gt;&lt;div className="project-mark"&gt;{initials(project.name)}&lt;/div&gt;&lt;Badge status={project.status} /&gt;&lt;/div&gt;
+          &lt;div className="project-card__top"&gt;&lt;div className="project-mark"&gt;{initials(project.name)}&lt;/div&gt;&lt;Badge status={project.settings?.deletion_requested ? <span class="branch-0 cbranch-no" title="branch not covered" >"queued" : p</span>roject.status}&gt;{project.settings?.deletion_requested ? <span class="branch-0 cbranch-no" title="branch not covered" >"Deleting" : u</span>ndefined}&lt;/Badge&gt;&lt;/div&gt;
           &lt;h2&gt;{project.name}&lt;/h2&gt;&lt;p&gt;{project.description || <span class="branch-1 cbranch-no" title="branch not covered" >"A governed Sceptre AI workspace."}&lt;</span>/p&gt;
           &lt;div className="project-card__foot"&gt;&lt;span&gt;&lt;FolderKanban size={15} /&gt; Updated {formatDate(project.updated_at)}&lt;/span&gt;&lt;ArrowRight size={18} /&gt;&lt;/div&gt;
         &lt;/Link&gt;)}&lt;/div&gt;
-        {filtered.length &gt; PAGE_SIZE &amp;&amp; &lt;nav className="project-pagination" aria-label="Projects pagination"&gt;
-          &lt;p aria-live="polite"&gt;Showing {firstProject + 1}–{Math.min(firstProject + PAGE_SIZE, filtered.length)} of {filtered.length}&lt;/p&gt;
+        {total &gt; PAGE_SIZE &amp;&amp; &lt;nav className="project-pagination" aria-label="Projects pagination"&gt;
+          &lt;p aria-live="polite"&gt;Showing {firstProject + 1}–{Math.min(firstProject + PAGE_SIZE, total)} of {total}&lt;/p&gt;
           &lt;div&gt;&lt;Button variant="secondary" disabled={currentPage === 1} onClick={<span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >s</span>etPage(currentPage - 1)}&gt;P</span>revious&lt;/Button&gt;
             &lt;span aria-current="page"&gt;Page {currentPage} of {pageCount}&lt;/span&gt;
             &lt;Button variant="secondary" disabled={currentPage === pageCount} onClick={() =&gt; setPage(currentPage + 1)}&gt;Next&lt;/Button&gt;&lt;/div&gt;
@@ -295,7 +292,7 @@ export function ProjectsPage() {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-08-20T15:44:36.035Z
+                at 2026-09-20T18:07:07.512Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

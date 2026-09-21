@@ -1,0 +1,70 @@
+{{/*
+Gateway API resources (task-index P5-W03/P5-W04).
+
+Production traffic uses Gateway API `Gateway` + `HTTPRoute` with a pinned
+`gateway.apiVersion` and a named, supported controller. The retired
+ingress-nginx controller is forbidden in production: rendering fails closed
+when `gateway.enabled` is set together with an nginx ingress class.
+*/}}
+{{- if .Values.gateway.enabled }}
+{{- $apiVersion := .Values.gateway.apiVersion }}
+---
+apiVersion: {{ $apiVersion }}
+kind: GatewayClass
+metadata:
+  name: {{ .Values.gateway.className }}
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+spec:
+  controllerName: {{ required "gateway.controllerName is required" .Values.gateway.controllerName | quote }}
+---
+apiVersion: {{ $apiVersion }}
+kind: Gateway
+metadata:
+  name: {{ include "sceptre.fullname" . }}
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+spec:
+  gatewayClassName: {{ .Values.gateway.className }}
+  listeners:
+    - name: http
+      port: {{ .Values.gateway.port }}
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Same
+    {{- if .Values.gateway.tls.enabled }}
+    - name: https
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: {{ required "gateway.tls.secretName is required when TLS is enabled" .Values.gateway.tls.secretName }}
+      allowedRoutes:
+        namespaces:
+          from: Same
+    {{- end }}
+---
+apiVersion: {{ $apiVersion }}
+kind: HTTPRoute
+metadata:
+  name: {{ include "sceptre.fullname" . }}
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    - name: {{ include "sceptre.fullname" . }}
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  hostnames:
+    - {{ .Values.ingress.host | default .Values.gateway.host | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ include "sceptre.fullname" . }}-ui
+          port: 80
+{{- end }}

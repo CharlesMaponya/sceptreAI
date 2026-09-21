@@ -8,12 +8,10 @@ from datetime import UTC, datetime
 from typing import Any
 
 import joblib
-import mlflow
-import mlflow.sklearn as mlflow_sklearn
 import numpy as np
 import pandas as pd
+import pyarrow.dataset as pa_dataset
 
-from automl_api.core.config import get_settings
 from automl_api.db.session import get_session_factory
 from automl_api.models.datasets import DatasetVersion
 from automl_api.models.enums import (
@@ -26,16 +24,25 @@ from automl_api.models.enums import (
 )
 from automl_api.models.runs import Metric, ModelRun, RunArtifact
 from automl_api.storage.object_store import get_object_store
+from automl_api.training.analysis_sampling import sample_source
 from automl_api.training.evaluation import (
     classification_evaluation,
     clustering_evaluation,
     metric_direction,
     regression_evaluation,
 )
+from automl_api.training.feature_importance import (
+    _percentage_contributions,
+)
+from automl_api.training.feature_importance import (
+    normalize_feature_importance as normalize_feature_importance,
+)
 from automl_api.training.pipeline import (
+    _bound_split_revision,
     _load_dataframe,
     _normalize_temporal_features,
     _persist_candidate_model,
+    _ray_source,
     rebuild_candidate_model,
 )
 
@@ -140,6 +147,46 @@ def _execute_validation(
     }
 
 
+def _analysis_training_uri(run: ModelRun) -> str:
+    source_id = run.params.get("source_training_run_id")
+    if not source_id:
+        raise ValueError(
+            "Analysis requires a source run with an immutable prepared training split."
+        )
+    with get_session_factory()() as db:
+        source = db.get(ModelRun, uuid.UUID(str(source_id)))
+        if source is None or source.project_id != run.project_id:
+            raise ValueError("The analysis source run does not belong to this project.")
+        split = _bound_split_revision(db, source)
+        return str(split.specification["uris"]["train"])
+
+
+def _load_explanation_dataframe(run: ModelRun) -> pd.DataFrame:
+    uri = _analysis_training_uri(run)
+    descriptor = get_object_store().dataframe_source(uri)
+    path, filesystem = _ray_source(descriptor.path, descriptor.filesystem_options)
+    dataset = pa_dataset.dataset(path, filesystem=filesystem, format="parquet")
+    columns = [
+        name
+        for name in dataset.schema.names
+        if name not in {"row_id", "source_ordinal", "content_fingerprint", "split_role"}
+    ]
+    # SHAP is an explicitly bounded analysis. Read only a small training pool,
+    # never load the raw dataset or the locked test roles into the worker.
+    pool_rows = max(1_000, min(5_000, int(run.params.get("max_rows", 200)) * 5))
+    return (
+        dataset.scanner(
+            columns=columns,
+            batch_size=pool_rows,
+            batch_readahead=1,
+            fragment_readahead=1,
+            use_threads=False,
+        )
+        .head(pool_rows)
+        .to_pandas()
+    )
+
+
 def _execute_explainability(
     run: ModelRun,
     version: DatasetVersion,
@@ -147,7 +194,7 @@ def _execute_explainability(
     import shap
 
     model = _load_model(run, version)
-    dataframe = _load_dataframe(version)
+    dataframe = _load_explanation_dataframe(run)
     excluded = {
         value
         for value in (
@@ -157,6 +204,9 @@ def _execute_explainability(
         if value
     }
     features = _normalize_temporal_features(dataframe.drop(columns=list(excluded), errors="ignore"))
+    model_columns = getattr(model, "feature_names_in_", None)
+    if model_columns is not None:
+        features = features.loc[:, list(model_columns)]
     max_rows = min(int(run.params.get("max_rows", 200)), len(features))
     if max_rows < 2:
         raise ValueError("At least two rows are required for SHAP analysis.")
@@ -224,6 +274,8 @@ def _execute_explainability(
     return {
         "metrics": {},
         "diagnostics": {
+            "analysis_pool_rows": len(features),
+            "analysis_pool_policy": "bounded_prepared_training_prefix",
             "sample_rows": max_rows,
             "background_rows": len(background),
             "feature_count": len(columns),
@@ -239,9 +291,7 @@ def _execute_explainability(
         },
         "feature_importance": feature_importance,
         "feature_names": columns,
-        "sample_feature_values": sample.iloc[: min(100, len(sample))].to_dict(
-            orient="records"
-        ),
+        "sample_feature_values": sample.iloc[: min(100, len(sample))].to_dict(orient="records"),
         "base_values": np.asarray(
             getattr(explanation, "base_values", []),
             dtype=float,
@@ -269,8 +319,16 @@ def _execute_drift(
         )
         if reference_version is None or reference_version.project_id != run.project_id:
             raise ValueError("The reference dataset version was not found.")
-    reference = _load_dataframe(reference_version)
-    current = _load_dataframe(current_version)
+    max_rows = max(100, min(100_000, int(run.params.get("max_rows", 10_000))))
+    reference = sample_source(
+        _analysis_training_uri(run), "train.parquet", max_rows=max_rows, seed=42
+    )
+    current = sample_source(
+        current_version.object_uri,
+        current_version.original_filename or "",
+        max_rows=max_rows,
+        seed=43,
+    )
     excluded = {
         value
         for value in (
@@ -279,6 +337,8 @@ def _execute_drift(
         )
         if value
     }
+    excluded.update(run.params.get("excluded_columns") or [])
+    excluded.update({"row_id", "source_ordinal", "content_fingerprint", "split_role"})
     common_columns = [
         column
         for column in reference.columns
@@ -286,15 +346,8 @@ def _execute_drift(
     ]
     if not common_columns:
         raise ValueError("Reference and current datasets have no common feature columns.")
-    max_rows = max(100, int(run.params.get("max_rows", 10_000)))
-    reference_sample = reference[common_columns].sample(
-        n=min(max_rows, len(reference)),
-        random_state=42,
-    )
-    current_sample = current[common_columns].sample(
-        n=min(max_rows, len(current)),
-        random_state=43,
-    )
+    reference_sample = reference[common_columns]
+    current_sample = current[common_columns]
     report = _run_evidently_report(reference_sample, current_sample)
     metrics, summary = _drift_summary(report, len(common_columns))
     return {
@@ -303,6 +356,10 @@ def _execute_drift(
             **summary,
             "reference_rows": len(reference_sample),
             "current_rows": len(current_sample),
+            "reference_source_rows": reference.attrs.get("source_rows"),
+            "current_source_rows": current.attrs.get("source_rows"),
+            "sampling_policy": "seeded_uniform_streaming_sample",
+            "reference_role": "train",
             "feature_count": len(common_columns),
             "reference_dataset_version_id": str(reference_version.id),
             "current_dataset_version_id": str(current_version.id),
@@ -316,6 +373,11 @@ def _run_evidently_report(
     reference: pd.DataFrame,
     current: pd.DataFrame,
 ) -> dict[str, Any]:
+    # Prepared Parquet preserves datetime dtypes while CSV carries date strings.
+    # Compare the same numeric time representation on both sides, rather than
+    # letting Evidently send Timestamp objects through its text vectorizer.
+    reference = _normalize_temporal_features(reference)
+    current = _normalize_temporal_features(current)
     try:
         from evidently.metric_preset import DataDriftPreset
         from evidently.report import Report
@@ -324,9 +386,7 @@ def _run_evidently_report(
             from evidently import Report
             from evidently.presets import DataDriftPreset
         except ImportError as exc:
-            raise RuntimeError(
-                "Evidently is not installed in the analysis worker image."
-            ) from exc
+            raise RuntimeError("Evidently is not installed in the analysis worker image.") from exc
     try:
         report = Report(metrics=[DataDriftPreset()])
     except TypeError:
@@ -352,6 +412,19 @@ def _drift_summary(
     drift_share = _first_nested_value(report, "share_of_drifted_columns")
     drifted_count = _first_nested_value(report, "number_of_drifted_columns")
     drift_by_columns = _first_nested_value(report, "drift_by_columns", {})
+    drift_threshold = 0.5
+    # Evidently's current report format stores aggregate drift as a count/share
+    # metric, rather than the legacy nested result keys.
+    for metric in report.get("metrics", []):
+        config = metric.get("config") or {}
+        if str(config.get("type", "")).endswith(":DriftedColumnsCount"):
+            value = metric.get("value") or {}
+            drifted_count = value.get("count")
+            drift_share = value.get("share")
+            drift_threshold = float(config.get("drift_share", 0.5))
+            break
+    if drifted_count is None and drift_share is None and not drift_by_columns:
+        raise ValueError("The drift report contains no recognized drift measurements.")
     drifted_features: list[str] = []
     if isinstance(drift_by_columns, dict):
         drifted_features = sorted(
@@ -359,9 +432,7 @@ def _drift_summary(
             for name, details in drift_by_columns.items()
             if isinstance(details, dict)
             and bool(
-                details.get("drift_detected")
-                or details.get("drifted")
-                or details.get("detected")
+                details.get("drift_detected") or details.get("drifted") or details.get("detected")
             )
         )
     if drifted_count is None:
@@ -376,7 +447,7 @@ def _drift_summary(
     dataset_drift = (
         bool(dataset_drift_value)
         if dataset_drift_value is not None
-        else drift_share >= 0.5
+        else drift_share >= drift_threshold
     )
     return (
         {
@@ -411,51 +482,6 @@ def _first_nested_value(
             if found is not None:
                 return found
     return default
-
-
-def normalize_feature_importance(
-    feature_importance: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    if not feature_importance:
-        return []
-    values = np.asarray(
-        [item.get("mean_absolute_shap", 0.0) for item in feature_importance],
-        dtype=float,
-    )
-    percentages = _percentage_contributions(values, feature_axis=0)
-    normalized = [
-        {
-            **item,
-            "contribution_percent": float(percent),
-        }
-        for item, percent in zip(feature_importance, percentages, strict=True)
-    ]
-    return sorted(
-        normalized,
-        key=lambda item: item["contribution_percent"],
-        reverse=True,
-    )
-
-
-def _percentage_contributions(
-    values: np.ndarray,
-    *,
-    feature_axis: int,
-) -> np.ndarray:
-    absolute = np.nan_to_num(
-        np.abs(np.asarray(values, dtype=float)),
-        nan=0.0,
-        posinf=0.0,
-        neginf=0.0,
-    )
-    totals = np.sum(absolute, axis=feature_axis, keepdims=True)
-    normalized = np.divide(
-        absolute,
-        totals,
-        out=np.zeros_like(absolute, dtype=float),
-        where=totals > 0,
-    )
-    return np.clip(normalized * 100.0, 0.0, 100.0)
 
 
 def _encode_shap_features(
@@ -497,24 +523,14 @@ def _load_model(
     run: ModelRun,
     version: DatasetVersion | None = None,
 ) -> Any:
-    model_run_id = run.params.get("model_mlflow_run_id")
-    mlflow_error: Exception | None = None
-    if model_run_id:
-        try:
-            mlflow.set_tracking_uri(get_settings().mlflow_tracking_uri)
-            return mlflow_sklearn.load_model(f"runs:/{model_run_id}/model")
-        except Exception as exc:
-            mlflow_error = exc
     model_artifact_uri = run.params.get("model_artifact_uri")
-    if model_artifact_uri:
-        return joblib.load(io.BytesIO(get_object_store().read_bytes(model_artifact_uri)))
-    if run.run_kind == RunKind.EXPLAINABILITY and version is not None:
-        return _rebuild_historical_model(run, version)
-    if mlflow_error is not None:
-        raise ValueError(
-            f"MLflow model loading failed and no object-store mirror exists: {mlflow_error}"
-        ) from mlflow_error
-    raise ValueError("The source model has no persisted artifact.")
+    expected_digest = run.params.get("model_artifact_sha256")
+    if not model_artifact_uri or not expected_digest:
+        raise ValueError("The source model has no verified artifact. Retrain it before analysis.")
+    content = get_object_store().read_bytes(model_artifact_uri)
+    if hashlib.sha256(content).hexdigest() != expected_digest:
+        raise ValueError("The source model artifact SHA-256 does not match its training record.")
+    return joblib.load(io.BytesIO(content))
 
 
 def _rebuild_historical_model(
@@ -551,7 +567,7 @@ def _rebuild_historical_model(
             evaluation_column=source.params.get("evaluation_column"),
             excluded_columns=list(source.params.get("excluded_leakage_columns") or []),
         )
-        artifact_uri = _persist_candidate_model(
+        artifact_uri, artifact_digest = _persist_candidate_model(
             source,
             model_name,
             model,
@@ -563,6 +579,7 @@ def _rebuild_historical_model(
                     {
                         **item,
                         "model_artifact_uri": artifact_uri,
+                        "model_artifact_sha256": artifact_digest,
                         "artifact_reconstructed": True,
                     }
                     if item.get("model") == model_name
@@ -576,12 +593,14 @@ def _rebuild_historical_model(
             persisted_run.params = {
                 **persisted_run.params,
                 "model_artifact_uri": artifact_uri,
+                "model_artifact_sha256": artifact_digest,
                 "model_reconstructed": True,
             }
         db.commit()
     run.params = {
         **run.params,
         "model_artifact_uri": artifact_uri,
+        "model_artifact_sha256": artifact_digest,
         "model_reconstructed": True,
     }
     return model

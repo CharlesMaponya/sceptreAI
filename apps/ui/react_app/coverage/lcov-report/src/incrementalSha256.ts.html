@@ -25,28 +25,28 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">100% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>83/83</span>
+                <span class='fraction'>89/89</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">95.23% </span>
+                <span class="strong">95.45% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>20/21</span>
+                <span class='fraction'>21/22</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">100% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>8/8</span>
+                <span class='fraction'>7/7</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">100% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>58/58</span>
+                <span class='fraction'>65/65</span>
             </div>
         
             
@@ -170,7 +170,14 @@
 <a name='L105'></a><a href='#L105'>105</a>
 <a name='L106'></a><a href='#L106'>106</a>
 <a name='L107'></a><a href='#L107'>107</a>
-<a name='L108'></a><a href='#L108'>108</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L108'></a><a href='#L108'>108</a>
+<a name='L109'></a><a href='#L109'>109</a>
+<a name='L110'></a><a href='#L110'>110</a>
+<a name='L111'></a><a href='#L111'>111</a>
+<a name='L112'></a><a href='#L112'>112</a>
+<a name='L113'></a><a href='#L113'>113</a>
+<a name='L114'></a><a href='#L114'>114</a>
+<a name='L115'></a><a href='#L115'>115</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -197,6 +204,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">45x</span>
 <span class="cline-any cline-yes">45x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -274,7 +282,13 @@
 <span class="cline-any cline-yes">3520x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">55x</span>
-<span class="cline-any cline-yes">440x</span>
+<span class="cline-any cline-yes">55x</span>
+<span class="cline-any cline-yes">55x</span>
+<span class="cline-any cline-yes">55x</span>
+<span class="cline-any cline-yes">55x</span>
+<span class="cline-any cline-yes">55x</span>
+<span class="cline-any cline-yes">55x</span>
+<span class="cline-any cline-yes">55x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">export type Sha256Snapshot = {
@@ -305,6 +319,7 @@ export class IncrementalSha256 {
   private buffer: number[];
   private bytesHashed: number;
   private finished = false;
+  private words = new Uint32Array(64);
 &nbsp;
   constructor(snapshot?: Sha256Snapshot) {
     this.state = snapshot ? [...snapshot.state] : [...INITIAL];
@@ -329,7 +344,7 @@ export class IncrementalSha256 {
       }
     }
     while (offset + 64 &lt;= input.length) {
-      this.compress(input.subarray(offset, offset + 64));
+      this.compress(input, offset);
       offset += 64;
     }
     while (offset &lt; input.length) this.buffer.push(input[offset++]);
@@ -356,10 +371,10 @@ export class IncrementalSha256 {
     return this.state.map((value) =&gt; (value &gt;&gt;&gt; 0).toString(16).padStart(8, "0")).join("");
   }
 &nbsp;
-  private compress(chunk: Uint8Array) {
-    const words = new Uint32Array(64);
+  private compress(chunk: Uint8Array, start = 0) {
+    const words = this.words;
     for (let index = 0; index &lt; 16; index += 1) {
-      const offset = index * 4;
+      const offset = start + index * 4;
       words[index] = ((chunk[offset] &lt;&lt; 24) | (chunk[offset + 1] &lt;&lt; 16)
         | (chunk[offset + 2] &lt;&lt; 8) | chunk[offset + 3]) &gt;&gt;&gt; 0;
     }
@@ -380,8 +395,14 @@ export class IncrementalSha256 {
       const t2 = (s0 + majority) &gt;&gt;&gt; 0;
       h = g; g = f; f = e; e = (d + t1) &gt;&gt;&gt; 0; d = c; c = b; b = a; a = (t1 + t2) &gt;&gt;&gt; 0;
     }
-    const values = [a, b, c, d, e, f, g, h];
-    this.state = this.state.map((value, index) =&gt; (value + values[index]) &gt;&gt;&gt; 0);
+    this.state[0] = (this.state[0] + a) &gt;&gt;&gt; 0;
+    this.state[1] = (this.state[1] + b) &gt;&gt;&gt; 0;
+    this.state[2] = (this.state[2] + c) &gt;&gt;&gt; 0;
+    this.state[3] = (this.state[3] + d) &gt;&gt;&gt; 0;
+    this.state[4] = (this.state[4] + e) &gt;&gt;&gt; 0;
+    this.state[5] = (this.state[5] + f) &gt;&gt;&gt; 0;
+    this.state[6] = (this.state[6] + g) &gt;&gt;&gt; 0;
+    this.state[7] = (this.state[7] + h) &gt;&gt;&gt; 0;
   }
 }
 &nbsp;</pre></td></tr></table></pre>
@@ -391,7 +412,7 @@ export class IncrementalSha256 {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-08-20T15:44:36.035Z
+                at 2026-09-20T18:07:07.512Z
             </div>
         <script src="../prettify.js"></script>
         <script>

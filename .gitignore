@@ -112,3 +112,5 @@ infra/helm/sceptre/charts/*.tgz
 # Local agent skills
 .agents/
 skills-lock.json
+
+artifacts/

@@ -45,8 +45,21 @@ export interface ProfileJob {
   id: ID; status: RunStatus; current_stage?: string; completed_columns?: number;
   total_columns?: number; row_count?: number; target_column?: string | null;
   progress?: number; overview_json?: {
+    time_column?: string | null;
     task_inference?: { task_type: TaskType; confidence: number; rationale: string };
     leakage_analysis?: LeakageAnalysis;
+    execution_mode?: "control_plane" | "kuberay";
+    workflow_generation?: number;
+    workflow_attempt_id?: string;
+    ray_job_name?: string;
+    launch_bindings?: {
+      split_revision_id: string;
+      feature_contract_revision_id: string;
+      feature_registry_revision_id: string;
+      feature_recipe_revision_id: string;
+      feature_search_space_revision_ids: Record<string, string>;
+      estimator_catalog_revision_id: string;
+    };
   };
   warnings_json?: string[]; failure_message?: string | null;
 }
@@ -65,11 +78,14 @@ export interface Estimator {
   cost_tier: string; default_selected: boolean;
 }
 export interface TrainingPayload {
+  deadline_seconds?: number | null;
+  split_revision_id?: string;
+  excluded_columns?: string[];
   dataset_version_id: ID; target_column: string | null; positive_label: string | null;
   evaluation_column: string | null;
   task_type: TaskType; primary_metric: string; prefer_gpu: boolean; expected_minutes: number;
   candidate_limit: number; candidate_models: string[]; optimization_iterations: number;
-  cv_folds: number;
+  cv_folds: number; catalog_revision_id?: string;
 }
 export interface Capacity {
   connected: boolean; source: string; available_cpu_cores: number;
@@ -82,12 +98,20 @@ export interface TrainingEstimate {
   gpu_requested: boolean; gpu_vendor?: "nvidia" | "intel" | null;
   gpu_resource?: string | null; selected_node?: string | null;
   estimated_core_hours: number; can_launch: boolean;
-  blockers: string[]; warnings: string[]; active_deadline_seconds: number;
+  blockers: string[]; warnings: string[]; active_deadline_seconds: number | null;
+  sample_tier_summary: {
+    policy?: string; row_count?: number; full_row_count?: number;
+    pairwise_row_count?: number; validation_row_count?: number;
+    sampled?: boolean; order?: string;
+    split_counts?: { train: number; validation: number; final_test: number };
+    source_row_count?: number;
+  };
 }
 export interface ModelRun {
   id: ID; dataset_version_id: ID; run_kind: string; status: RunStatus;
   task_type: TaskType; target_column: string | null; run_name: string | null;
   cpu_request_cores: number | null; memory_request_mb: number | null;
+  tags?: Record<string, unknown>;
   params: Record<string, unknown>; plain_english_failure: string | null;
   failure_message: string | null; created_at: string; finished_at: string | null;
 }
@@ -111,7 +135,8 @@ export interface LeaderboardEntry {
   rank: number | null; model: string; status: string; cost_tier: string;
   primary_score: number | null; metrics: Record<string, number>;
   diagnostics: Record<string, unknown>; best_params: Record<string, unknown>;
-  duration_seconds: number | null; error: string | null;
+  duration_seconds: number | null; training_rows?: number | null;
+  validation_rows?: number | null; error: string | null;
   pipeline?: {
     model_name: string; task_type: string; state: string; current_phase?: string | null;
     stages: Array<{ key: string; label: string; status: string; summary: string }>;
@@ -128,6 +153,7 @@ export interface LeaderboardEntry {
 export interface Leaderboard {
   run_id: ID; status: RunStatus; primary_metric: string | null; winner: string | null;
   metric_directions: Record<string, string>; entries: LeaderboardEntry[];
+  split_counts?: { train: number; validation: number; final_test: number } | null;
 }
 export interface PlatformHealth {
   capacity: Capacity; active_deployments: number; components: Record<string, string>;

@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from automl_api.models.enums import ProjectRole, ProjectStatus
+from automl_api.models.enums import ProjectRole, ProjectStatus, RunStatus
 
 
 class ProjectCreate(BaseModel):
@@ -47,6 +47,19 @@ class ProjectRead(BaseModel):
     updated_at: datetime
 
 
+class ProjectPageRead(BaseModel):
+    items: list[ProjectRead]
+    total: int
+
+
+class ProjectJourneyRead(BaseModel):
+    dataset_uploaded: bool
+    profile_status: str | None = None
+    training_status: RunStatus | None = None
+    analysis_status: RunStatus | None = None
+    deployment_status: RunStatus | None = None
+
+
 class ProjectShareLinkCreate(BaseModel):
     role: ProjectRole = ProjectRole.VIEWER
     permissions: dict[str, Any] = Field(default_factory=dict)
@@ -54,13 +67,19 @@ class ProjectShareLinkCreate(BaseModel):
     max_uses: int = Field(default=1, ge=1, le=50)
 
 
-class ProjectShareLinkRead(BaseModel):
+class ProjectInvitationRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     project_id: uuid.UUID
     role: ProjectRole
     expires_at: datetime
     max_uses: int
     used_count: int
+    revoked_at: datetime | None = None
+
+
+class ProjectShareLinkRead(ProjectInvitationRead):
     invite_token: str
 
 

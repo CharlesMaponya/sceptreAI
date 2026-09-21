@@ -45,6 +45,8 @@ class S3ObjectStoreDriver:
         self.endpoint_url = endpoint_url
         self.public_endpoint_url = public_endpoint_url or endpoint_url
         self.region = region
+        self.access_key = access_key
+        self.secret_key = secret_key
         self.compatible = compatible
         if compatible and (not endpoint_url or not access_key or not secret_key):
             raise ValueError(
@@ -65,11 +67,7 @@ class S3ObjectStoreDriver:
             )
         self.client = client
         self.presign_client = presign_client or client
-        if (
-            presign_client is None
-            and public_endpoint_url
-            and public_endpoint_url != endpoint_url
-        ):
+        if presign_client is None and public_endpoint_url and public_endpoint_url != endpoint_url:
             import boto3
             from botocore.config import Config
 
@@ -336,6 +334,12 @@ class S3ObjectStoreDriver:
         options: dict[str, object] = {}
         if self.endpoint_url:
             options["client_kwargs"] = {"endpoint_url": self.endpoint_url}
+        if self.access_key:
+            options["key"] = self.access_key
+        if self.secret_key:
+            options["secret"] = self.secret_key
+        if self.region:
+            options["region"] = self.region
         return RayDataSourceDescriptor(
             path=f"s3://{self.bucket}/{key}",
             filesystem_options=options,
@@ -356,6 +360,21 @@ class S3ObjectStoreDriver:
         if self.region and self.region != "us-east-1" and not self.compatible:
             params["CreateBucketConfiguration"] = {"LocationConstraint": self.region}
         self.client.create_bucket(**params)
+
+    def delete_prefix(self, prefix: str) -> None:
+        prefix = self._key(prefix).rstrip("/") + "/"
+        for page in self.client.get_paginator("list_objects_v2").paginate(
+            Bucket=self.bucket, Prefix=prefix
+        ):
+            objects = [{"Key": row["Key"]} for row in page.get("Contents", [])]
+            if objects:
+                result = self.client.delete_objects(
+                    Bucket=self.bucket, Delete={"Objects": objects, "Quiet": True}
+                )
+                if result.get("Errors"):
+                    raise RuntimeError(
+                        "Some stored files could not be deleted; cleanup will retry."
+                    )
 
     def delete(self, uri: str) -> None:
         self.client.delete_object(Bucket=self.bucket, Key=self._key_from_uri(uri))

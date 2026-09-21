@@ -13,6 +13,25 @@ from automl_api.training.evaluation import (
 from sklearn.linear_model import LogisticRegression
 
 
+def test_numeric_positive_label_survives_estimator_float_classes() -> None:
+    features = pd.DataFrame({"x": [-2, -1, 1, 2, 3, -3]})
+    target = pd.Series([0.0, 0.0, 1.0, 1.0, 1.0, 0.0])
+    model = LogisticRegression().fit(features, target)
+    metrics, diagnostics = classification_evaluation(
+        model, features, target, model.predict(features), positive_label="1",
+    )
+    assert diagnostics["positive_label"] == "1.0"
+    assert metrics["roc_auc"] == 1.0
+
+
+def test_numeric_looking_string_categories_remain_distinct() -> None:
+    from automl_api.training.evaluation import _binary_positive_index
+
+    assert _binary_positive_index(["01", "1"], pd.Series(["01", "1"]), "1") == 1
+    with pytest.raises(ValueError, match="not present"):
+        _binary_positive_index(["01", "1"], pd.Series(["01", "1"]), "1.0")
+
+
 def test_classification_evaluation_contains_review_metrics_and_diagnostics() -> None:
     features = pd.DataFrame({"x": [-2, -1, 1, 2, 3, -3]})
     target = pd.Series([0, 0, 1, 1, 1, 0])

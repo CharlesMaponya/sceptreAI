@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import uuid
 from types import SimpleNamespace
 
+import automl_api.services.profiling as profiling_service
 import automl_api.services.ray_polars_profiling as ray_profiler
 import pandas as pd
 import pyarrow as pa
@@ -41,6 +43,53 @@ def test_infer_task_without_target_defaults_to_clustering() -> None:
     result = _infer_task(None, {})
 
     assert result.task_type == TaskType.CLUSTERING
+
+
+def test_target_preview_reads_only_a_bounded_object_prefix(monkeypatch) -> None:
+    project_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    version_id = uuid.uuid4()
+    version = SimpleNamespace(
+        object_uri="s3c://automl/training.csv",
+        original_filename="training.csv",
+        schema_json={"columns": [{"name": "target"}]},
+    )
+    observed: dict[str, object] = {}
+
+    def read_head(uri: str, byte_count: int) -> bytes:
+        observed.update(uri=uri, byte_count=byte_count)
+        return b"feature,target\n1,no\n2,yes\n3,no\n"
+
+    monkeypatch.setattr(profiling_service, "require_project_role", lambda *_args: None)
+    monkeypatch.setattr(
+        profiling_service,
+        "_get_project_dataset_version",
+        lambda *_args: version,
+    )
+    monkeypatch.setattr(
+        profiling_service,
+        "get_object_store",
+        lambda: SimpleNamespace(read_head=read_head),
+    )
+
+    result = profiling_service.build_target_preview(
+        SimpleNamespace(),
+        SimpleNamespace(),
+        project_id,
+        dataset_id,
+        version_id,
+        "target",
+    )
+
+    assert observed == {
+        "uri": version.object_uri,
+        "byte_count": profiling_service.TARGET_PREVIEW_MAX_BYTES,
+    }
+    assert result.sampled_rows == 3
+    assert result.preview_distribution == [
+        {"label": "no", "count": 2},
+        {"label": "yes", "count": 1},
+    ]
 
 
 def test_infer_task_with_continuous_target_is_regression() -> None:

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, FolderKanban, Link2, Plus, Search } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { api, json } from "../api";
 import { Badge, Button, Card, EmptyState, ErrorState, Loading, Modal, PageHeader } from "../components/ui";
@@ -15,7 +15,7 @@ export function ProjectsPage() {
   const [dialog, setDialog] = useState<"create" | "invite" | null>(null);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const projects = useQuery({ queryKey: ["projects"], queryFn: () => api<Project[]>("/projects") });
+  const projects = useQuery({ queryKey: ["projects", page, search], queryFn: () => api<{ items: Project[]; total: number }>(`/projects/page?offset=${(page - 1) * PAGE_SIZE}&limit=${PAGE_SIZE}&search=${encodeURIComponent(search)}`), refetchInterval: 5000 });
   const create = useMutation({
     mutationFn: (body: object) => api<Project>("/projects", json("POST", body)),
     onSuccess: (project) => { client.invalidateQueries({ queryKey: ["projects"] }); setDialog(null); navigate(`/projects/${project.id}`); },
@@ -24,13 +24,12 @@ export function ProjectsPage() {
     mutationFn: (invite_token: string) => api<Project>("/projects/share-links/accept", json("POST", { invite_token })),
     onSuccess: (project) => { client.invalidateQueries({ queryKey: ["projects"] }); setDialog(null); navigate(`/projects/${project.id}`); },
   });
-  const filtered = useMemo(() => projects.data?.filter((project) =>
-    `${project.name} ${project.description}`.toLowerCase().includes(search.toLowerCase())
-  ), [projects.data, search]);
-  const pageCount = Math.max(1, Math.ceil((filtered?.length || 0) / PAGE_SIZE));
+  const total = projects.data?.total || 0;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
   const firstProject = (currentPage - 1) * PAGE_SIZE;
-  const visible = filtered?.slice(firstProject, firstProject + PAGE_SIZE);
+  const visible = projects.data?.items;
+  useEffect(() => { if (projects.data && page > pageCount) setPage(pageCount); }, [projects.data, page, pageCount]);
 
   function submitCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); const values = Object.fromEntries(new FormData(event.currentTarget));
@@ -45,16 +44,16 @@ export function ProjectsPage() {
       action={<div className="button-row"><Button variant="secondary" onClick={() => setDialog("invite")}><Link2 size={16} />Join project</Button>
         <Button onClick={() => setDialog("create")}><Plus size={16} />New project</Button></div>} />
     <div className="toolbar"><label className="search"><Search size={17} /><input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search projects…" aria-label="Search projects" /></label>
-      <span>{projects.data?.length || 0} project{projects.data?.length === 1 ? "" : "s"}</span></div>
+      <span>{total} project{total === 1 ? "" : "s"}</span></div>
     {projects.isLoading ? <Loading /> : projects.error ? <ErrorState error={projects.error} retry={() => projects.refetch()} /> :
-      filtered?.length ? <><div className="project-grid">{visible?.map((project) =>
+      visible?.length ? <><div className="project-grid">{visible?.map((project) =>
         <Link className="card project-card" key={project.id} to={`/projects/${project.id}`}>
-          <div className="project-card__top"><div className="project-mark">{initials(project.name)}</div><Badge status={project.status} /></div>
+          <div className="project-card__top"><div className="project-mark">{initials(project.name)}</div><Badge status={project.settings?.deletion_requested ? "queued" : project.status}>{project.settings?.deletion_requested ? "Deleting" : undefined}</Badge></div>
           <h2>{project.name}</h2><p>{project.description || "A governed Sceptre AI workspace."}</p>
           <div className="project-card__foot"><span><FolderKanban size={15} /> Updated {formatDate(project.updated_at)}</span><ArrowRight size={18} /></div>
         </Link>)}</div>
-        {filtered.length > PAGE_SIZE && <nav className="project-pagination" aria-label="Projects pagination">
-          <p aria-live="polite">Showing {firstProject + 1}–{Math.min(firstProject + PAGE_SIZE, filtered.length)} of {filtered.length}</p>
+        {total > PAGE_SIZE && <nav className="project-pagination" aria-label="Projects pagination">
+          <p aria-live="polite">Showing {firstProject + 1}–{Math.min(firstProject + PAGE_SIZE, total)} of {total}</p>
           <div><Button variant="secondary" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>Previous</Button>
             <span aria-current="page">Page {currentPage} of {pageCount}</span>
             <Button variant="secondary" disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)}>Next</Button></div>

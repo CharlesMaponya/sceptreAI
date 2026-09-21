@@ -1,0 +1,26 @@
+{{/* Fail closed before creating any production resources. */}}
+{{- if eq .Values.environment "production" -}}
+{{- if or .Values.postgresql.enabled .Values.seaweedfs.enabled .Values.mlflow.enabled -}}
+{{- fail "Production requires external PostgreSQL, object storage, and MLflow; bundled data services are local-only" -}}
+{{- end -}}
+{{- if or (not .Values.auth.existingSecret) (not .Values.platform.existingSecret) -}}
+{{- fail "Production requires existing auth and platform Secrets" -}}
+{{- end -}}
+{{- if .Values.auth.simpleAuthEnabled -}}
+{{- fail "Production requires OIDC; password authentication is local-only" -}}
+{{- end -}}
+{{- if or (not .Values.gateway.enabled) (not .Values.gateway.tls.enabled) -}}
+{{- fail "Production requires the TLS Gateway" -}}
+{{- end -}}
+{{- if or .Values.ingress.enabled .Values.inference.ingress.enabled -}}
+{{- fail "Production permits only the authenticated TLS Gateway; direct inference ingress is forbidden" -}}
+{{- end -}}
+{{- range $name, $image := dict "api" .Values.api.image "ui" .Values.ui.image "training" .Values.training.cpu.image "inference" .Values.inference.image -}}
+{{- if not (regexMatch "^sha256:[a-f0-9]{64}$" (default "" $image.digest)) -}}
+{{- fail (printf "Production %s image must be pinned by sha256 digest" $name) -}}
+{{- end -}}
+{{- end -}}
+{{- if index .Values "kuberay-operator" "enabled" -}}
+{{- fail "Production requires a platform-managed, signature-verified KubeRay operator" -}}
+{{- end -}}
+{{- end -}}

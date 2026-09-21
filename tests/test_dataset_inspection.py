@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import pytest
 from automl_api.models.enums import DatasetFormat, DatasetStatus
-from automl_api.services.dataset_inspection import detect_dataset_format, inspect_tabular_bytes
+from automl_api.services.dataset_inspection import (
+    detect_dataset_format,
+    inspect_column_sample,
+    inspect_tabular_bytes,
+)
 
 
 def test_detect_dataset_format_from_extension() -> None:
@@ -48,3 +53,68 @@ def test_unix_millisecond_column_is_temporal() -> None:
     )
 
     assert result.inferred_types_json["event_epoch"]["semantic_type"] == "temporal"
+
+
+def test_target_preview_is_bounded_and_reports_sampled_class_balance() -> None:
+    content = b"feature,target\n" + b"".join(
+        f"{index},{'yes' if index % 4 == 0 else 'no'}\n".encode()
+        for index in range(1_000)
+    )
+
+    result = inspect_column_sample(
+        "training.csv", content, "target", maximum_rows=512
+    )
+
+    assert result.sampled_rows == 512
+    assert result.profile["semantic_type"] == "categorical"
+    assert result.profile["preview_sample_size"] == 512
+    assert result.profile["preview_distribution"] == [
+        {"label": "no", "count": 384},
+        {"label": "yes", "count": 128},
+    ]
+
+
+def test_target_preview_rejects_unknown_columns_and_handles_incomplete_jsonl() -> None:
+    with pytest.raises(ValueError, match="not found"):
+        inspect_column_sample("training.csv", b"feature,target\n1,yes\n", "missing")
+
+    result = inspect_column_sample(
+        "training.ndjson",
+        b'{"target":"yes"}\n{"target":"no"}\n{"target":',
+        "target",
+    )
+    assert result.sampled_rows == 2
+    assert result.profile["preview_distribution"] == [
+        {"label": "yes", "count": 1},
+        {"label": "no", "count": 1},
+    ]
+
+
+def test_target_preview_fails_closed_for_invalid_or_unusable_samples() -> None:
+    with pytest.raises(ValueError, match="positive"):
+        inspect_column_sample(
+            "training.csv", b"feature,target\n1,yes\n", "target", maximum_rows=0
+        )
+    with pytest.raises(ValueError, match="supports CSV"):
+        inspect_column_sample("training.parquet", b"PAR1", "target")
+    with pytest.raises(ValueError, match="no data rows"):
+        inspect_column_sample("training.csv", b"feature,target\n", "target")
+    with pytest.raises(ValueError, match="not found"):
+        inspect_column_sample(
+            "training.jsonl",
+            b'\nnot-json\n[]\n{"other":"value"}\n',
+            "target",
+        )
+
+
+def test_target_preview_bounds_jsonl_rows_and_counts_missing_values() -> None:
+    result = inspect_column_sample(
+        "training.jsonl",
+        b'\nnot-json\n[]\n{"other":1}\n{"target":"yes"}\n{"target":"no"}\n',
+        "target",
+        maximum_rows=2,
+    )
+
+    assert result.sampled_rows == 2
+    assert result.profile["missing_count"] == 1
+    assert result.profile["preview_distribution"] == [{"label": "yes", "count": 1}]

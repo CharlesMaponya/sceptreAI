@@ -428,3 +428,13 @@ def test_audit_pdf_is_branded_and_contains_complete_model_evidence() -> None:
     assert b"Global SHAP feature contributions were not available" in partial
     assert b"Waterfall omitted" in partial
     assert b"The remaining audit evidence is still valid" in partial
+
+
+def test_prepared_model_evidence_does_not_claim_a_legacy_80_20_split():
+    pipeline = build_model_pipeline(
+        "LogisticRegression", TaskType.CLASSIFICATION, "running", prepared_split=True,
+    )
+    summary = next(stage["summary"] for stage in pipeline["stages"] if stage["key"] == "split")
+    assert "80/20" not in summary
+    assert "Saved training and validation partitions" in summary
+    assert "final-test partition remains sealed" in summary

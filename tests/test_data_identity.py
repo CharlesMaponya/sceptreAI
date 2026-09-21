@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from datetime import UTC, date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -111,3 +111,18 @@ def test_row_id_split_and_manifest_validation_edges() -> None:
         "final_test": 0,
     }
     assert sequence_digest(["ab", "c"]) != sequence_digest(["a", "bc"])
+
+
+def test_time_and_duration_values_are_typed_and_stable():
+    assert canonical_value(time(9, 30, 1, 123456)) == {
+        "type": "time",
+        "value": "naive:09:30:01.123456",
+    }
+    assert canonical_value(time(9, 30)) != canonical_value("09:30:00")
+    assert canonical_value(time(9, 30, tzinfo=timezone(timedelta(hours=2)))) == canonical_value(
+        time(7, 30, tzinfo=UTC)
+    )
+    assert canonical_value(timedelta(seconds=-1, microseconds=1)) == {
+        "type": "duration",
+        "value": "-999999",
+    }

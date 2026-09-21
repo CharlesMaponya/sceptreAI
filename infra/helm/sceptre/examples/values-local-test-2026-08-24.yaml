@@ -1,0 +1,59 @@
+# Local test deployment overlay (2026-08-24).
+# Deploys the Phase 3-9 changes to the k3d cluster's local registry.
+#
+# All credentials are REUSED from the secrets already living in the cluster —
+# nothing is regenerated. The chart skips creating a secret when its
+# existingSecret value is set:
+#   sceptre-platform    -> platform.existingSecret        (DATABASE_URL, ...)
+#   sceptre-auth        -> auth.existingSecret            (JWT_SECRET_KEY, ...)
+#   sceptre-postgresql  -> postgresql.auth.existingSecret (POSTGRES_*)
+#   sceptre-seaweedfs   -> seaweedfs.auth.existingSecret  (AWS_*)
+#
+# Usage:
+#   helm upgrade --install sceptre infra/helm/sceptre -n sceptre \
+#     -f infra/helm/sceptre/values-k3d.yaml \
+#     -f infra/helm/sceptre/examples/values-local-test-2026-08-24.yaml \
+# Image tags are explicit below; Helm's appVersion is chart metadata and is not
+# changed by a values override.
+
+# Only api/ui come from the local registry (newly built); the bundled
+# infrastructure services stay on their proven Docker Hub 0.1.12 tags.
+# useGlobal:false keeps those images off the local-registry prefix.
+global:
+  imageRegistry: sceptre-registry.localhost:5111
+
+api:
+  image:
+    tag: api-livefix-20260905-r28
+training:
+  cpu:
+    image:
+      tag: training-cpu-livefix-20260905-r14
+ui:
+  image:
+    tag: ui-livefix-20260905-r4
+mlflow:
+  image:
+    repository: sceptre-registry.localhost:5111/sceptreai
+    tag: mlflow-security-20260826
+    useGlobal: false
+postgresql:
+  image:
+    repository: maponyacharles/sceptreai
+    tag: postgresql-0.1.12
+    useGlobal: false
+  auth:
+    existingSecret: sceptre-postgresql
+seaweedfs:
+  image:
+    repository: maponyacharles/sceptreai
+    tag: seaweedfs-0.1.12
+    useGlobal: false
+  auth:
+    existingSecret: sceptre-seaweedfs
+
+platform:
+  existingSecret: sceptre-platform
+
+auth:
+  existingSecret: sceptre-auth

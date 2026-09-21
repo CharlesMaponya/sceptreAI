@@ -32,6 +32,39 @@ const version = {
 };
 
 describe("training qualification states", () => {
+  it("sends an explicit runtime policy independently of the duration estimate", async () => {
+    const requests: Array<{ deadline_seconds: number | null; expected_minutes: number }> = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      const url = String(input);
+      if (url.endsWith("/active-run")) return response(null);
+      if (url.endsWith("/datasets")) return response([dataset]);
+      if (url.endsWith("/versions")) return response([version]);
+      if (url.endsWith("/profile-jobs/latest")) return response({
+        id: "profile-1", status: "succeeded", target_column: "churned",
+        overview_json: { task_inference: { task_type: "classification" } },
+      });
+      if (url.includes("/training/estimators")) return response([{ name: "Ridge", default_selected: true, cost_tier: "low" }]);
+      if (url.endsWith("/training/estimate")) {
+        requests.push(JSON.parse(String(init?.body)));
+        return response({ detail: "No capacity" }, 409);
+      }
+      return response({ feature_profiles_json: {} });
+    });
+    renderTraining();
+    const estimate = await screen.findByRole("button", { name: /Estimate resources/ });
+    await waitFor(() => expect(estimate).toBeEnabled());
+    await userEvent.click(estimate);
+    await waitFor(() => expect(requests[0]).toMatchObject({ deadline_seconds: null, expected_minutes: 10 }));
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: /Runtime limit/ }), "limited");
+    const limit = screen.getByRole("spinbutton", { name: /Time limit \(minutes\)/ });
+    await userEvent.clear(limit);
+    await userEvent.type(limit, "90");
+    await userEvent.click(estimate);
+    await waitFor(() => expect(requests[1].deadline_seconds).toBe(5400));
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: /Runtime limit/ }), "unlimited");
+    expect(screen.queryByRole("spinbutton", { name: /Time limit \(minutes\)/ })).not.toBeInTheDocument();
+  });
+
   beforeEach(() => {
     setSession(null);
     vi.restoreAllMocks();
@@ -39,7 +72,8 @@ describe("training qualification states", () => {
 
   it("recovers the dataset prerequisite query and routes an empty project to data", async () => {
     let attempts = 0;
-    vi.spyOn(globalThis, "fetch").mockImplementation(() => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(input => {
+      if (String(input).endsWith("/active-run")) return response(null);
       attempts += 1;
       return attempts === 1 ? response({ detail: "Dataset lookup failed" }, 503) : response([]);
     });
@@ -55,7 +89,7 @@ describe("training qualification states", () => {
   it("recovers a version query and handles a dataset without versions", async () => {
     let failVersions = true;
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/datasets")) return response([dataset]);
       return failVersions ? response({ detail: "Versions unavailable" }, 503) : response([]);
     });
@@ -73,7 +107,7 @@ describe("training qualification states", () => {
   it("recovers a profile query and identifies active profiling", async () => {
     let profileAttempts = 0;
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/datasets")) return response([dataset]);
       if (url.endsWith("/versions")) return response([version]);
       if (url.endsWith("/profile-jobs/latest")) {
@@ -97,7 +131,7 @@ describe("training qualification states", () => {
   it("reframes tasks, toggles models, and displays a blocked estimate", async () => {
     let estimateBody: Record<string, unknown> | undefined;
     vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/datasets")) return response([
         dataset, { ...dataset, id: "dataset-2", name: "Transactions" },
       ]);
@@ -155,7 +189,7 @@ describe("training qualification states", () => {
 
   it("reports an empty task-specific estimator catalog", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/datasets")) return response([dataset]);
       if (url.endsWith("/versions")) return response([version]);
       if (url.endsWith("/profile-jobs/latest")) return response({

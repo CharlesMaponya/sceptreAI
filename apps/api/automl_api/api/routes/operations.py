@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Request, Response, status
+from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from automl_api.api.deps import get_current_user
@@ -30,6 +30,7 @@ from automl_api.services.inference_gateway import (
     resolve_deployment_inference_target,
 )
 from automl_api.services.operations import (
+    cleanup_model_deployment,
     cleanup_project_resources,
     deploy_registered_model,
     launch_drift_check,
@@ -40,6 +41,7 @@ from automl_api.services.operations import (
     register_model,
     registry_entry_read,
     set_registry_fallback,
+    start_model_deployment,
     stop_model_deployment,
     update_registry_stage,
 )
@@ -61,8 +63,10 @@ def registry_entries(
     project_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=100),
 ) -> list[RegistryEntryRead]:
-    return list_registry_entries(db, current_user, project_id)
+    return list_registry_entries(db, current_user, project_id, offset=offset, limit=limit)
 
 
 @router.post(
@@ -126,13 +130,21 @@ def drift(
     payload: DriftLaunchRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
 ) -> DriftLaunchRead:
-    result = launch_drift_check(
+    result = durable_mutation(
         db,
         current_user,
         project_id,
-        entry_id,
-        payload,
+        operation="drift.launch",
+        idempotency_key=idempotency_key,
+        payload={"registry_entry_id": str(entry_id), **payload.model_dump(mode="json")},
+        execute=lambda: launch_drift_check(db, current_user, project_id, entry_id, payload),
+        response_model=DriftLaunchRead,
+        response_status=status.HTTP_202_ACCEPTED,
+        outbox_topic="kubernetes.analysis.submit",
+        aggregate_type="model_run",
+        outbox_payload=lambda result: {"run_id": str(result.run.id), "manifest": result.manifest},
     )
     db.commit()
     return result
@@ -143,9 +155,12 @@ def drift_runs(
     project_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=100),
 ) -> list[ModelRunRead]:
     result = [
-        ModelRunRead.model_validate(run) for run in list_drift_runs(db, current_user, project_id)
+        ModelRunRead.model_validate(run)
+        for run in list_drift_runs(db, current_user, project_id, offset=offset, limit=limit)
     ]
     db.commit()
     return result
@@ -191,8 +206,10 @@ def deployments(
     project_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=100),
 ) -> list[DeploymentStatusRead]:
-    result = list_model_deployments(db, current_user, project_id)
+    result = list_model_deployments(db, current_user, project_id, offset=offset, limit=limit)
     db.commit()
     return result
 
@@ -233,6 +250,32 @@ def stop_deployment(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> ModelRunRead:
     run = stop_model_deployment(db, current_user, project_id, run_id)
+    db.commit()
+    db.refresh(run)
+    return ModelRunRead.model_validate(run)
+
+
+@router.post("/deployments/{run_id}/start", response_model=ModelRunRead)
+def start_deployment(
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> ModelRunRead:
+    run = start_model_deployment(db, current_user, project_id, run_id)
+    db.commit()
+    db.refresh(run)
+    return ModelRunRead.model_validate(run)
+
+
+@router.post("/deployments/{run_id}/cleanup", response_model=ModelRunRead)
+def cleanup_deployment(
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> ModelRunRead:
+    run = cleanup_model_deployment(db, current_user, project_id, run_id)
     db.commit()
     db.refresh(run)
     return ModelRunRead.model_validate(run)

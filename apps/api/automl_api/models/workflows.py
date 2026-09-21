@@ -231,7 +231,7 @@ class FeatureContractRevision(
 
     name: Mapped[str] = mapped_column(String(220), nullable=False)
     task_type: Mapped[str] = mapped_column(String(32), nullable=False)
-    target_column: Mapped[str] = mapped_column(String(255), nullable=False)
+    target_column: Mapped[str | None] = mapped_column(String(255))
 
 
 class FeatureRegistryRevision(

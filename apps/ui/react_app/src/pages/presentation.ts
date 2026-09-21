@@ -7,6 +7,8 @@ export type TargetColumnProfile = {
   distribution: Array<{ label: string; count: number }>;
   preview_values?: Array<string | number>;
   preview_distribution?: Array<{ label: string; count: number }>;
+  sampled_rows?: number;
+  missing_count?: number;
 };
 
 type CloudWord = { word: string; count: number };
@@ -14,7 +16,7 @@ type PlacedCloudWord = CloudWord & { x: number; y: number; size: number; color: 
 type LeaderboardEntry = Leaderboard["entries"][number];
 
 export function buildWordCloudTrace(words: CloudWord[]) {
-  const palette = ["#173b82", "#3159e8", "#5f78d8", "#176b78", "#7048a8", "#2360a8"];
+  const palette = ["#3a416f", "#cb0c9f", "#a889c3", "#176b78", "#7048a8", "#66758f"];
   const candidates = words
     .filter((item) => item.word?.trim() && Number.isFinite(item.count) && item.count > 0)
     .sort((left, right) => right.count - left.count)
@@ -61,7 +63,7 @@ export function buildWordCloudTrace(words: CloudWord[]) {
     text: placed.map((item) => item.word),
     customdata: placed.map((item) => item.count),
     textfont: {
-      family: "Manrope Variable, Inter, system-ui, sans-serif",
+      family: "Open Sans Variable, Open Sans Variable, system-ui, sans-serif",
       size: placed.map((item) => item.size),
       color: placed.map((item) => item.color),
     },

@@ -1,0 +1,46 @@
+# Rebuilt three-node k3d runtime. Pass credentials from the private state directory.
+global:
+  imageRegistry: k3d-sceptre-registry.localhost:5111
+api:
+  replicaCount: 2
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 3
+  image:
+    tag: api-readiness-20260920-r35
+ui:
+  replicaCount: 2
+  image:
+    tag: ui-status-20260920-r34
+reconciler:
+  replicaCount: 2
+training:
+  maxConcurrentJobs: 1
+  rayMaxWorkers: 1
+  jobTtlSeconds: 30
+  cpu:
+    image:
+      tag: training-candidate-pods-20260920-r24
+inference:
+  image:
+    tag: inference-recovery-20260910-r13
+mlflow:
+  image:
+    tag: mlflow-security-20260826
+postgresql:
+  image:
+    repository: maponyacharles/sceptreai
+    tag: postgresql-0.1.12
+    useGlobal: false
+seaweedfs:
+  image:
+    repository: maponyacharles/sceptreai
+    tag: seaweedfs-0.1.12
+    useGlobal: false
+
+# Accept both localhost and the loopback IP for local browser access.
+ingress:
+  host: ""
+uploads:
+  allowedOrigins: [http://localhost:8080, http://127.0.0.1:8080]

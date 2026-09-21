@@ -21,10 +21,14 @@ describe("projects pagination", () => {
   beforeEach(() => {
     setSession(null);
     vi.restoreAllMocks();
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify(projects), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    }));
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = new URL(String(input), "http://localhost");
+      const search = url.searchParams.get("search") || "";
+      const filtered = projects.filter((project) => `${project.name} ${project.description}`.toLowerCase().includes(search.toLowerCase()));
+      const offset = Number(url.searchParams.get("offset") || 0);
+      const limit = Number(url.searchParams.get("limit") || 6);
+      return new Response(JSON.stringify({ items: filtered.slice(offset, offset + limit), total: filtered.length }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
   });
 
   it("paginates filtered projects and resets to the first page when searching", async () => {
@@ -37,13 +41,13 @@ describe("projects pagination", () => {
     expect(screen.getByText("Showing 1–6 of 8")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Next" }));
-    expect(screen.getByRole("heading", { name: "Project 7" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Project 7" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Project 1" })).not.toBeInTheDocument();
     expect(screen.getByText("Showing 7–8 of 8")).toBeInTheDocument();
     expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
 
     await userEvent.type(screen.getByRole("textbox", { name: "Search projects" }), "Project 1");
-    expect(screen.getByRole("heading", { name: "Project 1" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Project 1" })).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Projects pagination" })).not.toBeInTheDocument();
   });
 
@@ -51,9 +55,9 @@ describe("projects pagination", () => {
     const user = userEvent.setup();
     const created = { ...projects[0], id: "created-project", name: "Churn prevention" };
     const fetchMock = vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [], total: 0 }), { status: 200, headers: { "Content-Type": "application/json" } }))
       .mockResolvedValueOnce(new Response(JSON.stringify(created), { status: 201, headers: { "Content-Type": "application/json" } }))
-      .mockResolvedValue(new Response(JSON.stringify([created]), { status: 200, headers: { "Content-Type": "application/json" } }));
+      .mockResolvedValue(new Response(JSON.stringify({ items: [created], total: 1 }), { status: 200, headers: { "Content-Type": "application/json" } }));
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/projects"]}><Routes>
       <Route path="/projects" element={<ProjectsPage />} />
@@ -77,7 +81,7 @@ describe("projects pagination", () => {
   it("shows create errors and lets the user cancel the dialog", async () => {
     const user = userEvent.setup();
     vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [], total: 0 }), { status: 200, headers: { "Content-Type": "application/json" } }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ detail: "Project name already exists" }), {
         status: 409, headers: { "Content-Type": "application/json" },
       }));
@@ -97,9 +101,9 @@ describe("projects pagination", () => {
     const user = userEvent.setup();
     const joined = { ...projects[0], id: "joined-project" };
     const fetchMock = vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(new Response(JSON.stringify(projects.slice(0, 1)), { status: 200, headers: { "Content-Type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ items: projects.slice(0, 1), total: 1 }), { status: 200, headers: { "Content-Type": "application/json" } }))
       .mockResolvedValueOnce(new Response(JSON.stringify(joined), { status: 200, headers: { "Content-Type": "application/json" } }))
-      .mockResolvedValue(new Response(JSON.stringify(projects), { status: 200, headers: { "Content-Type": "application/json" } }));
+      .mockResolvedValue(new Response(JSON.stringify({ items: projects, total: projects.length }), { status: 200, headers: { "Content-Type": "application/json" } }));
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/projects"]}><Routes>
       <Route path="/projects" element={<ProjectsPage />} />
@@ -122,9 +126,11 @@ describe("projects pagination", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ detail: "Project service unavailable" }), {
         status: 503, headers: { "Content-Type": "application/json" },
       }))
-      .mockResolvedValue(new Response(JSON.stringify(projects.slice(0, 1)), {
-        status: 200, headers: { "Content-Type": "application/json" },
-      }));
+      .mockImplementation(async (input) => {
+        const search = new URL(String(input), "http://localhost").searchParams.get("search") || "";
+        const items = projects.slice(0, 1).filter((item) => item.name.toLowerCase().includes(search.toLowerCase()));
+        return new Response(JSON.stringify({ items, total: items.length }), { status: 200, headers: { "Content-Type": "application/json" } });
+      });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={client}><MemoryRouter><ProjectsPage /></MemoryRouter></QueryClientProvider>);
 
@@ -132,6 +138,6 @@ describe("projects pagination", () => {
     await user.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByRole("heading", { name: "Project 1" })).toBeInTheDocument();
     await user.type(screen.getByRole("textbox", { name: "Search projects" }), "not present");
-    expect(screen.getByText("No matching projects")).toBeInTheDocument();
+    expect(await screen.findByText("No matching projects")).toBeInTheDocument();
   });
 });

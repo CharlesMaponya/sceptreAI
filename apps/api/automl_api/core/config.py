@@ -75,9 +75,13 @@ class Settings:
     pgbouncer_transaction_mode: bool = False
 
     jwt_secret_key: str = "change-me"
-    jwt_access_token_minutes: int = 24 * 60
+    jwt_access_token_minutes: int = 15
     jwt_refresh_rotation_hours: int = 7 * 24
     simple_auth_enabled: bool = True
+    oidc_issuer: str = ""
+    oidc_client_id: str = ""
+    oidc_client_secret: str = ""
+    oidc_require_mfa: bool = True
     public_app_url: str = "http://localhost:8080"
     smtp_host: str | None = None
     smtp_port: int = 587
@@ -113,6 +117,7 @@ class Settings:
     upload_scanner_signature_version: str = "builtin-content-policy-v1"
 
     dataset_cache_size_gb: int = 5
+    distributed_preparation_enabled: bool = False
     dataset_cache_pvc_name: str | None = None
     gpu_enabled: bool = False
     cluster_observer_enabled: bool = False
@@ -131,10 +136,19 @@ class Settings:
     training_cpu_limit_cores: float = 2.0
     training_memory_request_mb: int = 1024
     training_memory_limit_mb: int = 4096
+    training_adaptive_node_sizing_enabled: bool = True
+    training_node_memory_fraction: float = 0.8
     training_priority_class_name: str | None = None
     training_job_ttl_seconds: int = 300
+    training_max_concurrent_trials: int = 1
+    ray_max_workers: int = 10
     database_secret_name: str = "automl-platform-secrets"
     database_secret_key: str = "DATABASE_URL"
+    # P6-W12: training jobs receive a restricted worker credential, never the
+    # full application DATABASE_URL. The worker secret must point at a role
+    # limited to the run/candidate/attempt tables it owns.
+    worker_database_secret_name: str = "automl-worker-database"
+    worker_database_secret_key: str = "WORKER_DATABASE_URL"
     object_store_secret_name: str = "automl-seaweedfs-credentials"
     object_store_access_key_secret_key: str = "AWS_ACCESS_KEY_ID"
     object_store_secret_key_secret_key: str = "AWS_SECRET_ACCESS_KEY"
@@ -142,6 +156,7 @@ class Settings:
     inference_image_pull_policy: str = "IfNotPresent"
     inference_service_account: str = "default"
     inference_service_type: str = "ClusterIP"
+    internal_api_url: str = "http://sceptre-api:8000"
     inference_external_host: str | None = None
     inference_external_scheme: str = "http"
     inference_ingress_enabled: bool = False
@@ -165,12 +180,11 @@ class Settings:
 def get_settings() -> Settings:
     dotenv = _read_dotenv()
     return Settings(
+        internal_api_url=str(_get_env("INTERNAL_API_URL", Settings.internal_api_url, dotenv)),
         environment=str(_get_env("ENVIRONMENT", Settings.environment, dotenv)),
         database_url=str(_get_env("DATABASE_URL", Settings.database_url, dotenv)),
         qualification_database_url=(
-            str(value)
-            if (value := _get_env("QUALIFICATION_DATABASE_URL", None, dotenv))
-            else None
+            str(value) if (value := _get_env("QUALIFICATION_DATABASE_URL", None, dotenv)) else None
         ),
         database_pool_size=_get_int("DATABASE_POOL_SIZE", Settings.database_pool_size, dotenv),
         database_max_overflow=_get_int(
@@ -225,6 +239,10 @@ def get_settings() -> Settings:
             dotenv,
         ),
         simple_auth_enabled=_get_bool("SIMPLE_AUTH_ENABLED", Settings.simple_auth_enabled, dotenv),
+        oidc_issuer=str(_get_env("OIDC_ISSUER", "", dotenv)).rstrip("/"),
+        oidc_client_id=str(_get_env("OIDC_CLIENT_ID", "", dotenv)),
+        oidc_client_secret=str(_get_env("OIDC_CLIENT_SECRET", "", dotenv)),
+        oidc_require_mfa=_get_bool("OIDC_REQUIRE_MFA", True, dotenv),
         public_app_url=str(_get_env("PUBLIC_APP_URL", Settings.public_app_url, dotenv)),
         smtp_host=_get_env("SMTP_HOST", Settings.smtp_host, dotenv),
         smtp_port=_get_int("SMTP_PORT", Settings.smtp_port, dotenv),
@@ -247,9 +265,7 @@ def get_settings() -> Settings:
         object_store_bucket=str(
             _get_env("OBJECT_STORE_BUCKET", Settings.object_store_bucket, dotenv)
         ),
-        object_store_region=_get_env(
-            "OBJECT_STORE_REGION", Settings.object_store_region, dotenv
-        ),
+        object_store_region=_get_env("OBJECT_STORE_REGION", Settings.object_store_region, dotenv),
         object_store_access_key=_get_env(
             "OBJECT_STORE_ACCESS_KEY",
             Settings.object_store_access_key,
@@ -344,6 +360,13 @@ def get_settings() -> Settings:
         ),
         intel_gpu_resource=str(_get_env("INTEL_GPU_RESOURCE", Settings.intel_gpu_resource, dotenv)),
         max_concurrent_jobs=_get_int("MAX_CONCURRENT_JOBS", Settings.max_concurrent_jobs, dotenv),
+        distributed_preparation_enabled=_get_bool(
+            "DISTRIBUTED_PREPARATION_ENABLED", Settings.distributed_preparation_enabled, dotenv
+        ),
+        training_max_concurrent_trials=_get_int(
+            "TRAINING_MAX_CONCURRENT_TRIALS", Settings.training_max_concurrent_trials, dotenv
+        ),
+        ray_max_workers=_get_int("RAY_MAX_WORKERS", Settings.ray_max_workers, dotenv),
         mlflow_tracking_uri=str(
             _get_env("MLFLOW_TRACKING_URI", Settings.mlflow_tracking_uri, dotenv)
         ),
@@ -394,6 +417,16 @@ def get_settings() -> Settings:
             Settings.training_memory_limit_mb,
             dotenv,
         ),
+        training_adaptive_node_sizing_enabled=_get_bool(
+            "TRAINING_ADAPTIVE_NODE_SIZING_ENABLED",
+            Settings.training_adaptive_node_sizing_enabled,
+            dotenv,
+        ),
+        training_node_memory_fraction=_get_float(
+            "TRAINING_NODE_MEMORY_FRACTION",
+            Settings.training_node_memory_fraction,
+            dotenv,
+        ),
         training_priority_class_name=_get_env(
             "TRAINING_PRIORITY_CLASS_NAME",
             Settings.training_priority_class_name,
@@ -409,6 +442,20 @@ def get_settings() -> Settings:
         ),
         database_secret_key=str(
             _get_env("DATABASE_SECRET_KEY", Settings.database_secret_key, dotenv)
+        ),
+        worker_database_secret_name=str(
+            _get_env(
+                "WORKER_DATABASE_SECRET_NAME",
+                Settings.worker_database_secret_name,
+                dotenv,
+            )
+        ),
+        worker_database_secret_key=str(
+            _get_env(
+                "WORKER_DATABASE_SECRET_KEY",
+                Settings.worker_database_secret_key,
+                dotenv,
+            )
         ),
         object_store_secret_name=str(
             _get_env("OBJECT_STORE_SECRET_NAME", Settings.object_store_secret_name, dotenv)

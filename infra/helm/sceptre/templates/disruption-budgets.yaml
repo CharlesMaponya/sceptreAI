@@ -1,0 +1,22 @@
+{{- range $component := list "api" "ui" "reconciler" }}
+{{- $config := index $.Values $component }}
+{{- $replicas := int $config.replicaCount }}
+{{- if and (eq $component "api") $.Values.api.autoscaling.enabled }}
+{{- $replicas = int $.Values.api.autoscaling.minReplicas }}
+{{- end }}
+{{- if gt $replicas 1 }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "sceptre.fullname" $ }}-{{ $component }}
+  labels:
+    {{- include "sceptre.labels" $ | nindent 4 }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "sceptre.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: {{ $component }}
+{{- end }}
+{{- end }}

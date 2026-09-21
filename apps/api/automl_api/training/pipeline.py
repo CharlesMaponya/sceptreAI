@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import io
 import json
 import os
@@ -6,21 +8,21 @@ import time
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import lru_cache
+from importlib.metadata import distributions, version
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 import joblib
 import mlflow
 import mlflow.sklearn as mlflow_sklearn
 import numpy as np
 import pandas as pd
+import polars as pl
+import ray
 from mlflow import MlflowClient
 from sklearn.base import clone
 from sklearn.compose import ColumnTransformer, make_column_selector
-from sklearn.feature_selection import (
-    SelectPercentile,
-    mutual_info_classif,
-    mutual_info_regression,
-)
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import (
     KFold,
@@ -45,15 +47,18 @@ from zenml import pipeline, step
 from automl_api.core.config import get_settings
 from automl_api.db.session import get_session_factory
 from automl_api.models.datasets import DatasetVersion
-from automl_api.models.enums import MetricKind, MetricSplit, RunStatus, TaskType
+from automl_api.models.enums import AttemptStatus, MetricKind, MetricSplit, RunStatus, TaskType
 from automl_api.models.runs import Metric, ModelRun
+from automl_api.models.workflows import DatasetSplitRevision, WorkflowAttempt
 from automl_api.services.leakage import detect_target_leakage
+from automl_api.services.ray_polars_profiling import _ensure_ray, _ray_source
 from automl_api.services.temporal import (
     normalize_temporal_features as _normalize_temporal_features,
 )
 from automl_api.services.temporal import (
     series_unix_timestamp_unit as _series_unix_timestamp_unit,
 )
+from automl_api.services.workflow_state import StaleFence
 from automl_api.storage.object_store import get_object_store
 from automl_api.training.correlation import CorrelatedFeatureFilter
 from automl_api.training.evaluation import (
@@ -66,7 +71,9 @@ from automl_api.training.evaluation import (
     regression_evaluation,
     resolve_primary_metric,
 )
+from automl_api.training.feature_selection import BoundedFeatureSelector
 from automl_api.training.model_catalog import (
+    PAIRWISE_SAMPLE_MODELS,
     CandidateSpec,
     candidate_catalog,
     configure_estimator_for_training,
@@ -87,11 +94,15 @@ _TERMINAL_RUN_STATUSES = frozenset(
 # model so later loads apply the same narrow trust boundary.
 _SKOPS_TRUSTED_TYPES = (
     "automl_api.training.correlation.CorrelatedFeatureFilter",
+    "automl_api.training.feature_selection.BoundedFeatureSelector",
+    "automl_api.training.feature_selection.classification_scores",
+    "automl_api.training.feature_selection.regression_scores",
     "automl_api.training.model_catalog.XGBLabelEncodingClassifier",
     "automl_api.training.pipeline._shift_nonnegative",
     "catboost.core.CatBoostClassifier",
     "catboost.core.CatBoostRegressor",
     "collections.OrderedDict",
+    "datetime.time",
     "lightgbm.basic.Booster",
     "lightgbm.sklearn.LGBMClassifier",
     "lightgbm.sklearn.LGBMRegressor",
@@ -124,7 +135,24 @@ def tabular_automl_pipeline(run_id: str) -> None:
     train_run_step(run_id=run_id)
 
 
+@lru_cache(maxsize=1)
+def _model_pip_requirements() -> tuple[str, ...]:
+    # MLflow's automatic inference loads another copy of the fitted model in a
+    # subprocess. Record the pinned worker environment without duplicating it.
+    names = {
+        re.sub(r"[-_.]+", "-", distribution.metadata["Name"]).lower()
+        for distribution in distributions()
+        if distribution.metadata.get("Name")
+        and distribution.metadata["Name"].lower() != "smme-tabular-automl"
+    }
+    requirements = [f"{name}=={version(name)}" for name in sorted(names)]
+    if any("+cpu" in requirement for requirement in requirements):
+        requirements.insert(0, "--extra-index-url https://download.pytorch.org/whl/cpu")
+    return tuple(requirements)
+
+
 def _log_sklearn_model(model: Any, **kwargs: Any) -> Any:
+    kwargs.setdefault("pip_requirements", list(_model_pip_requirements()))
     return mlflow_sklearn.log_model(
         model,
         skops_trusted_types=list(_SKOPS_TRUSTED_TYPES),
@@ -143,12 +171,22 @@ def execute_training_run(run_id: uuid.UUID) -> dict[str, float]:
         version = db.get(DatasetVersion, run.dataset_version_id)
         if version is None:
             raise ValueError("Dataset version was not found.")
+        split = _bound_split_revision(db, run)
         run.status = RunStatus.RUNNING
         run.started_at = run.started_at or datetime.now(UTC)
+        run.failure_code = None
+        run.failure_message = None
+        run.plain_english_failure = None
+        run.finished_at = None
         db.commit()
 
     try:
-        dataframe = _load_dataframe(version)
+        dataframe, validation_dataframe = _load_prepared_training_frames(
+            split,
+            sample_rows=int(run.params.get("sample_tier_rows") or 0),
+            validation_sample_rows=int(run.params.get("validation_sample_rows") or 0),
+            task_type=run.task_type,
+        )
         settings = get_settings()
         mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
         mlflow.set_experiment(f"automl-project-{run.project_id}")
@@ -161,7 +199,7 @@ def execute_training_run(run_id: uuid.UUID) -> dict[str, float]:
                     "task_type": run.task_type.value,
                 }
             )
-            result = _fit_model(dataframe, run)
+            result = _fit_model(dataframe, run, validation_dataframe)
             mlflow.log_params(_json_safe(result.params))
             _log_metrics_synchronously(result.metrics)
             mlflow.log_dict(
@@ -200,7 +238,177 @@ def _load_dataframe(version: DatasetVersion) -> pd.DataFrame:
     raise ValueError(f"Unsupported training dataset format: {filename}")
 
 
-def _fit_model(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
+def _bound_split_revision(db: Session, run: ModelRun) -> DatasetSplitRevision:
+    value = (run.params or {}).get("split_revision_id")
+    if not value:
+        raise ValueError("Training requires an immutable prepared split revision.")
+    try:
+        split_id = uuid.UUID(str(value))
+    except ValueError as exc:
+        raise ValueError("The training split revision binding is invalid.") from exc
+    split = db.get(DatasetSplitRevision, split_id)
+    if (
+        split is None
+        or split.project_id != run.project_id
+        or split.dataset_version_id != run.dataset_version_id
+    ):
+        raise ValueError("The prepared split revision is missing or has different lineage.")
+    uris = (split.specification or {}).get("uris") or {}
+    if not uris.get("train") or not uris.get("validation"):
+        raise ValueError("The prepared split revision has no sealed train/validation roles.")
+    if (
+        run.task_type == TaskType.TIME_SERIES
+        and split.specification.get("split_strategy") != "temporal"
+    ):
+        raise ValueError(
+            "Time-series training requires preparation with a chronological time column."
+        )
+    return split
+
+
+def _load_prepared_training_frames(
+    split: DatasetSplitRevision,
+    *,
+    sample_rows: int = 0,
+    validation_sample_rows: int = 0,
+    task_type: TaskType = TaskType.UNSPECIFIED,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Load only the sealed train and validation roles; final-test stays unreachable."""
+    uris = split.specification["uris"]
+    counts = split.specification.get("split_counts") or (
+        (split.specification.get("identity") or {}).get("split_counts") or {}
+    )
+    train_count = int(counts.get("train") or 0)
+    validation_count = int(counts.get("validation") or 0)
+    validation_rows = validation_sample_rows
+    if validation_rows <= 0 and sample_rows > 0 and train_count > 0 and validation_count > 0:
+        validation_rows = max(1_000, round(sample_rows * validation_count / train_count))
+    order_column = (
+        str(split.specification.get("time_column") or "source_ordinal")
+        if task_type == TaskType.TIME_SERIES
+        else "row_id"
+    )
+    seed_material = f"{getattr(split, 'id', '')}:{split.specification.get('row_set_digest', '')}"
+    seed = int(hashlib.sha256(seed_material.encode()).hexdigest()[:8], 16)
+    frames = (
+        _load_prepared_role(
+            str(uris["train"]),
+            max_rows=sample_rows,
+            source_rows=train_count,
+            order_column=order_column,
+            random_seed=seed,
+        ),
+        _load_prepared_role(
+            str(uris["validation"]),
+            max_rows=validation_rows,
+            source_rows=validation_count,
+            order_column=order_column,
+            random_seed=seed + 1,
+        ),
+    )
+    return frames[0], frames[1]
+
+
+def _load_prepared_role(
+    uri: str,
+    *,
+    max_rows: int = 0,
+    source_rows: int = 0,
+    order_column: str = "row_id",
+    random_seed: int = 42,
+) -> pd.DataFrame:
+    _ensure_ray()
+    descriptor = get_object_store().dataframe_source(uri)
+    path, filesystem = _ray_source(descriptor.path, descriptor.filesystem_options)
+    dataset = ray.data.read_parquet(path, filesystem=filesystem)
+    identity_columns = {
+        "row_id",
+        "source_ordinal",
+        "content_fingerprint",
+        "split_role",
+        "__sceptre_sample_rank__",
+    }
+    names = set(dataset.schema().names)
+    if order_column != "row_id" and order_column in names:
+        dataset = dataset.sort(order_column)
+        if max_rows > 0:
+            dataset = dataset.limit(max_rows)
+    elif max_rows > 0 and source_rows > max_rows:
+        # Rank immutable row IDs before limiting: Ray task/block completion
+        # order must never choose which rows enter a comparable experiment.
+        # Filter first so the distributed sort handles only the bounded sample.
+        fraction = min(1.0, max_rows * 1.10 / source_rows)
+        dataset = (
+            dataset.map_batches(
+                _rank_sample_batch,
+                batch_format="pyarrow",
+                batch_size=16_384,
+                fn_kwargs={"fraction": fraction, "seed": random_seed},
+            )
+            .sort(["__sceptre_sample_rank__", "row_id"])
+            .limit(max_rows)
+        )
+        names.add("__sceptre_sample_rank__")
+    elif max_rows > 0:
+        dataset = dataset.limit(max_rows)
+    removable = sorted(identity_columns & names)
+    if removable:
+        dataset = dataset.drop_columns(removable)
+    return dataset.to_pandas()
+
+
+def _rank_sample_batch(batch, *, fraction: float, seed: int):
+    frame = pl.from_arrow(batch)
+    name = "__sceptre_sample_rank__"
+    if name in frame.columns:
+        raise ValueError(f"Rename reserved training column '{name}'.")
+    salt = int(hashlib.sha256(str(seed).encode()).hexdigest()[:16], 16)
+    rank = pl.col("row_id").str.slice(0, 16).str.to_integer(base=16, dtype=pl.UInt64)
+    frame = frame.with_columns((rank ^ pl.lit(salt, dtype=pl.UInt64)).alias(name))
+    if fraction < 1:
+        frame = frame.filter(pl.col(name) < int((1 << 64) * fraction))
+    return frame.to_arrow()
+
+
+def _candidate_training_sample(
+    features: pd.DataFrame,
+    target: pd.Series,
+    *,
+    max_rows: int,
+    task_type: TaskType,
+) -> tuple[pd.DataFrame, pd.Series]:
+    if max_rows <= 0 or len(features) <= max_rows:
+        return features, target
+    if task_type == TaskType.TIME_SERIES:
+        return features.iloc[:max_rows], target.iloc[:max_rows]
+
+    stratify: pd.Series | None = None
+    if task_type == TaskType.CLASSIFICATION:
+        counts = target.value_counts(dropna=False)
+        if len(counts) > 1 and int(counts.min()) >= 2 and max_rows >= len(counts):
+            stratify = target
+    elif task_type == TaskType.REGRESSION:
+        try:
+            bins = pd.qcut(target.rank(method="first"), q=20, labels=False, duplicates="drop")
+            if bins.nunique() > 1 and int(bins.value_counts().min()) >= 2:
+                stratify = bins
+        except (TypeError, ValueError):
+            stratify = None
+
+    selected, _ = train_test_split(
+        np.arange(len(features)),
+        train_size=max_rows,
+        random_state=42,
+        stratify=stratify,
+    )
+    return features.iloc[selected], target.iloc[selected]
+
+
+def _fit_model(
+    dataframe: pd.DataFrame,
+    run: ModelRun,
+    validation_dataframe: pd.DataFrame | None = None,
+) -> TournamentResult:
     if run.task_type == TaskType.CLUSTERING:
         return _fit_clustering(dataframe, run)
     if not run.target_column or run.target_column not in dataframe.columns:
@@ -215,6 +423,7 @@ def _fit_model(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
             str(column)
             for column in [
                 *list(run.params.get("excluded_leakage_columns") or []),
+                *list(run.params.get("excluded_columns") or []),
                 *leakage_analysis.excluded_columns,
             ]
             if column and str(column) != run.target_column
@@ -241,7 +450,32 @@ def _fit_model(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
         }
     features = _normalize_temporal_features(features)
 
-    train_x, test_x, train_y, test_y = _supervised_split(features, target, run.task_type)
+    if validation_dataframe is None:
+        train_x, test_x, train_y, test_y = _supervised_split(features, target, run.task_type)
+    else:
+        if run.target_column not in validation_dataframe.columns:
+            raise ValueError("The prepared validation role is missing the configured target.")
+        validation_target = validation_dataframe[run.target_column]
+        validation_features = validation_dataframe.drop(
+            columns=[run.target_column, *excluded_leakage_columns],
+            errors="ignore",
+        )
+        missing_features = sorted(set(features.columns) - set(validation_features.columns))
+        if missing_features:
+            raise ValueError(
+                "The prepared validation role is missing training features: "
+                + ", ".join(missing_features)
+            )
+        valid_validation_target = validation_target.notna()
+        validation_features = validation_features.loc[valid_validation_target, features.columns]
+        validation_target = validation_target.loc[valid_validation_target]
+        if validation_features.empty:
+            raise ValueError("The prepared validation role has no rows with a target.")
+        if run.task_type in {TaskType.REGRESSION, TaskType.TIME_SERIES}:
+            validation_target = pd.to_numeric(validation_target, errors="raise")
+        train_x, train_y = features, target
+        test_x = _normalize_temporal_features(validation_features)
+        test_y = validation_target
     candidate_limit = int(run.params.get("candidate_limit", 5))
     requested_names = run.params.get("candidate_models")
     candidates = select_candidates(
@@ -252,8 +486,8 @@ def _fit_model(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
     if not candidates:
         raise ValueError(f"No supported candidates are configured for {run.task_type.value}.")
 
-    iterations = max(1, min(int(run.params.get("optimization_iterations", 5)), 25))
-    cv_folds = max(2, min(int(run.params.get("cv_folds", 3)), 5))
+    iterations = int(run.params.get("optimization_iterations", 5))
+    cv_folds = int(run.params.get("cv_folds", 3))
     cv = _cross_validation_strategy(train_y, run.task_type, cv_folds)
     primary_metric = resolve_primary_metric(
         run.task_type,
@@ -264,29 +498,52 @@ def _fit_model(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
         primary_metric,
         target_classes=int(train_y.nunique()) if run.task_type == TaskType.CLASSIFICATION else None,
     )
-    leaderboard: list[dict[str, Any]] = [_pending_candidate(candidate) for candidate in candidates]
-    fitted: dict[str, tuple[Any, dict[str, Any], dict[str, float]]] = {}
-    for index, candidate in enumerate(candidates):
-        _persist_candidate_phase(run.id, candidate.name, "preparing_data")
-        entry = _fit_candidate(
-            candidate,
-            train_x,
-            train_y,
-            test_x,
-            test_y,
-            run.task_type,
-            iterations,
-            cv,
-            scoring,
-            run,
+    pairwise_limit = int(run.params.get("pairwise_sample_rows") or 0)
+    completed = _completed_candidates(run)
+    leaderboard: list[dict[str, Any]] = [
+        {
+            **completed.get(candidate.name, _pending_candidate(candidate)),
+            "training_rows": (
+                min(len(train_x), pairwise_limit)
+                if candidate.name in PAIRWISE_SAMPLE_MODELS and pairwise_limit > 0
+                else len(train_x)
+            ),
+            "validation_rows": len(test_x),
+        }
+        for candidate in candidates
+    ]
+    best_model: Any | None = None
+    best_score: float | None = None
+    maximize = metric_direction(primary_metric) == "maximize"
+    _persist_partial_leaderboard(run.id, leaderboard, primary_metric)
+    arguments = []
+    for candidate in candidates:
+        candidate_x, candidate_y = train_x, train_y
+        if candidate.name in PAIRWISE_SAMPLE_MODELS and pairwise_limit > 0:
+            candidate_x, candidate_y = _candidate_training_sample(
+                train_x,
+                train_y,
+                max_rows=pairwise_limit,
+                task_type=run.task_type,
+            )
+        arguments.append(
+            (candidate_x, candidate_y, test_x, test_y, run.task_type, iterations, cv, scoring)
         )
+    for index, entry in _candidate_entries("supervised", candidates, arguments, run, completed):
+        entry["training_rows"] = len(arguments[index][0])
+        entry["validation_rows"] = len(test_x)
         leaderboard[index] = entry
         if entry["status"] == "succeeded":
-            fitted[candidate.name] = (
-                entry.pop("_model"),
-                entry["best_params"],
-                entry["metrics"],
-            )
+            candidate_model = entry.pop("_model", None)
+            score = entry["metrics"].get(primary_metric)
+            if score is not None and (
+                best_score is None
+                or (maximize and float(score) > best_score)
+                or (not maximize and float(score) < best_score)
+            ):
+                best_model = candidate_model
+                best_score = float(score)
+            del candidate_model
         _persist_partial_leaderboard(run.id, leaderboard, primary_metric)
 
     leaderboard = rank_leaderboard(leaderboard, primary_metric)
@@ -296,22 +553,49 @@ def _fit_model(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
             f"{entry['model']}: {entry.get('error', 'failed')}" for entry in leaderboard
         )
         raise RuntimeError(f"Every candidate model failed. {failures}")
+    if best_model is None and best_score is not None:
+        best_model = _restore_candidate(run, successful[0])["_model"]
+    if best_model is None:
+        raise RuntimeError(f"No candidate produced the primary metric '{primary_metric}'.")
 
     winner = successful[0]
-    best_model, best_params, best_metrics = fitted[winner["model"]]
     return TournamentResult(
-        metrics=best_metrics,
+        metrics=winner["metrics"],
         model=best_model,
         params={
             "winner": winner["model"],
             "positive_label": run.params.get("positive_label"),
             "excluded_leakage_columns": excluded_leakage_columns,
             "deduplicated_rows": duplicate_row_count,
-            **best_params,
+            **winner["best_params"],
         },
         leaderboard=leaderboard,
         primary_metric=primary_metric,
     )
+
+
+def _candidate_entries(kind, candidates, arguments, run, completed):
+    from automl_api.training import candidate_runtime
+
+    jobs = []
+    for index, candidate in enumerate(candidates):
+        if candidate.name in completed:
+            yield (
+                index,
+                (
+                    dict(completed[candidate.name])
+                    if candidate_runtime.enabled()
+                    else _restore_candidate(run, completed[candidate.name])
+                ),
+            )
+        elif candidate_runtime.enabled():
+            jobs.append((index, candidate, arguments[index]))
+        else:
+            _persist_candidate_phase(run.id, candidate.name, "preparing_data")
+            fit = _fit_candidate if kind == "supervised" else _fit_clustering_candidate
+            yield index, fit(candidate, *arguments[index], run)
+    if jobs:
+        yield from candidate_runtime.results(kind, jobs, run)
 
 
 def rebuild_candidate_model(
@@ -400,12 +684,46 @@ def _fit_candidate(
             rapids_active=rapids_active and not _force_cpu,
         )
         print(
-            f"Candidate {candidate.name} accelerator={accelerator} "
-            f"cpu_threads={cpu_threads}",
+            f"Candidate {candidate.name} accelerator={accelerator} cpu_threads={cpu_threads}",
             flush=True,
         )
         model = _supervised_model_pipeline(candidate.name, estimator, task_type)
-        if candidate.search_space:
+        search_evidence = None
+        if (
+            candidate.search_space
+            and os.getenv("TRAINING_EXECUTION_MODE") == "ray"
+            and not gpu_vendor
+        ):
+            from automl_api.training.tune_runtime import search_candidate
+
+            _persist_candidate_phase(run.id, candidate.name, "hyperparameter_search")
+            attempt_id = uuid.UUID(os.environ["AUTOML_ATTEMPT_ID"])
+            safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "-", candidate.name)
+            store = get_object_store()
+            uri = store.uri_for_key(
+                f"projects/{run.project_id}/runs/{run.id}/attempts/{attempt_id}/tune"
+            )
+            descriptor = store.dataframe_source(uri)
+            path, filesystem = _ray_source(descriptor.path, descriptor.filesystem_options)
+            search_evidence = search_candidate(
+                model,
+                candidate.search_space,
+                train_x,
+                train_y,
+                cv,
+                scoring,
+                iterations=iterations,
+                storage_path=path,
+                storage_filesystem=filesystem,
+                name=safe_name,
+                cpus_per_trial=cpu_threads,
+                max_concurrent=max(1, int(os.getenv("AUTOML_TUNE_CONCURRENCY", "1"))),
+            )
+            params = _json_safe(search_evidence["params"])
+            cv_mean, cv_std = search_evidence["mean"], search_evidence["std"]
+            _persist_candidate_phase(run.id, candidate.name, "fitting_final_model")
+            fitted = clone(model).set_params(**params).fit(train_x, train_y)
+        elif candidate.search_space:
             _persist_candidate_phase(run.id, candidate.name, "hyperparameter_search")
             search = BayesSearchCV(
                 model,
@@ -462,12 +780,20 @@ def _fit_candidate(
                 task_type,
             )
         diagnostics["correlated_features"] = fitted.named_steps["correlation"].evidence_
+        selector = fitted.named_steps.get("select")
+        if hasattr(selector, "statistics_rows_"):
+            diagnostics["feature_selection_sampling"] = {
+                "input_rows": selector.input_rows_,
+                "statistics_rows": selector.statistics_rows_,
+                "policy": "seeded_training_fold_sample",
+            }
         diagnostics["cross_validation"] = {
             "folds": int(cv.n_splits) if hasattr(cv, "n_splits") else int(cv),
             "scoring": scoring,
             "mean": cv_mean,
             "standard_deviation": cv_std,
         }
+        _persist_candidate_phase(run.id, candidate.name, "learning_curve")
         learning = _learning_curve_diagnostics(
             fitted,
             train_x,
@@ -478,6 +804,8 @@ def _fit_candidate(
         if learning:
             diagnostics["learning_curve"] = learning
         diagnostics["runtime"] = {
+            "search_engine": "ray_tune" if search_evidence else "local_sklearn",
+            "search_evidence": search_evidence,
             "accelerator": accelerator,
             "detected_gpu_vendor": detected_gpu_vendor,
             "cpu_threads": cpu_threads,
@@ -485,10 +813,16 @@ def _fit_candidate(
         }
         duration = round(time.monotonic() - started, 3)
         parent_run = mlflow.active_run()
-        parent_run_id = parent_run.info.run_id if parent_run else None
+        parent_run_id = (
+            parent_run.info.run_id if parent_run else run.tags.get("candidate_parent_run_id")
+        )
         registered_model_name = _registered_model_name(run, candidate.name)
         _persist_candidate_phase(run.id, candidate.name, "logging_to_mlflow")
-        with mlflow.start_run(run_name=candidate.name, nested=True) as candidate_run:
+        with mlflow.start_run(
+            run_name=candidate.name,
+            nested=True,
+            tags={"mlflow.parentRunId": parent_run_id} if parent_run_id else None,
+        ) as candidate_run:
             mlflow.set_tags(
                 {
                     "candidate_model": candidate.name,
@@ -519,7 +853,7 @@ def _fit_candidate(
             registered_model_name,
         )
         _persist_candidate_phase(run.id, candidate.name, "saving_model")
-        model_artifact_uri = _persist_candidate_model(
+        model_artifact_uri, model_artifact_sha256 = _persist_candidate_model(
             run,
             candidate.name,
             fitted,
@@ -538,6 +872,7 @@ def _fit_candidate(
             "error": None,
             "mlflow_run_id": candidate_run.info.run_id,
             "model_artifact_uri": model_artifact_uri,
+            "model_artifact_sha256": model_artifact_sha256,
             "_model": fitted,
         }
     except Exception as exc:
@@ -573,7 +908,7 @@ def _fit_clustering(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
         dataframe = dataframe.loc[valid_reference].drop(columns=[evaluation_column])
     dataframe = _normalize_temporal_features(dataframe)
 
-    candidate_limit = max(1, min(int(run.params.get("candidate_limit", 5)), 20))
+    candidate_limit = int(run.params.get("candidate_limit", 5))
     requested_names = run.params.get("candidate_models")
     candidates = select_candidates(
         TaskType.CLUSTERING,
@@ -582,32 +917,37 @@ def _fit_clustering(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
     )
     if not candidates:
         raise ValueError("No supported clustering candidates were selected.")
-    requested_folds = max(2, min(int(run.params.get("cv_folds", 3)), 5))
-    folds = min(requested_folds, max(2, len(dataframe) // 10))
+    folds = int(run.params.get("cv_folds", 3))
+    if len(dataframe) < folds * 2:
+        raise ValueError("Each requested clustering fold needs at least two validation rows.")
     splitter = KFold(n_splits=folds, shuffle=True, random_state=42)
 
     primary_metric = resolve_primary_metric(
         run.task_type,
         str(run.params.get("primary_metric")) if run.params.get("primary_metric") else None,
     )
-    leaderboard: list[dict[str, Any]] = [_pending_candidate(candidate) for candidate in candidates]
-    fitted: dict[str, tuple[Any, dict[str, Any], dict[str, float]]] = {}
-    for index, candidate in enumerate(candidates):
-        _persist_candidate_phase(run.id, candidate.name, "preparing_data")
-        entry = _fit_clustering_candidate(
-            candidate,
-            dataframe,
-            reference_labels,
-            splitter,
-            run,
-        )
+    completed = _completed_candidates(run)
+    leaderboard: list[dict[str, Any]] = [
+        completed.get(candidate.name, _pending_candidate(candidate)) for candidate in candidates
+    ]
+    best_model: Any | None = None
+    best_score: float | None = None
+    maximize = metric_direction(primary_metric) == "maximize"
+    _persist_partial_leaderboard(run.id, leaderboard, primary_metric)
+    arguments = [(dataframe, reference_labels, splitter) for _ in candidates]
+    for index, entry in _candidate_entries("clustering", candidates, arguments, run, completed):
         leaderboard[index] = entry
         if entry["status"] == "succeeded":
-            fitted[candidate.name] = (
-                entry.pop("_model"),
-                entry["best_params"],
-                entry["metrics"],
-            )
+            candidate_model = entry.pop("_model", None)
+            score = entry["metrics"].get(primary_metric)
+            if score is not None and (
+                best_score is None
+                or (maximize and float(score) > best_score)
+                or (not maximize and float(score) < best_score)
+            ):
+                best_model = candidate_model
+                best_score = float(score)
+            del candidate_model
         _persist_partial_leaderboard(run.id, leaderboard, primary_metric)
 
     leaderboard = rank_leaderboard(leaderboard, primary_metric)
@@ -617,15 +957,18 @@ def _fit_clustering(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
             f"{entry['model']}: {entry.get('error', 'failed')}" for entry in leaderboard
         )
         raise RuntimeError(f"Every clustering candidate failed. {failures}")
+    if best_model is None and best_score is not None:
+        best_model = _restore_candidate(run, successful[0])["_model"]
+    if best_model is None:
+        raise RuntimeError(f"No candidate produced the primary metric '{primary_metric}'.")
     winner = successful[0]
-    model, params, metrics = fitted[winner["model"]]
     return TournamentResult(
-        metrics=metrics,
-        model=model,
+        metrics=winner["metrics"],
+        model=best_model,
         params={
             "winner": winner["model"],
             "evaluation_column": evaluation_column,
-            **params,
+            **winner["best_params"],
         },
         leaderboard=leaderboard,
         primary_metric=primary_metric,
@@ -736,10 +1079,16 @@ def _fit_clustering_candidate(
         params = {f"model__{name}": value for name, value in best_params.items()}
         duration = round(time.monotonic() - started, 3)
         parent_run = mlflow.active_run()
-        parent_run_id = parent_run.info.run_id if parent_run else None
+        parent_run_id = (
+            parent_run.info.run_id if parent_run else run.tags.get("candidate_parent_run_id")
+        )
         registered_model_name = _registered_model_name(run, candidate.name)
         _persist_candidate_phase(run.id, candidate.name, "logging_to_mlflow")
-        with mlflow.start_run(run_name=candidate.name, nested=True) as candidate_run:
+        with mlflow.start_run(
+            run_name=candidate.name,
+            nested=True,
+            tags={"mlflow.parentRunId": parent_run_id} if parent_run_id else None,
+        ) as candidate_run:
             mlflow.set_tags(
                 {
                     "candidate_model": candidate.name,
@@ -769,7 +1118,7 @@ def _fit_clustering_candidate(
             registered_model_name,
         )
         _persist_candidate_phase(run.id, candidate.name, "saving_model")
-        model_artifact_uri = _persist_candidate_model(
+        model_artifact_uri, model_artifact_sha256 = _persist_candidate_model(
             run,
             candidate.name,
             pipeline_model,
@@ -787,6 +1136,7 @@ def _fit_clustering_candidate(
             "error": None,
             "mlflow_run_id": candidate_run.info.run_id,
             "model_artifact_uri": model_artifact_uri,
+            "model_artifact_sha256": model_artifact_sha256,
             "_model": pipeline_model,
         }
     except Exception as exc:
@@ -825,16 +1175,45 @@ def _failed_candidate(
     }
 
 
+def _completed_candidates(run: ModelRun) -> dict[str, dict[str, Any]]:
+    """A replacement attempt reuses durable successes from this immutable run."""
+    return {
+        entry["model"]: dict(entry)
+        for entry in (getattr(run, "tags", None) or {}).get("leaderboard", [])
+        if entry.get("status") == "succeeded"
+        and entry.get("model_artifact_uri")
+        and entry.get("model_artifact_sha256")
+    }
+
+
+def _restore_candidate(run: ModelRun, entry: dict[str, Any]) -> dict[str, Any]:
+    store = get_object_store()
+    uri = str(entry["model_artifact_uri"])
+    prefix = store.uri_for_key(f"projects/{run.project_id}/runs/{run.id}/")
+    if not uri.startswith(prefix) or ".." in unquote(urlsplit(uri).path).split("/"):
+        raise ValueError("The candidate checkpoint does not belong to this training run.")
+    payload = store.read_bytes(uri)
+    if not hmac.compare_digest(hashlib.sha256(payload).hexdigest(), entry["model_artifact_sha256"]):
+        raise ValueError("Candidate checkpoint integrity verification failed.")
+    return {**entry, "resumed": True, "_model": joblib.load(io.BytesIO(payload))}
+
+
 def _persist_candidate_model(
     run: ModelRun,
     model_name: str,
     model: Any,
-) -> str:
+) -> tuple[str, str]:
     buffer = io.BytesIO()
     joblib.dump(model, buffer, compress=3)
     safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "-", model_name).strip("-")
-    key = f"projects/{run.project_id}/runs/{run.id}/models/{safe_name or 'model'}.joblib"
-    return get_object_store().put_bytes(key, buffer.getvalue()).uri
+    attempt_id = os.getenv("AUTOML_ATTEMPT_ID")
+    attempt_prefix = f"attempts/{uuid.UUID(attempt_id)}/" if attempt_id else ""
+    key = (
+        f"projects/{run.project_id}/runs/{run.id}/{attempt_prefix}"
+        f"models/{safe_name or 'model'}.joblib"
+    )
+    payload = buffer.getvalue()
+    return get_object_store().put_bytes(key, payload).uri, hashlib.sha256(payload).hexdigest()
 
 
 def _registered_model_name(run: ModelRun, candidate_name: str) -> str:
@@ -921,6 +1300,7 @@ def _pending_candidate(candidate: CandidateSpec) -> dict[str, Any]:
         "rank": None,
         "model": candidate.name,
         "status": "pending",
+        "phase": "waiting_for_worker" if os.getenv("AUTOML_MODEL_PODS") == "1" else None,
         "cost_tier": candidate.cost_tier,
         "primary_score": None,
         "metrics": {},
@@ -956,6 +1336,18 @@ def _persist_partial_leaderboard(
             return
         if run.status in _TERMINAL_RUN_STATUSES:
             return
+        if os.getenv("AUTOML_MODEL_PODS") == "1":
+            stored = {entry["model"]: entry for entry in run.tags.get("leaderboard", [])}
+            ranked = rank_leaderboard(
+                [
+                    stored.get(entry["model"], entry)
+                    if entry["status"] in {"pending", "running"}
+                    else entry
+                    for entry in ranked
+                ],
+                primary_metric,
+            )
+            successful = [entry for entry in ranked if entry["status"] == "succeeded"]
         run.tags = {
             **run.tags,
             "leaderboard_primary_metric": primary_metric,
@@ -972,7 +1364,7 @@ def _persist_partial_leaderboard(
         parent_id = run.tags.get("leaderboard_parent_run_id")
         if parent_id:
             try:
-                parent = _locked_run(db, uuid.UUID(str(parent_id)))
+                parent = _locked_run(db, uuid.UUID(str(parent_id)), check_fence=False)
             except ValueError:
                 parent = None
             if parent is not None and parent.project_id == run.project_id:
@@ -1016,8 +1408,16 @@ def _persist_candidate_phase(run_id: uuid.UUID, candidate: str, phase: str) -> N
         if run.status in _TERMINAL_RUN_STATUSES:
             return
         leaderboard = [
-            ({**entry, "status": "running"} if entry.get("model") == candidate
-             and entry.get("status") == "pending" else entry)
+            (
+                {
+                    **entry,
+                    "status": "running",
+                    "phase": phase,
+                    "phase_updated_at": datetime.now(UTC).isoformat(),
+                }
+                if entry.get("model") == candidate and entry.get("status") in {"pending", "running"}
+                else entry
+            )
             for entry in (run.tags or {}).get("leaderboard", [])
         ]
         run.tags = {
@@ -1039,14 +1439,23 @@ def _cross_validation_strategy(
         minimum_class_size = int(target.value_counts().min())
         if minimum_class_size < 2:
             raise ValueError("Each target class needs at least two training rows.")
-        return min(requested_folds, minimum_class_size)
+        if minimum_class_size < requested_folds:
+            raise ValueError(
+                f"Each target class needs at least {requested_folds} training rows "
+                "for the requested cross-validation folds."
+            )
+        return requested_folds
     if task_type == TaskType.TIME_SERIES:
         if len(target) < 6:
             raise ValueError("At least six training rows are required for time-series validation.")
-        return TimeSeriesSplit(n_splits=min(requested_folds, max(2, len(target) // 20)))
+        if len(target) <= requested_folds:
+            raise ValueError("Time-series validation needs more rows than the requested folds.")
+        return TimeSeriesSplit(n_splits=requested_folds)
     if len(target) < 4:
         raise ValueError("At least four training rows are required for cross-validation.")
-    return min(requested_folds, max(2, len(target) // 50))
+    if len(target) < requested_folds:
+        raise ValueError("There are fewer training rows than the requested validation folds.")
+    return requested_folds
 
 
 def _supervised_split(
@@ -1093,14 +1502,11 @@ def _time_order_column(features: pd.DataFrame) -> str | None:
 
 
 def _supervised_model_pipeline(model_name: str, estimator: Any, task_type: TaskType) -> Pipeline:
-    score_function = (
-        mutual_info_classif if task_type == TaskType.CLASSIFICATION else mutual_info_regression
-    )
     return Pipeline(
         [
             ("correlation", CorrelatedFeatureFilter(task_type=task_type.value)),
             ("prepare", _preprocessor_for_model(model_name)),
-            ("select", SelectPercentile(score_func=score_function, percentile=80)),
+            ("select", BoundedFeatureSelector(task_type=task_type.value, percentile=80)),
             ("model", estimator),
         ]
     )
@@ -1376,9 +1782,21 @@ def _persist_training_success(
     return True
 
 
-def _locked_run(db: Session, run_id: uuid.UUID) -> ModelRun | None:
-    return db.scalar(
-        select(ModelRun)
-        .where(ModelRun.id == run_id)
-        .with_for_update()
-    )
+def _locked_run(db: Session, run_id: uuid.UUID, *, check_fence: bool = True) -> ModelRun | None:
+    # Keep the same attempt-before-run lock order as the reconciler. Every
+    # shared result write must reject a superseded generation, not only final CAS.
+    attempt_id = os.getenv("AUTOML_ATTEMPT_ID")
+    if check_fence and attempt_id:
+        attempt = db.scalar(
+            select(WorkflowAttempt)
+            .where(WorkflowAttempt.id == uuid.UUID(attempt_id))
+            .with_for_update()
+        )
+        if (
+            attempt is None
+            or attempt.model_run_id != run_id
+            or attempt.fencing_token != os.getenv("AUTOML_FENCING_TOKEN")
+            or attempt.status not in {AttemptStatus.SUBMITTED, AttemptStatus.RUNNING}
+        ):
+            raise StaleFence("The training attempt no longer owns this run.")
+    return db.scalar(select(ModelRun).where(ModelRun.id == run_id).with_for_update())

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { axe } from "jest-axe";
 import { describe, expect, it, vi } from "vitest";
+import { useState } from "react";
 import { Badge, Loading, Modal, Notice } from "./ui";
 
 describe("shared UI primitives", () => {
@@ -29,6 +30,28 @@ describe("shared UI primitives", () => {
     expect(save).toHaveFocus();
     fireEvent.keyDown(document, { key: "Tab" });
     expect(close).toHaveFocus();
+  });
+
+  it("returns focus to the trigger when an autofocus form closes", () => {
+    function Form() {
+      const [open, setOpen] = useState(false);
+      const [value, setValue] = useState("");
+      return <><button onClick={() => setOpen(true)}>New project</button>
+        {open && <Modal title="Project" onClose={() => setOpen(false)}>
+          <input aria-label="Project name" autoFocus value={value} onChange={event => setValue(event.target.value)} />
+        </Modal>}</>;
+    }
+    render(<Form />);
+    const trigger = screen.getByRole("button", { name: "New project" });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const input = screen.getByLabelText("Project name");
+    input.focus();
+    fireEvent.change(input, { target: { value: "My project" } });
+    expect(input).toHaveFocus();
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
   });
 
   it("announces skeleton loading states", () => {

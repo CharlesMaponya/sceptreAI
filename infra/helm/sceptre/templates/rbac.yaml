@@ -16,6 +16,24 @@ automountServiceAccountToken: false
 apiVersion: v1
 kind: ServiceAccount
 metadata:
+  name: sceptre-dataset-splitter
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+    automl.platform/workflow-stage: splitter
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sceptre-dataset-preparation
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+    automl.platform/workflow-stage: preparation
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
   name: {{ include "sceptre.reconcilerServiceAccount" . }}
   labels:
     {{- include "sceptre.labels" . | nindent 4 }}
@@ -26,6 +44,40 @@ metadata:
   name: {{ include "sceptre.inferenceServiceAccount" . }}
   labels:
     {{- include "sceptre.labels" . | nindent 4 }}
+automountServiceAccountToken: false
+---
+# Dedicated migration identity (P5-W05): runs schema migrations only and never
+# appears in serving or workload paths.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "sceptre.fullname" . }}-migrations
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+    automl.platform/workflow-stage: migrations
+automountServiceAccountToken: false
+---
+# Champion refit identity (P5-W05): refits the sealed champion pipeline on the
+# approved train/validation tier; cannot read raw or final-test prefixes.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sceptre-champion-refit
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+    automl.platform/workflow-stage: champion-refit
+automountServiceAccountToken: false
+---
+# Champion evaluation identity (P5-W05): the only principal allowed to read a
+# scope's final inputs/labels after the allocation CAS; credentials are revoked
+# at terminal state.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sceptre-champion-evaluation
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+    automl.platform/workflow-stage: champion-evaluation
 automountServiceAccountToken: false
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -46,7 +98,7 @@ rules:
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["services"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["get", "list", "watch", "delete"]
   - apiGroups: [""]
     resources: ["secrets"]
     resourceNames:
@@ -57,7 +109,10 @@ rules:
     verbs: ["get"]
   - apiGroups: ["apps"]
     resources: ["deployments"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["get", "list", "watch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    verbs: ["get", "patch"]
   - apiGroups: ["apps"]
     resources: ["deployments/status"]
     verbs: ["get"]
@@ -92,6 +147,12 @@ metadata:
   labels:
     {{- include "sceptre.labels" . | nindent 4 }}
 rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs/status"]
+    verbs: ["get"]
   - apiGroups: ["batch"]
     resources: ["jobs"]
     verbs: ["create", "get", "list", "watch", "delete"]

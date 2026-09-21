@@ -136,6 +136,16 @@ class EmbeddedObjectStoreDriver:
         (self.root / self.bucket).mkdir(parents=True, exist_ok=True)
         return HealthcheckResult(healthy=True, driver=self.driver_name)
 
+    def delete_prefix(self, prefix: str) -> None:
+        import shutil
+
+        path = self._path(self._key(prefix)).resolve()
+        root = (self.root / self.bucket).resolve()
+        if path == root or not path.is_relative_to(root):
+            raise ValueError("Cleanup must stay within a resource prefix.")
+        if path.is_dir():
+            shutil.rmtree(path)
+
     def delete(self, uri: str) -> None:
         self._path_from_uri(uri).unlink(missing_ok=True)
 

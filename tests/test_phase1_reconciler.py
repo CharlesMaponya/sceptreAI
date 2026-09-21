@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import uuid
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -101,33 +102,45 @@ def test_ray_manifest_is_ephemeral_project_bound_and_fenced(monkeypatch) -> None
     assert manifest["spec"]["jobId"] == "sceptre-fence-one"
     assert manifest["spec"]["backoffLimit"] == 0
     assert manifest["spec"]["submitterConfig"] == {"backoffLimit": 0}
-    assert manifest["spec"]["shutdownAfterJobFinishes"] is False
-    assert "ttlSecondsAfterFinished" not in manifest["spec"]
-    assert manifest["spec"]["deletionStrategy"] == {
-        "onSuccess": {"policy": "DeleteNone"},
-        "onFailure": {"policy": "DeleteNone"},
-    }
+    assert manifest["spec"]["shutdownAfterJobFinishes"] is True
+    assert manifest["spec"]["ttlSecondsAfterFinished"] == 300
+    assert manifest["spec"]["activeDeadlineSeconds"] > 0
+    assert "deletionStrategy" not in manifest["spec"]
     assert "clusterSelector" not in manifest["spec"]
     assert "rayClusterSpec" in manifest["spec"]
     assert manifest["metadata"]["labels"]["automl.platform/attempt-id"] == str(attempt.id)
-    assert (
-        manifest["spec"]["rayClusterSpec"]["headGroupSpec"]["template"]["spec"][
-            "serviceAccountName"
-        ]
-        == "project-training"
-    )
+    for template in (
+        manifest["spec"]["submitterPodTemplate"],
+        manifest["spec"]["rayClusterSpec"]["headGroupSpec"]["template"],
+        manifest["spec"]["rayClusterSpec"]["workerGroupSpecs"][0]["template"],
+    ):
+        assert template["metadata"]["labels"]["automl.platform/run-id"] == str(run.id)
+        assert template["metadata"]["labels"]["automl.platform/attempt-id"] == str(attempt.id)
     cluster = manifest["spec"]["rayClusterSpec"]
+    assert cluster["enableInTreeAutoscaling"] is True
+    assert "serviceAccountName" not in cluster["headGroupSpec"]["template"]["spec"]
+    head_start = cluster["headGroupSpec"]["rayStartParams"]
+    assert head_start["num-cpus"] == "0"
+    workers = cluster["workerGroupSpecs"][0]
+    assert workers["rayStartParams"]["num-cpus"] == "2.0"
+    assert workers["minReplicas"] == 0
+    assert head_start["object-store-memory"] == "268435456"
     submitter_spec = manifest["spec"]["submitterPodTemplate"]["spec"]
     head_spec = cluster["headGroupSpec"]["template"]["spec"]
     worker_spec = cluster["workerGroupSpecs"][0]["template"]["spec"]
     assert submitter_spec["serviceAccountName"] == "project-training"
     assert submitter_spec["restartPolicy"] == "Never"
     assert submitter_spec["automountServiceAccountToken"] is False
-    assert head_spec["automountServiceAccountToken"] is False
+    assert head_spec["automountServiceAccountToken"] is True
     assert worker_spec["automountServiceAccountToken"] is False
+    assert head_spec["containers"][0]["resources"]["limits"]["memory"] == "4096Mi"
+    assert head_spec["volumes"][1]["emptyDir"]["sizeLimit"] == "2Gi"
     head_env = {item["name"]: item for item in head_spec["containers"][0]["env"]}
     worker_env = {item["name"]: item for item in worker_spec["containers"][0]["env"]}
     submitter_env = {item["name"]: item for item in submitter_spec["containers"][0]["env"]}
+    for pod in (submitter_spec, head_spec, worker_spec):
+        names = [item["name"] for item in pod["containers"][0]["env"]]
+        assert len(names) == len(set(names))
     for key in (
         "DATABASE_URL",
         "OBJECT_STORE_ENDPOINT",
@@ -148,13 +161,39 @@ def test_ray_manifest_is_ephemeral_project_bound_and_fenced(monkeypatch) -> None
         "limits": {"cpu": "500m", "memory": "1Gi"},
     }
     assert worker_spec["containers"][0]["resources"]["requests"] == {
-        "cpu": "1.0",
-        "memory": "1024Mi",
+        "cpu": "2.0", "memory": "4096Mi",
     }
+    assert worker_env["AUTOML_MODEL_PODS"]["value"] == "1"
     assert {volume["name"] for volume in worker_spec["volumes"]} == {
         "ray-runtime",
         "shared-memory",
     }
+
+
+def test_training_ray_head_is_bound_to_capacity_qualified_node_only() -> None:
+    run = _run()
+    run.params = {"selected_node": "memory-worker-a"}
+
+    manifest = reconciler.build_ray_job_manifest(run, _attempt(run), name="ray-run")
+    cluster = manifest["spec"]["rayClusterSpec"]
+
+    assert cluster["headGroupSpec"]["template"]["spec"]["nodeSelector"] == {
+        "kubernetes.io/hostname": "memory-worker-a"
+    }
+    assert "nodeSelector" not in cluster["workerGroupSpecs"][0]["template"]["spec"]
+    assert "nodeSelector" not in manifest["spec"]["submitterPodTemplate"]["spec"]
+
+
+def test_unlimited_training_omits_ray_deadline_without_removing_resource_limits() -> None:
+    run = _run()
+    run.params = {"deadline_seconds": None}
+    manifest = reconciler.build_ray_job_manifest(run, _attempt(run), name="unlimited")
+    assert "activeDeadlineSeconds" not in manifest["spec"]
+    head = manifest["spec"]["rayClusterSpec"]["headGroupSpec"]["template"]["spec"]
+    assert head["containers"][0]["resources"]["limits"]["memory"]
+    run.params = {"deadline_seconds": 3600}
+    manifest = reconciler.build_ray_job_manifest(run, _attempt(run), name="limited")
+    assert manifest["spec"]["activeDeadlineSeconds"] == 3600
 
 
 def test_native_object_store_workloads_use_identity_without_static_s3_secrets() -> None:
@@ -194,13 +233,17 @@ def test_ray_manifest_honors_run_resources_and_pull_secrets(monkeypatch) -> None
         {"name": "pull"}
     ]
     assert worker_spec["containers"][0]["resources"] == {
-        "requests": {"cpu": "2.5", "memory": "2048Mi"},
+        "requests": {"cpu": "3.0", "memory": "3072Mi"},
         "limits": {"cpu": "3.0", "memory": "3072Mi"},
     }
 
 
 def test_submit_reconciler_persists_ray_identity_and_is_idempotent() -> None:
     run = _run()
+    run.failure_code = "KUBERNETES_JOB_MISSING"
+    run.failure_message = "stale"
+    run.plain_english_failure = "stale"
+    run.finished_at = datetime.now(UTC)
     attempt = _attempt(run)
     entry = _entry(attempt)
     db = MagicMock()
@@ -216,6 +259,10 @@ def test_submit_reconciler_persists_ray_identity_and_is_idempotent() -> None:
     assert result.ray_cluster_name == "created-cluster"
     assert result.ray_submission_id == "ray-id"
     assert run.tags["desired_state"] == "ray_submitted"
+    assert run.failure_code is None
+    assert run.failure_message is None
+    assert run.plain_english_failure is None
+    assert run.finished_at is None
     k8s.create_ray_job.assert_called_once()
     k8s.ensure_service_account.assert_called_once_with("project-training")
 
@@ -262,6 +309,7 @@ def test_submit_reconciler_rejects_missing_and_stale_attempt() -> None:
 def test_cancel_reconciler_deletes_once_and_terminal_state_is_stable() -> None:
     run = _run()
     attempt = _attempt(run, AttemptStatus.RUNNING)
+    attempt.updated_at = datetime.now(UTC) - timedelta(minutes=31)
     attempt.ray_job_name = "ray-job"
     entry = _entry(attempt, "ray.training.cancel")
     db = MagicMock()
@@ -277,6 +325,18 @@ def test_cancel_reconciler_deletes_once_and_terminal_state_is_stable() -> None:
     db.scalar.return_value = None
     with pytest.raises(LookupError):
         reconciler.cancel_training_ray_job(db, entry, k8s)
+
+
+@pytest.mark.parametrize(
+    "status", [AttemptStatus.CANCELLED, AttemptStatus.SUPERSEDED, AttemptStatus.FAILED]
+)
+def test_pending_submission_cannot_create_work_after_terminal_fence(status) -> None:
+    attempt = _attempt(_run(), status)
+    db, k8s = MagicMock(), MagicMock()
+    db.scalar.return_value = attempt
+    assert reconciler.submit_training_ray_job(db, _entry(attempt), k8s) is attempt
+    k8s.create_ray_job.assert_not_called()
+    k8s.ensure_service_account.assert_not_called()
 
 
 def test_cancel_reconciler_handles_an_unsubmitted_attempt_without_external_delete() -> None:
@@ -295,6 +355,10 @@ def test_cancel_reconciler_handles_an_unsubmitted_attempt_without_external_delet
 
 def test_ray_observer_tracks_running_identity_and_run_state() -> None:
     run = _run()
+    run.failure_code = "KUBERNETES_JOB_MISSING"
+    run.failure_message = "stale"
+    run.plain_english_failure = "stale"
+    run.finished_at = datetime.now(UTC)
     attempt = _attempt(run, AttemptStatus.SUBMITTED)
     db = MagicMock()
     db.scalars.return_value = [attempt]
@@ -315,6 +379,10 @@ def test_ray_observer_tracks_running_identity_and_run_state() -> None:
     assert attempt.ray_submission_id == "observed-job-id"
     assert run.status == RunStatus.RUNNING
     assert run.started_at is not None
+    assert run.failure_code is None
+    assert run.failure_message is None
+    assert run.plain_english_failure is None
+    assert run.finished_at is None
 
 
 def test_ray_observer_ignores_nonterminal_waiting_status() -> None:
@@ -328,6 +396,28 @@ def test_ray_observer_ignores_nonterminal_waiting_status() -> None:
     assert reconciler.observe_training_ray_jobs(db, k8s) == 1
     assert attempt.status == AttemptStatus.SUBMITTED
     db.get.assert_not_called()
+
+
+def test_ray_observer_prioritizes_failed_deployment_over_stale_running_job(
+    monkeypatch,
+) -> None:
+    run = _run()
+    attempt = _attempt(run, AttemptStatus.RUNNING)
+    attempt.retry_budget = 5
+    command = SimpleNamespace(id=uuid.uuid4())
+    db = MagicMock()
+    db.scalars.side_effect = [[attempt], []]
+    db.scalar.side_effect = [run, command]
+    enqueue = MagicMock()
+    monkeypatch.setattr(reconciler, "enqueue_outbox", enqueue)
+    k8s = MagicMock()
+    k8s.ray_job.return_value = {"status": {"jobStatus": "RUNNING", "jobDeploymentStatus": "Failed"}}
+
+    assert reconciler.observe_training_ray_jobs(db, k8s) == 1
+
+    assert attempt.status == AttemptStatus.SUPERSEDED
+    assert attempt.terminal_reason == "RayJob terminal status FAILED"
+    enqueue.assert_called_once()
 
 
 @pytest.mark.parametrize(
@@ -431,6 +521,33 @@ def test_ray_observer_fails_closed_at_retry_budget_and_on_invalid_lineage() -> N
     k8s.ray_job.side_effect = ApiException(status=404)
     with pytest.raises(LookupError, match="no tracked training run"):
         reconciler.observe_training_ray_jobs(db, k8s)
+
+
+def test_ray_deadline_stops_without_repeating_the_same_model_search(monkeypatch) -> None:
+    run = _run()
+    attempt = _attempt(run, AttemptStatus.RUNNING)
+    attempt.retry_budget = 5
+    db = MagicMock()
+    db.scalars.side_effect = [[attempt], []]
+    db.scalar.return_value = run
+    enqueue = MagicMock()
+    monkeypatch.setattr(reconciler, "enqueue_outbox", enqueue)
+    k8s = MagicMock()
+    k8s.ray_job.return_value = {"status": {
+        "jobStatus": "RUNNING", "jobDeploymentStatus": "Failed",
+        "reason": "DeadlineExceeded", "message": "RayJob exceeded 7200 seconds",
+    }}
+
+    reconciler.observe_training_ray_jobs(db, k8s)
+
+    assert attempt.status == AttemptStatus.FAILED
+    assert run.status == RunStatus.FAILED
+    assert run.failure_code == "JOB_DEADLINE_EXCEEDED"
+    assert run.failure_message == "RayJob exceeded 7200 seconds"
+    assert "runtime limit" in run.plain_english_failure
+    assert run.finished_at is not None
+    enqueue.assert_not_called()
+    db.add.assert_not_called()
 
 
 def test_ray_observer_propagates_api_errors_and_missing_commands() -> None:
@@ -726,6 +843,49 @@ def test_phase2_upload_reconciler_quarantines_digest_and_scanner_failures(
     assert denied.scanner_status == "denied"
 
 
+def test_phase2_upload_verification_uses_bounded_provider_ranges() -> None:
+    content = b"0123456789"
+    opened: list[io.BytesIO] = []
+    store = MagicMock()
+
+    def open_range(_uri, byte_range):
+        source = io.BytesIO(content[byte_range.start : byte_range.end_inclusive + 1])
+        opened.append(source)
+        return source
+
+    store.open_stream.side_effect = open_range
+    reader = reconciler._BoundedObjectReader(
+        store,
+        "s3c://automl/large.csv",
+        len(content),
+        range_size=4,
+    )
+
+    assert reader.read(3) == b"012"
+    assert reader.read(5) == b"34567"
+    assert reader.read() == b"89"
+    assert reader.read(1) == b""
+    reader.close()
+    reader.close()
+
+    ranges = [call.args[1] for call in store.open_stream.call_args_list]
+    assert [(value.start, value.end_inclusive) for value in ranges] == [
+        (0, 3),
+        (4, 7),
+        (8, 9),
+    ]
+    assert all(source.closed for source in opened)
+
+
+def test_phase2_upload_verification_rejects_short_provider_range() -> None:
+    store = MagicMock()
+    store.open_stream.return_value = io.BytesIO(b"x")
+    reader = reconciler._BoundedObjectReader(store, "s3c://automl/object.csv", 2)
+    with pytest.raises(OSError, match="before its declared size"):
+        reader.read(2)
+    reader.close()
+
+
 def test_registry_reconciler_verifies_manifest_and_is_idempotent(monkeypatch) -> None:
     entry = _entry(_attempt(_run()), "registry.reconcile")
     entry.payload = {"registry_entry_id": str(uuid.uuid4())}
@@ -1012,3 +1172,28 @@ def test_kubernetes_service_account_creation_is_idempotent() -> None:
     client.core.create_namespaced_service_account.side_effect = ApiException(status=403)
     with pytest.raises(ApiException):
         client.ensure_service_account("project-training")
+
+@pytest.mark.parametrize("message", [
+    "3 worker(s) were killed due to the node running low on memory. "
+    "OOM kill reason: threshold exceeded",
+    "ray.exceptions.OutOfMemoryError: Task was killed due to the node running low on memory",
+])
+def test_ray_memory_failure_stops_instead_of_restarting_candidate_search(monkeypatch, message):
+    run = _run()
+    run.tags = {"leaderboard": [{"model": "DecisionTreeClassifier", "status": "succeeded"}]}
+    attempt = _attempt(run, AttemptStatus.RUNNING)
+    attempt.retry_budget = 5
+    db = MagicMock()
+    db.scalars.side_effect = [[attempt], []]
+    db.scalar.return_value = run
+    enqueue = MagicMock()
+    monkeypatch.setattr(reconciler, "enqueue_outbox", enqueue)
+    k8s = MagicMock()
+    k8s.ray_job.return_value = {"status": {"jobStatus": "FAILED", "message": message}}
+    reconciler.observe_training_ray_jobs(db, k8s)
+    assert attempt.status == AttemptStatus.FAILED
+    assert run.failure_code == "TRAINING_OUT_OF_MEMORY"
+    assert run.failure_message == message
+    assert "memory capacity" in run.plain_english_failure
+    assert run.tags["leaderboard"][0]["status"] == "succeeded"
+    enqueue.assert_not_called()

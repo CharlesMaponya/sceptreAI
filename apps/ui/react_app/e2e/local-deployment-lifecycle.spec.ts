@@ -1,0 +1,55 @@
+import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+test.use({ trace: "off" });
+test("the recovery model can shut down, start, and clean up a temporary replacement", async ({ page, isMobile }, testInfo) => {
+  test.skip(!process.env.LIVE_RECOVERY || isMobile, "Exercise only the known recovery test model once");
+  test.setTimeout(25 * 60_000);
+  page.setDefaultTimeout(30_000);
+  const state = JSON.parse(readFileSync(join(process.env.RECOVERY_STATE_DIR!, "browser-state.json"), "utf8"));
+  await page.goto("/auth");
+  await page.getByLabel("Work email", { exact: true }).fill(state.email);
+  await page.getByLabel("Password", { exact: true }).fill(state.password);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page).toHaveURL(/\/projects$/);
+  await page.goto(`${state.projectUrl}/operations`);
+  const deployments = page.locator(".section-card").filter({ has: page.getByRole("heading", { name: "Deployments", exact: true }) });
+  const rows = deployments.locator("tbody tr");
+  let preservedIndex = Number(process.env.LIFECYCLE_ORIGINAL_INDEX || 1);
+  if (!process.env.LIFECYCLE_RESUME) {
+  await expect(rows.filter({ has: page.getByRole("button", { name: "API access", exact: true }) }).first()).toBeVisible({ timeout: 90_000 });
+  const originalCount = await rows.count();
+  let originalIndex = 0;
+  while (await rows.nth(originalIndex).getByRole("button", { name: "API access", exact: true }).count() === 0) originalIndex++;
+  preservedIndex = originalIndex + 1;
+  const original = rows.nth(originalIndex);
+  await original.getByRole("button", { name: "Shutdown", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Shutdown", exact: true }).click();
+  await expect(original.getByRole("cell", { name: "Stopped", exact: true })).toBeVisible();
+  await expect(original.getByRole("button", { name: "Cleanup", exact: true })).toBeVisible();
+  await original.getByRole("button", { name: "Start", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Start", exact: true }).click();
+  await expect(original.getByRole("button", { name: "API access", exact: true })).toBeVisible({ timeout: 10 * 60_000 });
+  await original.getByRole("button", { name: "Shutdown", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Shutdown", exact: true }).click();
+  await expect(original.getByRole("button", { name: "Start", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Deploy", exact: true }).first().click();
+  await page.getByRole("dialog").getByRole("button", { name: "Deploy model", exact: true }).click();
+  await expect(rows).toHaveCount(originalCount + 1);
+  }
+  const replacement = rows.first();
+  await expect(replacement.getByRole("button", { name: "API access", exact: true })).toBeVisible({ timeout: 10 * 60_000 });
+  await replacement.getByRole("button", { name: "Shutdown", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Shutdown", exact: true }).click();
+  await replacement.getByRole("button", { name: "Cleanup", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Cleanup", exact: true }).click();
+  await expect(replacement.getByRole("cell", { name: "Cleaned", exact: true })).toBeVisible();
+  await expect(replacement.getByRole("button", { name: "Start", exact: true })).toHaveCount(0);
+  const preserved = rows.nth(preservedIndex);
+  await preserved.getByRole("button", { name: "Start", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Start", exact: true }).click();
+  await expect(preserved.getByRole("button", { name: "API access", exact: true })).toBeVisible({ timeout: 10 * 60_000 });
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  await page.screenshot({ path: testInfo.outputPath("deployment-lifecycle.png"), fullPage: true });
+});

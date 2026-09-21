@@ -5,7 +5,7 @@ import time
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -14,18 +14,23 @@ from automl_api.db.session import get_db, get_session_factory
 from automl_api.models.datasets import DatasetVersion, ProfilingJob
 from automl_api.models.enums import DatasetStatus
 from automl_api.models.iam import User
-from automl_api.schemas.profiling import DatasetProfileRead, ProfileRequest
+from automl_api.schemas.profiling import (
+    DatasetProfileRead,
+    ProfileRequest,
+    TargetPreviewRead,
+)
 from automl_api.schemas.profiling_jobs import (
     FeatureProfileJobRead,
     ProfilingJobCreate,
     ProfilingJobRead,
     ProfilingJobStatusRead,
 )
-from automl_api.services.profiling import build_dataset_profile
+from automl_api.services.profiling import build_dataset_profile, build_target_preview
 from automl_api.services.profiling_jobs import (
     TERMINAL_STATUSES,
     create_profiling_job,
     get_profiling_job,
+    is_distributed_profile,
     latest_profiling_job,
     schedule_profiling_job,
 )
@@ -34,6 +39,25 @@ router = APIRouter(
     prefix="/projects/{project_id}/datasets/{dataset_id}/versions/{dataset_version_id}",
     tags=["profiling"],
 )
+
+
+@router.get("/target-preview", response_model=TargetPreviewRead)
+def target_preview(
+    project_id: uuid.UUID,
+    dataset_id: uuid.UUID,
+    dataset_version_id: uuid.UUID,
+    column: Annotated[str, Query(min_length=1, max_length=255)],
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> TargetPreviewRead:
+    return build_target_preview(
+        db,
+        current_user,
+        project_id,
+        dataset_id,
+        dataset_version_id,
+        column,
+    )
 
 
 @router.post(
@@ -61,7 +85,8 @@ def start_profile_job(
     db.commit()
     db.refresh(job)
     if created:
-        schedule_profiling_job(job.id)
+        if not is_distributed_profile(job):
+            schedule_profiling_job(job.id)
     else:
         response.status_code = status.HTTP_200_OK
     return ProfilingJobStatusRead.model_validate(job)
@@ -227,7 +252,8 @@ def cancel_profile_job(
         job.current_stage = "cancelled"
         version = db.get(DatasetVersion, job.dataset_version_id)
         if version is not None:
-            version.status = DatasetStatus.UPLOADED
+            # Cancelling derived work leaves the verified source version usable.
+            version.status = DatasetStatus.READY
         db.commit()
         db.refresh(job)
     return ProfilingJobStatusRead.model_validate(job)

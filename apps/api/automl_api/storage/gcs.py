@@ -219,6 +219,11 @@ class GCSObjectStoreDriver:
             return HealthcheckResult(False, self.driver_name, type(exc).__name__)
         return HealthcheckResult(True, self.driver_name)
 
+    def delete_prefix(self, prefix: str) -> None:
+        prefix = self._key(prefix).rstrip("/") + "/"
+        for blob in self.client.list_blobs(self.bucket_name, prefix=prefix):
+            blob.delete()
+
     def delete(self, uri: str) -> None:
         self.bucket.blob(self._key_from_uri(uri)).delete()
 

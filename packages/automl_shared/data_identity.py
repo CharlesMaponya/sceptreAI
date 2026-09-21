@@ -6,7 +6,7 @@ import json
 import math
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -63,6 +63,17 @@ def canonical_value(value: Any) -> Any:
         return {"type": "datetime", "value": encoded}
     if isinstance(value, date):
         return {"type": "date", "value": value.isoformat()}
+    if isinstance(value, time):
+        offset = value.utcoffset()
+        if offset is None:
+            encoded = f"naive:{value.isoformat(timespec='microseconds')}"
+        else:
+            normalized = datetime.combine(date(2000, 1, 1), value).astimezone(UTC).timetz()
+            encoded = normalized.isoformat(timespec="microseconds")
+        return {"type": "time", "value": encoded}
+    if isinstance(value, timedelta):
+        micros = (value.days * 86400 + value.seconds) * 1_000_000 + value.microseconds
+        return {"type": "duration", "value": str(micros)}
     if isinstance(value, Mapping):
         return {
             "type": "mapping",
@@ -78,10 +89,7 @@ def canonical_value(value: Any) -> Any:
 
 def content_fingerprint(row: Mapping[str, Any], columns: Sequence[str]) -> str:
     ordered_columns = sorted(dict.fromkeys(columns))
-    payload = [
-        [column, canonical_value(row.get(column))]
-        for column in ordered_columns
-    ]
+    payload = [[column, canonical_value(row.get(column))] for column in ordered_columns]
     encoded = json.dumps(
         payload,
         ensure_ascii=False,
@@ -147,8 +155,5 @@ def identity_manifest(rows: Iterable[Mapping[str, Any]]) -> IdentityManifest:
         row_count=len(row_ids),
         row_set_digest=sequence_digest(sorted(row_ids)),
         split_counts={role: len(split_row_ids[role]) for role in ROLE_ORDER},
-        split_digests={
-            role: sequence_digest(sorted(split_row_ids[role]))
-            for role in ROLE_ORDER
-        },
+        split_digests={role: sequence_digest(sorted(split_row_ids[role])) for role in ROLE_ORDER},
     )

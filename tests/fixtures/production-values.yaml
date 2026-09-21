@@ -1,0 +1,57 @@
+# Render-only negative/positive policy fixture. Digests and service names are
+# deliberately placeholders, never an installable production configuration.
+environment: production
+kuberay-operator:
+  enabled: false
+postgresql:
+  enabled: false
+seaweedfs:
+  enabled: false
+mlflow:
+  enabled: false
+  externalTrackingUri: https://mlflow.example.test
+platform:
+  existingSecret: test-database
+  workerDatabase:
+    existingSecret: test-worker-database
+  database:
+    sslMode: verify-full
+auth:
+  existingSecret: test-auth
+  simpleAuthEnabled: false
+  publicAppUrl: https://sceptre.example.test
+externalObjectStore:
+  driver: s3_compatible
+  endpoint: https://objects.example.test
+  publicEndpoint: https://objects.example.test
+  region: test-region
+  existingSecret: test-object-store
+uploads:
+  allowedOrigins: [https://sceptre.example.test]
+  scanner:
+    command: /usr/bin/scanner
+    version: test-scanner-v1
+    signatureVersion: test-signatures-v1
+gateway:
+  enabled: true
+  host: sceptre.example.test
+  tls:
+    enabled: true
+    secretName: test-tls
+ingress:
+  host: sceptre.example.test
+api:
+  replicaCount: 2
+  image:
+    digest: &digest sha256:0000000000000000000000000000000000000000000000000000000000000000
+ui:
+  replicaCount: 2
+  image:
+    digest: *digest
+training:
+  cpu:
+    image:
+      digest: *digest
+inference:
+  image:
+    digest: *digest

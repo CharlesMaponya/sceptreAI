@@ -4,13 +4,14 @@ import {
   Download, FileCheck2, FileSpreadsheet, FileText, Gauge, GitBranch, MemoryStick, Play,
   Plus, RefreshCw, Rocket, TerminalSquare, Trophy, Upload,
 } from "lucide-react";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { Fragment, lazy, Suspense, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, useParams } from "react-router";
 import { api, getSession, json } from "../api";
 import {
-  Badge, Button, Card, EmptyState, ErrorState, Loading, Modal, Notice, PageHeader,
+  Badge, Button, Card, ConfirmModal, EmptyState, ErrorState, Loading, Modal, Notice, PageHeader,
 } from "../components/ui";
+import { Pagination } from "../components/Pagination";
 import { formatBytes, formatDate, titleCase } from "../lib";
 import type {
   Dataset, DatasetVersion, Estimator, Leaderboard, ModelRun, TaskType, TrainingResourceUsage,
@@ -36,18 +37,24 @@ export function RunsPage() {
   const { projectId = "" } = useParams();
   const client = useQueryClient();
   const [selectedId, setSelectedId] = useState("");
+  const [page, setPage] = useState(0);
+  const [deleteTarget, setDeleteTarget] = useState<ModelRun | null>(null);
+  const remove = useMutation({ mutationFn: () => api(`/projects/${projectId}/training/runs/${deleteTarget!.id}`, json("DELETE")),
+    onSuccess: () => { setDeleteTarget(null); client.invalidateQueries({ queryKey: ["runs", projectId] }); },
+  });
   const runs = useQuery({
-    queryKey: ["runs", projectId],
-    queryFn: () => api<ModelRun[]>(`/projects/${projectId}/training/runs`),
+    queryKey: ["runs", projectId, page],
+    queryFn: () => api<ModelRun[]>(`/projects/${projectId}/training/runs?offset=${page * 10}&limit=11`),
     refetchInterval: (query) =>
-      query.state.data?.some((run) => ["queued", "precheck_running", "running"].includes(run.status))
+      query.state.data?.some((run) => (["queued", "precheck_running", "running"].includes(run.status) || run.tags?.deletion_requested === true))
         ? 3000 : false,
   });
   useEffect(() => {
-    if (runs.data?.length && !runs.data.some((run) => run.id === selectedId)) {
+    if (runs.data?.length === 0 && page > 0) setPage(page - 1);
+    if (runs.data?.length && !runs.data.slice(0, 10).some((run) => run.id === selectedId)) {
       setSelectedId(runs.data[0].id);
     }
-  }, [runs.data, selectedId]);
+  }, [runs.data, selectedId, page]);
   const selected = runs.data?.find((run) => run.id === selectedId);
   if (runs.isLoading) return <Loading />;
   if (runs.error) return <ErrorState error={runs.error} retry={() => runs.refetch()} />;
@@ -60,17 +67,20 @@ export function RunsPage() {
           action={<Link className="button button--primary" to={`/projects/${projectId}/training`}><Play size={15} />Configure training</Link>} /></Card>
       : <div className="runs-layout">
           <Card className="run-list">
-            <div className="run-list__head"><b>Training runs</b><span>{runs.data.length}</span></div>
-            {runs.data.map((run) => <button key={run.id}
+            <div className="run-list__head"><b>Training runs</b><span>Page {page + 1}</span></div>
+            {runs.data.slice(0, 10).map((run) => <button key={run.id}
               className={selectedId === run.id ? "active" : ""} onClick={() => setSelectedId(run.id)}>
               <span><b>{run.run_name || run.id.slice(0, 8)}</b>
                 <small>{titleCase(run.task_type)} · {formatDate(run.created_at)}</small></span>
               <Badge status={run.status} /><ChevronRight size={16} />
             </button>)}
+            <Pagination label="Training runs" page={page} hasNext={runs.data.length > 10} onChange={setPage} loading={runs.isFetching} />
+            {selected && <Button variant="ghost" onClick={() => setDeleteTarget(selected)}>{selected.tags?.deletion_requested ? "Retry run cleanup" : "Delete selected run"}</Button>}
           </Card>
           {selected && <RunDetail projectId={projectId} run={selected}
             invalidate={() => client.invalidateQueries({ queryKey: ["runs", projectId] })} />}
         </div>}
+    {deleteTarget && <ConfirmModal danger title="Delete this run?" description={`Permanently delete ${deleteTarget.run_name || "this run"}, its models, metrics, and associated analyses. The project dataset remains available. Active work must stop and deployed models must be shut down and cleaned up first.`} confirmLabel="Delete run" close={() => setDeleteTarget(null)} action={() => remove.mutateAsync()} />}
   </>;
 }
 
@@ -85,6 +95,17 @@ function RunDetail({ projectId, run, invalidate }: {
     queryFn: () => api<Leaderboard>(`/projects/${projectId}/training/runs/${run.id}/leaderboard`),
     refetchInterval: ["queued", "precheck_running", "running"].includes(run.status) ? 3000 : false,
   });
+  // The run poll can observe completion before the final leaderboard poll.
+  // Fetch the final evidence once instead of freezing a running candidate row.
+  useEffect(() => {
+    if (!["queued", "precheck_running", "running"].includes(run.status)) {
+      void client.invalidateQueries({ queryKey: ["leaderboard", projectId, run.id] });
+      void client.invalidateQueries({ queryKey: ["run-resources", projectId, run.id] });
+      void client.invalidateQueries({ queryKey: ["project-journey", projectId] });
+      void client.invalidateQueries({ queryKey: ["projects"] });
+      void client.invalidateQueries({ queryKey: ["project", projectId] });
+    }
+  }, [client, projectId, run.id, run.status]);
   const resources = useQuery({
     queryKey: ["run-resources", projectId, run.id],
     queryFn: () => api<TrainingResourceUsage>(`/projects/${projectId}/training/runs/${run.id}/resources`),
@@ -93,7 +114,7 @@ function RunDetail({ projectId, run, invalidate }: {
   const logs = useQuery({
     queryKey: ["logs", run.id],
     queryFn: () => api<Logs>(`/projects/${projectId}/training/runs/${run.id}/logs`),
-    enabled: tab === "logs",
+    enabled: import.meta.env.DEV && tab === "logs",
     refetchInterval: ["queued", "precheck_running", "running"].includes(run.status) ? 2000 : false,
   });
   const refreshRunEvidence = () => {
@@ -138,6 +159,8 @@ function RunDetail({ projectId, run, invalidate }: {
           <Button variant="secondary" loading={restart.isPending} onClick={() => restart.mutate()}>
             <RefreshCw size={16} />Restart run</Button>}
       </div>
+      {cancel.error && <Notice tone="danger">{cancel.error.message}</Notice>}
+      {restart.error && <Notice tone="danger">{restart.error.message}</Notice>}
     </Card>
     <div className="tabs" role="tablist" aria-label="Run detail">
       <button role="tab" aria-selected={tab === "leaderboard"} className={tab === "leaderboard" ? "active" : ""}
@@ -146,15 +169,15 @@ function RunDetail({ projectId, run, invalidate }: {
         onClick={() => setTab("features")}>Feature selection</button>
       <button role="tab" aria-selected={tab === "analysis"} className={tab === "analysis" ? "active" : ""}
         onClick={() => setTab("analysis")}>Validate & explain</button>
-      <button role="tab" aria-selected={tab === "logs"} className={tab === "logs" ? "active" : ""}
-        onClick={() => setTab("logs")}>Logs</button>
+      {import.meta.env.DEV && <button role="tab" aria-selected={tab === "logs"} className={tab === "logs" ? "active" : ""}
+        onClick={() => setTab("logs")}>Logs</button>}
     </div>
     {tab === "leaderboard" && <LeaderboardPanel projectId={projectId} leaderboard={leaderboard} winner={winner}
       task={run.task_type} resources={resources} openFeatureSelection={() => setTab("features")} />}
     {tab === "features" && <FeatureSelectionPanel leaderboard={leaderboard} winner={winner} />}
     {tab === "analysis" && <AnalysisPanel projectId={projectId} run={run}
       successfulModels={leaderboard.data?.entries.filter((entry) => entry.status === "succeeded").map((entry) => entry.model) || []} />}
-    {tab === "logs" && <LogsPanel logs={logs} />}
+    {import.meta.env.DEV && tab === "logs" && <LogsPanel logs={logs} />}
     {showAdd && <AddModelsModal projectId={projectId} run={run}
       completed={new Set(leaderboard.data?.entries.map((entry) => entry.model))}
       close={() => setShowAdd(false)} done={() => { setShowAdd(false); refreshRunEvidence(); }} />}
@@ -170,37 +193,65 @@ function LeaderboardPanel({ projectId, leaderboard, winner, task, resources, ope
   openFeatureSelection: () => void;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
+  const validationSamples = [...new Set(leaderboard.data?.entries.flatMap(entry =>
+    entry.validation_rows == null ? [] : [entry.validation_rows]) || [])].sort((a, b) => a - b);
   return <Card className="section-card">
     <LiveTrainingSummary resources={resources} />
     {leaderboard.isLoading ? <Loading label="Loading model evidence…" />
       : leaderboard.error ? <ErrorState error={leaderboard.error} retry={() => leaderboard.refetch()} />
       : leaderboard.data?.entries.length ? <>
+        {leaderboard.data.split_counts && <section aria-label="Saved dataset partitions">
+          <dl className="run-evidence-strip">
+            <div><dt>Training rows</dt><dd>{leaderboard.data.split_counts.train.toLocaleString()}</dd></div>
+            <div><dt>Validation rows</dt><dd>{leaderboard.data.split_counts.validation.toLocaleString()}</dd></div>
+            <div><dt>Final-test rows</dt><dd>{leaderboard.data.split_counts.final_test.toLocaleString()}</dd></div>
+          </dl>
+          <p className="muted">Full saved partitions for this run. {validationSamples.length
+            ? `Candidate scoring samples use ${validationSamples.map(count => count.toLocaleString()).join(" / ")} rows from the validation partition. `
+            : "Candidate scoring samples come from the validation partition. "}Final-test rows remain sealed.</p>
+        </section>}
         <div className="winner-banner"><Trophy /><div><span>Top candidate</span>
           <b>{leaderboard.data.winner || "Ranking in progress"}</b>
           <small>{winner?.primary_score != null
             ? `${titleCase(leaderboard.data.primary_metric || "score")}: ${winner.primary_score.toFixed(4)}`
             : "Results are still being collected"}</small></div>
-          {leaderboard.data.winner && <Link className="button button--primary"
+          {leaderboard.data.winner && leaderboard.data.status === "succeeded" && <Link className="button button--primary"
             to={`/projects/${projectId}/operations?trainingRunId=${leaderboard.data.run_id}&model=${encodeURIComponent(leaderboard.data.winner)}`}>
             <Rocket size={15} />Deploy model</Link>}</div>
-        <div className="leaderboard-accordion" role="table" aria-label="Model leaderboard">
-          <div className="leaderboard-accordion__head" role="row"><span>Rank</span><span>Model</span><span>Status</span>
-            <span>{titleCase(leaderboard.data.primary_metric || "Score")}</span><span>Duration</span><span /></div>
-          {leaderboard.data.entries.map((entry) => {
-            const open = expanded === entry.model;
-            return <article className={`leaderboard-model${open ? " leaderboard-model--open" : ""}`} key={entry.model}>
-              <button type="button" className="leaderboard-model__trigger" aria-expanded={open}
-                onClick={() => setExpanded(open ? null : entry.model)}>
-                <span className="rank">{entry.rank || "—"}</span><span><b>{entry.model}</b><small>{titleCase(entry.cost_tier)} cost</small></span>
-                <Badge status={entry.status} /><span className="score">{entry.primary_score?.toFixed(4) || "—"}</span>
-                <span>{entry.duration_seconds ? `${entry.duration_seconds.toFixed(1)}s` : "—"}</span><ChevronDown size={17} />
-              </button>
-              {entry.error && <small className="cell-error leaderboard-model__error">{entry.error}</small>}
-              {open && <ModelEvidence projectId={projectId} runId={leaderboard.data.run_id}
-                entry={entry} task={task} metricDirections={leaderboard.data.metric_directions}
-                resources={resources} openFeatureSelection={openFeatureSelection} />}
-            </article>;
-          })}
+        <p className="muted">Ranking reflects the selected metric. You can deploy any successful candidate that fits your business needs once the training run succeeds.</p>
+        <div className="training-table-scroll" tabIndex={0} role="region" aria-label="Scrollable model results">
+          <table className="training-model-table" aria-label="Model leaderboard">
+            <thead><tr><th scope="col">Model</th>
+              <th scope="col">Status</th><th scope="col">{titleCase(leaderboard.data.primary_metric || "Score")}</th>
+              <th scope="col">Actions</th></tr></thead>
+            <tbody>{leaderboard.data.entries.map((entry) => {
+              const open = expanded === entry.model;
+              return <Fragment key={entry.model}>
+                <tr className={`training-model-row${open ? " training-model-row--open" : ""}`}>
+                  <td><div className="training-model-identity"><span className="training-model-icon" aria-hidden="true"><BrainCircuit size={20} /></span>
+                    <div><b>{entry.model}</b><small>{entry.rank ? `Rank ${entry.rank} · ` : ""}{titleCase(entry.cost_tier)} cost</small>
+                      <small>{entry.duration_seconds != null ? `${entry.duration_seconds.toFixed(1)}s` : "Duration pending"}</small></div>
+                  </div></td>
+                  <td className="training-model-status"><Badge status={entry.status}>{candidatePhaseLabel(entry, resources.data)}</Badge></td>
+                  <td className="training-model-score">{entry.primary_score != null ? entry.primary_score.toFixed(4) : "—"}</td>
+                  <td><div className="training-model-actions"><button type="button" className="training-model-details leaderboard-model__trigger" aria-label={`${entry.model} details`}
+                    aria-expanded={open} aria-controls={`model-evidence-${entry.model}`}
+                    onClick={() => setExpanded(open ? null : entry.model)}>{open ? "Close" : "Details"}<ChevronDown size={15} /></button>
+                    {entry.status === "succeeded" && (leaderboard.data.status === "succeeded"
+                      ? <Link className="training-model-deploy" aria-label={`Deploy ${entry.model}`}
+                        to={`/projects/${projectId}/operations?trainingRunId=${leaderboard.data.run_id}&model=${encodeURIComponent(entry.model)}`}><Rocket size={14} />Deploy</Link>
+                      : <span className="muted" title="Deployment becomes available when the training run succeeds.">Awaiting run completion</span>)}
+                  </div></td>
+                </tr>
+                {entry.error && <tr className="training-model-error"><td colSpan={4}>{entry.model}: {entry.error}</td></tr>}
+                {open && <tr><td colSpan={4} className="training-model-evidence" id={`model-evidence-${entry.model}`}>
+                  <ModelEvidence projectId={projectId} runId={leaderboard.data.run_id}
+                    entry={entry} task={task} metricDirections={leaderboard.data.metric_directions}
+                    resources={resources} openFeatureSelection={openFeatureSelection} />
+                </td></tr>}
+              </Fragment>;
+            })}</tbody>
+          </table>
         </div>
       </> : <EmptyState title="Results are on their way"
         description="Candidates appear progressively as training completes." />}
@@ -208,6 +259,26 @@ function LeaderboardPanel({ projectId, leaderboard, winner, task, resources, ope
 }
 
 type LeaderboardEntry = Leaderboard["entries"][number];
+function candidatePhaseLabel(entry: LeaderboardEntry, resources?: TrainingResourceUsage): string | undefined {
+  if (!["running", "pending"].includes(entry.status)) return undefined;
+  const phase = resources?.current_candidate === entry.model && resources.status === "running"
+    ? resources.current_phase : entry.pipeline?.current_phase;
+  if (!phase) return undefined;
+  const labels: Record<string, string> = {
+    waiting_for_worker: "Waiting for worker",
+    preparing_data: "Preparing data",
+    hyperparameter_search: "Hyperparameter search",
+    cross_validating: "Cross-validation",
+    fitting_final_model: "Fitting model",
+    evaluating: "Validation",
+    learning_curve: "Building learning curves",
+    finalizing_run: "Finalizing run",
+    logging_to_mlflow: "Saving to MLflow",
+    saving_model: "Saving model",
+  };
+  return labels[phase] || titleCase(phase);
+}
+
 type Curve = { label: string; points: Array<Record<string, number | null>> };
 type PredictionSample = { order: number; actual: number; predicted: number; residual: number };
 
@@ -227,7 +298,9 @@ function ModelEvidence({ projectId, runId, entry, task, metricDirections, resour
         <button key={name} role="tab" aria-selected={tab === name} className={tab === name ? "active" : ""}
           onClick={() => setTab(name)}>{name === "pipeline" ? "Pipeline & features" : titleCase(name)}</button>)}
     </div>
-    {tab === "metrics" && <section><h3>Metrics</h3><div className="metric-pills">
+    {tab === "metrics" && <section><h3>Metrics</h3>
+      {entry.training_rows != null && <p className="muted">Candidate fitting rows: {entry.training_rows.toLocaleString()} · Validation scoring rows: {formatNumber(entry.validation_rows ?? null, "")}</p>}
+      <div className="metric-pills">
       {Object.entries(entry.metrics).map(([name, value]) => <span key={name}>
         <small>{titleCase(name)} · {metricDirections[name] || "review"}</small><b>{value.toFixed(4)}</b></span>)}</div></section>}
     {tab === "diagnostics" && <ModelDiagnosticCharts diagnostics={entry.diagnostics} task={task} />}
@@ -472,7 +545,7 @@ function LiveTrainingSummary({ resources }: {
   return <div className="live-training-summary">
     <div><Activity size={18} /><span><small>{terminal ? "Last active model" : "Active model"}</small>
       <b>{displayedCandidate || (terminal ? "No model active" : "Waiting for candidate")}</b></span></div>
-    <div><Gauge size={18} /><span><small>Current phase</small><b>{titleCase(value.current_phase || value.pod_phase || value.status || "waiting")}</b></span></div>
+    <div><Gauge size={18} /><span><small>Run status</small><b>{titleCase(value.status || "waiting")}</b></span></div>
     <div className="live-training-summary__progress"><span>
       <b>{candidateCopy}</b>
       <small>{progressCopy}</small></span>
@@ -526,11 +599,11 @@ function ModelDiagnosticCharts({ diagnostics, task }: {
     {task === "clustering" && <ClusteringCharts diagnostics={diagnostics} />}
     {learning?.points?.length ? <EvidenceChart title={`Learning curve · ${titleCase(learning.scoring || "score")}`}
       data={[
-        { type: "scatter", mode: "lines+markers", name: "Training", x: learning.points.map((point) => point.training_rows), y: learning.points.map((point) => point.training_mean), line: { color: "#3159e8" } },
+        { type: "scatter", mode: "lines+markers", name: "Training", x: learning.points.map((point) => point.training_rows), y: learning.points.map((point) => point.training_mean), line: { color: "#cb0c9f" } },
         { type: "scatter", mode: "lines+markers", name: "Validation", x: learning.points.map((point) => point.training_rows), y: learning.points.map((point) => point.validation_mean), line: { color: "#e08835" } },
       ]} xTitle="Training rows" yTitle={titleCase(learning.scoring || "score")} /> : null}
     {crossValidation && typeof crossValidation.mean === "number" ? <EvidenceChart title="Cross-validation stability"
-      data={[{ type: "bar", x: ["Mean", "Standard deviation"], y: [crossValidation.mean, Number(crossValidation.standard_deviation || 0)], marker: { color: ["#3159e8", "#9aa7d8"] } }]} /> : null}
+      data={[{ type: "bar", x: ["Mean", "Standard deviation"], y: [crossValidation.mean, Number(crossValidation.standard_deviation || 0)], marker: { color: ["#cb0c9f", "#9aa7d8"] } }]} /> : null}
   </div>;
 }
 
@@ -610,10 +683,10 @@ function RegressionCharts({ diagnostics, timeSeries }: { diagnostics: Record<str
   const maximum = Math.max(...samples.flatMap((item) => [item.actual, item.predicted]));
   return <>
     <EvidenceChart title="Actual vs predicted" data={[
-      { type: "scatter", mode: "markers", name: "Predictions", x: samples.map((item) => item.actual), y: samples.map((item) => item.predicted), marker: { color: "#3159e8", opacity: .65 } },
+      { type: "scatter", mode: "markers", name: "Predictions", x: samples.map((item) => item.actual), y: samples.map((item) => item.predicted), marker: { color: "#cb0c9f", opacity: .65 } },
       { type: "scatter", mode: "lines", name: "Ideal", x: [minimum, maximum], y: [minimum, maximum], line: { dash: "dash", color: "#e08835" } },
     ]} xTitle="Actual" yTitle="Predicted" />
-    <EvidenceChart title="Residual distribution" data={[{ type: "histogram", x: samples.map((item) => item.residual), marker: { color: "#3159e8" } }]} xTitle="Residual" yTitle="Rows" />
+    <EvidenceChart title="Residual distribution" data={[{ type: "histogram", x: samples.map((item) => item.residual), marker: { color: "#cb0c9f" } }]} xTitle="Residual" yTitle="Rows" />
     {timeSeries ? <EvidenceChart title="Chronological holdout" data={[
       { type: "scatter", mode: "lines", name: "Actual", x: samples.map((item) => item.order), y: samples.map((item) => item.actual) },
       { type: "scatter", mode: "lines", name: "Predicted", x: samples.map((item) => item.order), y: samples.map((item) => item.predicted) },
@@ -627,7 +700,7 @@ function ClusteringCharts({ diagnostics }: { diagnostics: Record<string, unknown
   const foldMetrics = crossValidation?.fold_metrics || [];
   const metricNames = [...new Set(foldMetrics.flatMap((fold) => Object.keys(fold)))];
   return <>
-    {sizes && Object.keys(sizes).length ? <EvidenceChart title="Cluster sizes" data={[{ type: "bar", x: Object.keys(sizes), y: Object.values(sizes), marker: { color: "#3159e8" } }]} xTitle="Cluster" yTitle="Rows" /> : null}
+    {sizes && Object.keys(sizes).length ? <EvidenceChart title="Cluster sizes" data={[{ type: "bar", x: Object.keys(sizes), y: Object.values(sizes), marker: { color: "#cb0c9f" } }]} xTitle="Cluster" yTitle="Rows" /> : null}
     {foldMetrics.length ? <EvidenceChart title="Cross-validation by fold" data={metricNames.map((metric) => ({ type: "scatter", mode: "lines+markers", name: titleCase(metric), x: foldMetrics.map((_, index) => index + 1), y: foldMetrics.map((fold) => fold[metric]) }))} xTitle="Fold" yTitle="Metric" /> : null}
   </>;
 }
@@ -642,7 +715,7 @@ function EvidenceChart({ title, data, xTitle, yTitle, action, reverseY = false, 
   caption?: ReactNode;
 }) {
   return <section className="model-evidence-chart"><header className="model-evidence-chart__header"><h3>{title}</h3>{action}</header><Suspense fallback={<Loading label="Loading visualization…" />}>
-    <PlotlyChart data={data} layout={{ autosize: true, height: 310, margin: { l: 55, r: 15, t: 15, b: 55 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "#f8f9fc", barmode: "group", xaxis: { title: { text: xTitle }, automargin: true }, yaxis: { title: { text: yTitle }, automargin: true, autorange: reverseY ? "reversed" : true }, legend: { orientation: "h", y: 1.12 }, font: { family: "Inter, system-ui, sans-serif", size: 10, color: "#4e5870" } }} config={{ displayModeBar: false, responsive: true }} useResizeHandler style={{ width: "100%" }} />
+    <PlotlyChart data={data} layout={{ autosize: true, height: 310, margin: { l: 55, r: 15, t: 15, b: 55 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "#f8f9fc", barmode: "group", xaxis: { title: { text: xTitle }, automargin: true }, yaxis: { title: { text: yTitle }, automargin: true, autorange: reverseY ? "reversed" : true }, legend: { orientation: "h", y: 1.12 }, font: { family: "Open Sans Variable, system-ui, sans-serif", size: 10, color: "#4e5870" } }} config={{ displayModeBar: false, responsive: true }} useResizeHandler style={{ width: "100%" }} />
   </Suspense>{caption && <p className="evidence-chart-caption">{caption}</p>}</section>;
 }
 
@@ -681,7 +754,9 @@ function AnalysisPanel({ projectId, run, successfulModels }: {
   useEffect(() => {
     if (successfulModels.length && !successfulModels.includes(model)) setModel(successfulModels[0]);
   }, [successfulModels, model]);
-  const trainingColumns = versions.data?.find((item) => item.id === run.dataset_version_id)?.columns || [];
+  const trainingColumns = (versions.data?.find((item) => item.id === run.dataset_version_id)?.columns || [])
+    .filter((column) => !((run.params.excluded_columns as string[]) || []).includes(column)
+      && !((run.params.excluded_leakage_columns as string[]) || []).includes(column));
   const uploadedValidationColumns = (uploadedValidation?.version.schema_json
     || uploadedValidation?.version.dataset_schema)?.columns?.map((column) => column.name) || [];
   const missingValidationColumns = trainingColumns.filter(
@@ -706,14 +781,20 @@ function AnalysisPanel({ projectId, run, successfulModels }: {
       setSelectedAnalysis("");
     }
   }, [analysisTab, completedExplanation, selectedAnalysis, visibleAnalyses]);
+  const selectLaunchedAnalysis = async ({ run: launched }: { run: Analysis }) => {
+    // Publish the returned job before selecting it, so the selection effect
+    // cannot fall back to stale history while the list request is in flight.
+    await client.cancelQueries({ queryKey: ["analyses", run.id] });
+    client.setQueryData<Analysis[]>(["analyses", run.id], (previous = []) =>
+      [launched, ...previous.filter((item) => item.id !== launched.id)]);
+    setSelectedAnalysis(launched.id);
+    client.removeQueries({ queryKey: ["analysis-result", run.id, launched.id] });
+    void analyses.refetch();
+  };
   const explain = useMutation({
     mutationFn: () => api<{ run: Analysis }>(`/projects/${projectId}/training/runs/${run.id}/explanations`,
       json("POST", { model_name: model, max_rows: maxRows, expected_minutes: 10 })),
-    onSuccess: ({ run: launched }) => {
-      setSelectedAnalysis(launched.id);
-      client.removeQueries({ queryKey: ["analysis-result", run.id, launched.id] });
-      analyses.refetch();
-    },
+    onSuccess: selectLaunchedAnalysis,
   });
   const uploadValidation = useMutation({
     mutationFn: async (file: File) => {
@@ -744,11 +825,7 @@ function AnalysisPanel({ projectId, run, successfulModels }: {
         evaluation_column: run.task_type === "clustering" ? evaluationColumn || null : null,
         expected_minutes: 5,
       })),
-    onSuccess: ({ run: launched }) => {
-      setSelectedAnalysis(launched.id);
-      client.removeQueries({ queryKey: ["analysis-result", run.id, launched.id] });
-      analyses.refetch();
-    },
+    onSuccess: selectLaunchedAnalysis,
   });
   const result = useQuery({
     queryKey: ["analysis-result", run.id, selectedAnalysis], enabled: Boolean(selectedAnalysis),
@@ -832,7 +909,11 @@ function AnalysisPanel({ projectId, run, successfulModels }: {
           <span><b>{item.run_name || item.id.slice(0, 8)}</b><small>{titleCase(item.run_kind)}</small></span>
           <Badge status={item.status} />
         </button>)}</div>}
-      {selectedRun && (result.isLoading ? <Loading label="Loading analysis result…" />
+      {selectedRun?.plain_english_failure && <Notice tone="danger">{selectedRun.plain_english_failure}</Notice>}
+      {selectedRun?.failure_message && <details><summary>Analysis failure details</summary>
+        <pre>{selectedRun.failure_message}</pre></details>}
+      {validate.isPending || explain.isPending ? <Loading label="Starting analysis…" />
+        : selectedRun && (result.isLoading ? <Loading label="Loading analysis result…" />
         : result.data && <AnalysisResultPanel result={result.data} />)}
     </> : <p className="muted">No {analysisTab === "validation" ? "validation" : "explainability"} jobs yet.</p>}
   </Card>;
@@ -843,11 +924,11 @@ function AnalysisResultPanel({ result }: { result: AnalysisResult }) {
     ...item, weight: Math.abs(Number(item.mean_absolute_shap ?? item.contribution_percent ?? 0)),
   })).sort((a, b) => b.weight - a.weight);
   const total = importance.reduce((sum, item) => sum + item.weight, 0);
-  return <div className="analysis-result">
+  return <div className="analysis-result" data-run-id={result.run_id}>
     <div className="section-heading"><div><h3>{result.model_name}</h3>
       <p>Persisted analysis evidence</p></div><Badge status={result.status} /></div>
     {["queued", "precheck_running", "running"].includes(result.status) &&
-      <Notice>Explainability is still running. Feature contributions will appear here automatically.</Notice>}
+      <Notice>Analysis is still running. Results will appear here automatically.</Notice>}
     {Object.keys(result.metrics).length > 0 && <div className="metric-pills">
       {Object.entries(result.metrics).map(([name, value]) =>
         <span key={name}><small>{titleCase(name)}</small><b>{value.toFixed(4)}</b></span>)}</div>}

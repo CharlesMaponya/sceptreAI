@@ -10,8 +10,120 @@ import automl_api.training.pipeline as training_pipeline
 import pytest
 from automl_api.models.datasets import DatasetVersion
 from automl_api.models.enums import RunStatus
+from automl_api.models.workflows import DatasetSplitRevision
 from automl_api.training.pipeline import TournamentResult
 from kubernetes.client import ApiException
+
+
+@pytest.mark.parametrize("desired_state", ["kubernetes_submission_pending", "kubernetes_submitted"])
+def test_api_reads_do_not_fail_managed_analysis_before_the_outbox_job_exists(desired_state):
+    from unittest.mock import MagicMock
+
+    run = _run()
+    run.status = RunStatus.QUEUED
+    run.tags = {"desired_state": desired_state}
+    client = MagicMock()
+    client.job_state.return_value = "missing"
+
+    training_service._sync_run_status(FakeSession(run), run, client)
+
+    assert run.status == RunStatus.QUEUED
+    client.job_state.assert_not_called()
+
+
+def test_reconciler_observes_submitted_analysis_jobs():
+    from unittest.mock import MagicMock
+
+    from automl_api.services.reconciler import observe_analysis_jobs
+
+    run = _run()
+    run.status = RunStatus.QUEUED
+    run.tags = {"desired_state": "kubernetes_submitted"}
+    db = MagicMock()
+    db.scalars.return_value = [run]
+    client = MagicMock()
+    client.job_state.return_value = "running"
+
+    assert observe_analysis_jobs(db, client) == 1
+    assert run.status == RunStatus.RUNNING
+    client.job_state.assert_called_once_with(run.k8s_job_name)
+    db.flush.assert_called_once()
+
+
+def test_superseded_attempt_cannot_lock_run_for_shared_result_writes(monkeypatch):
+    from unittest.mock import MagicMock
+
+    from automl_api.models.enums import AttemptStatus
+    from automl_api.services.workflow_state import StaleFence
+
+    run_id = uuid.uuid4()
+    monkeypatch.setenv("AUTOML_ATTEMPT_ID", str(uuid.uuid4()))
+    monkeypatch.setenv("AUTOML_FENCING_TOKEN", "old-fence")
+    db = MagicMock()
+    db.scalar.return_value = SimpleNamespace(
+        model_run_id=run_id, fencing_token="old-fence", status=AttemptStatus.SUPERSEDED
+    )
+    with pytest.raises(StaleFence):
+        training_pipeline._locked_run(db, run_id)
+    assert db.scalar.call_count == 1
+
+
+@pytest.mark.parametrize("initial_status", ["pending", "running"])
+def test_ray_cancel_fences_worker_and_queues_cleanup_before_return(monkeypatch, initial_status):
+    from unittest.mock import MagicMock
+
+    from automl_api.models.enums import AttemptStatus, CommandStatus
+
+    run = _run()
+    run.tags["orchestrator"] = "kuberay"
+    attempt = SimpleNamespace(
+        id=uuid.uuid4(),
+        status=AttemptStatus(initial_status),
+        fencing_token="active-fence",
+        terminal_cas_version=0,
+    )
+    db = MagicMock()
+    db.scalar.return_value = attempt
+    command = SimpleNamespace(id=uuid.uuid4(), status=CommandStatus.PENDING)
+    monkeypatch.setattr(training_service, "require_project_role", lambda *args: None)
+    monkeypatch.setattr(training_service, "get_training_run", lambda *args, **kwargs: run)
+    begin = MagicMock(return_value=(command, False))
+    enqueue = MagicMock()
+    monkeypatch.setattr(training_service, "begin_command", begin)
+    monkeypatch.setattr(training_service, "enqueue_outbox", enqueue)
+    client = MagicMock()
+
+    def assert_lock_order(*args, **kwargs):
+        assert db.scalar.call_count in {2, 4}
+        assert kwargs["with_for_update"]
+
+    db.refresh.side_effect = assert_lock_order
+    training_service.cancel_training_run(
+        db, SimpleNamespace(id=uuid.uuid4()), run.project_id, run.id, client
+    )
+    assert run.status == RunStatus.CANCELLED
+    assert attempt.status == AttemptStatus.CANCELLED
+    assert attempt.terminal_cas_version == 1
+    assert command.status == CommandStatus.SUCCEEDED
+    client.delete_job.assert_not_called()
+    client.delete_ray_job.assert_not_called()
+    assert enqueue.call_args.kwargs["topic"] == "ray.training.cancel"
+    assert enqueue.call_args.kwargs["payload"]["attempt_id"] == str(attempt.id)
+
+    training_service.cancel_training_run(
+        db, SimpleNamespace(id=uuid.uuid4()), run.project_id, run.id, client
+    )
+    begin.assert_called_once()
+    enqueue.assert_called_once()
+
+
+def test_cancel_follows_replacement_created_while_waiting_for_attempt_lock():
+    from unittest.mock import MagicMock
+
+    old, current = SimpleNamespace(id=uuid.uuid4()), SimpleNamespace(id=uuid.uuid4())
+    db = MagicMock()
+    db.scalar.side_effect = [old, current, current, current]
+    assert training_service._lock_latest_training_attempt(db, _run()) is current
 
 
 class FakeSession(AbstractContextManager):
@@ -22,6 +134,11 @@ class FakeSession(AbstractContextManager):
     ) -> None:
         self.run = run
         self.version = version
+        self.split = SimpleNamespace(
+            project_id=run.project_id,
+            dataset_version_id=run.dataset_version_id,
+            specification={"uris": {"train": "s3://train", "validation": "s3://validation"}},
+        )
         self.added: list[object] = []
         self.commits = 0
         self.flushes = 0
@@ -36,6 +153,8 @@ class FakeSession(AbstractContextManager):
     def get(self, model: object, object_id: uuid.UUID) -> SimpleNamespace | None:
         if model is DatasetVersion:
             return self.version
+        if model is DatasetSplitRevision:
+            return self.split
         return self.run
 
     def scalar(self, statement: object) -> SimpleNamespace:
@@ -86,6 +205,7 @@ def _run(*, status: RunStatus = RunStatus.RUNNING) -> SimpleNamespace:
         status=status,
         task_type=SimpleNamespace(value="regression"),
         run_name="cancellation-test",
+        params={"split_revision_id": str(uuid.uuid4())},
         k8s_job_name="automl-train-test",
         started_at=None,
         tags={
@@ -221,11 +341,13 @@ def test_resource_poll_cannot_restore_stale_candidate_after_cancel(monkeypatch) 
         FakeSession.refresh(db, instance, with_for_update=with_for_update)
 
     db.refresh = cancel_before_resource_merge  # type: ignore[method-assign]
-    client = SimpleNamespace(training_resource_usage=lambda *args: {
-        "telemetry_available": True,
-        "cpu_usage_cores": 0.5,
-        "memory_usage_mb": 512,
-    })
+    client = SimpleNamespace(
+        training_resource_usage=lambda *args: {
+            "telemetry_available": True,
+            "cpu_usage_cores": 0.5,
+            "memory_usage_mb": 512,
+        }
+    )
 
     usage = training_service.training_resources(
         db,
@@ -444,14 +566,16 @@ def test_terminal_run_rejects_late_partial_leaderboard_update(
 
     training_pipeline._persist_partial_leaderboard(
         run.id,
-        [{
-            "rank": 1,
-            "model": "RandomForestRegressor",
-            "status": "succeeded",
-            "primary_score": 0.9,
-            "metrics": {"r2": 0.9},
-            "error": None,
-        }],
+        [
+            {
+                "rank": 1,
+                "model": "RandomForestRegressor",
+                "status": "succeeded",
+                "primary_score": 0.9,
+                "metrics": {"r2": 0.9},
+                "error": None,
+            }
+        ],
         "r2",
     )
 
@@ -534,8 +658,16 @@ def test_worker_returns_no_metrics_when_success_persistence_is_rejected(monkeypa
         primary_metric="rmse",
     )
     monkeypatch.setattr(training_pipeline, "get_session_factory", lambda: lambda: db)
-    monkeypatch.setattr(training_pipeline, "_load_dataframe", lambda version: object())
-    monkeypatch.setattr(training_pipeline, "_fit_model", lambda dataframe, model_run: result)
+    monkeypatch.setattr(
+        training_pipeline,
+        "_load_prepared_training_frames",
+        lambda split, **_kwargs: (object(), object()),
+    )
+    monkeypatch.setattr(
+        training_pipeline,
+        "_fit_model",
+        lambda dataframe, model_run, validation: result,
+    )
     monkeypatch.setattr(
         training_pipeline,
         "get_settings",

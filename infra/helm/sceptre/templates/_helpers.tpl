@@ -1,3 +1,14 @@
+{{- define "sceptre.topologySpread" -}}
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        {{- include "sceptre.selectorLabels" .root | nindent 8 }}
+        app.kubernetes.io/component: {{ .component }}
+{{- end -}}
+
 {{- define "sceptre.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
@@ -156,6 +167,16 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- printf "postgresql+psycopg://%s:%s@%s-postgresql:5432/%s" .Values.postgresql.auth.username .Values.postgresql.auth.password (include "sceptre.fullname" .) .Values.postgresql.auth.database -}}
 {{- else -}}
 {{- required "externalDatabase.url is required when postgresql.enabled=false" .Values.externalDatabase.url -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "sceptre.workerDatabaseSecretName" -}}
+{{- if .Values.platform.workerDatabase.existingSecret -}}
+{{- .Values.platform.workerDatabase.existingSecret -}}
+{{- else if .Values.postgresql.enabled -}}
+{{- printf "%s-worker-database" (include "sceptre.fullname" .) -}}
+{{- else -}}
+{{- fail "platform.workerDatabase.existingSecret is required for external PostgreSQL" -}}
 {{- end -}}
 {{- end -}}
 

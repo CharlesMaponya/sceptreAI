@@ -29,6 +29,13 @@ const messageFrom = (data: unknown, status: number) => {
     if (Array.isArray(detail)) return detail.map((item) =>
       typeof item === "object" && item && "msg" in item ? String(item.msg) : String(item)
     ).join(", ");
+    if (detail && typeof detail === "object") {
+      const value = detail as { message?: unknown; blockers?: unknown };
+      const parts = [typeof value.message === "string" ? value.message : "",
+        ...(Array.isArray(value.blockers) ? value.blockers.filter((item) => typeof item === "string") : [])];
+      const message = parts.filter(Boolean).join(" ");
+      if (message) return message;
+    }
   }
   return `Request failed (${status})`;
 };
@@ -94,23 +101,52 @@ function multipartRequest<T>(
   });
 }
 
+// Polling, downloads and uploads must share one refresh rotation. Reusing an
+// old refresh token concurrently revokes the token family on the server.
+let refreshing: { previous: Session; promise: Promise<Session> } | null = null;
+async function refreshedSession(previous: Session): Promise<Session> {
+  if (session !== previous) {
+    if (session?.user.id === previous.user.id) return session;
+    throw new Error("Your session has expired. Please sign in again.");
+  }
+  if (!refreshing || refreshing.previous !== previous) {
+    const promise = (async () => {
+      try {
+        const tokens = await raw<Tokens>("/auth/refresh", {
+          method: "POST", body: JSON.stringify({ refresh_token: previous.tokens.refresh_token }),
+        });
+        // Signing out or changing accounts while refreshing must not restore
+        // the previous user's session.
+        if (session !== previous) throw new Error("Session changed.");
+        const next = { user: previous.user, tokens };
+        setSession(next);
+        return next;
+      } catch {
+        if (session === previous) setSession(null);
+        throw new Error("Your session has expired. Please sign in again.");
+      } finally {
+        if (refreshing?.previous === previous) refreshing = null;
+      }
+    })();
+    refreshing = { previous, promise };
+  }
+  return refreshing.promise;
+}
+
+async function authenticated<T>(request: (token?: string) => Promise<T>): Promise<T> {
+  const previous = session;
+  try {
+    return await request(previous?.tokens.access_token);
+  } catch (error) {
+    if (!(error instanceof ApiError) || !previous?.tokens.refresh_token || error.status !== 401) throw error;
+    const next = await refreshedSession(previous);
+    return request(next.tokens.access_token);
+  }
+}
+
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const requestOptions = withIdempotencyKey(options);
-  try {
-    return await raw<T>(path, requestOptions, session?.tokens.access_token);
-  } catch (error) {
-    if (!(error instanceof ApiError) || !session?.tokens.refresh_token || error.status !== 401) throw error;
-    try {
-      const tokens = await raw<Tokens>("/auth/refresh", {
-        method: "POST", body: JSON.stringify({ refresh_token: session.tokens.refresh_token }),
-      });
-      setSession({ user: session.user, tokens });
-      return raw<T>(path, requestOptions, tokens.access_token);
-    } catch {
-      setSession(null);
-      throw new Error("Your session has expired. Please sign in again.");
-    }
-  }
+  return authenticated((token) => raw<T>(path, requestOptions, token));
 }
 
 async function rawBlob(path: string, options: RequestInit, token?: string) {
@@ -129,23 +165,7 @@ async function rawBlob(path: string, options: RequestInit, token?: string) {
 
 export async function apiBlob(path: string, options: RequestInit = {}) {
   const requestOptions = withIdempotencyKey(options);
-  try {
-    return await rawBlob(path, requestOptions, session?.tokens.access_token);
-  } catch (error) {
-    if (!(error instanceof ApiError) || !session?.tokens.refresh_token || error.status !== 401) {
-      throw error;
-    }
-    try {
-      const tokens = await raw<Tokens>("/auth/refresh", {
-        method: "POST", body: JSON.stringify({ refresh_token: session.tokens.refresh_token }),
-      });
-      setSession({ user: session.user, tokens });
-      return rawBlob(path, requestOptions, tokens.access_token);
-    } catch {
-      setSession(null);
-      throw new Error("Your session has expired. Please sign in again.");
-    }
-  }
+  return authenticated((token) => rawBlob(path, requestOptions, token));
 }
 
 export async function uploadFormData<T>(
@@ -154,25 +174,7 @@ export async function uploadFormData<T>(
   onProgress: (percent: number) => void,
 ): Promise<T> {
   const idempotencyKey = crypto.randomUUID();
-  try {
-    return await multipartRequest<T>(
-      path, body, session?.tokens.access_token, onProgress, idempotencyKey,
-    );
-  } catch (error) {
-    if (!(error instanceof ApiError) || !session?.tokens.refresh_token || error.status !== 401) {
-      throw error;
-    }
-    try {
-      const tokens = await raw<Tokens>("/auth/refresh", {
-        method: "POST", body: JSON.stringify({ refresh_token: session.tokens.refresh_token }),
-      });
-      setSession({ user: session.user, tokens });
-      return multipartRequest<T>(path, body, tokens.access_token, onProgress, idempotencyKey);
-    } catch {
-      setSession(null);
-      throw new Error("Your session has expired. Please sign in again.");
-    }
-  }
+  return authenticated((token) => multipartRequest<T>(path, body, token, onProgress, idempotencyKey));
 }
 
 export const json = (method: string, body?: unknown): RequestInit => ({

@@ -24,8 +24,10 @@ from automl_api.schemas.profiling import (
     LeakageAnalysisRead,
     PreparationStepRead,
     ProfileRequest,
+    TargetPreviewRead,
     TaskInferenceRead,
 )
+from automl_api.services.dataset_inspection import inspect_column_sample
 from automl_api.services.leakage import detect_target_leakage
 from automl_api.services.projects import require_project_role
 from automl_api.services.temporal import (
@@ -34,6 +36,8 @@ from automl_api.services.temporal import (
 )
 from automl_api.services.text_profiling import word_frequencies
 from automl_api.storage.object_store import get_object_store
+
+TARGET_PREVIEW_MAX_BYTES = 16 * 1024 * 1024
 
 
 def build_dataset_profile(
@@ -102,6 +106,60 @@ def build_dataset_profile(
         preparation_plan=preparation_plan,
         leakage_analysis=leakage_analysis,
         warnings=warnings,
+    )
+
+
+def build_target_preview(
+    db: Session,
+    user: User,
+    project_id: uuid.UUID,
+    dataset_id: uuid.UUID,
+    dataset_version_id: uuid.UUID,
+    column: str,
+) -> TargetPreviewRead:
+    require_project_role(db, user, project_id, ProjectRole.VIEWER)
+    version = _get_project_dataset_version(
+        db, project_id, dataset_id, dataset_version_id
+    )
+    normalized_column = column.strip()
+    if not normalized_column or normalized_column not in _columns_from_rows_or_version(
+        [], version
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Target column '{normalized_column}' was not found in the dataset.",
+        )
+    try:
+        content = get_object_store().read_head(
+            version.object_uri, TARGET_PREVIEW_MAX_BYTES
+        )
+        sample = inspect_column_sample(
+            version.original_filename or "",
+            content,
+            normalized_column,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:  # noqa: BLE001 - normalize provider SDK failures at the API boundary.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The target sample could not be read from object storage.",
+        ) from exc
+
+    profile = sample.profile
+    return TargetPreviewRead(
+        name=normalized_column,
+        semantic_type=str(profile.get("semantic_type") or "unknown"),
+        sampled_rows=sample.sampled_rows,
+        missing_count=int(profile.get("missing_count") or 0),
+        distinct_count=int(profile.get("distinct_count") or 0),
+        sample_values=[str(value) for value in profile.get("sample_values") or []],
+        statistics=dict(profile.get("statistics") or {}),
+        preview_values=list(profile.get("preview_values") or []),
+        preview_distribution=list(profile.get("preview_distribution") or []),
     )
 
 
@@ -625,20 +683,27 @@ def _pearson(paired: list[tuple[float, float]]) -> float | None:
 
 
 def _cramers_v(paired: list[tuple[str, str]]) -> float:
-    row_labels = sorted({item[0] for item in paired})
-    col_labels = sorted({item[1] for item in paired})
+    if not paired:
+        return 0.0
     table = Counter(paired)
     total = len(paired)
-    chi_square = 0.0
-    for row_label in row_labels:
-        row_total = sum(table[(row_label, col_label)] for col_label in col_labels)
-        for col_label in col_labels:
-            col_total = sum(table[(other_row, col_label)] for other_row in row_labels)
-            expected = row_total * col_total / total if total else 0
-            observed = table[(row_label, col_label)]
-            if expected:
-                chi_square += (observed - expected) ** 2 / expected
-    denominator = total * max(1, min(len(row_labels) - 1, len(col_labels) - 1))
+    row_totals = Counter(row_label for row_label, _ in paired)
+    column_totals = Counter(column_label for _, column_label in paired)
+    # Sum O^2/E only for observed cells. Expanding (O-E)^2/E over the
+    # complete contingency table reduces to sum(O^2/E) - N, avoiding the
+    # previous O(rows^2 * columns) recomputation of column totals.
+    chi_square = max(
+        0.0,
+        sum(
+            observed**2 / (row_totals[row_label] * column_totals[column_label] / total)
+            for (row_label, column_label), observed in table.items()
+        )
+        - total,
+    )
+    denominator = total * max(
+        1,
+        min(len(row_totals) - 1, len(column_totals) - 1),
+    )
     return math.sqrt(chi_square / denominator) if denominator else 0.0
 
 

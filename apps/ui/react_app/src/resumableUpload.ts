@@ -111,20 +111,32 @@ export function createResumableUpload<TDataset = unknown, TVersion = unknown>(
 export async function waitForVerifiedUpload(
   projectId: string,
   sessionId: string,
-  { attempts = 120, intervalMs = 1000 }: { attempts?: number; intervalMs?: number } = {},
+  { attempts = 900, intervalMs = 1000 }: { attempts?: number; intervalMs?: number } = {},
 ): Promise<UploadSession> {
   const terminalFailures = new Set(["aborted", "expired", "quarantined", "failed"]);
+  let lastError: unknown = null;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const session = await api<UploadSession>(
-      `/projects/${projectId}/datasets/uploads/${sessionId}`,
-    );
-    if (session.status === "ready") return session;
-    if (terminalFailures.has(session.status)) {
-      throw new Error(`Upload verification ended with status ${session.status}.`);
+    try {
+      const session = await api<UploadSession>(
+        `/projects/${projectId}/datasets/uploads/${sessionId}`,
+      );
+      lastError = null;
+      if (session.status === "ready") return session;
+      if (terminalFailures.has(session.status)) {
+        throw new Error(`Upload verification ended with status ${session.status}.`);
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("Upload verification ended")) {
+        throw error;
+      }
+      // A busy object store can briefly make every API endpoint unavailable while
+      // a multi-GiB object is finalized. Keep polling the durable upload session.
+      lastError = error;
     }
     if (attempt + 1 < attempts) await delay(intervalMs);
   }
-  throw new Error("Upload verification did not finish before the local wait deadline.");
+  const suffix = lastError instanceof Error ? ` Last response: ${lastError.message}` : "";
+  throw new Error(`Upload verification did not finish before the local wait deadline.${suffix}`);
 }
 
 export async function waitForUploadResult<TDataset = unknown, TVersion = unknown>(

@@ -84,6 +84,7 @@ def model_audit_report(
         source.task_type,
         str(entry.get("status", "pending")),
         parameters=dict(entry.get("best_params") or {}),
+        prepared_split=bool(source.params.get("split_revision_id")),
         excluded_columns=excluded_columns,
     )
     generated_at = datetime.now(UTC)
@@ -288,6 +289,7 @@ def _leaderboard_entry(
         source.task_type,
         str(entry.get("status", "pending")),
         parameters=dict(entry.get("best_params") or {}),
+        prepared_split=bool(source.params.get("split_revision_id")),
         excluded_columns=list(source.params.get("excluded_leakage_columns") or []),
     )
     return entry

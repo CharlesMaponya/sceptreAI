@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Activity, AlertTriangle, Box, Braces, CloudCog, Copy, Cpu, Database, ExternalLink,
+  Activity, Box, Braces, CloudCog, Copy, Cpu, Database, ExternalLink,
   Eye, EyeOff, Gauge, FileSpreadsheet, RefreshCw, Rocket, ShieldCheck, Square,
   Trash2, Upload,
 } from "lucide-react";
@@ -8,8 +8,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { api, apiBlob, getSession, json } from "../api";
 import {
-  Badge, Button, Card, EmptyState, ErrorState, Loading, Metric, Modal, Notice, PageHeader,
+  Badge, Button, Card, ConfirmModal, EmptyState, ErrorState, Loading, Metric, Modal, Notice, PageHeader,
 } from "../components/ui";
+import { Pagination } from "../components/Pagination";
 import { formatBytes, formatDate, titleCase } from "../lib";
 import type { Dataset, DatasetVersion, Leaderboard, ModelRun, PlatformHealth } from "../types";
 import { createResumableUpload, waitForUploadResult, waitForVerifiedUpload } from "../resumableUpload";
@@ -44,6 +45,9 @@ interface DatasetUploadResult { dataset: Dataset; version: DatasetVersion }
 export function OperationsPage() {
   const { projectId = "" } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [registryPage, setRegistryPage] = useState(0);
+  const [deploymentPage, setDeploymentPage] = useState(0);
+  const [driftPage, setDriftPage] = useState(0);
   const client = useQueryClient();
   const requestedRunId = searchParams.get("trainingRunId") || "";
   const requestedModel = searchParams.get("model") || "";
@@ -58,18 +62,18 @@ export function OperationsPage() {
     refetchInterval: 15_000,
   });
   const registry = useQuery({
-    queryKey: ["registry", projectId],
-    queryFn: () => api<Registry[]>(`/projects/${projectId}/operations/registry`),
+    queryKey: ["registry", projectId, registryPage],
+    queryFn: () => api<Registry[]>(`/projects/${projectId}/operations/registry?offset=${registryPage * 10}&limit=11`),
   });
   const deployments = useQuery({
-    queryKey: ["deployments", projectId],
-    queryFn: () => api<DeployStatus[]>(`/projects/${projectId}/operations/deployments`),
+    queryKey: ["deployments", projectId, deploymentPage],
+    queryFn: () => api<DeployStatus[]>(`/projects/${projectId}/operations/deployments?offset=${deploymentPage * 10}&limit=11`),
     refetchInterval: (query) => query.state.data?.some((item) =>
       ["queued", "precheck_running", "running", "succeeded"].includes(item.status)) ? 15_000 : false,
   });
   const driftRuns = useQuery({
-    queryKey: ["drift-runs", projectId],
-    queryFn: () => api<DriftRun[]>(`/projects/${projectId}/operations/drift-runs`),
+    queryKey: ["drift-runs", projectId, driftPage],
+    queryFn: () => api<DriftRun[]>(`/projects/${projectId}/operations/drift-runs?offset=${driftPage * 10}&limit=11`),
     refetchInterval: (query) => query.state.data?.some((item) =>
       ["queued", "precheck_running", "running"].includes(item.status)) ? 5000 : false,
   });
@@ -99,14 +103,16 @@ export function OperationsPage() {
     <Card className="section-card">
       <div className="section-heading"><div><h2>Model registry</h2>
         <p>The governed source of deployable model versions.</p></div><ShieldCheck className="section-icon" /></div>
-      {registry.data?.length ? <div className="registry-grid">{registry.data.map((entry) =>
+      {registry.error ? <ErrorState error={registry.error} retry={() => registry.refetch()} /> : registry.data?.length ? <div className="registry-grid">{registry.data.slice(0, 10).map((entry) =>
         <RegistryCard key={entry.id} projectId={projectId} entry={entry}
           refresh={refreshOperations} />)}</div>
         : <EmptyState icon={<Box />} title="No registered models"
           description="Register a successful training candidate before promoting or deploying it."
           action={<Button onClick={() => setRegisterOpen(true)}>Register model</Button>} />}
+      <Pagination label="Registry" page={registryPage} hasNext={(registry.data?.length || 0) > 10} onChange={setRegistryPage} loading={registry.isFetching} />
     </Card>
-    <DriftPanel runs={driftRuns.data || []} />
+    {driftRuns.error ? <ErrorState error={driftRuns.error} retry={() => driftRuns.refetch()} /> : <DriftPanel runs={driftRuns.data?.slice(0, 10) || []} />}
+    <Pagination label="Drift checks" page={driftPage} hasNext={(driftRuns.data?.length || 0) > 10} onChange={setDriftPage} loading={driftRuns.isFetching} />
     <Card className="section-card">
       <div className="section-heading"><div><h2>Deployments</h2>
         <p>Live and historical inference services.</p></div><CloudCog className="section-icon" /></div>
@@ -114,11 +120,12 @@ export function OperationsPage() {
         : deployments.error ? <ErrorState error={deployments.error} retry={() => deployments.refetch()} />
           : deployments.data?.length ? <div className="table-wrap"><table><thead><tr>
         <th>Deployment</th><th>Runtime</th><th>Status</th><th>Endpoint</th><th /></tr></thead>
-        <tbody>{deployments.data.map((deployment) =>
+        <tbody>{deployments.data.slice(0, 10).map((deployment) =>
           <DeploymentRow key={deployment.run.id} projectId={projectId}
             deployment={deployment} refresh={() => deployments.refetch()} />)}</tbody></table></div>
         : <div className="inline-empty"><Rocket /><span><b>No model deployments</b>
           <small>Promote a registry entry and deploy it when the evidence is ready.</small></span></div>}
+      <Pagination label="Deployments" page={deploymentPage} hasNext={(deployments.data?.length || 0) > 10} onChange={setDeploymentPage} loading={deployments.isFetching} />
     </Card>
     <CleanupPanel projectId={projectId} />
     {registerOpen && <RegisterModal projectId={projectId} initialRunId={requestedRunId}
@@ -252,7 +259,7 @@ function DriftPanel({ runs }: { runs: DriftRun[] }) {
         <progress value={diagnostics.drift_share_percent || 0} max={100} /></div>}
       <div className="table-wrap"><table><thead><tr><th>Run</th><th>Status</th>
         <th>Drift share</th><th>Drifted features</th><th>Created</th></tr></thead>
-        <tbody>{runs.map((run) => <tr key={run.id}><td><b>{run.run_name || run.id.slice(0, 8)}</b></td>
+        <tbody>{runs.map((run) => <tr key={run.id} data-run-id={run.id}><td><b>{run.run_name || run.id.slice(0, 8)}</b></td>
           <td><Badge status={run.status} /></td>
           <td>{run.tags?.diagnostics?.drift_share_percent == null ? "—"
             : `${run.tags.diagnostics.drift_share_percent.toFixed(1)}%`}</td>
@@ -267,21 +274,37 @@ function DeploymentRow({ projectId, deployment, refresh }: {
   projectId: string; deployment: DeployStatus; refresh: () => void;
 }) {
   const [confirmStop, setConfirmStop] = useState(false);
+  const [confirmCleanup, setConfirmCleanup] = useState(false);
+  const [confirmStart, setConfirmStart] = useState(false);
   const [apiAccessOpen, setApiAccessOpen] = useState(false);
   const stop = useMutation({
     mutationFn: () => api(`/projects/${projectId}/operations/deployments/${deployment.run.id}/stop`, json("POST")),
     onSuccess: () => { setConfirmStop(false); refresh(); },
   });
+  const start = useMutation({
+    mutationFn: () => api(`/projects/${projectId}/operations/deployments/${deployment.run.id}/start`, json("POST")),
+    onSuccess: () => { setConfirmStart(false); refresh(); },
+  });
+  const cleanup = useMutation({
+    mutationFn: () => api(`/projects/${projectId}/operations/deployments/${deployment.run.id}/cleanup`, json("POST")),
+    onSuccess: () => { setConfirmCleanup(false); refresh(); },
+  });
   return <tr><td><b>{deployment.run.run_name || deployment.run.id.slice(0, 8)}</b>
     <small className="cell-sub">{formatDate(deployment.run.created_at)}</small></td>
     <td>{titleCase(deployment.runtime_state)}</td><td><Badge status={deployment.status} /></td>
     <td><DeploymentAccess deployment={deployment} openApiAccess={() => setApiAccessOpen(true)} /></td>
-    <td>{!["cancelled", "failed"].includes(deployment.status) &&
-      <Button variant="ghost" onClick={() => setConfirmStop(true)}><Square size={14} />Stop</Button>}
-      {confirmStop && <ConfirmModal danger title="Stop this deployment?"
-        description="The prediction endpoint will become unavailable. The registered model and evidence remain intact."
-        confirmLabel="Stop deployment" close={() => setConfirmStop(false)}
+    <td>{deployment.status !== "cancelled" &&
+      <Button variant="ghost" onClick={() => setConfirmStop(true)}><Square size={14} />Shutdown</Button>}
+      {confirmStop && <ConfirmModal danger title="Shut down this deployment?"
+        description="Stop serving predictions and release serving CPU and memory. The deployment configuration and saved model remain available. Use Cleanup afterwards to remove runtime resources."
+        confirmLabel="Shutdown" close={() => setConfirmStop(false)}
         action={() => stop.mutateAsync()} />}
+      {deployment.status === "cancelled" && deployment.runtime_state !== "cleaned" &&
+        <><Button variant="secondary" onClick={() => setConfirmStart(true)}>Start</Button><Button variant="ghost" onClick={() => setConfirmCleanup(true)}>Cleanup</Button></>}
+      {confirmStart && <ConfirmModal title="Start this deployment?" description="Resume serving predictions using the saved deployment configuration. Serving CPU and memory will be allocated again." confirmLabel="Start" close={() => setConfirmStart(false)} action={() => start.mutateAsync()} />}
+      {confirmCleanup && <ConfirmModal danger title="Clean up this deployment?"
+        description="Remove the stopped deployment, service, and ingress from the cluster. The saved model, registry entry, and run history remain available."
+        confirmLabel="Cleanup" close={() => setConfirmCleanup(false)} action={() => cleanup.mutateAsync()} />}
       {apiAccessOpen && <ApiAccessModal projectId={projectId} deployment={deployment}
         close={() => setApiAccessOpen(false)} />}</td></tr>;
 }
@@ -510,26 +533,6 @@ function CleanupPanel({ projectId }: { projectId: string }) {
   </Card>;
 }
 
-function ConfirmModal({ title, description, confirmLabel, action, close, danger = false }: {
-  title: string; description: string; confirmLabel: string; action: () => Promise<unknown>;
-  close: () => void; danger?: boolean;
-}) {
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState("");
-  async function confirm() {
-    setPending(true); setError("");
-    try { await action(); } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "The action failed."); setPending(false);
-    }
-  }
-  return <Modal title={title} description={description} onClose={close}>
-    <div className="stack">{danger && <Notice tone="danger"><AlertTriangle size={16} />
-      Review the impact before continuing.</Notice>}{error && <Notice tone="danger">{error}</Notice>}
-      <div className="modal__actions"><Button variant="ghost" disabled={pending} onClick={close}>Cancel</Button>
-        <Button variant={danger ? "danger" : "primary"} loading={pending} onClick={confirm}>{confirmLabel}</Button></div>
-    </div>
-  </Modal>;
-}
 
 function RegisterModal({ projectId, initialRunId, initialModel, close, done }: {
   projectId: string; initialRunId: string; initialModel: string;
@@ -541,7 +544,14 @@ function RegisterModal({ projectId, initialRunId, initialModel, close, done }: {
     queryKey: ["runs", projectId],
     queryFn: () => api<ModelRun[]>(`/projects/${projectId}/training/runs`),
   });
-  const successful = runs.data?.filter((run) => run.status === "succeeded") || [];
+  const requestedRun = useQuery({
+    queryKey: ["registration-run", projectId, initialRunId],
+    enabled: Boolean(initialRunId) && Boolean(runs.data) && !runs.data?.some(run => run.id === initialRunId),
+    queryFn: () => api<ModelRun>(`/projects/${projectId}/training/runs/${initialRunId}`),
+  });
+  const successful = [...(runs.data || []), ...(requestedRun.data
+    && !runs.data?.some(run => run.id === initialRunId) ? [requestedRun.data] : [])]
+    .filter((run) => run.status === "succeeded");
   const board = useQuery({
     queryKey: ["leaderboard", projectId, runId], enabled: Boolean(runId),
     queryFn: () => api<Leaderboard>(`/projects/${projectId}/training/runs/${runId}/leaderboard`),
@@ -552,7 +562,7 @@ function RegisterModal({ projectId, initialRunId, initialModel, close, done }: {
     [board.data],
   );
   useEffect(() => {
-    if (models.length && !models.includes(model)) setModel(models[0]);
+    if (models.length && !model) setModel(models[0]);
   }, [models, model]);
   const register = useMutation({
     mutationFn: () => api(`/projects/${projectId}/operations/registry`,
@@ -561,7 +571,10 @@ function RegisterModal({ projectId, initialRunId, initialModel, close, done }: {
   });
   return <Modal title="Register a trained model"
     description="Attach a successful candidate to the governed model registry." onClose={close}>
-    {runs.isLoading ? <Loading /> : successful.length ? <div className="stack">
+    {runs.isLoading || requestedRun.isFetching ? <Loading />
+      : runs.error ? <ErrorState error={runs.error} />
+      : requestedRun.error ? <ErrorState error={requestedRun.error} />
+      : successful.length ? <div className="stack">
       <label>Training run<select value={runId} onChange={(event) => { setRunId(event.target.value); setModel(""); }}>
         <option value="">Select a run</option>{successful.map((run) =>
           <option value={run.id} key={run.id}>{run.run_name || run.id.slice(0, 8)}</option>)}</select></label>
@@ -570,9 +583,11 @@ function RegisterModal({ projectId, initialRunId, initialModel, close, done }: {
         <option value="">{runId ? "Select a model" : "Choose a run first"}</option>
         {models.map((name) => <option key={name}>{name}</option>)}</select></label>
       <Notice><Cpu size={16} />Only successful leaderboard candidates can be registered.</Notice>
+      {board.error && <ErrorState error={board.error} retry={() => board.refetch()} />}
+      {board.data && model && !models.includes(model) && <Notice tone="danger">The selected model is not available as a successful candidate. Choose another model explicitly.</Notice>}
       {register.error && <Notice tone="danger">{register.error.message}</Notice>}
       <div className="modal__actions"><Button variant="ghost" onClick={close}>Cancel</Button>
-        <Button disabled={!runId || !model} loading={register.isPending}
+        <Button disabled={!successful.some(run => run.id === runId) || !models.includes(model) || board.isFetching || Boolean(board.error)} loading={register.isPending}
           onClick={() => register.mutate()}>Register model</Button></div>
     </div> : <EmptyState icon={<Activity />} title="No successful runs"
       description="Complete a training run before registering a model."

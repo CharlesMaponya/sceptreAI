@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -48,7 +48,7 @@ describe("core workflow integrations", () => {
 
   it("shows centralized deployment evidence and governance actions", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/monitoring/dashboard")) return response({
         scope: "portfolio", generated_at: "2026-07-18T12:00:00Z",
         deployment_count: 1, healthy_count: 0, attention_count: 1,
@@ -91,7 +91,7 @@ describe("core workflow integrations", () => {
   it("shows estimator catalog failures and recovers on retry", async () => {
     let estimatorRequests = 0;
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/projects/project-1/datasets")) return response([{
         id: "dataset-1", name: "Student performance", latest_version_number: 1,
       }]);
@@ -138,7 +138,7 @@ describe("core workflow integrations", () => {
 
   it("blocks training until the selected dataset version has a completed profile", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/projects/project-1/datasets")) return response([{
         id: "dataset-1", name: "Student performance", latest_version_number: 1,
       }]);
@@ -159,7 +159,7 @@ describe("core workflow integrations", () => {
 
   it("requires an explicit positive class when a binary target is balanced", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/projects/project-1/datasets")) return response([{
         id: "dataset-1", name: "Customer status", latest_version_number: 1,
       }]);
@@ -199,7 +199,7 @@ describe("core workflow integrations", () => {
 
   it("renders progressive run evidence and fetches logs on demand", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/training/runs")) return response([run]);
       if (url.endsWith("/leaderboard")) return response({
         run_id: "run-1", status: "succeeded", primary_metric: "balanced_accuracy",
@@ -304,7 +304,7 @@ describe("core workflow integrations", () => {
     let resourceRequests = 0;
     let logRequests = 0;
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/cancel")) {
         cancelled = true;
         return response({ ...run, status: "cancelled" });
@@ -357,6 +357,26 @@ describe("core workflow integrations", () => {
     expect(logRequests).toBe(0);
   });
 
+  it.each([["running", "Cancel run"], ["cancelled", "Restart run"]])(
+    "shows a failed run action for %s runs", async (status, action) => {
+      vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+        const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
+        if (url.endsWith("/cancel") || url.endsWith("/restart")) {
+          return response({ detail: "The workflow service is unavailable. Try again." }, 503);
+        }
+        if (url.endsWith("/training/runs")) return response([{ ...run, status }]);
+        if (url.endsWith("/leaderboard")) return response({ entries: [], winner: null });
+        if (url.endsWith("/resources")) return response({ status, completed_candidates: 0,
+          total_candidates: 1, progress: 0, elapsed_seconds: 0 });
+        return response([]);
+      });
+      renderRoute(<RunsPage />, "/projects/project-1/runs");
+      await userEvent.click(await screen.findByRole("button", { name: action }));
+      expect(await screen.findByText("The workflow service is unavailable. Try again.")).toBeVisible();
+      expect(screen.getByRole("button", { name: action })).toBeEnabled();
+    },
+  );
+
   it("prepares missing SHAP evidence before downloading the PDF audit", async () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
     const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:audit");
@@ -364,7 +384,7 @@ describe("core workflow integrations", () => {
     let auditRequests = 0;
     let explanationBody: unknown;
     vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/training/runs")) return response([run]);
       if (url.endsWith("/leaderboard")) return response({
         run_id: "run-1", status: "succeeded", primary_metric: "balanced_accuracy",
@@ -413,7 +433,7 @@ describe("core workflow integrations", () => {
   it("shows an actionable audit failure without creating a download", async () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/training/runs")) return response([run]);
       if (url.endsWith("/leaderboard")) return response({
         run_id: "run-1", status: "succeeded", primary_metric: "balanced_accuracy",
@@ -445,7 +465,7 @@ describe("core workflow integrations", () => {
   it("renders SHAP features automatically when explainability completes", async () => {
     let resultRequests = 0;
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/training/runs")) return response([run]);
       if (url.endsWith("/leaderboard")) return response({
         run_id: "run-1", status: "succeeded", primary_metric: "balanced_accuracy",
@@ -485,7 +505,7 @@ describe("core workflow integrations", () => {
     expect((await screen.findAllByText("RandomForestClassifier")).length).toBeGreaterThan(0);
     await userEvent.click(screen.getByRole("tab", { name: "Validate & explain" }));
     await userEvent.click(screen.getByRole("tab", { name: "SHAP explainability" }));
-    expect(await screen.findByText(/Explainability is still running/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Analysis is still running/i)).toBeInTheDocument();
     expect(await screen.findByText("customer_tenure", {}, { timeout: 4000 })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Calculate SHAP" })).not.toBeInTheDocument();
     expect(resultRequests).toBeGreaterThan(1);
@@ -497,8 +517,15 @@ describe("core workflow integrations", () => {
   it("uploads first, then returns to overview without starting profiling", async () => {
     let uploadOptions: resumableUpload.ResumableUploadOptions | null = null;
     let finishUpload: (() => void) | undefined;
-    const verified = vi.spyOn(resumableUpload, "waitForVerifiedUpload")
-      .mockResolvedValue({ status: "ready" } as never);
+    let finishVerification: (() => void) | undefined;
+    const verified = vi.spyOn(resumableUpload, "waitForUploadResult")
+      .mockImplementation(() => new Promise((resolve) => {
+        finishVerification = () => resolve({
+          session: { id: "upload-1", status: "ready" },
+          dataset: { id: "dataset-1" },
+          version: { id: "version-1" },
+        } as never);
+      }));
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
       if (String(input).endsWith("/profile-jobs") && options?.method === "POST") {
         return response({ id: "profile-1", status: "queued" }, 202);
@@ -507,8 +534,8 @@ describe("core workflow integrations", () => {
     });
     vi.spyOn(resumableUpload, "createResumableUpload").mockImplementation((options) => {
       uploadOptions = options;
-      options.onTelemetry?.({ stage: "uploading", confirmedBytes: 50, totalBytes: 100,
-        percent: 50, bytesPerSecond: 50, retry: 0 });
+      options.onTelemetry?.({ stage: "hashing", confirmedBytes: 50, totalBytes: 100,
+        percent: 50, bytesPerSecond: 0, retry: 0 });
       let resolveUpload!: (value: unknown) => void;
       const result = new Promise((resolve) => { resolveUpload = resolve; });
       finishUpload = () => resolveUpload({
@@ -532,6 +559,7 @@ describe("core workflow integrations", () => {
     await user.click(screen.getAllByRole("button", { name: "Upload dataset" }).at(-1)!);
 
     expect(await screen.findByText("50%")).toBeInTheDocument();
+    expect(screen.getByText(/Hashed 50 B of 100 B/)).toBeInTheDocument();
     expect(screen.getByRole("progressbar", { name: "Dataset upload progress" }))
       .toHaveValue(50);
     await waitFor(() => expect(uploadOptions).not.toBeNull());
@@ -539,7 +567,15 @@ describe("core workflow integrations", () => {
     expect(uploadOptions!.description).toBe("");
     expect(uploadOptions!.uploadKind).toBe("dataset");
     expect(uploadOptions!.file.name).toBe("customers.csv");
+    act(() => uploadOptions!.onTelemetry?.({
+      stage: "uploading", confirmedBytes: 75, totalBytes: 100,
+      percent: 75, bytesPerSecond: 25, retry: 1,
+    }));
+    expect(await screen.findByText(/Confirmed 75 B of 100 B/)).toBeInTheDocument();
     act(() => finishUpload?.());
+    expect(await screen.findByText(/Server checksum verification is still running/))
+      .toBeInTheDocument();
+    act(() => finishVerification?.());
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(verified).toHaveBeenCalledWith("project-1", "upload-1");
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/profile-jobs"))).toBe(false);
@@ -548,7 +584,7 @@ describe("core workflow integrations", () => {
   it("preserves the selected target when retrying a failed profile", async () => {
     let profileBody: unknown = null;
     vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/projects/project-1/datasets")) return response([{
         id: "dataset-1", name: "Customers", description: null, latest_version_number: 1,
       }]);
@@ -578,7 +614,7 @@ describe("core workflow integrations", () => {
     let latestProfile: Record<string, unknown> | null = null;
     let profileBody: unknown = null;
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/projects/project-1")) return response({
         id: "project-1", name: "Retention", description: "Customer retention models",
         updated_at: "2026-01-01T00:00:00Z",
@@ -630,7 +666,7 @@ describe("core workflow integrations", () => {
     expect(await screen.findByRole("heading", { name: "Choose what you want to predict" }))
       .toBeInTheDocument();
     expect(screen.getByRole("option", { name: "No target" })).toBeInTheDocument();
-    expect(await screen.findByRole("option", { name: "revenue" })).toBeInTheDocument();
+    expect(await within(await screen.findByLabelText("Target column")).findByRole("option", { name: "revenue" })).toBeInTheDocument();
     expect(fetchMock.mock.calls.some(([url, options]) =>
       String(url).endsWith("/profile-jobs") && options?.method === "POST")).toBe(false);
 
@@ -642,7 +678,7 @@ describe("core workflow integrations", () => {
       .toBeInTheDocument();
     expect(profileBody).toBeNull();
     await user.click(screen.getByRole("button", { name: "Start profile" }));
-    await waitFor(() => expect(profileBody).toEqual({ target_column: "revenue", force: false }));
+    await waitFor(() => expect(profileBody).toEqual({ target_column: "revenue", time_column: null, force: false }));
     expect(await screen.findByRole("heading", { name: "Regression task identified" }))
       .toBeInTheDocument();
     expect(screen.getByText("Profile confidence: 91%.")).toBeInTheDocument();
@@ -655,9 +691,102 @@ describe("core workflow integrations", () => {
       .toHaveAttribute("href", "/projects/project-1/training");
   });
 
+  it("previews a multi-GB target and starts the KubeRay profile path", async () => {
+    let profileStarted = false;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
+      if (url.endsWith("/projects/project-1")) return response({
+        id: "project-1", name: "Scale test", description: null,
+        updated_at: "2026-01-01T00:00:00Z",
+      });
+      if (url.endsWith("/training/runs")) return response([]);
+      if (url.endsWith("/projects/project-1/datasets")) return response([{
+        id: "dataset-1", name: "Large regression", latest_version_number: 1,
+        created_at: "2026-01-01T00:00:00Z",
+      }]);
+      if (url.endsWith("/datasets/dataset-1/versions")) return response([{
+        id: "version-1", dataset_id: "dataset-1", version_number: 1,
+        status: "ready", format: "csv", byte_size: 7_392_492_161,
+        schema_json: { columns: [{ name: "target" }] },
+      }]);
+      if (url.endsWith("/profile-jobs/latest")) return response(profileStarted ? {
+        id: "profile-ray", status: "queued", target_column: "target",
+        current_stage: "splitter", progress: 0.1,
+        overview_json: { execution_mode: "kuberay", workflow_generation: 1 },
+      } : {
+        id: "profile-legacy", status: "failed", target_column: "target",
+        failure_message: "Failing to read AWS S3 file(s)",
+      });
+      if (url.endsWith("/profile-jobs")) {
+        profileStarted = true;
+        return response({
+          id: "profile-ray", status: "queued", target_column: "target",
+          current_stage: "splitter", progress: 0.1,
+          overview_json: { execution_mode: "kuberay", workflow_generation: 1 },
+        }, 202);
+      }
+      if (url.includes("/target-preview?column=target")) return response({
+        name: "target", semantic_type: "numerical_continuous", sampled_rows: 512,
+        missing_count: 0, distinct_count: 220, sample_values: ["1.5"],
+        statistics: { min: 1, median: 2, mean: 2.5, max: 4 }, distribution: [],
+        preview_values: [1, 2, 3, 4], preview_distribution: [],
+      });
+      return response([]);
+    });
+
+    const user = userEvent.setup();
+    renderRoute(<ProjectOverview />, "/projects/project-1");
+    await within(await screen.findByLabelText("Target column")).findByRole("option", { name: "target" });
+    await user.selectOptions(screen.getByLabelText("Target column"), "target");
+
+    expect(await screen.findByText("Regression target distribution")).toBeInTheDocument();
+    expect(screen.getByText(/runs as isolated splitter and preparation jobs on KubeRay/)).toBeInTheDocument();
+    expect(screen.getByText(/Failing to read AWS S3 file/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Start profile" }));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) =>
+      String(url).endsWith("/profile-jobs") && options?.method === "POST")).toBe(true));
+    expect(await screen.findByText(/KubeRay generation 1 is running/)).toBeInTheDocument();
+  });
+
+  it("loads a bounded target sample when large-upload schema has names only", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
+      if (url.endsWith("/projects/project-1")) return response({
+        id: "project-1", name: "Large data", description: null,
+        updated_at: "2026-01-01T00:00:00Z",
+      });
+      if (url.endsWith("/training/runs")) return response([]);
+      if (url.endsWith("/projects/project-1/datasets")) return response([{
+        id: "dataset-1", name: "Training", latest_version_number: 1,
+      }]);
+      if (url.endsWith("/datasets/dataset-1/versions")) return response([{
+        id: "version-1", dataset_id: "dataset-1", version_number: 1,
+        schema_json: { columns: [{ name: "feature" }, { name: "target" }] },
+      }]);
+      if (url.endsWith("/profile-jobs/latest")) return response(null);
+      if (url.endsWith("/target-preview?column=target")) return response({
+        name: "target", semantic_type: "categorical", sampled_rows: 512,
+        missing_count: 0, distinct_count: 2, sample_values: ["0", "1"],
+        statistics: {}, distribution: [], preview_values: [],
+        preview_distribution: [{ label: "0", count: 400 }, { label: "1", count: 112 }],
+      });
+      return response([]);
+    });
+    const user = userEvent.setup();
+    renderRoute(<ProjectOverview />, "/projects/project-1");
+
+    await within(await screen.findByLabelText("Target column")).findByRole("option", { name: "target" });
+    await user.selectOptions(screen.getByLabelText("Target column"), "target");
+
+    expect(await screen.findByText("Preview based on 512 rows.")).toBeInTheDocument();
+    expect(screen.queryByText("A target distribution is not available.")).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([url]) =>
+      String(url).endsWith("/target-preview?column=target"))).toBe(true);
+  });
+
   it("previews cleanup before enabling destructive execution", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/operations/health")) return response({
         capacity: {
           connected: true, source: "kubernetes", available_cpu_cores: 4,
@@ -698,7 +827,7 @@ describe("core workflow integrations", () => {
 
   it("shows configured external links separately from the authenticated platform API", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/operations/health")) return response(operationsHealth);
       if (url.endsWith("/operations/registry")) return response([]);
       if (url.endsWith("/operations/deployments")) return response([{
@@ -744,7 +873,7 @@ describe("core workflow integrations", () => {
       },
     });
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/operations/health")) return response(operationsHealth);
       if (url.endsWith("/operations/registry")) return response([]);
       if (url.endsWith("/operations/deployments")) return response([{
@@ -833,7 +962,7 @@ describe("core workflow integrations", () => {
   it("shows deployment request failures and recovers on retry", async () => {
     let deploymentRequests = 0;
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/operations/health")) return response(operationsHealth);
       if (url.endsWith("/operations/registry")) return response([]);
       if (url.endsWith("/operations/deployments")) {
@@ -857,7 +986,7 @@ describe("core workflow integrations", () => {
     let resolveDeployments!: (value: Response) => void;
     const pendingDeployments = new Promise<Response>((resolve) => { resolveDeployments = resolve; });
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/operations/health")) return response(operationsHealth);
       if (url.endsWith("/operations/registry")) return response([]);
       if (url.endsWith("/operations/deployments")) return pendingDeployments;
@@ -872,4 +1001,72 @@ describe("core workflow integrations", () => {
     })));
     expect(await screen.findByText("No model deployments")).toBeInTheDocument();
   });
+});
+
+
+it.each(["queued", "precheck_running", "running"])("disables resource estimation while project training is %s", async (status) => {
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(input => {
+    const url = String(input);
+    if (url.endsWith("/active-run")) return response({ ...run, status });
+    if (url.endsWith("/datasets")) return response([{ id: "dataset-1", name: "Transactions" }]);
+    if (url.endsWith("/versions")) return response([{ id: "version-1", version_number: 1, status: "ready", schema_json: { columns: [{ name: "is_fraud" }] } }]);
+    if (url.endsWith("/profile-jobs/latest")) return response({ id: "profile-1", status: "succeeded", target_column: "is_fraud", overview_json: { task_inference: { task_type: "classification" } } });
+    if (url.includes("/estimators?")) return response([{ name: "LogisticRegression", default_selected: true, cost_tier: "low" }]);
+    return response([]);
+  });
+  renderRoute(<TrainingPage />, "/projects/project-1/training");
+  expect(await screen.findByText(/Training is currently underway in this project/)).toBeInTheDocument();
+  const estimate = screen.getByRole("button", { name: "Estimate resources" });
+  expect(estimate).toBeDisabled();
+  await userEvent.click(estimate);
+  expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/estimate"))).toBe(false);
+});
+
+
+it.each([
+  ["hyperparameter_search", "Hyperparameter search"],
+  ["evaluating", "Validation"],
+  ["logging_to_mlflow", "Saving to MLflow"],
+])("shows %s in the active model row while the run summary stays Running", async (phase, label) => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(input => {
+    const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
+    if (url.endsWith("/training/runs")) return response([{ ...run, status: "running" }]);
+    if (url.endsWith("/leaderboard")) return response({ run_id: "run-1", status: "running", primary_metric: "accuracy", winner: null, metric_directions: {}, split_counts: { train: 699567, validation: 150161, final_test: 150272 }, entries: [
+      { model: "RandomForestClassifier", status: "running", cost_tier: "medium", metrics: {}, diagnostics: {}, best_params: {}, training_rows: 699567, validation_rows: 10000 },
+      { model: "LogisticRegression", status: "pending", cost_tier: "low", metrics: {}, diagnostics: {}, best_params: {} },
+    ] });
+    if (url.endsWith("/resources")) return response({ run_id: "run-1", status: "running", current_candidate: "RandomForestClassifier", current_phase: phase, completed_candidates: 0, total_candidates: 2, progress: 0 });
+    return response([]);
+  });
+  renderRoute(<RunsPage />, "/projects/project-1/runs");
+  const row = await screen.findByRole("row", { name: /RandomForestClassifier/ });
+  expect(await within(row).findByText(label)).toBeInTheDocument();
+  expect(screen.queryByRole("columnheader", { name: "Dataset rows" })).not.toBeInTheDocument();
+  expect(row).not.toHaveTextContent("699,567");
+  expect(screen.getByRole("region", { name: "Saved dataset partitions" })).toHaveTextContent("Candidate scoring samples use 10,000 rows from the validation partition.");
+  expect(screen.getByRole("region", { name: "Saved dataset partitions" })).toHaveTextContent("Validation rows150,161");
+  const waiting = screen.getByRole("row", { name: /LogisticRegression/ });
+  expect(within(waiting).getByText("Pending")).toBeInTheDocument();
+  expect(within(waiting).queryByText(label)).not.toBeInTheDocument();
+  expect(screen.queryByText("Current phase")).not.toBeInTheDocument();
+  expect(screen.getByText("Run status").parentElement).toHaveTextContent("Running");
+});
+
+it("offers deployment for successful nonwinning candidates", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(input => {
+    const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
+    if (url.endsWith("/training/runs")) return response([run]);
+    if (url.endsWith("/leaderboard")) return response({ run_id: "run-1", status: "succeeded", winner: "RandomForestClassifier", primary_metric: "accuracy", metric_directions: {}, entries: [
+      { model: "RandomForestClassifier", rank: 1, status: "succeeded", primary_score: .95, metrics: {}, cost_tier: "low" },
+      { model: "LogisticRegression", rank: 2, status: "succeeded", primary_score: .90, metrics: {}, cost_tier: "low" },
+      { model: "BrokenClassifier", status: "failed", metrics: {}, cost_tier: "low" },
+    ] });
+    if (url.endsWith("/resources")) return response({ status: "succeeded", total_candidates: 3, completed_candidates: 3, progress: 1 });
+    return response([]);
+  });
+  renderRoute(<RunsPage />, "/projects/project-1/runs");
+  expect(await screen.findByRole("link", { name: "Deploy LogisticRegression" }))
+    .toHaveAttribute("href", "/projects/project-1/operations?trainingRunId=run-1&model=LogisticRegression");
+  expect(screen.getByRole("link", { name: "Deploy RandomForestClassifier" })).toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Deploy BrokenClassifier" })).not.toBeInTheDocument();
 });

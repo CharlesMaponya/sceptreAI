@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import os
 import uuid
 from contextlib import AbstractContextManager
 from types import SimpleNamespace
@@ -10,7 +11,8 @@ import numpy as np
 import pandas as pd
 import pytest
 from automl_api.models.datasets import DatasetVersion
-from automl_api.models.enums import RunStatus, TaskType
+from automl_api.models.enums import AttemptStatus, RunStatus, TaskType
+from automl_api.models.workflows import DatasetSplitRevision, WorkflowAttempt
 from automl_api.training import pipeline
 from automl_api.training.model_catalog import CandidateSpec
 from automl_api.training.pipeline import TournamentResult
@@ -22,6 +24,15 @@ class _Session(AbstractContextManager):
         self.version = version
         self.added: list[object] = []
         self.commits = 0
+        self.split = (
+            SimpleNamespace(
+                project_id=run.project_id,
+                dataset_version_id=run.dataset_version_id,
+                specification={"uris": {"train": "s3://train", "validation": "s3://validation"}},
+            )
+            if run is not None
+            else None
+        )
 
     def __enter__(self) -> _Session:
         return self
@@ -30,10 +41,20 @@ class _Session(AbstractContextManager):
         return None
 
     def scalar(self, _statement: object) -> object | None:
+        if _statement.column_descriptions[0]["entity"] is WorkflowAttempt:
+            return SimpleNamespace(
+                model_run_id=self.run.id,
+                fencing_token=os.getenv("AUTOML_FENCING_TOKEN"),
+                status=AttemptStatus.RUNNING,
+            )
         return self.run
 
     def get(self, model: object, _identifier: object) -> object | None:
-        return self.version if model is DatasetVersion else None
+        if model is DatasetVersion:
+            return self.version
+        if model is DatasetSplitRevision:
+            return self.split
+        return None
 
     def add(self, instance: object) -> None:
         self.added.append(instance)
@@ -66,7 +87,7 @@ def _run(
         task_type=task_type,
         run_name="runtime-test",
         target_column="target",
-        params={},
+        params={"split_revision_id": str(uuid.uuid4())},
         tags={},
         started_at=None,
         finished_at=None,
@@ -107,8 +128,16 @@ def test_execute_training_run_persists_mlflow_and_database_results(monkeypatch) 
     result = _result()
     persisted: list[tuple[uuid.UUID, TournamentResult, str]] = []
     monkeypatch.setattr(pipeline, "get_session_factory", lambda: lambda: session)
-    monkeypatch.setattr(pipeline, "_load_dataframe", lambda _version: pd.DataFrame())
-    monkeypatch.setattr(pipeline, "_fit_model", lambda _dataframe, _run: result)
+    monkeypatch.setattr(
+        pipeline,
+        "_load_prepared_training_frames",
+        lambda _split, **_kwargs: (pd.DataFrame(), pd.DataFrame()),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_fit_model",
+        lambda _dataframe, _run, _validation: result,
+    )
     monkeypatch.setattr(
         pipeline,
         "_persist_training_success",
@@ -152,7 +181,7 @@ def test_execute_training_run_handles_terminal_missing_and_failed_runs(monkeypat
     monkeypatch.setattr(pipeline, "get_session_factory", lambda: lambda: _Session(active, version))
     monkeypatch.setattr(
         pipeline,
-        "_load_dataframe",
+        "_load_prepared_training_frames",
         MagicMock(side_effect=RuntimeError("corrupt object")),
     )
     failed = MagicMock()
@@ -211,6 +240,104 @@ def test_dataframe_loader_rejects_unknown_format(monkeypatch) -> None:
         )
 
 
+def test_prepared_role_limits_only_after_deterministic_sample_ordering(monkeypatch) -> None:
+    expected = pd.DataFrame({"feature": [1, 2], "target": [0, 1]})
+    dataset = MagicMock()
+    sampled = MagicMock()
+    limited = MagicMock()
+    stripped = MagicMock()
+    dataset.schema.return_value = SimpleNamespace(
+        names=["row_id", "source_ordinal", "content_fingerprint", "split_role", "feature"]
+    )
+    dataset.map_batches.return_value.sort.return_value = sampled
+    sampled.limit.return_value = limited
+    limited.drop_columns.return_value = stripped
+    stripped.to_pandas.return_value = expected
+    store = MagicMock()
+    store.dataframe_source.return_value = SimpleNamespace(
+        path="s3://prepared/train",
+        filesystem_options={"endpoint_override": "http://object-store"},
+    )
+    monkeypatch.setattr(pipeline, "_ensure_ray", MagicMock())
+    monkeypatch.setattr(pipeline, "get_object_store", lambda: store)
+    monkeypatch.setattr(
+        pipeline,
+        "_ray_source",
+        lambda _path, _options: ("s3://prepared/train", "filesystem"),
+    )
+    monkeypatch.setattr(pipeline.ray.data, "read_parquet", MagicMock(return_value=dataset))
+
+    result = pipeline._load_prepared_role(
+        "minio://prepared/train",
+        max_rows=10_000,
+        source_rows=1_000_000,
+        order_column="row_id",
+        random_seed=123,
+    )
+
+    assert result is expected
+    assert dataset.map_batches.call_args.kwargs["fn_kwargs"] == {"fraction": 0.011, "seed": 123}
+    sampled.limit.assert_called_once_with(10_000)
+    dataset.sort.assert_not_called()
+    limited.drop_columns.assert_called_once_with(
+        ["__sceptre_sample_rank__", "content_fingerprint", "row_id", "source_ordinal", "split_role"]
+    )
+
+
+def test_prepared_frames_bound_validation_from_top_level_split_counts(monkeypatch) -> None:
+    calls: list[tuple[str, int, str]] = []
+    monkeypatch.setattr(
+        pipeline,
+        "_load_prepared_role",
+        lambda uri, *, max_rows, order_column, **_kwargs: (
+            calls.append((uri, max_rows, order_column)) or pd.DataFrame()
+        ),
+    )
+    split = SimpleNamespace(
+        specification={
+            "uris": {"train": "s3://train", "validation": "s3://validation"},
+            "split_counts": {"train": 8_923_392, "validation": 1_913_591},
+        }
+    )
+
+    pipeline._load_prepared_training_frames(
+        split,
+        sample_rows=1_000,
+        validation_sample_rows=1_000,
+        task_type=TaskType.REGRESSION,
+    )
+
+    assert calls == [
+        ("s3://train", 1_000, "row_id"),
+        ("s3://validation", 1_000, "row_id"),
+    ]
+
+
+def test_pairwise_regression_sample_is_large_enough_deterministic_and_target_aware() -> None:
+    features = pd.DataFrame({"row": np.arange(10_000)})
+    target = pd.Series(np.arange(10_000, dtype=float))
+
+    first_x, first_y = pipeline._candidate_training_sample(
+        features,
+        target,
+        max_rows=1_000,
+        task_type=TaskType.REGRESSION,
+    )
+    second_x, second_y = pipeline._candidate_training_sample(
+        features,
+        target,
+        max_rows=1_000,
+        task_type=TaskType.REGRESSION,
+    )
+
+    assert len(first_x) == len(first_y) == 1_000
+    assert first_x.equals(second_x)
+    assert first_y.equals(second_y)
+    assert first_x["row"].tolist() == first_y.astype(int).tolist()
+    assert first_y.min() < 100
+    assert first_y.max() > 9_900
+
+
 def test_fit_model_validates_target_rows_features_and_candidate_catalog(monkeypatch) -> None:
     run = _run()
     with pytest.raises(ValueError, match="target column is missing"):
@@ -241,17 +368,17 @@ def test_fit_model_selects_successful_candidate_and_records_data_safety(monkeypa
     run = _run(task_type=TaskType.CLASSIFICATION)
     run.params = {
         "candidate_limit": 3,
-        "optimization_iterations": 500,
+        "optimization_iterations": 100,
         "cv_folds": 20,
         "excluded_leakage_columns": ["manual_proxy"],
     }
-    rows = 24
+    rows = 120
     data = pd.DataFrame(
         {
             "feature": np.arange(rows),
             "manual_proxy": np.arange(rows),
             "automatic_proxy": np.arange(rows),
-            "target": [1] * 8 + [0] * 16,
+            "target": [1] * 40 + [0] * 80,
         }
     )
     data = pd.concat([data, data.iloc[[0]]], ignore_index=True)
@@ -274,8 +401,8 @@ def test_fit_model_selects_successful_candidate_and_records_data_safety(monkeypa
     fitted_model = MagicMock()
 
     def fit_candidate(*args: object, **_kwargs: object) -> dict[str, object]:
-        assert args[6] == 25
-        assert args[7] == 5
+        assert args[6] == 100
+        assert args[7] == 20
         return {
             "rank": None,
             "model": candidate.name,
@@ -366,7 +493,7 @@ def _mock_candidate_side_effects(monkeypatch) -> tuple[MagicMock, MagicMock]:
     monkeypatch.setattr(
         pipeline,
         "_persist_candidate_model",
-        lambda *_args: "minio://models/candidate.joblib",
+        lambda *_args: ("minio://models/candidate.joblib", "a" * 64),
     )
     return model, mirror
 
@@ -564,3 +691,29 @@ def test_training_failure_persistence_respects_terminal_fence(monkeypatch) -> No
     pipeline._mark_failed(terminal.id, RuntimeError("late failure"))
     assert terminal.status == RunStatus.CANCELLED
     assert terminal_session.commits == 0
+
+
+def test_sample_rows_do_not_depend_on_batch_boundaries_or_input_order():
+    import hashlib
+
+    import polars as pl
+    import pyarrow as pa
+
+    rows = [{"row_id": hashlib.sha256(str(i).encode()).hexdigest(), "value": i} for i in range(500)]
+
+    def selected(batches):
+        frames = [
+            pl.from_arrow(
+                pipeline._rank_sample_batch(pa.Table.from_pylist(batch), fraction=0.25, seed=42)
+            )
+            for batch in batches
+        ]
+        return (
+            pl.concat(frames)
+            .sort(["__sceptre_sample_rank__", "row_id"])
+            .head(100)["value"]
+            .to_list()
+        )
+
+    assert selected([rows]) == selected([rows[::2][::-1], rows[1::2]])
+    assert len(selected([rows])) == 100

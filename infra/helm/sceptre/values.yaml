@@ -80,8 +80,7 @@ auth:
   simpleAuthEnabled: true
   publicAppUrl: http://localhost:8080
   passwordResetEmail:
-    # Leave host/fromEmail empty for local development. The API then exposes a
-    # one-time reset link only outside production.
+    # Password reset links are delivered only by email. The API never returns them.
     host: ""
     port: 587
     username: ""
@@ -104,6 +103,9 @@ postgresql:
     database: automl
     username: automl
     password: automl
+    # Set to the name of an existing secret holding POSTGRES_DB/POSTGRES_USER/
+    # POSTGRES_PASSWORD to reuse it instead of managing credentials here.
+    existingSecret: ""
   persistence:
     enabled: true
     size: 5Gi
@@ -125,6 +127,12 @@ platform:
   databaseUrlKey: DATABASE_URL
   qualificationDatabaseUrlKey: QUALIFICATION_DATABASE_URL
   mlflowDatabaseUrlKey: MLFLOW_DATABASE_URL
+  workerDatabase:
+    # External PostgreSQL requires a separately provisioned worker login/Secret.
+    # Bundled PostgreSQL generates and preserves a dedicated analysis credential.
+    existingSecret: ""
+    urlKey: WORKER_DATABASE_URL
+    username: sceptre_analysis_worker
   database:
     poolSize: 10
     maxOverflow: 5
@@ -140,6 +148,9 @@ platform:
 
 seaweedfs:
   enabled: true
+  # Keep multi-GiB S3 finalization from consuming the node hosting API replicas.
+  goMemoryLimit: 2GiB
+  s3CacheCapacityMB: 64
   image:
     repository: sceptreai
     tagPrefix: seaweedfs
@@ -162,13 +173,13 @@ seaweedfs:
     annotations: {}
   persistence:
     enabled: true
-    size: 10Gi
+    size: 25Gi
     storageClass: ""
     accessMode: ReadWriteOnce
     retainOnDelete: true
   resources:
-    requests: {cpu: 50m, memory: 128Mi}
-    limits: {cpu: 500m, memory: 512Mi}
+    requests: {cpu: 500m, memory: 1Gi}
+    limits: {cpu: "2", memory: 4Gi}
 
 externalObjectStore:
   # Used when seaweedfs.enabled=false.
@@ -225,6 +236,13 @@ mlflow:
 
 training:
   maxConcurrentJobs: 2
+  maxConcurrentTrials: 1
+  rayMaxWorkers: 10
+  # When node observation is enabled, size each training pod from the largest
+  # schedulable node instead of treating cpu.memoryLimitMb as a cluster-wide cap.
+  adaptiveNodeSizing:
+    enabled: true
+    memoryFraction: 0.8
   activeDeadlineSeconds: 21600
   maxActiveDeadlineSeconds: 604800
   deadlineMultiplier: 6
@@ -289,13 +307,28 @@ inference:
 capabilities:
   # Adds a separate ClusterRole for node/GPU and PriorityClass discovery.
   clusterObserver:
-    enabled: false
+    enabled: true
 
 ingress:
   enabled: false
   className: ""
   host: sceptre.local
   annotations: {}
+  tls:
+    enabled: false
+    secretName: ""
+
+# Gateway API is the supported production ingress path (P5-W03/P5-W04).
+# The API version and controller are pinned; the retired ingress-nginx
+# controller must never be referenced here.
+gateway:
+  enabled: false
+  apiVersion: gateway.networking.k8s.io/v1
+  className: sceptre
+  # Envoy Gateway is the pinned, actively maintained controller for this chart.
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  host: ""
+  port: 8080
   tls:
     enabled: false
     secretName: ""

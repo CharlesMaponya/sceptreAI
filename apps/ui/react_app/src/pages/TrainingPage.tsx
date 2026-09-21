@@ -5,7 +5,7 @@ import { useNavigate, useParams } from "react-router";
 import { api, json } from "../api";
 import { Button, Card, ErrorState, Loading, Metric, Notice, PageHeader } from "../components/ui";
 import { titleCase } from "../lib";
-import type { Dataset, DatasetVersion, Estimator, ProfileJob, TaskType, TrainingEstimate, TrainingPayload } from "../types";
+import type { Dataset, DatasetVersion, Estimator, ProfileJob, ModelRun, TaskType, TrainingEstimate, TrainingPayload } from "../types";
 
 const PRIMARY_METRICS: Record<TaskType, Array<{ value: string; label: string }>> = {
   classification: [
@@ -47,17 +47,33 @@ export function TrainingPage() {
   const [versionId, setVersionId] = useState("");
   const [task, setTask] = useState<TaskType>("classification");
   const [target, setTarget] = useState("");
+  const [excludedColumns, setExcludedColumns] = useState<string[]>([]);
   const [positiveLabel, setPositiveLabel] = useState("");
   const [primaryMetric, setPrimaryMetric] = useState("balanced_accuracy");
   const [models, setModels] = useState<string[]>([]);
   const [minutes, setMinutes] = useState(10);
+  const [timeLimit, setTimeLimit] = useState(false);
+  const [limitMinutes, setLimitMinutes] = useState(120);
   const [folds, setFolds] = useState(3);
   const [iterations, setIterations] = useState(5);
   const [gpu, setGpu] = useState(true);
   const [runName, setRunName] = useState("");
 
+  const activeRun = useQuery({
+    queryKey: ["active-training", projectId],
+    queryFn: () => api<ModelRun | null>(`/projects/${projectId}/training/active-run`),
+    refetchInterval: 3000,
+  });
+  const trainingBlocked = activeRun.isLoading || Boolean(activeRun.error) || Boolean(activeRun.data?.id);
   const datasets = useQuery({ queryKey: ["datasets", projectId], queryFn: () => api<Dataset[]>(`/projects/${projectId}/datasets`) });
-  useEffect(() => { if (!datasetId && datasets.data?.length) setDatasetId(datasets.data[0].id); }, [datasets.data, datasetId]);
+  useEffect(() => {
+    if (datasets.data?.length && !datasets.data.some((dataset) => dataset.id === datasetId)) {
+      const trainingSource = datasets.data.find((dataset) =>
+        !["external_validation", "drift", "offline_scoring"].includes(String(dataset.tags?.purpose)));
+      setDatasetId((trainingSource || datasets.data[0]).id);
+      setVersionId("");
+    }
+  }, [datasets.data, datasetId]);
   const versions = useQuery({ queryKey: ["versions", projectId, datasetId], enabled: Boolean(datasetId), queryFn: () => api<DatasetVersion[]>(`/projects/${projectId}/datasets/${datasetId}/versions`) });
   useEffect(() => { if (versions.data?.length && !versions.data.some((v) => v.id === versionId)) setVersionId(versions.data[0].id); }, [versions.data, versionId]);
   const selectedDataset = datasets.data?.find((item) => item.id === datasetId);
@@ -112,16 +128,39 @@ export function TrainingPage() {
 
   const estimators = useQuery({ queryKey: ["estimators", projectId, task], enabled: Boolean(projectId), queryFn: () => api<Estimator[]>(`/projects/${projectId}/training/estimators?task_type=${task}`) });
   useEffect(() => { if (estimators.data) setModels(estimators.data.filter((item) => item.default_selected).map((item) => item.name)); }, [estimators.data]);
+  const launchBindings = latestProfile.data?.overview_json?.launch_bindings;
   const payload = useMemo<TrainingPayload>(() => ({
+    excluded_columns: excludedColumns.filter((column) => columns.includes(column) && column !== target),
     dataset_version_id: versionId, target_column: task === "clustering" ? null : target,
     positive_label: task === "classification" ? positiveLabel || null : null,
     evaluation_column: null, task_type: task, primary_metric: primaryMetric,
     prefer_gpu: gpu, expected_minutes: minutes,
+    deadline_seconds: timeLimit ? limitMinutes * 60 : null,
     candidate_limit: models.length, candidate_models: models, optimization_iterations: iterations, cv_folds: folds,
-  }), [versionId, target, positiveLabel, task, primaryMetric, gpu, minutes, models, iterations, folds]);
-  const estimate = useMutation({ mutationFn: () => api<TrainingEstimate>(`/projects/${projectId}/training/estimate`, json("POST", payload)) });
+    catalog_revision_id: launchBindings?.estimator_catalog_revision_id,
+    split_revision_id: launchBindings?.split_revision_id,
+  }), [versionId, target, positiveLabel, task, primaryMetric, gpu, minutes, timeLimit, limitMinutes, models, iterations, folds, launchBindings?.estimator_catalog_revision_id, launchBindings?.split_revision_id, excludedColumns, columns]);
+  const estimate = useMutation({ mutationFn: () => {
+    if (trainingBlocked) throw new Error("Wait for the active training run to finish before estimating another run.");
+    return api<TrainingEstimate>(`/projects/${projectId}/training/estimate`, json("POST", payload));
+  } });
   const launch = useMutation({
-    mutationFn: () => api(`/projects/${projectId}/training/runs`, json("POST", { ...payload, run_name: runName, params: {} })),
+    mutationFn: () => {
+      if (trainingBlocked) throw new Error("This project already has an active training run.");
+      if (!launchBindings) throw new Error("The completed profile has no immutable Phase 3 launch bindings. Reprofile this dataset.");
+      const featureSearchSpace = launchBindings.feature_search_space_revision_ids[primaryMetric];
+      if (!featureSearchSpace) throw new Error(`No governed feature search space exists for ${primaryMetric}.`);
+      return api(`/projects/${projectId}/training/runs`, json("POST", {
+        ...payload,
+        run_name: runName,
+        split_revision_id: launchBindings.split_revision_id,
+        feature_contract_revision_id: launchBindings.feature_contract_revision_id,
+        feature_registry_revision_id: launchBindings.feature_registry_revision_id,
+        feature_recipe_revision_id: launchBindings.feature_recipe_revision_id,
+        feature_search_space_revision_id: featureSearchSpace,
+        estimator_catalog_revision_id: launchBindings.estimator_catalog_revision_id,
+      }));
+    },
     onSuccess: () => { client.invalidateQueries({ queryKey: ["runs", projectId] }); navigate(`/projects/${projectId}/runs`); },
   });
 
@@ -157,6 +196,8 @@ export function TrainingPage() {
 
   return <>
     <PageHeader eyebrow="Model training" title="Configure training" description="Sceptre estimates resource needs before anything reaches the cluster." />
+    {activeRun.data?.id && <Notice>Training is currently underway in this project ({activeRun.data.run_name || "active run"}). Resource estimation and new training launches are disabled until it finishes or you stop it. <button className="text-button" onClick={() => navigate(`/projects/${projectId}/runs`)}>View active run</button></Notice>}
+    {activeRun.error && <ErrorState error={activeRun.error} retry={() => activeRun.refetch()} />}
     <div className="training-layout"><div className="training-form">
       <Card className="form-section"><span className="step-number">1</span><div className="form-section__body"><h2>Choose training data</h2><p>Select an immutable dataset version.</p>
         <div className="form-grid"><label>Dataset<select value={datasetId} onChange={(e) => { setDatasetId(e.target.value); setVersionId(""); estimate.reset(); }}>{datasets.data.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
@@ -172,24 +213,35 @@ export function TrainingPage() {
             ? "These classes are balanced, so you must choose the event of interest."
             : "The minority class is suggested; change it if your event of interest is different."}</small></label>}
         {!profileMatchesConfiguration && <Notice tone="danger">This target does not match the completed profile. Return to the project overview and reprofile before training.</Notice>}
+        <details><summary>Exclude features from training</summary>
+          <p>Exclude identifiers, fields unavailable at prediction time, and values that reveal the outcome. These choices are saved with the experiment.</p>
+          <div className="model-grid feature-exclusions">{columns.filter((column) => column !== target).map((column) =>
+            <label key={column}><input type="checkbox" aria-label={`Exclude ${column}`} checked={excludedColumns.includes(column)} onChange={() => {
+              setExcludedColumns((current) => current.includes(column) ? current.filter((name) => name !== column) : [...current, column]); estimate.reset();
+            }} /><span>{column}</span></label>)}</div>
+        </details>
         <label>Primary leaderboard metric<select value={primaryMetric} onChange={(e) => { setPrimaryMetric(e.target.value); estimate.reset(); }}>
           {PRIMARY_METRICS[task].map((metric) => <option value={metric.value} key={metric.value}>{metric.label}</option>)}</select><small>Models will be ranked by this metric.</small></label>
       </div></Card>
       <Card className="form-section"><span className="step-number">3</span><div className="form-section__body"><h2>Select candidate models</h2><p>Start broad; Sceptre will rank compatible candidates with the right metrics.</p>
         {estimators.data?.length ? <div className="selection-actions"><Button variant="secondary" type="button"
-          onClick={() => { setModels(estimators.data.slice(0, 20).map((model) => model.name)); estimate.reset(); }}>
+          onClick={() => { setModels(estimators.data.map((model) => model.name)); estimate.reset(); }}>
           Select all models</Button>{models.length > 0 && <Button variant="ghost" type="button"
             onClick={() => { setModels([]); estimate.reset(); }}>Clear selection</Button>}</div> : null}
         {estimators.isLoading ? <Loading label="Discovering compatible estimators…" />
           : estimators.error ? <ErrorState error={estimators.error} retry={() => estimators.refetch()} />
             : estimators.data?.length ? <div className="model-grid">{estimators.data.map((model) =>
-              <label className={models.includes(model.name) ? "model-option active" : "model-option"} key={model.name}><input type="checkbox" checked={models.includes(model.name)} onChange={() => { setModels((current) => current.includes(model.name) ? current.filter((name) => name !== model.name) : current.length < 20 ? [...current, model.name] : current); estimate.reset(); }} />
+              <label className={models.includes(model.name) ? "model-option active" : "model-option"} key={model.name}><input type="checkbox" checked={models.includes(model.name)} onChange={() => { setModels((current) => current.includes(model.name) ? current.filter((name) => name !== model.name) : [...current, model.name]); estimate.reset(); }} />
                 <span><b>{model.name}</b><small>{titleCase(model.cost_tier)} cost · {model.tunable ? "Tuned" : "Fixed"}</small></span><i><Check size={13} /></i></label>)}</div>
               : <Notice>No compatible estimators were reported for this task.</Notice>}
-        {!estimators.isLoading && !estimators.error && <span className="selection-count">{models.length} of {Math.min(20, estimators.data?.length ?? 0)} models selected</span>}
+        {!estimators.isLoading && !estimators.error && <span className="selection-count">{models.length} of {estimators.data?.length ?? 0} models selected</span>}
       </div></Card>
       <Card className="form-section"><span className="step-number">4</span><div className="form-section__body"><h2>Set the experiment budget</h2><p>These limits shape the search without compromising cluster safeguards.</p>
-        <div className="form-grid form-grid--3"><label>Planned duration<input type="number" min={1} max={120} value={minutes} onChange={(e) => { setMinutes(Number(e.target.value)); estimate.reset(); }} /><small>minutes</small></label>
+        <label>Runtime limit<select value={timeLimit ? "limited" : "unlimited"} onChange={(e) => { setTimeLimit(e.target.value === "limited"); estimate.reset(); }}>
+          <option value="unlimited">No time limit</option><option value="limited">Stop after a time limit</option></select>
+          <small>{timeLimit ? "The entire run stops when this limit is reached." : "Runs until completion or cancellation. Memory and CPU limits still apply."}</small></label>
+        {timeLimit && <label>Time limit (minutes)<input type="number" min={1} max={10080} value={limitMinutes} onChange={(e) => { setLimitMinutes(Number(e.target.value)); estimate.reset(); }} /></label>}
+        <div className="form-grid form-grid--3"><label>Planned duration<input type="number" min={1} max={120} value={minutes} onChange={(e) => { setMinutes(Number(e.target.value)); estimate.reset(); }} /><small>Estimate in minutes; this does not stop training.</small></label>
           <label>Cross-validation folds<select value={folds} onChange={(e) => { setFolds(Number(e.target.value)); estimate.reset(); }}>{[2,3,4,5].map((n) => <option key={n}>{n}</option>)}</select></label>
           <label>Search iterations<input type="number" min={1} max={25} value={iterations} onChange={(e) => { setIterations(Number(e.target.value)); estimate.reset(); }} /></label></div>
         <label className="toggle-row"><span><Zap /><span><b>Prefer GPU</b><small>Falls back safely if unavailable.</small></span></span><input type="checkbox" checked={gpu} onChange={(e) => { setGpu(e.target.checked); estimate.reset(); }} /></label>
@@ -197,11 +249,19 @@ export function TrainingPage() {
     </div>
     <aside className="launch-card"><Card><span className="eyebrow">Launch summary</span><h2>{runName || "New training run"}</h2>
       <dl><div><dt>Dataset</dt><dd>{selectedDataset?.name} · v{version?.version_number}</dd></div><div><dt>Task</dt><dd>{titleCase(task)}</dd></div><div><dt>Target</dt><dd>{task === "clustering" ? "Unsupervised" : target || "—"}</dd></div>{task === "classification" && <div><dt>Positive class</dt><dd>{positiveLabel || "Auto · minority class"}</dd></div>}<div><dt>Ranking metric</dt><dd>{PRIMARY_METRICS[task].find((metric) => metric.value === primaryMetric)?.label}</dd></div><div><dt>Models</dt><dd>{models.length} candidates</dd></div></dl>
-      {!estimate.data ? <><Notice><Info size={16} /> Review compute requirements before launch.</Notice><Button className="full" disabled={!versionId || !models.length || !profileMatchesConfiguration || (task !== "clustering" && !target) || (task === "classification" && positiveOptions.length === 2 && !positiveLabel)} loading={estimate.isPending} onClick={() => estimate.mutate()}><Cpu size={16} />Estimate resources</Button></>
+      <p>Runtime: {timeLimit ? `stop after ${limitMinutes} minutes` : "no time limit"}.</p>
+      {estimate.error && <Notice tone="danger">{estimate.error.message}</Notice>}
+      {!estimate.data ? <><Notice><Info size={16} /> Review compute requirements before launch.</Notice><Button className="full" disabled={trainingBlocked || !versionId || !models.length || !profileMatchesConfiguration || (task !== "clustering" && !target) || (task === "classification" && positiveOptions.length === 2 && !positiveLabel)} loading={estimate.isPending} onClick={() => estimate.mutate()}><Cpu size={16} />Estimate resources</Button></>
         : <div className="estimate"><div className="estimate__metrics"><Metric label="CPU" value={`${estimate.data.cpu_request_cores} cores`} /><Metric label="Memory" value={`${estimate.data.memory_request_mb} MiB`} /></div><div className="estimate__metrics"><Metric label="Accelerator" value={estimate.data.gpu_requested ? titleCase(estimate.data.gpu_vendor || "GPU") : "CPU"} /><Metric label="Node" value={estimate.data.selected_node || "Pending"} /></div><div className="estimate__metrics"><Metric label="Core-hours" value={estimate.data.estimated_core_hours} /><Metric label="Free CPU" value={estimate.data.capacity.available_cpu_cores.toFixed(1)} /></div>
+          {estimate.data.sample_tier_summary?.row_count != null && <Notice><Info size={16} />
+            {estimate.data.sample_tier_summary.split_counts && <p>Saved split: {estimate.data.sample_tier_summary.split_counts.train.toLocaleString()} training rows, {estimate.data.sample_tier_summary.split_counts.validation.toLocaleString()} validation rows, and {estimate.data.sample_tier_summary.split_counts.final_test.toLocaleString()} sealed final-test rows.</p>}
+            <p>Scalable models load up to {Number(estimate.data.sample_tier_summary.row_count).toLocaleString()} rows from the training partition. Quadratic models use up to {Number(estimate.data.sample_tier_summary.pairwise_row_count || estimate.data.sample_tier_summary.row_count).toLocaleString()} rows. Missing targets and duplicate rows are excluded before fitting.</p>
+            <p>Scoring uses up to {Number(estimate.data.sample_tier_summary.validation_row_count || 0).toLocaleString()} rows sampled from the separate validation partition. These rows are not used to fit the model. Final-test rows remain sealed.</p>
+          </Notice>}
           {estimate.data.warnings.length > 0 && <Notice>{estimate.data.warnings.join(" ")}</Notice>}{estimate.data.blockers.length > 0 && <Notice tone="danger">{estimate.data.blockers.join(" ")}</Notice>}
           <label>Run name<input value={runName} maxLength={255} onChange={(e) => setRunName(e.target.value)} /></label>
-          {launch.error && <Notice tone="danger">{launch.error.message}</Notice>}<Button className="full" disabled={!estimate.data.can_launch} loading={launch.isPending} onClick={() => launch.mutate()}><Sparkles size={16} />Launch training</Button>
+          {!launchBindings && <Notice tone="danger">This profile predates Phase 3 launch bindings. Reprofile the dataset before training.</Notice>}
+          {launch.error && <Notice tone="danger">{launch.error.message}</Notice>}<Button className="full" disabled={trainingBlocked || !estimate.data.can_launch || !launchBindings} loading={launch.isPending} onClick={() => launch.mutate()}><Sparkles size={16} />Launch training</Button>
           <button className="text-button" onClick={() => estimate.reset()}>Change configuration</button></div>}</Card></aside>
     </div>
   </>;

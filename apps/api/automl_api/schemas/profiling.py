@@ -33,6 +33,19 @@ class ColumnProfileRead(BaseModel):
     quality_flags: list[str]
 
 
+class TargetPreviewRead(BaseModel):
+    name: str
+    semantic_type: str
+    sampled_rows: int
+    missing_count: int
+    distinct_count: int
+    sample_values: list[str]
+    statistics: dict[str, Any]
+    distribution: list[dict[str, Any]] = Field(default_factory=list)
+    preview_values: list[str | float]
+    preview_distribution: list[dict[str, Any]]
+
+
 class FeatureRelationshipRead(BaseModel):
     source_column: str
     target_column: str

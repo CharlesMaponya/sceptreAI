@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">95.23% </span>
+                <span class="strong">92% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>20/21</span>
+                <span class='fraction'>23/25</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">74.07% </span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>20/27</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">85.71% </span>
-                <span class="quiet">Branches</span>
+                <span class="quiet">Functions</span>
                 <span class='fraction'>12/14</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">92.3% </span>
-                <span class="quiet">Functions</span>
-                <span class='fraction'>12/13</span>
-            </div>
-        
-            
-            <div class='fl pad1y space-right2'>
-                <span class="strong">94.11% </span>
+                <span class="strong">90.47% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>16/17</span>
+                <span class='fraction'>19/21</span>
             </div>
         
             
@@ -138,7 +138,14 @@
 <a name='L73'></a><a href='#L73'>73</a>
 <a name='L74'></a><a href='#L74'>74</a>
 <a name='L75'></a><a href='#L75'>75</a>
-<a name='L76'></a><a href='#L76'>76</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L76'></a><a href='#L76'>76</a>
+<a name='L77'></a><a href='#L77'>77</a>
+<a name='L78'></a><a href='#L78'>78</a>
+<a name='L79'></a><a href='#L79'>79</a>
+<a name='L80'></a><a href='#L80'>80</a>
+<a name='L81'></a><a href='#L81'>81</a>
+<a name='L82'></a><a href='#L82'>82</a>
+<a name='L83'></a><a href='#L83'>83</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -165,6 +172,11 @@
 <span class="cline-any cline-yes">17x</span>
 <span class="cline-any cline-yes">17x</span>
 <span class="cline-any cline-yes">17x</span>
+<span class="cline-any cline-yes">17x</span>
+<span class="cline-any cline-yes">17x</span>
+<span class="cline-any cline-yes">17x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -191,7 +203,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -213,13 +225,15 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { useQuery } from "@tanstack/react-query";
 import {
   Activity, BarChart3, Boxes, ChevronDown, Database, FolderKanban, Gauge,
-  LogOut, Menu, Settings, ShieldCheck, UserRound, Users, X,
+  Home, LogOut, Menu, Settings, ShieldCheck, UserRound, Users, X,
 } from "lucide-react";
 import { useState } from "react";
-import { NavLink, Outlet, useNavigate, useParams } from "react-router";
+import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router";
 import { api, getSession, signOut } from "./api";
 import { cx, initials } from "./lib";
 import type { Project } from "./types";
@@ -236,10 +250,15 @@ const nav = [
 export function Layout() {
   const { projectId } = useParams();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
   const session = getSession()!;
   const projects = useQuery({ queryKey: ["projects"], queryFn: () =&gt; api&lt;Project[]&gt;("/projects") });
   const current = projects.data?.find((project) =&gt; project.id === projectId);
+  const section = projectId ? pathname.split("/")[3] || "" : <span class="branch-1 cbranch-no" title="branch not covered" >pathname.split("/")[1];</span>
+  const pageTitle = nav.find((item) =&gt; projectId &amp;&amp; item.to === section)?.label
+    || (<span class="branch-1 cbranch-no" title="branch not covered" >{ projects: "Projects", monitoring: "Governance dashboard", account: "Profile &amp; security", settings: "Project settings" }[section])</span>
+    || <span class="branch-2 cbranch-no" title="branch not covered" >"Workspace";</span>
 &nbsp;
   async function logout() { await signOut(); navigate("/"); }
 &nbsp;
@@ -251,7 +270,7 @@ export function Layout() {
       &lt;/div&gt;
       &lt;nav className="sidebar__nav sidebar__nav--portfolio" aria-label="Portfolio navigation"&gt;
         &lt;span&gt;Portfolio&lt;/span&gt;
-        &lt;NavLink to="/projects" end onClick={() =&gt; setOpen(false)}&gt;&lt;FolderKanban size={18} /&gt;&lt;span&gt;Projects&lt;/span&gt;&lt;/NavLink&gt;
+        &lt;NavLink to="/projects" end onClick={() =&gt; setOpen(false)}&gt;&lt;i className="nav-icon"&gt;&lt;FolderKanban size={17} /&gt;&lt;/i&gt;&lt;span&gt;Projects&lt;/span&gt;&lt;/NavLink&gt;
       &lt;/nav&gt;
       {projectId &amp;&amp; &lt;&gt;
         &lt;div className="project-switcher"&gt;
@@ -262,17 +281,17 @@ export function Layout() {
         &lt;nav className="sidebar__nav" aria-label="Project navigation"&gt;
           &lt;span&gt;Workspace&lt;/span&gt;
           {nav.map(({ to, label, icon: Icon, end }) =&gt;
-            &lt;NavLink key={label} to={`/projects/${projectId}/${to}`} end={end} onClick={() =&gt; setOpen(false)}&gt;
-              &lt;Icon size={18} /&gt;&lt;span&gt;{label}&lt;/span&gt;
+            &lt;NavLink key={label} to={`/projects/${projectId}${to ? `/${to}` : ""}`} end={end} onClick={() =&gt; setOpen(false)}&gt;
+              &lt;i className="nav-icon"&gt;&lt;Icon size={17} /&gt;&lt;/i&gt;&lt;span&gt;{label}&lt;/span&gt;
             &lt;/NavLink&gt;)}
           &lt;span&gt;Management&lt;/span&gt;
-          &lt;NavLink to={`/projects/${projectId}/settings`}&gt;&lt;Settings size={18} /&gt;&lt;span&gt;Project settings&lt;/span&gt;&lt;/NavLink&gt;
+          &lt;NavLink to={`/projects/${projectId}/settings`} onClick={<span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >s</span>etOpen(false)}&gt;&lt;</span>i className="nav-icon"&gt;&lt;Settings size={17} /&gt;&lt;/i&gt;&lt;span&gt;Project settings&lt;/span&gt;&lt;/NavLink&gt;
         &lt;/nav&gt;
       &lt;/&gt;}
       {!projectId &amp;&amp; <span class="branch-1 cbranch-no" title="branch not covered" >&lt;div className="sidebar__pitch"&gt;&lt;ShieldCheck /&gt;&lt;b&gt;Private by design&lt;/b&gt;&lt;p&gt;Project access and model lineage stay governed at every step.&lt;/p&gt;&lt;/div&gt;}</span>
       &lt;nav className="sidebar__account" aria-label="Account and governance"&gt;
-        &lt;NavLink to="/monitoring" onClick={() =&gt; setOpen(false)}&gt;&lt;ShieldCheck size={17} /&gt;&lt;span&gt;Governance dashboard&lt;/span&gt;&lt;/NavLink&gt;
-        &lt;NavLink to="/account" onClick={() =&gt; setOpen(false)}&gt;&lt;UserRound size={17} /&gt;&lt;span&gt;Profile &amp; security&lt;/span&gt;&lt;/NavLink&gt;
+        &lt;NavLink to="/monitoring" onClick={() =&gt; setOpen(false)}&gt;&lt;i className="nav-icon"&gt;&lt;ShieldCheck size={17} /&gt;&lt;/i&gt;&lt;span&gt;Governance dashboard&lt;/span&gt;&lt;/NavLink&gt;
+        &lt;NavLink to="/account" onClick={() =&gt; setOpen(false)}&gt;&lt;i className="nav-icon"&gt;&lt;UserRound size={17} /&gt;&lt;/i&gt;&lt;span&gt;Profile &amp; security&lt;/span&gt;&lt;/NavLink&gt;
       &lt;/nav&gt;
       &lt;div className="sidebar__user"&gt;&lt;div className="avatar"&gt;{initials(session.user.full_name, session.user.email)}&lt;/div&gt;
         &lt;div&gt;&lt;b&gt;{session.user.full_name || <span class="branch-1 cbranch-no" title="branch not covered" >"Sceptre user"}&lt;</span>/b&gt;&lt;small&gt;{session.user.email}&lt;/small&gt;&lt;/div&gt;
@@ -282,9 +301,11 @@ export function Layout() {
     {open &amp;&amp; &lt;button className="sidebar-scrim" onClick={() =&gt; setOpen(false)} aria-label="Close menu" /&gt;}
     &lt;main className="shell__main" id="main-content"&gt;
       &lt;header className="topbar"&gt;&lt;button className="icon-button topbar__menu" onClick={() =&gt; setOpen(true)} aria-label="Open menu"&gt;&lt;Menu /&gt;&lt;/button&gt;
-        &lt;div className="topbar__trail"&gt;&lt;FolderKanban size={17} /&gt;&lt;span&gt;{current?.name || "Projects"}&lt;/span&gt;&lt;/div&gt;
+        &lt;div className="topbar__location"&gt;&lt;div className="topbar__trail"&gt;&lt;Link to="/projects" aria-label="All projects"&gt;&lt;Home size={14} /&gt;&lt;/Link&gt;&lt;span aria-hidden&gt;/&lt;/span&gt;&lt;span&gt;{current?.name || "Workspace"}&lt;/span&gt;&lt;span aria-hidden&gt;/&lt;/span&gt;&lt;span&gt;{pageTitle}&lt;/span&gt;&lt;/div&gt;&lt;b&gt;{pageTitle}&lt;/b&gt;&lt;/div&gt;
+        &lt;div className="topbar__actions"&gt;&lt;Link to="/account" className="topbar__profile" aria-label="My account"&gt;&lt;UserRound size={16} /&gt;&lt;span&gt;{session.user.full_name || <span class="branch-1 cbranch-no" title="branch not covered" >"My account"}&lt;</span>/span&gt;&lt;/Link&gt;&lt;Link to={projectId ? `/projects/${projectId}/settings` : <span class="branch-1 cbranch-no" title="branch not covered" >"/account"} c</span>lassName="icon-button" aria-label="Workspace settings"&gt;&lt;Settings size={17} /&gt;&lt;/Link&gt;&lt;/div&gt;
       &lt;/header&gt;
       &lt;div className="page"&gt;&lt;Outlet /&gt;&lt;/div&gt;
+      &lt;footer className="workspace-footer"&gt;&lt;span&gt;&lt;b&gt;Sceptre AI&lt;/b&gt; · Your model workspace&lt;/span&gt;&lt;span&gt;Data. Models. Decisions.&lt;/span&gt;&lt;/footer&gt;
     &lt;/main&gt;
   &lt;/div&gt;;
 }
@@ -295,7 +316,7 @@ export function Layout() {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-08-20T15:44:36.035Z
+                at 2026-09-20T18:07:07.512Z
             </div>
         <script src="../prettify.js"></script>
         <script>

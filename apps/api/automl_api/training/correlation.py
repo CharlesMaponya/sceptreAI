@@ -8,6 +8,8 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.feature_selection import mutual_info_classif, mutual_info_regression
 from sklearn.utils.validation import check_is_fitted
 
+from automl_api.training.feature_selection import FEATURE_STATISTICS_MAX_ROWS, sample_training_rows
+
 
 class CorrelatedFeatureFilter(TransformerMixin, BaseEstimator):
     """Remove redundant numeric features using task-appropriate training evidence."""
@@ -17,10 +19,12 @@ class CorrelatedFeatureFilter(TransformerMixin, BaseEstimator):
         task_type: str,
         threshold: float = 0.9,
         evidence_feature_limit: int = 50,
+        statistics_max_rows: int = FEATURE_STATISTICS_MAX_ROWS,
     ) -> None:
         self.task_type = task_type
         self.threshold = threshold
         self.evidence_feature_limit = evidence_feature_limit
+        self.statistics_max_rows = statistics_max_rows
 
     def fit(self, features: pd.DataFrame, target: pd.Series | None = None) -> Any:
         if not isinstance(features, pd.DataFrame):
@@ -29,8 +33,16 @@ class CorrelatedFeatureFilter(TransformerMixin, BaseEstimator):
             raise ValueError("Correlation threshold must be greater than 0 and at most 1.")
 
         numeric_columns = list(features.select_dtypes(include="number").columns)
-        correlation = features[numeric_columns].corr(method="pearson")
-        scores, score_method = self._scores(features[numeric_columns], target)
+        sampled, sampled_target = sample_training_rows(
+            features,
+            target,
+            max_rows=self.statistics_max_rows,
+            classification=self.task_type == "classification",
+        )
+        self.input_rows_ = len(features)
+        self.statistics_rows_ = len(sampled)
+        correlation = sampled[numeric_columns].corr(method="pearson")
+        scores, score_method = self._scores(sampled[numeric_columns], sampled_target)
         position = {column: index for index, column in enumerate(numeric_columns)}
         ranked = sorted(numeric_columns, key=lambda column: (-scores[column], position[column]))
 
@@ -134,6 +146,9 @@ class CorrelatedFeatureFilter(TransformerMixin, BaseEstimator):
         return {
             "threshold": self.threshold,
             "score_method": self.score_method_,
+            "input_rows": self.input_rows_,
+            "statistics_rows": self.statistics_rows_,
+            "statistics_policy": "seeded_training_fold_sample",
             "numeric_feature_count": len(numeric_columns),
             "heatmap_truncated": len(numeric_columns) > len(evidence_columns),
             "retained_features": [str(column) for column in self.retained_features_],

@@ -4,8 +4,9 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from automl_api.core.run_names import versioned_run_name
 from automl_api.models.enums import RunKind, RunStatus, TaskType
 
 
@@ -15,7 +16,9 @@ class TrainingEstimateRequest(BaseModel):
     experiment_spec_revision_id: uuid.UUID | None = None
     evaluation_scope_id: uuid.UUID | None = None
     dataset_version_id: uuid.UUID | None = None
+    split_revision_id: uuid.UUID | None = None
     target_column: str | None = Field(default=None, max_length=255)
+    excluded_columns: list[str] = Field(default_factory=list, max_length=1000)
     positive_label: str | None = Field(default=None, max_length=255)
     evaluation_column: str | None = Field(default=None, max_length=255)
     task_type: TaskType | None = None
@@ -29,7 +32,7 @@ class TrainingEstimateRequest(BaseModel):
     optimization_iterations: int = Field(default=5, ge=1, le=100)
     cv_folds: int = Field(default=3, ge=2, le=20)
     execution_mode_hint: Literal["auto", "in_memory", "incremental"] = "auto"
-    deadline_seconds: int = Field(default=7200, ge=60, le=604800)
+    deadline_seconds: int | None = Field(default=7200, ge=60, le=604800)
     reserve_capacity: bool = False
 
 
@@ -59,7 +62,7 @@ class TrainingLaunchRequest(TrainingEstimateRequest):
 
 
 class TrainingAddModelsRequest(BaseModel):
-    candidate_models: list[str] = Field(min_length=1, max_length=20)
+    candidate_models: list[str] = Field(min_length=1, max_length=100)
     optimization_iterations: int = Field(default=5, ge=1, le=25)
     cv_folds: int = Field(default=3, ge=2, le=5)
     expected_minutes: int = Field(default=10, ge=1, le=120)
@@ -96,7 +99,7 @@ class TrainingEstimateRead(BaseModel):
     gpu_resource: str | None = None
     selected_node: str | None = None
     expected_minutes: int
-    active_deadline_seconds: int
+    active_deadline_seconds: int | None
     estimated_core_hours: float
     max_concurrent_jobs: int
     can_launch: bool
@@ -111,7 +114,7 @@ class TrainingEstimateRead(BaseModel):
     required_node_quotas: dict[str, int] = Field(default_factory=dict)
     expected_object_reads: int = 0
     projected_cost_range: dict[str, float] = Field(default_factory=dict)
-    deadline_seconds: int = 7200
+    deadline_seconds: int | None = 7200
     environment_qualified: bool = False
     capacity_reservation: dict[str, Any] | None = None
 
@@ -149,6 +152,17 @@ class ModelRunRead(BaseModel):
     finished_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode="after")
+    def readable_restart_name(self) -> ModelRunRead:
+        if (
+            self.run_kind == RunKind.TRAINING
+            and self.tags.get("restarted_from_run_id")
+            and self.run_name
+            and self.run_name.lower().endswith(" restart")
+        ):
+            self.run_name = versioned_run_name(self.run_name, legacy_restart=True)
+        return self
 
 
 class TrainingLaunchRead(BaseModel):
@@ -227,6 +241,8 @@ class LeaderboardEntryRead(BaseModel):
     diagnostics: dict[str, Any] = Field(default_factory=dict)
     best_params: dict[str, Any] = Field(default_factory=dict)
     duration_seconds: float | None
+    training_rows: int | None = None
+    validation_rows: int | None = None
     error: str | None
     mlflow_run_id: str | None = None
     extension_run_id: uuid.UUID | None = None
@@ -240,6 +256,7 @@ class TrainingLeaderboardRead(BaseModel):
     winner: str | None
     metric_directions: dict[str, str] = Field(default_factory=dict)
     entries: list[LeaderboardEntryRead] = Field(default_factory=list)
+    split_counts: dict[str, int] | None = None
 
 
 class EstimatorRead(BaseModel):

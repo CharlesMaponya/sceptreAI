@@ -1,0 +1,29 @@
+# Pinned local runtime versions (task-index P9-W02).
+#
+# sceptrectl reads this file so every developer and CI job provisions the
+# same toolchain. Bump versions through a reviewed change only.
+
+kubernetes: "1.35.6"
+k3s_image: "rancher/k3s:v1.35.6-k3s1"
+k3d: "5.9.0"
+kubectl: "1.35.6"
+helm: "4.2.3"
+minikube: "1.33.1"
+microk8s_snap_channel: "1.27/stable"
+kind: "0.23.0"
+metrics_server_version: "v0.7.1"
+# Gateway API (P5-W04/P9-W03): pinned CRD channel and conformance profile.
+gateway_api_crd_channel: "standard-v1.1"
+envoy_gateway_version: "v1.2.0"
+
+# Cluster topology shared by every local runtime (three nodes minimum).
+nodes:
+  servers: 1
+  agents: 2
+  server_memory: "3g"
+  agent_memory: "7g"
+
+ports:
+  api: 8080
+  ingress_http: 8080
+  registry: 5111

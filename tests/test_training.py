@@ -86,6 +86,41 @@ def test_default_estimate_uses_configured_resources_without_pinning_a_node() -> 
     assert estimate.selected_node is None
 
 
+def test_estimate_adapts_memory_envelope_to_largest_observed_node() -> None:
+    snapshot = capacity_snapshot()
+    snapshot = CapacitySnapshot(
+        capacity=snapshot.capacity,
+        nodes=[
+            NodeCapability(
+                name="small",
+                allocatable_cpu_cores=4,
+                allocatable_memory_mb=8_192,
+            ),
+            NodeCapability(
+                name="large",
+                allocatable_cpu_cores=8,
+                allocatable_memory_mb=32_768,
+            ),
+        ],
+        pvc_ready=True,
+        priority_class_ready=True,
+        runtime_dependencies_ready=True,
+    )
+    training_client = FakeTrainingClient(snapshot, Settings())
+
+    estimate = training_client.estimate(
+        dataset_bytes=10 * 1024**2,
+        column_count=10,
+        expected_minutes=10,
+        prefer_gpu=False,
+    )
+
+    assert estimate.selected_node == "large"
+    assert estimate.memory_limit_mb == 26_214
+    assert estimate.memory_request_mb == 1_024
+    assert "80% of 32768 MiB" in " ".join(estimate.warnings)
+
+
 def test_estimate_enforces_configured_limit_and_gpu_fallback() -> None:
     settings = Settings(
         gpu_enabled=True,
@@ -256,7 +291,7 @@ def test_memory_estimate_scales_with_dataset_and_search_budget() -> None:
     )
     large = training_client.estimate(
         dataset_bytes=500 * 1024**2,
-        dataset_rows=1_000_000,
+        dataset_rows=5_000_000,
         column_count=50,
         task_type=TaskType.CLASSIFICATION,
         candidate_limit=8,
@@ -269,6 +304,24 @@ def test_memory_estimate_scales_with_dataset_and_search_budget() -> None:
     assert small.memory_request_mb == 1024
     assert large.memory_request_mb == 4096
     assert not large.can_launch
+
+
+def test_serial_candidate_count_changes_duration_not_peak_memory() -> None:
+    training_client = FakeTrainingClient(capacity_snapshot(), Settings())
+    common = {
+        "dataset_bytes": 100 * 1024**2,
+        "dataset_rows": 500_000,
+        "column_count": 20,
+        "task_type": TaskType.REGRESSION,
+        "optimization_iterations": 5,
+        "expected_minutes": 10,
+        "prefer_gpu": False,
+    }
+
+    one = training_client.estimate(candidate_limit=1, **common)
+    all_models = training_client.estimate(candidate_limit=30, **common)
+
+    assert all_models.estimated_working_set_mb == one.estimated_working_set_mb
 
 
 def test_training_request_has_no_legacy_twenty_model_cap() -> None:

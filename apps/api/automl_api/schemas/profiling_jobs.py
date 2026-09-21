@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class ProfilingJobCreate(BaseModel):
     target_column: str | None = Field(default=None, max_length=255)
+    time_column: str | None = Field(default=None, max_length=255)
     force: bool = False
 
 

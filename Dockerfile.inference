@@ -2,14 +2,14 @@ FROM python:3.12.13-slim-trixie@sha256:229a2c5bfa27522db7815ea81f9bed70af17ccb9d
 
 ARG SCEPTRE_VERSION=0.0.0
 WORKDIR /app
-COPY requirements-inference.txt ./
+COPY infra/locks/requirements-inference.lock ./
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --upgrade pip==26.1.2 \
-    && python -m pip install -r requirements-inference.txt
+    && python -m pip install --require-hashes -r requirements-inference.lock
 
-COPY requirements-inference-upload.txt ./
+COPY infra/locks/requirements-inference-upload.lock ./
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python -m pip install -r requirements-inference-upload.txt
+    python -m pip install --require-hashes -r requirements-inference-upload.lock
 
 RUN apt-get update \
     && apt-get install --no-install-recommends --yes libgomp1 \

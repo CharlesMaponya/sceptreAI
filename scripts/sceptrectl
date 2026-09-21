@@ -1,0 +1,250 @@
+#!/usr/bin/env bash
+# sceptrectl — one local-runtime interface (task-index P9-W01).
+#
+# Subcommands: preflight | create | load-images | install | verify | upgrade | destroy
+# Runtime selection: --runtime k3d|kind|minikube|microk8s (default k3d)
+#
+# Versions are pinned in infra/local-versions.yaml (P9-W02). Port-forwarding
+# is the universal exposure fallback (P9-W07).
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VERSIONS_FILE="${ROOT}/infra/local-versions.yaml"
+RUNTIME="k3d"
+CLUSTER_NAME="sceptre"
+NAMESPACE="sceptre"
+
+usage() {
+  cat <<'USAGE'
+Usage: sceptrectl [--runtime RUNTIME] <command>
+
+Commands:
+  preflight    Check host prerequisites and pinned tool versions.
+  create       Create the local cluster with the pinned topology.
+  load-images  Import built Sceptre images into the runtime's image store.
+  install      Helm-install the Sceptre chart into the cluster.
+  verify       Run smoke checks against the installed release.
+  upgrade      Upgrade the existing Helm release in place.
+  destroy      Delete the local cluster.
+
+Options:
+  --runtime    k3d (default) | kind | minikube | microk8s
+  --help       Show this message.
+USAGE
+}
+
+log() { printf '[sceptrectl] %s\n' "$*"; }
+die() { printf '[sceptrectl] ERROR: %s\n' "$*" >&2; exit 1; }
+
+require() { command -v "$1" >/dev/null 2>&1 || die "missing dependency: $1"; }
+
+version_from_pins() {
+  python3 - "$VERSIONS_FILE" "$1" <<'PY'
+import sys
+
+try:
+    import yaml
+except ImportError:
+    sys.exit("pyyaml is required to read infra/local-versions.yaml")
+
+with open(sys.argv[1], encoding="utf-8") as source:
+    value = yaml.safe_load(source)
+for key in sys.argv[2].split("."):
+    value = value.get(key) if isinstance(value, dict) else None
+print(value if value is not None else "")
+PY
+}
+
+runtime_context() {
+  case "${RUNTIME}" in
+    k3d) printf 'k3d-%s' "${CLUSTER_NAME}" ;;
+    kind) printf 'kind-%s' "${CLUSTER_NAME}" ;;
+    minikube) printf '%s' "${CLUSTER_NAME}" ;;
+    microk8s) printf 'microk8s' ;;
+    *) die "unknown runtime: ${RUNTIME}" ;;
+  esac
+}
+
+check_pinned_version() {
+  local tool_name="$1" observed_output="$2" expected_version observed_version
+  expected_version="$(version_from_pins "${tool_name}")"
+  if [[ "${observed_output}" =~ v?([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+    observed_version="${BASH_REMATCH[1]}"
+  else
+    die "could not determine installed ${tool_name} version"
+  fi
+  [ "${observed_version}" = "${expected_version}" ] || \
+    die "${tool_name} ${observed_version} does not match pinned ${expected_version}"
+  log "verified ${tool_name} ${observed_version}"
+}
+
+cmd_preflight() {
+  log "preflight: runtime=${RUNTIME}"
+  require python3
+  require helm
+  require kubectl
+  case "${RUNTIME}" in
+    k3d) require k3d; require docker ;;
+    kind) require kind; require docker ;;
+    minikube) require minikube; require docker ;;
+    microk8s) require snap ;;
+    *) die "unknown runtime: ${RUNTIME}" ;;
+  esac
+  check_pinned_version helm "$(helm version --template '{{.Version}}')"
+  check_pinned_version kubectl "$(kubectl version --client --output=json)"
+  case "${RUNTIME}" in
+    k3d) check_pinned_version k3d "$(k3d version)" ;;
+    kind) check_pinned_version kind "$(kind version)" ;;
+    minikube) check_pinned_version minikube "$(minikube version --short)" ;;
+  esac
+  log "pinned versions:"
+  for key in kubernetes k3d kubectl helm minikube microk8s_snap_channel kind; do
+    value="$(version_from_pins "${key}")"
+    [ -n "${value}" ] && log "  ${key}: ${value}"
+  done
+  log "preflight OK"
+}
+
+cmd_create() {
+  case "${RUNTIME}" in
+    k3d)
+      require k3d
+      if ! docker inspect "k3d-${CLUSTER_NAME}-registry.localhost" >/dev/null 2>&1; then
+        k3d registry create "${CLUSTER_NAME}-registry.localhost" \
+          --port "$(version_from_pins ports.registry)"
+      fi
+      # P9-W03: three-node cluster (1 server + 2 agents).
+      k3d cluster create "${CLUSTER_NAME}" \
+        --image "$(version_from_pins k3s_image)" \
+        --servers "$(version_from_pins nodes.servers)" \
+        --agents "$(version_from_pins nodes.agents)" \
+        --servers-memory "$(version_from_pins nodes.server_memory)" \
+        --agents-memory "$(version_from_pins nodes.agent_memory)" \
+        --registry-use "k3d-${CLUSTER_NAME}-registry.localhost:$(version_from_pins ports.registry)" \
+        --port "$(version_from_pins ports.ingress_http):80@loadbalancer" \
+        --wait
+      ;;
+    kind)
+      require kind
+      cat <<CONFIG | kind create cluster --name "${CLUSTER_NAME}" --config -
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+  - role: worker
+  - role: worker
+CONFIG
+      ;;
+    minikube)
+      require minikube
+      # P9-W04: Docker driver, three nodes, CPU-only default.
+      minikube start --profile "${CLUSTER_NAME}" \
+        --driver docker --nodes 3 --cpus 2 --memory 4096
+      ;;
+    microk8s)
+      require snap
+      # P9-W05: pinned snap channel plus required add-ons.
+      if ! command -v microk8s >/dev/null 2>&1; then
+        sudo snap install microk8s \
+          --channel "$(version_from_pins microk8s_snap_channel)" --classic
+      fi
+      microk8s enable dns hostpath-storage metrics-server
+      ;;
+    *) die "unknown runtime: ${RUNTIME}" ;;
+  esac
+  log "cluster created"
+}
+
+cmd_load-images() {
+  images=("$@")
+  [ "${#images[@]}" -eq 0 ] && die "load-images requires at least one image reference"
+  case "${RUNTIME}" in
+    k3d) require k3d; k3d image import "${images[@]}" -c "${CLUSTER_NAME}" ;;
+    kind) require kind; kind load docker-image "${images[@]}" --name "${CLUSTER_NAME}" ;;
+    minikube)
+      require minikube
+      minikube --profile "${CLUSTER_NAME}" image load "${images[@]}"
+      ;;
+    microk8s)
+      require microk8s
+      for image in "${images[@]}"; do
+        docker save "${image}" | microk8s ctr image import -
+      done
+      ;;
+    *) die "unknown runtime: ${RUNTIME}" ;;
+  esac
+  log "images loaded"
+}
+
+wait_for_ready() {
+  kubectl --context "$(runtime_context)" wait \
+    --for=condition=Ready nodes --all --timeout=300s
+}
+
+cmd_install() {
+  require helm
+  wait_for_ready
+  helm upgrade --install "${CLUSTER_NAME}" "${ROOT}/infra/helm/sceptre" \
+    --kube-context "$(runtime_context)" \
+    --namespace "${NAMESPACE}" --create-namespace \
+    --values "${ROOT}/infra/helm/sceptre/values-${RUNTIME}.yaml" \
+    --wait --wait-for-jobs --timeout 15m "$@"
+  log "release installed; exposing via port-forward fallback (P9-W07):"
+  log "  kubectl -n ${NAMESPACE} port-forward svc/${CLUSTER_NAME}-ui 8080:80"
+}
+
+cmd_verify() {
+  require kubectl
+  kubectl --context "$(runtime_context)" --namespace "${NAMESPACE}" get pods
+  helm test "${CLUSTER_NAME}" --kube-context "$(runtime_context)" \
+    --namespace "${NAMESPACE}"
+  log "verify OK"
+}
+
+cmd_upgrade() {
+  require helm
+  helm upgrade "${CLUSTER_NAME}" "${ROOT}/infra/helm/sceptre" \
+    --kube-context "$(runtime_context)" \
+    --namespace "${NAMESPACE}" \
+    --values "${ROOT}/infra/helm/sceptre/values-${RUNTIME}.yaml" \
+    --wait --wait-for-jobs --timeout 15m "$@"
+  log "release upgraded"
+}
+
+cmd_destroy() {
+  case "${RUNTIME}" in
+    k3d) require k3d; k3d cluster delete "${CLUSTER_NAME}" ;;
+    kind) require kind; kind delete cluster --name "${CLUSTER_NAME}" ;;
+    minikube) require minikube; minikube delete --profile "${CLUSTER_NAME}" || true ;;
+    microk8s) sudo snap remove microk8s ;;
+    *) die "unknown runtime: ${RUNTIME}" ;;
+  esac
+  log "cluster destroyed"
+}
+
+main() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --runtime) RUNTIME="$2"; shift 2 ;;
+      --help|-h) usage; exit 0 ;;
+      preflight|create|load-images|install|verify|upgrade|destroy)
+        command="$1"; shift; break ;;
+      *) die "unknown argument: $1 (see --help)" ;;
+    esac
+  done
+  [ -n "${command:-}" ] || { usage; exit 1; }
+  [ -f "${VERSIONS_FILE}" ] || die "missing pins file: ${VERSIONS_FILE}"
+
+  case "${command}" in
+    preflight) cmd_preflight "$@" ;;
+    create) cmd_create "$@" ;;
+    load-images) cmd_load-images "$@" ;;
+    install) cmd_install "$@" ;;
+    verify) cmd_verify "$@" ;;
+    upgrade) cmd_upgrade "$@" ;;
+    destroy) cmd_destroy "$@" ;;
+  esac
+}
+
+main "$@"

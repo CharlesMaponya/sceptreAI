@@ -71,6 +71,9 @@ describe("dataset qualification states", () => {
     const { container } = renderData();
     await screen.findByText("Your model starts with trusted data");
     await user.click(screen.getByRole("button", { name: "Upload dataset" }));
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog", { name: "Upload a dataset" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Upload dataset" }));
     const dialog = screen.getByRole("dialog", { name: "Upload a dataset" });
     const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
     await user.upload(input, new File(["bad"], "notes.txt", { type: "text/plain" }));
@@ -92,9 +95,40 @@ describe("dataset qualification states", () => {
     expect(screen.queryByRole("dialog", { name: "Upload a dataset" })).not.toBeInTheDocument();
   });
 
+  it("pauses, resumes, and cancels an active resumable upload", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response([]));
+    const pause = vi.fn();
+    const resume = vi.fn();
+    const cancel = vi.fn();
+    vi.spyOn(resumableUpload, "createResumableUpload").mockImplementation((options) => {
+      pause.mockImplementation(() => options.onTelemetry?.({
+        stage: "paused", confirmedBytes: 25, totalBytes: 100,
+        percent: 25, bytesPerSecond: 0, retry: 0,
+      }));
+      return {
+        result: new Promise(() => undefined), pause, resume, cancel,
+      } as unknown as resumableUpload.ResumableUploadController;
+    });
+    const user = userEvent.setup();
+    const { container } = renderData();
+    await screen.findByText("Your model starts with trusted data");
+    await user.click(screen.getByRole("button", { name: "Upload dataset" }));
+    await user.type(screen.getByLabelText("Dataset name"), "Interruptible upload");
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await user.upload(input, new File(["a,b\n1,2"], "pause.csv", { type: "text/csv" }));
+    const dialog = screen.getByRole("dialog", { name: "Upload a dataset" });
+    await user.click(within(dialog).getAllByRole("button", { name: "Upload dataset" }).at(-1)!);
+    await user.click(await screen.findByRole("button", { name: "Pause" }));
+    await user.click(await screen.findByRole("button", { name: "Resume" }));
+    await user.click(screen.getByRole("button", { name: "Cancel upload" }));
+    expect(pause).toHaveBeenCalledOnce();
+    expect(resume).toHaveBeenCalledOnce();
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
   it("shows an empty-version state for the selected dataset", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/projects/project-1/datasets")) return response([dataset]);
       return response([]);
     });
@@ -107,7 +141,7 @@ describe("dataset qualification states", () => {
 
   it("renders active profiling progress and switches between datasets", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/projects/project-1/datasets")) return response([
         dataset, { ...dataset, id: "dataset-2", name: "Transactions" },
       ]);
@@ -119,6 +153,11 @@ describe("dataset qualification states", () => {
         id: "profile-active", status: "running", current_stage: "relationships",
         progress: .6, completed_columns: 4, total_columns: 8,
       });
+      if (url.endsWith("/profile-jobs/profile-active/result")) return response({
+        id: "profile-active", status: "running", target_column: "amount",
+        feature_profiles_json: { amount: { name: "amount", semantic_type: "numerical_continuous" } },
+        relationships_json: [], preparation_json: [], overview_json: {},
+      }, 202);
       return response([version]);
     });
 
@@ -131,12 +170,13 @@ describe("dataset qualification states", () => {
     expect(screen.getByText(/Profiling 4 of 8 columns/)).toBeInTheDocument();
     expect(screen.getByText("2,500")).toBeInTheDocument();
     expect(screen.getByText("PARQUET")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /amount/i })).toBeInTheDocument();
   });
 
   it("reconciles selection when a refreshed catalog removes the active dataset", async () => {
     const second = { ...dataset, id: "dataset-2", name: "Transactions" };
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/projects/project-1/datasets")) return response([dataset, second]);
       if (url.endsWith("/dataset-2/versions")) return response([]);
       return response([version]);
@@ -152,7 +192,7 @@ describe("dataset qualification states", () => {
 
   it("renders queued profiling defaults without inventing progress", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/projects/project-1/datasets")) return response([dataset]);
       if (url.endsWith("/profile-jobs/latest")) return response({
         id: "profile-queued", status: "queued", current_stage: null,
@@ -170,7 +210,7 @@ describe("dataset qualification states", () => {
 
   it("routes an unprofiled dataset to target selection", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/projects/project-1/datasets")) return response([dataset]);
       if (url.endsWith("/profile-jobs/latest")) return response(null);
       return response([version]);
@@ -184,7 +224,7 @@ describe("dataset qualification states", () => {
 
   it("renders non-leaking profile evidence and starts training", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/projects/project-1/datasets")) return response([dataset]);
       if (url.endsWith("/profile-jobs/latest")) return response({
         id: "profile-1", status: "succeeded", target_column: "segment",
@@ -217,7 +257,7 @@ describe("dataset qualification states", () => {
 
   it("uses safe labels for an incomplete preprocessing recommendation", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      const url = String(input);
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
       if (url.endsWith("/projects/project-1/datasets")) return response([dataset]);
       if (url.endsWith("/profile-jobs/latest")) return response({
         id: "profile-steps", status: "succeeded", target_column: "segment",

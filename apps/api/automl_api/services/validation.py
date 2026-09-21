@@ -30,7 +30,7 @@ from automl_api.services.training import (
     estimate_training_run,
 )
 from automl_api.storage.object_store import get_object_store
-from automl_api.training.analysis import normalize_feature_importance
+from automl_api.training.feature_importance import normalize_feature_importance
 
 
 def launch_validation_run(
@@ -251,6 +251,7 @@ def _launch_analysis_run(
                 model_entry,
             ),
             "model_artifact_uri": model_entry.get("model_artifact_uri"),
+            "model_artifact_sha256": model_entry.get("model_artifact_sha256"),
             "expected_minutes": expected_minutes,
             "positive_label": source.params.get("positive_label"),
             **extra_params,
@@ -412,10 +413,14 @@ def _require_matching_validation_columns(
     source: ModelRun,
     external: DatasetVersion,
 ) -> None:
+    params = source.params or {}
+    excluded = set(params.get("excluded_columns") or []) | set(
+        params.get("excluded_leakage_columns") or []
+    )
     required = {
         str(item.get("name"))
         for item in source.dataset_version.schema_json.get("columns", [])
-        if item.get("name")
+        if item.get("name") and item.get("name") not in excluded
     }
     available = {
         str(item.get("name"))
