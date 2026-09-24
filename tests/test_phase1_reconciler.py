@@ -122,7 +122,7 @@ def test_ray_manifest_is_ephemeral_project_bound_and_fenced(monkeypatch) -> None
     head_start = cluster["headGroupSpec"]["rayStartParams"]
     assert head_start["num-cpus"] == "0"
     workers = cluster["workerGroupSpecs"][0]
-    assert workers["rayStartParams"]["num-cpus"] == "2.0"
+    assert workers["rayStartParams"]["num-cpus"] == "2"
     assert workers["minReplicas"] == 0
     assert head_start["object-store-memory"] == "268435456"
     submitter_spec = manifest["spec"]["submitterPodTemplate"]["spec"]
@@ -161,7 +161,8 @@ def test_ray_manifest_is_ephemeral_project_bound_and_fenced(monkeypatch) -> None
         "limits": {"cpu": "500m", "memory": "1Gi"},
     }
     assert worker_spec["containers"][0]["resources"]["requests"] == {
-        "cpu": "2.0", "memory": "4096Mi",
+        "cpu": "2.0",
+        "memory": "4096Mi",
     }
     assert worker_env["AUTOML_MODEL_PODS"]["value"] == "1"
     assert {volume["name"] for volume in worker_spec["volumes"]} == {
@@ -533,10 +534,14 @@ def test_ray_deadline_stops_without_repeating_the_same_model_search(monkeypatch)
     enqueue = MagicMock()
     monkeypatch.setattr(reconciler, "enqueue_outbox", enqueue)
     k8s = MagicMock()
-    k8s.ray_job.return_value = {"status": {
-        "jobStatus": "RUNNING", "jobDeploymentStatus": "Failed",
-        "reason": "DeadlineExceeded", "message": "RayJob exceeded 7200 seconds",
-    }}
+    k8s.ray_job.return_value = {
+        "status": {
+            "jobStatus": "RUNNING",
+            "jobDeploymentStatus": "Failed",
+            "reason": "DeadlineExceeded",
+            "message": "RayJob exceeded 7200 seconds",
+        }
+    }
 
     reconciler.observe_training_ray_jobs(db, k8s)
 
@@ -935,8 +940,12 @@ def test_analysis_reconciler_submits_once_and_records_desired_state() -> None:
     entry = _entry(_attempt(run), "kubernetes.analysis.submit")
     entry.payload = {"run_id": str(run.id), "manifest": {"metadata": {"name": "analysis"}}}
     db = MagicMock()
-    db.scalar.return_value = run
+    db.scalar.side_effect = [run, 0, run, None]
     k8s = MagicMock()
+    k8s.capacity_snapshot.return_value.capacity = SimpleNamespace(
+        connected=True, active_training_jobs=0
+    )
+    k8s.settings.max_concurrent_jobs = 1
 
     assert reconciler.submit_analysis_job(db, entry, k8s) is run
     k8s.create_job.assert_called_once_with(entry.payload["manifest"])
@@ -944,9 +953,50 @@ def test_analysis_reconciler_submits_once_and_records_desired_state() -> None:
     assert reconciler.submit_analysis_job(db, entry, k8s) is run
     k8s.create_job.assert_called_once()
 
-    db.scalar.return_value = None
     with pytest.raises(LookupError, match="analysis run"):
         reconciler.submit_analysis_job(db, entry, k8s)
+
+
+@pytest.mark.parametrize(
+    ("connected", "pods", "submitted"), [(True, 1, 0), (True, 0, 1), (False, 0, 0)]
+)
+def test_analysis_waits_for_capacity_without_spending_retry_budget(connected, pods, submitted):
+    run = _run()
+    run.status = RunStatus.QUEUED
+    run.tags = {"desired_state": "kubernetes_submission_pending"}
+    entry = _entry(_attempt(run), "kubernetes.analysis.submit")
+    entry.payload = {"run_id": str(run.id), "manifest": {"metadata": {"name": "analysis"}}}
+    entry.delivery_attempts = 3
+    db = MagicMock()
+    db.scalar.side_effect = [run, submitted]
+    k8s = MagicMock()
+    k8s.capacity_snapshot.return_value.capacity = SimpleNamespace(
+        connected=connected, active_training_jobs=pods
+    )
+    k8s.settings.max_concurrent_jobs = 1
+    before = datetime.now(UTC)
+    reconciler.reconcile_entry(db, entry, worker_id="worker-a", k8s=k8s)
+    k8s.create_job.assert_not_called()
+    assert run.status == RunStatus.QUEUED
+    assert run.tags["waiting_for_capacity"] is True
+    assert entry.status == OutboxStatus.PENDING
+    assert entry.delivery_attempts == 2
+    assert entry.available_at > before
+    assert entry.lease_owner is None
+
+
+@pytest.mark.parametrize("terminal", [RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.CANCELLED])
+def test_analysis_queued_command_cannot_resurrect_terminal_run(terminal):
+    run = _run()
+    run.status = terminal
+    run.tags = {"desired_state": "kubernetes_submission_pending"}
+    entry = _entry(_attempt(run), "kubernetes.analysis.submit")
+    entry.payload = {"run_id": str(run.id), "manifest": {}}
+    db, k8s = MagicMock(), MagicMock()
+    db.scalar.return_value = run
+    assert reconciler.submit_analysis_job(db, entry, k8s) is run
+    k8s.create_job.assert_not_called()
+    k8s.capacity_snapshot.assert_not_called()
 
 
 def test_deployment_reconciler_writes_object_and_submits_once(monkeypatch) -> None:
@@ -1173,11 +1223,15 @@ def test_kubernetes_service_account_creation_is_idempotent() -> None:
     with pytest.raises(ApiException):
         client.ensure_service_account("project-training")
 
-@pytest.mark.parametrize("message", [
-    "3 worker(s) were killed due to the node running low on memory. "
-    "OOM kill reason: threshold exceeded",
-    "ray.exceptions.OutOfMemoryError: Task was killed due to the node running low on memory",
-])
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "3 worker(s) were killed due to the node running low on memory. "
+        "OOM kill reason: threshold exceeded",
+        "ray.exceptions.OutOfMemoryError: Task was killed due to the node running low on memory",
+    ],
+)
 def test_ray_memory_failure_stops_instead_of_restarting_candidate_search(monkeypatch, message):
     run = _run()
     run.tags = {"leaderboard": [{"model": "DecisionTreeClassifier", "status": "succeeded"}]}
@@ -1197,3 +1251,42 @@ def test_ray_memory_failure_stops_instead_of_restarting_candidate_search(monkeyp
     assert "memory capacity" in run.plain_english_failure
     assert run.tags["leaderboard"][0]["status"] == "succeeded"
     enqueue.assert_not_called()
+
+
+def test_fractional_kubernetes_cpu_uses_valid_integer_ray_start_argument(monkeypatch):
+    from ray.scripts.scripts import start
+
+    monkeypatch.setattr(reconciler, "get_settings", lambda: Settings())
+    run = _run()
+    run.cpu_limit_cores = 2.5
+    manifest = reconciler.build_ray_job_manifest(run, _attempt(run), name="fractional-cpu")
+    worker = manifest["spec"]["rayClusterSpec"]["workerGroupSpecs"][0]
+    argument = worker["rayStartParams"]["num-cpus"]
+    option = next(parameter for parameter in start.params if parameter.name == "num_cpus")
+    assert option.type.convert(argument, option, None) == 3
+    resources = worker["template"]["spec"]["containers"][0]["resources"]
+    assert resources["limits"]["cpu"] == resources["requests"]["cpu"] == "2.5"
+
+
+@pytest.mark.parametrize("age", [None, timedelta(minutes=1), timedelta(minutes=6)])
+@pytest.mark.parametrize(
+    "reason", ["ImagePullBackOff", "CreateContainerConfigError", "Unschedulable", None]
+)
+def test_dataset_startup_recovery_observes_grace_and_does_not_retry_capacity_waits(age, reason):
+    observed = None if age is None else datetime.now(UTC) - age
+    status = {
+        "rayClusterStatus": {
+            "conditions": [{"reason": reason}, {"ready": False}],
+            "nested": {"conditions": []},
+        }
+    }
+    failure = reconciler._ray_startup_failure(status, observed)
+    fatal = age == timedelta(minutes=6) and reason in {
+        "ImagePullBackOff",
+        "CreateContainerConfigError",
+    }
+    assert bool(failure) is fatal
+    if fatal:
+        assert reason in failure
+        # Old database timestamps without timezone information represent UTC.
+        assert reconciler._ray_startup_failure(status, observed.replace(tzinfo=None)) == failure

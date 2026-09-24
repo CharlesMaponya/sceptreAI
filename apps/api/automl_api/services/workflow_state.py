@@ -225,6 +225,20 @@ def _claimable_outbox(now: datetime) -> Select[tuple[OutboxEntry]]:
     )
 
 
+def defer_outbox(
+    db: Session, row: OutboxEntry, *, worker_id: str, delay_seconds: int = 5
+) -> None:
+    """Release a capacity wait without consuming the delivery failure budget."""
+    if row.status != OutboxStatus.CLAIMED or row.lease_owner != worker_id:
+        raise StaleFence("The outbox lease is not owned by this worker.")
+    row.status = OutboxStatus.PENDING
+    row.available_at = datetime.now(UTC) + timedelta(seconds=delay_seconds)
+    row.lease_owner = None
+    row.lease_expires_at = None
+    row.delivery_attempts = max(0, row.delivery_attempts - 1)
+    db.flush()
+
+
 def complete_outbox(
     db: Session,
     entry_id: uuid.UUID,

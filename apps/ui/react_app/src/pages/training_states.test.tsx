@@ -206,3 +206,42 @@ describe("training qualification states", () => {
     expect(screen.getByText("0 of 0 models selected")).toBeInTheDocument();
   });
 });
+
+describe("training resource estimate evidence", () => {
+  beforeEach(() => { setSession(null); vi.restoreAllMocks(); });
+
+  it("renders saved partition totals separately from candidate sample caps and blocks legacy launches", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.endsWith("/active-run")) return response(null);
+      if (url.endsWith("/datasets")) return response([dataset]);
+      if (url.endsWith("/versions")) return response([version]);
+      if (url.endsWith("/profile-jobs/latest")) return response({
+        id: "profile-1", status: "succeeded", target_column: "churned",
+        overview_json: { task_inference: { task_type: "classification" } },
+      });
+      if (url.includes("/training/estimators")) return response([{ name: "DummyClassifier", default_selected: true, cost_tier: "low" }]);
+      if (url.endsWith("/training/estimate")) return response({
+        cpu_request_cores: 2, memory_request_mb: 3251, gpu_requested: true, gpu_vendor: null,
+        selected_node: "worker-a", estimated_core_hours: .5, capacity: { available_cpu_cores: 4 },
+        can_launch: true, warnings: ["Scoring uses a sample."], blockers: [],
+        sample_tier_summary: { row_count: 50000,
+          split_counts: { train: 699567, validation: 150161, final_test: 150272 } },
+      });
+      return response({ feature_profiles_json: {} });
+    });
+    const user = userEvent.setup();
+    renderTraining();
+    const estimate = await screen.findByRole("button", { name: /Estimate resources/ });
+    await waitFor(() => expect(estimate).toBeEnabled());
+    await user.click(estimate);
+    expect(await screen.findByText(/699,567 training rows, 150,161 validation rows/)).toBeInTheDocument();
+    expect(screen.getByText(/150,272 sealed final-test rows/)).toBeInTheDocument();
+    expect(screen.getByText(/Quadratic models use up to 50,000 rows/)).toBeInTheDocument();
+    expect(screen.getByText("GPU", { selector: "strong" })).toBeInTheDocument();
+    expect(screen.getByText(/Reprofile the dataset before training/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Launch training" })).toBeDisabled();
+    await user.clear(screen.getByLabelText("Run name"));
+    expect(screen.getByRole("heading", { name: "New training run" })).toBeInTheDocument();
+  });
+});

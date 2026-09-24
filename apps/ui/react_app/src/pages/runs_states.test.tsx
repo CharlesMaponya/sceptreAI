@@ -50,6 +50,69 @@ describe("run evidence qualification states", () => {
     vi.restoreAllMocks();
   });
 
+  it("offers deployment for a completed candidate while its sibling trains", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
+      if (url.endsWith("/training/runs")) return response([{ ...run, status: "running", finished_at: null }]);
+      if (url.endsWith("/resources")) return response({ ...resources, status: "running" });
+      if (url.endsWith("/leaderboard")) return response({
+        run_id: "run-1", status: "running", winner: "Ridge", primary_metric: "rmse", entries: [
+          { model: "Ridge", status: "succeeded", metrics: {}, cost_tier: "low" },
+          { model: "RandomForestRegressor", status: "running", metrics: {}, cost_tier: "medium" },
+        ],
+      });
+      return response([]);
+    });
+    renderRuns();
+    expect(await screen.findByRole("link", { name: "Deploy Ridge" })).toHaveAttribute(
+      "href", "/projects/project-1/operations?trainingRunId=run-1&model=Ridge",
+    );
+    expect(screen.queryByRole("link", { name: "Deploy RandomForestRegressor" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Awaiting run completion")).not.toBeInTheDocument();
+    expect(screen.getByText(/Rankings may change/)).toBeInTheDocument();
+  });
+
+  it("deletes only the selected run and returns from an emptied final page", async () => {
+    let removed = false;
+    let protectedRun = true;
+    const deleted: string[] = [];
+    const history = Array.from({ length: 11 }, (_, index) => ({ ...run, id: `run-${index}`,
+      run_name: index === 10 ? null : `Experiment ${index}`, tags: index === 10 ? { deletion_requested: true } : {} }));
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
+      const url = new URL(String(input), "http://test");
+      if (options?.method === "DELETE") {
+        deleted.push(url.pathname);
+        if (protectedRun) return response({ detail: "Shut down and clean up deployments first." }, 409);
+        removed = true;
+        return response({ status: "pending" }, 202);
+      }
+      if (url.pathname.endsWith("/training/runs")) {
+        const offset = Number(url.searchParams.get("offset") || 0);
+        return response((removed ? history.slice(0, 10) : history).slice(offset, offset + 11));
+      }
+      if (url.pathname.endsWith("/resources")) return response(null);
+      return response({ entries: [], winner: null });
+    });
+    const user = userEvent.setup();
+    renderRuns();
+    const pagination = await screen.findByRole("navigation", { name: "Training runs pagination" });
+    await user.click(within(pagination).getByRole("button", { name: "Next" }));
+    await user.click(await screen.findByRole("button", { name: "Retry run cleanup" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(deleted).toEqual([]);
+    await user.click(screen.getByRole("button", { name: "Retry run cleanup" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Delete this run?" }))
+      .getByRole("button", { name: "Delete run" }));
+    expect(await screen.findByText("Shut down and clean up deployments first.")).toBeInTheDocument();
+    protectedRun = false;
+    await user.click(within(screen.getByRole("dialog", { name: "Delete this run?" }))
+      .getByRole("button", { name: "Delete run" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(await screen.findByRole("button", { name: /Experiment 0/ })).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Training runs pagination" })).not.toBeInTheDocument();
+    expect(deleted).toEqual(Array(2).fill("/api/v1/projects/project-1/training/runs/run-10"));
+  });
+
   it("recovers the run collection and renders an empty workspace", async () => {
     let fail = true;
     vi.spyOn(globalThis, "fetch").mockImplementation(() => fail

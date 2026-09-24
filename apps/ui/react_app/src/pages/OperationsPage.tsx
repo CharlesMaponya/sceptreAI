@@ -543,18 +543,21 @@ function RegisterModal({ projectId, initialRunId, initialModel, close, done }: {
   const runs = useQuery({
     queryKey: ["runs", projectId],
     queryFn: () => api<ModelRun[]>(`/projects/${projectId}/training/runs`),
+    refetchInterval: 5000,
   });
   const requestedRun = useQuery({
     queryKey: ["registration-run", projectId, initialRunId],
     enabled: Boolean(initialRunId) && Boolean(runs.data) && !runs.data?.some(run => run.id === initialRunId),
     queryFn: () => api<ModelRun>(`/projects/${projectId}/training/runs/${initialRunId}`),
   });
-  const successful = [...(runs.data || []), ...(requestedRun.data
+  const availableRuns = [...(runs.data || []), ...(requestedRun.data
     && !runs.data?.some(run => run.id === initialRunId) ? [requestedRun.data] : [])]
-    .filter((run) => run.status === "succeeded");
+    .filter((run) => ["running", "succeeded", "failed", "cancelled", "preempted"].includes(run.status)
+      && !run.tags?.deletion_requested);
   const board = useQuery({
     queryKey: ["leaderboard", projectId, runId], enabled: Boolean(runId),
     queryFn: () => api<Leaderboard>(`/projects/${projectId}/training/runs/${runId}/leaderboard`),
+    refetchInterval: 5000,
   });
   const models = useMemo(
     () => board.data?.entries.filter((entry) => entry.status === "succeeded")
@@ -574,23 +577,25 @@ function RegisterModal({ projectId, initialRunId, initialModel, close, done }: {
     {runs.isLoading || requestedRun.isFetching ? <Loading />
       : runs.error ? <ErrorState error={runs.error} />
       : requestedRun.error ? <ErrorState error={requestedRun.error} />
-      : successful.length ? <div className="stack">
+      : availableRuns.length ? <div className="stack">
       <label>Training run<select value={runId} onChange={(event) => { setRunId(event.target.value); setModel(""); }}>
-        <option value="">Select a run</option>{successful.map((run) =>
-          <option value={run.id} key={run.id}>{run.run_name || run.id.slice(0, 8)}</option>)}</select></label>
+        <option value="">Select a run</option>{availableRuns.map((run) =>
+          <option value={run.id} key={run.id}>{run.run_name || run.id.slice(0, 8)} · {titleCase(run.status)}</option>)}</select></label>
       <label>Successful candidate<select value={model} disabled={!models.length}
         onChange={(event) => setModel(event.target.value)}>
         <option value="">{runId ? "Select a model" : "Choose a run first"}</option>
         {models.map((name) => <option key={name}>{name}</option>)}</select></label>
-      <Notice><Cpu size={16} />Only successful leaderboard candidates can be registered.</Notice>
+      <Notice><Cpu size={16} />Completed models can be registered while other models continue training. Registration checks that the saved model is available.</Notice>
+      {board.isLoading && <Loading label="Checking completed models…" />}
+      {board.data && !models.length && <Notice>No models have completed successfully in this run yet. Completed models will appear here automatically.</Notice>}
       {board.error && <ErrorState error={board.error} retry={() => board.refetch()} />}
       {board.data && model && !models.includes(model) && <Notice tone="danger">The selected model is not available as a successful candidate. Choose another model explicitly.</Notice>}
       {register.error && <Notice tone="danger">{register.error.message}</Notice>}
       <div className="modal__actions"><Button variant="ghost" onClick={close}>Cancel</Button>
-        <Button disabled={!successful.some(run => run.id === runId) || !models.includes(model) || board.isFetching || Boolean(board.error)} loading={register.isPending}
+        <Button disabled={!availableRuns.some(run => run.id === runId) || !models.includes(model) || board.isLoading || Boolean(board.error)} loading={register.isPending}
           onClick={() => register.mutate()}>Register model</Button></div>
-    </div> : <EmptyState icon={<Activity />} title="No successful runs"
-      description="Complete a training run before registering a model."
+    </div> : <EmptyState icon={<Activity />} title="No trained models yet"
+      description="Start training to create a model. Each successful candidate can be registered as soon as it finishes."
       action={<Link className="button button--primary" to={`/projects/${projectId}/training`} onClick={close}>Configure training</Link>} />}
   </Modal>;
 }

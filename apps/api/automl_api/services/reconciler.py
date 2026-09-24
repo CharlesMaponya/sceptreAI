@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import uuid
 from collections.abc import Callable
 from copy import deepcopy
@@ -7,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from kubernetes.client import ApiException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from automl_api.core.config import get_settings
@@ -36,6 +37,7 @@ from automl_api.services.kubernetes_training import (
 from automl_api.services.upload_policy import inspect_and_scan_stream
 from automl_api.services.workflow_state import (
     complete_outbox,
+    defer_outbox,
     enqueue_outbox,
     transition_attempt,
     transition_command,
@@ -164,7 +166,9 @@ def reconcile_entry(
         elif entry.topic == "ray.training.cancel":
             cancel_training_ray_job(db, entry, k8s or KubernetesTrainingClient())
         elif entry.topic == "kubernetes.analysis.submit":
-            submit_analysis_job(db, entry, k8s or KubernetesTrainingClient())
+            if submit_analysis_job(db, entry, k8s or KubernetesTrainingClient()) is None:
+                defer_outbox(db, entry, worker_id=worker_id)
+                return
         elif entry.topic == "upload.reconcile":
             reconcile_upload_session(db, entry)
         elif entry.topic == "registry.reconcile":
@@ -215,7 +219,12 @@ def reconcile_entry(
         db.flush()
 
 
-def submit_analysis_job(db: Session, entry: OutboxEntry, k8s: KubernetesTrainingClient) -> ModelRun:
+def submit_analysis_job(
+    db: Session, entry: OutboxEntry, k8s: KubernetesTrainingClient
+) -> ModelRun | None:
+    from automl_api.services.training import _lock_training_admission
+
+    _lock_training_admission(db)
     run = db.scalar(
         select(ModelRun)
         .where(
@@ -228,9 +237,30 @@ def submit_analysis_job(db: Session, entry: OutboxEntry, k8s: KubernetesTraining
         raise LookupError("The tracked analysis run no longer exists.")
     if run.tags.get("desired_state") == "kubernetes_submitted":
         return run
+    if run.status in {RunStatus.CANCELLED, RunStatus.FAILED, RunStatus.SUCCEEDED}:
+        return run
+    capacity = k8s.capacity_snapshot().capacity
+    # Include submitted rows whose pod has not appeared yet. The admission lock
+    # prevents two reconcilers from both taking the last available slot.
+    submitted = int(db.scalar(
+        select(func.count(ModelRun.id)).where(
+            ModelRun.id != run.id,
+            ModelRun.k8s_namespace == k8s.settings.training_namespace,
+            ModelRun.run_kind.in_({RunKind.EXPLAINABILITY, RunKind.VALIDATION, RunKind.DRIFT}),
+            ModelRun.status.in_({RunStatus.QUEUED, RunStatus.RUNNING}),
+            ModelRun.tags["desired_state"].astext == "kubernetes_submitted",
+        )
+    ) or 0)
+    if (
+        not capacity.connected
+        or max(capacity.active_training_jobs, submitted) >= k8s.settings.max_concurrent_jobs
+    ):
+        run.tags = {**run.tags, "waiting_for_capacity": True}
+        db.flush()
+        return None
     k8s.create_job(dict(entry.payload["manifest"]))
     run.status = RunStatus.QUEUED
-    run.tags = {**run.tags, "desired_state": "kubernetes_submitted"}
+    run.tags = {**run.tags, "desired_state": "kubernetes_submitted", "waiting_for_capacity": False}
     db.flush()
     return run
 
@@ -1227,7 +1257,8 @@ def build_ray_job_manifest(run: ModelRun, attempt: WorkflowAttempt, *, name: str
         {"name": "TRAINING_EXECUTION_MODE", "value": "ray"},
         {"name": "AUTOML_MODEL_PODS", "value": "1"},
         {"name": "AUTOML_TUNE_CONCURRENCY", "value": str(settings.training_max_concurrent_trials)},
-        {"name": "AUTOML_CPU_THREADS", "value": str(run.cpu_limit_cores or settings.training_cpu_limit_cores)},
+        {"name": "AUTOML_CPU_THREADS",
+         "value": str(run.cpu_limit_cores or settings.training_cpu_limit_cores)},
         {"name": "AUTOML_GPU_VENDOR", "value": str((run.params or {}).get("gpu_vendor") or "")},
         {"name": "MLFLOW_TRACKING_URI", "value": settings.mlflow_tracking_uri},
         {"name": "MLFLOW_ENABLE_ASYNC_LOGGING", "value": "false"},
@@ -1263,7 +1294,9 @@ def build_ray_job_manifest(run: ModelRun, attempt: WorkflowAttempt, *, name: str
     cluster = manifest["spec"]["rayClusterSpec"]
     cluster["headGroupSpec"]["rayStartParams"]["num-cpus"] = "0"
     workers = cluster["workerGroupSpecs"][0]
-    workers["rayStartParams"]["num-cpus"] = worker_resources["limits"]["cpu"]
+    # Ray's start CLI accepts integer CPUs, even when Kubernetes uses a
+    # fractional quota. The task still reserves the full pod quota.
+    workers["rayStartParams"]["num-cpus"] = str(math.ceil(float(worker_resources["limits"]["cpu"])))
     workers["minReplicas"] = 0
     # A candidate reserves every logical worker CPU. The head coordinates and
     # publishes results; it never competes with a worker's estimator fit.

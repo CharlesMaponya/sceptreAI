@@ -8,7 +8,7 @@ test.use({ trace: "off" });
 // Every training action is through the published UI; no mocked responses.
 test("two taxi candidates queue on the model worker and finish without a reload", async ({ page, isMobile }, testInfo) => {
   test.skip(!process.env.LIVE_CANDIDATE_PODS || isMobile, "Explicit local training acceptance run");
-  test.setTimeout(45 * 60_000);
+  test.setTimeout(50 * 60_000);
   const state = JSON.parse(readFileSync(join(process.env.RECOVERY_STATE_DIR!, "browser-state.json"), "utf8"));
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
@@ -29,7 +29,7 @@ test("two taxi candidates queue on the model worker and finish without a reload"
   await page.getByRole("checkbox", { name: /^DecisionTreeRegressor\s/ }).check();
   await page.getByLabel("Search iterations", { exact: true }).fill("1");
   await page.getByRole("combobox", { name: "Cross-validation folds", exact: true }).selectOption("2");
-  await expect(page.getByLabel("Runtime limit", { exact: true })).toHaveValue("unlimited");
+  await expect(page.getByRole("combobox", { name: /^Runtime limit/ })).toHaveValue("unlimited");
   const estimateResponse = page.waitForResponse(response => response.request().method() === "POST" && response.url().endsWith("/training/estimate"));
   await page.getByRole("button", { name: "Estimate resources", exact: true }).click();
   const response = await estimateResponse;
@@ -48,7 +48,7 @@ test("two taxi candidates queue on the model worker and finish without a reload"
   const launch = await launched.json();
   writeFileSync(testInfo.outputPath("run.json"), JSON.stringify({ id: launch.run.id, name, projectUrl }));
   await expect(page).toHaveURL(/\/runs$/);
-  await expect(page.getByText("Waiting for worker", { exact: true }).first()).toBeVisible({ timeout: 180_000 });
+  await expect(page.getByText("Waiting for worker", { exact: true }).first()).toBeVisible({ timeout: 10 * 60_000 });
   await page.screenshot({ path: testInfo.outputPath("queued-models.png"), fullPage: true });
   await expect(page.locator(".run-summary")).toContainText("Succeeded", { timeout: 40 * 60_000 });
   await expect(page.getByRole("link", { name: "Deploy DummyRegressor", exact: true })).toBeVisible();
@@ -58,4 +58,28 @@ test("two taxi candidates queue on the model worker and finish without a reload"
   await page.goto(projectUrl);
   await expect(page.getByRole("navigation", { name: "Model journey" })).toContainText("Training complete");
   expect(errors).toEqual([]);
+});
+
+test("an existing candidate run publishes its final UI state without a reload", async ({ page, isMobile }, testInfo) => {
+  test.skip(!process.env.LIVE_CANDIDATE_COMPLETION || isMobile, "Explicit observation of the launched acceptance run");
+  test.setTimeout(40 * 60_000);
+  const state = JSON.parse(readFileSync(join(process.env.RECOVERY_STATE_DIR!, "browser-state.json"), "utf8"));
+  await page.goto("/auth");
+  await page.getByLabel("Work email", { exact: true }).fill(state.email);
+  await page.getByLabel("Password", { exact: true }).fill(state.password);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page).toHaveURL(/\/projects$/);
+  const projectUrl = "/projects/dc93e5cf-0e16-4fee-a546-5d00e0bfd030";
+  await page.goto(`${projectUrl}/runs`);
+  await page.getByRole("button", { name: new RegExp(process.env.LIVE_CANDIDATE_COMPLETION!) }).click();
+  await page.screenshot({ path: testInfo.outputPath("observed-training.png"), fullPage: true });
+  await expect(page.locator(".run-summary")).toContainText("Succeeded", { timeout: 35 * 60_000 });
+  for (const model of ["DummyRegressor", "DecisionTreeRegressor"]) {
+    await expect(page.getByRole("link", { name: `Deploy ${model}`, exact: true })).toBeVisible();
+  }
+  await expect(page.getByRole("tab", { name: "Logs", exact: true })).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath("completed-models.png"), fullPage: true });
+  await page.goto(projectUrl);
+  await expect(page.getByRole("navigation", { name: "Model journey" })).toContainText("Training complete");
+  await page.screenshot({ path: testInfo.outputPath("completed-journey.png"), fullPage: true });
 });

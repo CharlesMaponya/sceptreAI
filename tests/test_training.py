@@ -641,3 +641,58 @@ def test_resource_usage_exposes_unschedulable_reason_without_metrics_server() ->
 
     assert not usage["telemetry_available"]
     assert "insufficient memory" in usage["status_reason"]
+
+
+@pytest.mark.parametrize("available", [[3000, 5000], [5000], [700, 600]])
+def test_adaptive_budget_fits_coordinator_and_worker_in_unreserved_memory(available):
+    snapshot = capacity_snapshot()
+    snapshot = CapacitySnapshot(
+        capacity=snapshot.capacity,
+        nodes=[
+            NodeCapability(
+                name=f"node-{index}",
+                allocatable_cpu_cores=8,
+                allocatable_memory_mb=10000,
+                available_memory_mb=memory,
+            )
+            for index, memory in enumerate(available)
+        ],
+        pvc_ready=True,
+        priority_class_ready=True,
+        runtime_dependencies_ready=True,
+    )
+    estimate = FakeTrainingClient(snapshot, Settings()).estimate(
+        dataset_bytes=1024,
+        column_count=2,
+        expected_minutes=1,
+        prefer_gpu=False,
+    )
+    budget = estimate.memory_limit_mb
+    if max(available) < 1000:
+        assert any("Insufficient unreserved memory" in item for item in estimate.blockers)
+    else:
+        assert estimate.selected_node == f"node-{available.index(max(available))}"
+        if len(available) == 1:
+            assert 2 * budget + 512 <= available[0]
+        else:
+            assert budget <= min(available)
+            assert budget + 512 <= max(available)
+
+
+def test_effective_pod_requests_include_init_sidecars_and_overhead():
+    from automl_api.services.kubernetes_training import _pod_resource_requests
+
+    def container(cpu, memory, restart=None):
+        return SimpleNamespace(
+            resources=SimpleNamespace(requests={"cpu": cpu, "memory": memory}),
+            restart_policy=restart,
+        )
+
+    spec = SimpleNamespace(
+        containers=[container("1", "512Mi")],
+        init_containers=[container("500m", "256Mi", "Always"), container("2", "1536Mi")],
+        overhead={"cpu": "100m", "memory": "64Mi"},
+    )
+    assert _pod_resource_requests(spec) == (2.6, 1856)
+    spec.resources = SimpleNamespace(requests={"cpu": "3", "memory": "4Gi"})
+    assert _pod_resource_requests(spec) == (3.1, 4160)

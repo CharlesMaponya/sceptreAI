@@ -338,3 +338,55 @@ describe("concurrent polling session rotation", () => {
     expect(getSession()?.user.id ?? null).toBe(newAccount ? "different-user" : null);
   });
 });
+
+describe("API error and late response boundaries", () => {
+  beforeEach(() => { setSession(null); vi.restoreAllMocks(); });
+
+  it.each([
+    [{ detail: ["invalid", null, { code: 1 }] }, "invalid, null, [object Object]"],
+    [{ detail: { blockers: ["Worker unavailable", null, 9] } }, "Worker unavailable"],
+    [{ detail: { message: "Denied" } }, "Denied"],
+    [{ detail: { message: 42, blockers: "not a list" } }, "Request failed (409)"],
+    [{ detail: null }, "Request failed (409)"],
+    [{ detail: 42 }, "Request failed (409)"],
+  ])("preserves useful messages from heterogeneous API errors", async (body, message) => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify(body), { status: 409 }));
+    await expect(api("/boundary")).rejects.toThrow(message);
+  });
+
+  it("does not set JSON content type on a FormData request", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}"));
+    const form = new FormData(); form.append("file", new Blob(["data"]), "input.csv");
+    await api("/upload", { method: "POST", body: form });
+    expect(new Headers(fetchMock.mock.calls[0][1]?.headers).has("Content-Type")).toBe(false);
+  });
+
+  it.each(["same-user", "other-user", "signed-out"])("handles a delayed 401 after %s session replacement", async (mode) => {
+    const tokens = { access_token: "old", refresh_token: "old-refresh", token_type: "bearer", expires_in: 60 };
+    setSession({ user, tokens });
+    let release!: (value: Response) => void;
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockImplementationOnce(() => new Promise<Response>(resolve => { release = resolve; }))
+      .mockResolvedValue(new Response('{"ready":true}'));
+    const pending = api("/projects");
+    setSession(mode === "signed-out" ? null : {
+      user: mode === "same-user" ? user : { ...user, id: "other" },
+      tokens: { ...tokens, access_token: "new" },
+    });
+    release(new Response('{"detail":"expired"}', { status: 401 }));
+    if (mode === "same-user") {
+      await expect(pending).resolves.toEqual({ ready: true });
+      expect(new Headers(fetchMock.mock.calls[1][1]?.headers).get("Authorization")).toBe("Bearer new");
+    } else {
+      await expect(pending).rejects.toThrow("session has expired");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    }
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/auth/refresh"))).toBe(false);
+  });
+
+  it("signing out twice performs only one server revocation", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    await signOut();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

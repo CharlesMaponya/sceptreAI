@@ -215,10 +215,10 @@ function LeaderboardPanel({ projectId, leaderboard, winner, task, resources, ope
           <small>{winner?.primary_score != null
             ? `${titleCase(leaderboard.data.primary_metric || "score")}: ${winner.primary_score.toFixed(4)}`
             : "Results are still being collected"}</small></div>
-          {leaderboard.data.winner && leaderboard.data.status === "succeeded" && <Link className="button button--primary"
+          {leaderboard.data.winner && winner?.status === "succeeded" && <Link className="button button--primary"
             to={`/projects/${projectId}/operations?trainingRunId=${leaderboard.data.run_id}&model=${encodeURIComponent(leaderboard.data.winner)}`}>
             <Rocket size={15} />Deploy model</Link>}</div>
-        <p className="muted">Ranking reflects the selected metric. You can deploy any successful candidate that fits your business needs once the training run succeeds.</p>
+        <p className="muted">You can deploy any completed model that fits your business needs. Rankings may change while other models finish training.</p>
         <div className="training-table-scroll" tabIndex={0} role="region" aria-label="Scrollable model results">
           <table className="training-model-table" aria-label="Model leaderboard">
             <thead><tr><th scope="col">Model</th>
@@ -237,10 +237,8 @@ function LeaderboardPanel({ projectId, leaderboard, winner, task, resources, ope
                   <td><div className="training-model-actions"><button type="button" className="training-model-details leaderboard-model__trigger" aria-label={`${entry.model} details`}
                     aria-expanded={open} aria-controls={`model-evidence-${entry.model}`}
                     onClick={() => setExpanded(open ? null : entry.model)}>{open ? "Close" : "Details"}<ChevronDown size={15} /></button>
-                    {entry.status === "succeeded" && (leaderboard.data.status === "succeeded"
-                      ? <Link className="training-model-deploy" aria-label={`Deploy ${entry.model}`}
-                        to={`/projects/${projectId}/operations?trainingRunId=${leaderboard.data.run_id}&model=${encodeURIComponent(entry.model)}`}><Rocket size={14} />Deploy</Link>
-                      : <span className="muted" title="Deployment becomes available when the training run succeeds.">Awaiting run completion</span>)}
+                    {entry.status === "succeeded" && <Link className="training-model-deploy" aria-label={`Deploy ${entry.model}`}
+                      to={`/projects/${projectId}/operations?trainingRunId=${leaderboard.data.run_id}&model=${encodeURIComponent(entry.model)}`}><Rocket size={14} />Deploy</Link>}
                   </div></td>
                 </tr>
                 {entry.error && <tr className="training-model-error"><td colSpan={4}>{entry.model}: {entry.error}</td></tr>}
@@ -766,21 +764,14 @@ function AnalysisPanel({ projectId, run, successfulModels }: {
   const visibleAnalyses = useMemo(() => (analyses.data || []).filter((item) =>
     item.run_kind === analysisTab && item.params.model_name === model),
   [analyses.data, analysisTab, model]);
-  const completedExplanation = useMemo(() => (analyses.data || []).find((item) =>
-    item.run_kind === "explainability" && item.status === "succeeded"
-    && item.params.model_name === model), [analyses.data, model]);
   useEffect(() => {
-    const preferred = analysisTab === "explainability" && completedExplanation
-      ? completedExplanation : visibleAnalyses[0];
-    if (completedExplanation && analysisTab === "explainability"
-      && selectedAnalysis !== completedExplanation.id) {
-      setSelectedAnalysis(completedExplanation.id);
-    } else if (preferred && !visibleAnalyses.some((item) => item.id === selectedAnalysis)) {
+    const preferred = visibleAnalyses[0];
+    if (preferred && !visibleAnalyses.some((item) => item.id === selectedAnalysis)) {
       setSelectedAnalysis(preferred.id);
     } else if (!preferred && selectedAnalysis) {
       setSelectedAnalysis("");
     }
-  }, [analysisTab, completedExplanation, selectedAnalysis, visibleAnalyses]);
+  }, [selectedAnalysis, visibleAnalyses]);
   const selectLaunchedAnalysis = async ({ run: launched }: { run: Analysis }) => {
     // Publish the returned job before selecting it, so the selection effect
     // cannot fall back to stale history while the list request is in flight.
@@ -793,7 +784,7 @@ function AnalysisPanel({ projectId, run, successfulModels }: {
   };
   const explain = useMutation({
     mutationFn: () => api<{ run: Analysis }>(`/projects/${projectId}/training/runs/${run.id}/explanations`,
-      json("POST", { model_name: model, max_rows: maxRows, expected_minutes: 10 })),
+      json("POST", { model_name: model, max_rows: maxRows, expected_minutes: 10, force: true })),
     onSuccess: selectLaunchedAnalysis,
   });
   const uploadValidation = useMutation({
@@ -839,6 +830,9 @@ function AnalysisPanel({ projectId, run, successfulModels }: {
   const explanationSucceeded = analysisTab === "explainability"
     && selectedRun?.run_kind === "explainability"
     && result.data?.status === "succeeded";
+  const explanationActive = visibleAnalyses.some(item =>
+    ["queued", "precheck_running", "running"].includes(
+      item.id === selectedAnalysis && result.data ? result.data.status : item.status));
   return <Card className="analysis-card">
     <div><BrainCircuit /><span><h2>Challenge a candidate</h2>
       <p>Test on an external dataset or calculate feature contributions before promotion.</p></span></div>
@@ -891,24 +885,26 @@ function AnalysisPanel({ projectId, run, successfulModels }: {
           {validate.error && <Notice tone="danger">{validate.error.message}</Notice>}
         </section>
       </div>}
-      {analysisTab === "explainability" && !explanationSucceeded &&
+      {analysisTab === "explainability" &&
         <div className="analysis-actions analysis-actions--single"><section><BrainCircuit /><h3>Explain with SHAP</h3>
-          <p>Quantify which features contributed most to this model's decisions.</p>
+          <p>Measure feature contributions for the selected model using a sample of its saved training partition.
+            Recalculation creates fresh evidence with the current analysis worker; previous results remain in history.</p>
           <label>Sample rows<input type="number" min={20} max={1000} step={20}
             value={maxRows} onChange={(event) => setMaxRows(Number(event.target.value))} /></label>
-          <Button loading={explain.isPending} onClick={() => explain.mutate()}>
-            <Play size={15} />Calculate SHAP</Button>
+          <Button disabled={explanationActive || !Number.isFinite(maxRows) || maxRows < 20 || maxRows > 1000}
+            loading={explain.isPending} onClick={() => explain.mutate()}>
+            <Play size={15} />{explanationActive ? "SHAP calculation underway" : explanationSucceeded ? "Recalculate SHAP" : "Calculate SHAP"}</Button>
           {explain.error && <Notice tone="danger">{explain.error.message}</Notice>}
         </section></div>}
     </>}
-    {!explanationSucceeded && <h3>{analysisTab === "validation" ? "Validation history" : "Explainability history"}</h3>}
+    <h3>{analysisTab === "validation" ? "Validation history" : "Explainability history"}</h3>
     {visibleAnalyses.length ? <>
-      {!explanationSucceeded && <div className="analysis-history">{visibleAnalyses.map((item) =>
+      <div className="analysis-history">{visibleAnalyses.map((item) =>
         <button className={selectedAnalysis === item.id ? "active" : ""} key={item.id}
           onClick={() => setSelectedAnalysis(item.id)}>
-          <span><b>{item.run_name || item.id.slice(0, 8)}</b><small>{titleCase(item.run_kind)}</small></span>
+          <span><b>{item.run_name || item.id.slice(0, 8)}</b><small>{formatDate(item.created_at)} · {item.id.slice(0, 8)}</small></span>
           <Badge status={item.status} />
-        </button>)}</div>}
+        </button>)}</div>
       {selectedRun?.plain_english_failure && <Notice tone="danger">{selectedRun.plain_english_failure}</Notice>}
       {selectedRun?.failure_message && <details><summary>Analysis failure details</summary>
         <pre>{selectedRun.failure_message}</pre></details>}
@@ -927,8 +923,15 @@ function AnalysisResultPanel({ result }: { result: AnalysisResult }) {
   return <div className="analysis-result" data-run-id={result.run_id}>
     <div className="section-heading"><div><h3>{result.model_name}</h3>
       <p>Persisted analysis evidence</p></div><Badge status={result.status} /></div>
-    {["queued", "precheck_running", "running"].includes(result.status) &&
+    {result.status === "queued" &&
+      <Notice>Analysis is queued. It will start automatically when cluster capacity is available.</Notice>}
+    {["precheck_running", "running"].includes(result.status) &&
       <Notice>Analysis is still running. Results will appear here automatically.</Notice>}
+    {importance.length > 0 && <Notice>SHAP values describe this model's predictions, not cause and effect.
+      Percentages are shares of total absolute contribution across the sampled rows; they do not show whether a feature increases or decreases an individual prediction.
+      {typeof result.diagnostics.sample_rows === "number" && ` Sample: ${result.diagnostics.sample_rows.toLocaleString()} rows.`}
+      {typeof result.diagnostics.background_rows === "number" && ` Background: ${result.diagnostics.background_rows.toLocaleString()} rows.`}
+      {result.diagnostics.analysis_pool_policy === "bounded_prepared_training_prefix" && " Samples come from a bounded portion of the saved training partition, so they may not represent the whole dataset."}</Notice>}
     {Object.keys(result.metrics).length > 0 && <div className="metric-pills">
       {Object.entries(result.metrics).map(([name, value]) =>
         <span key={name}><small>{titleCase(name)}</small><b>{value.toFixed(4)}</b></span>)}</div>}

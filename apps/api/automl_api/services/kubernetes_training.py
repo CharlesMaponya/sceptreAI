@@ -4,7 +4,7 @@ import ast
 import logging
 import math
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from typing import Any
 
@@ -82,6 +82,8 @@ class NodeCapability:
     gpu_count: int = 0
     allocatable_cpu_cores: float = 0
     allocatable_memory_mb: int = 0
+    available_memory_mb: int | None = None
+    available_cpu_cores: float | None = None
 
 
 @dataclass(frozen=True)
@@ -204,6 +206,37 @@ class KubernetesTrainingClient:
             warnings.append(
                 "GPU discovery is disabled because the optional cluster observer is not enabled."
             )
+
+        if ready_nodes:
+            try:
+                reservations: dict[str, tuple[float, int]] = {}
+                for pod in self.core.list_pod_for_all_namespaces().items:
+                    if pod.status.phase in {"Succeeded", "Failed"} or not pod.spec.node_name:
+                        continue
+                    cpu, memory = _pod_resource_requests(pod.spec)
+                    previous_cpu, previous_memory = reservations.get(pod.spec.node_name, (0, 0))
+                    reservations[pod.spec.node_name] = (
+                        previous_cpu + cpu,
+                        previous_memory + memory,
+                    )
+                ready_nodes = [
+                    replace(
+                        node,
+                        available_cpu_cores=max(
+                            0, node.allocatable_cpu_cores - reservations.get(node.name, (0, 0))[0]
+                        ),
+                        available_memory_mb=max(
+                            0, node.allocatable_memory_mb - reservations.get(node.name, (0, 0))[1]
+                        ),
+                    )
+                    for node in ready_nodes
+                ]
+            except (ApiException, AttributeError) as exc:
+                warnings.append(
+                    "Node pod reservations are unavailable; adaptive sizing uses the configured "
+                    "fallback and Kubernetes will queue unavailable capacity "
+                    f"({type(exc).__name__})."
+                )
 
         pvc_ready = not self.settings.dataset_cache_pvc_name or self._pvc_is_bound(
             self.settings.dataset_cache_pvc_name
@@ -352,7 +385,11 @@ class KubernetesTrainingClient:
         eligible_nodes = gpu_nodes if gpu_requested else snapshot.nodes
         capacity_node = max(
             eligible_nodes,
-            key=lambda item: item.allocatable_memory_mb,
+            key=lambda item: (
+                item.available_memory_mb
+                if item.available_memory_mb is not None
+                else item.allocatable_memory_mb
+            ),
             default=None,
         )
         blockers = []
@@ -411,12 +448,35 @@ class KubernetesTrainingClient:
                 self.settings.training_memory_request_mb,
                 math.floor(capacity_node.allocatable_memory_mb * fraction),
             )
+            if capacity_node.available_memory_mb is not None:
+                free = sorted(
+                    (node.available_memory_mb or 0 for node in eligible_nodes), reverse=True
+                )
+                # The coordinator still loads frames and publishes the winner.
+                # Budget for two pods plus its autoscaler and the submitter.
+                first = max(0, free[0] - 512)
+                second = free[1] if len(free) > 1 else 0
+                per_pod = max(first / 2, min(first, second))
+                memory_limit = min(memory_limit, math.floor(per_pod * fraction))
+                if memory_limit < 768:
+                    blockers.append(
+                        "Insufficient unreserved memory for the coordinator and a model worker."
+                    )
+                memory_limit = max(256, memory_limit)
             if capacity.source == "namespace_resource_quota":
-                memory_limit = min(memory_limit, capacity.available_memory_mb)
+                memory_limit = min(
+                    memory_limit, max(256, (capacity.available_memory_mb - 512) // 2)
+                )
             selected_node = capacity_node.name
             warnings.append(
                 f"Training memory adapts to node {selected_node}: {memory_limit} MiB "
-                f"({fraction:.0%} of {capacity_node.allocatable_memory_mb} MiB allocatable)."
+                + (
+                    "per model pod, allowing for existing reservations and the coordinator."
+                    if capacity_node.available_memory_mb is not None
+                    else f"({fraction:.0%} of {capacity_node.allocatable_memory_mb} MiB "
+                    "allocatable; "
+                    "free memory could not be observed)."
+                )
             )
         elif self.settings.training_adaptive_node_sizing_enabled:
             warnings.append(
@@ -1180,6 +1240,7 @@ class KubernetesTrainingClient:
                 "telemetry_available": False,
                 "status_reason": "Training pod is no longer available.",
             }
+
         # Candidate-isolated releases fit on workers; older releases fit on the
         # head. Always select the newest generation before preferring its model
         # pod, so a retained predecessor never supplies the displayed telemetry.
@@ -1442,3 +1503,36 @@ def _cpu_cores(value: str) -> float:
 def _memory_mb(value: str) -> int:
     quantity = Decimal(parse_quantity(str(value)))
     return int(quantity / Decimal(1024 * 1024))
+
+
+def _pod_resource_requests(spec) -> tuple[float, int]:
+    def request(container):
+        resources = getattr(container, "resources", None)
+        values = getattr(resources, "requests", None) or {}
+        return _cpu_cores(values.get("cpu", "0")), _memory_mb(values.get("memory", "0"))
+
+    cpu, memory = 0.0, 0
+    for container in spec.containers or []:
+        c, m = request(container)
+        cpu, memory = cpu + c, memory + m
+    sidecar_cpu, sidecar_memory = 0.0, 0
+    init_cpu, init_memory = 0.0, 0
+    for container in getattr(spec, "init_containers", None) or []:
+        c, m = request(container)
+        if getattr(container, "restart_policy", None) == "Always":
+            sidecar_cpu, sidecar_memory = sidecar_cpu + c, sidecar_memory + m
+            init_cpu, init_memory = max(init_cpu, sidecar_cpu), max(init_memory, sidecar_memory)
+        else:
+            init_cpu, init_memory = (
+                max(init_cpu, sidecar_cpu + c),
+                max(init_memory, sidecar_memory + m),
+            )
+    cpu, memory = max(cpu + sidecar_cpu, init_cpu), max(memory + sidecar_memory, init_memory)
+    pod_resources = getattr(spec, "resources", None)
+    pod_requests = getattr(pod_resources, "requests", None) or {}
+    cpu = _cpu_cores(pod_requests["cpu"]) if "cpu" in pod_requests else cpu
+    memory = _memory_mb(pod_requests["memory"]) if "memory" in pod_requests else memory
+    overhead = getattr(spec, "overhead", None) or {}
+    return cpu + _cpu_cores(overhead.get("cpu", "0")), memory + _memory_mb(
+        overhead.get("memory", "0")
+    )

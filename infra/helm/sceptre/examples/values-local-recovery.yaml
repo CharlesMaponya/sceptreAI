@@ -8,11 +8,11 @@ api:
     minReplicas: 2
     maxReplicas: 3
   image:
-    tag: api-readiness-20260920-r35
+    tag: api-audit-pages-20260924-r41
 ui:
   replicaCount: 2
   image:
-    tag: ui-status-20260920-r34
+    tag: ui-analysis-queue-20260924-r36
 reconciler:
   replicaCount: 2
 training:
@@ -21,7 +21,7 @@ training:
   jobTtlSeconds: 30
   cpu:
     image:
-      tag: training-candidate-pods-20260920-r24
+      tag: training-candidate-phase-20260921-r26
 inference:
   image:
     tag: inference-recovery-20260910-r13

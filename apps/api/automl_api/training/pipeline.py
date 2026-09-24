@@ -1340,7 +1340,11 @@ def _persist_partial_leaderboard(
             stored = {entry["model"]: entry for entry in run.tags.get("leaderboard", [])}
             ranked = rank_leaderboard(
                 [
-                    stored.get(entry["model"], entry)
+                    {
+                        **entry,
+                        **stored.get(entry["model"], {}),
+                        "phase": stored.get(entry["model"], {}).get("phase") or entry.get("phase"),
+                    }
                     if entry["status"] in {"pending", "running"}
                     else entry
                     for entry in ranked
@@ -1348,6 +1352,7 @@ def _persist_partial_leaderboard(
                 primary_metric,
             )
             successful = [entry for entry in ranked if entry["status"] == "succeeded"]
+        active = next((entry for entry in ranked if entry["status"] == "running"), None)
         run.tags = {
             **run.tags,
             "leaderboard_primary_metric": primary_metric,
@@ -1357,8 +1362,10 @@ def _persist_partial_leaderboard(
             "completed_candidates": sum(
                 entry["status"] in {"succeeded", "failed"} for entry in ranked
             ),
-            "current_candidate": None,
-            "candidate_phase": "between_candidates",
+            "current_candidate": active["model"] if active else None,
+            "candidate_phase": (
+                (active.get("phase") or "training") if active else "between_candidates"
+            ),
             "leaderboard_updated_at": datetime.now(UTC).isoformat(),
         }
         parent_id = run.tags.get("leaderboard_parent_run_id")

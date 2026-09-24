@@ -217,7 +217,12 @@ def _launch_analysis_run(
         ),
         k8s,
     )
-    if not estimate.can_launch:
+    waiting_for_capacity = (
+        bool(estimate.blockers)
+        and estimate.max_concurrent_jobs > 0
+        and all(item.startswith("Concurrent training limit reached ") for item in estimate.blockers)
+    )
+    if not estimate.can_launch and not waiting_for_capacity:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
@@ -260,6 +265,7 @@ def _launch_analysis_run(
             "project_id": str(source.project_id),
             "orchestrator": "kubernetes",
             "source_training_run_id": str(source.id),
+            "waiting_for_capacity": waiting_for_capacity,
         },
         queued_at=datetime.now(UTC),
     )

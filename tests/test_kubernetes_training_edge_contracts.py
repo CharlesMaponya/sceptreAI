@@ -1070,3 +1070,57 @@ def test_training_resource_usage_selects_model_worker_from_current_generation() 
     usage = client.training_resource_usage(uuid.uuid4())
     assert usage["pod_name"] == "current-worker"
     assert usage["cpu_usage_cores"] == 1.95
+
+
+def test_node_capacity_subtracts_bound_pod_requests_across_namespaces():
+    from kubernetes import client as models
+
+    client = _client(Settings(cluster_observer_enabled=True))
+    node = SimpleNamespace(
+        spec=SimpleNamespace(unschedulable=False),
+        metadata=SimpleNamespace(name="worker"),
+        status=SimpleNamespace(
+            conditions=[SimpleNamespace(type="Ready", status="True")],
+            allocatable={"cpu": "8", "memory": "8Gi"},
+        ),
+    )
+
+    def pod(phase, node_name, cpu, memory):
+        return SimpleNamespace(
+            status=SimpleNamespace(phase=phase),
+            spec=models.V1PodSpec(
+                node_name=node_name,
+                containers=[
+                    models.V1Container(
+                        name="work",
+                        resources=models.V1ResourceRequirements(
+                            requests={"cpu": cpu, "memory": memory}
+                        ),
+                    )
+                ],
+            ),
+        )
+
+    pods = [
+        pod("Running", "worker", "1500m", "2Gi"),
+        pod("Pending", "worker", "250m", "1Gi"),
+        pod("Succeeded", "worker", "8", "32Gi"),
+        pod("Failed", "worker", "8", "32Gi"),
+        pod("Pending", None, "8", "32Gi"),
+    ]
+    client.core = SimpleNamespace(
+        list_namespaced_pod=lambda **_: SimpleNamespace(items=[]),
+        list_namespaced_resource_quota=lambda **_: SimpleNamespace(items=[]),
+        list_node=lambda: SimpleNamespace(items=[node]),
+        list_pod_for_all_namespaces=lambda: SimpleNamespace(items=pods),
+        read_namespaced_secret=lambda **_: object(),
+    )
+    snapshot = client.capacity_snapshot()
+    assert snapshot.nodes[0].available_cpu_cores == 6.25
+    assert snapshot.nodes[0].available_memory_mb == 5120
+    pods.append(pod("Running", "worker", "10", "10Gi"))
+    snapshot = client.capacity_snapshot()
+    assert snapshot.nodes[0].available_cpu_cores == 0
+    assert snapshot.nodes[0].available_memory_mb == 0
+    pods.clear()
+    assert client.capacity_snapshot().nodes[0].available_memory_mb == 8192

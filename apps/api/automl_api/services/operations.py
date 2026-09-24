@@ -81,11 +81,8 @@ def register_model(
     _lock_training_admission(db)
     selected_run = _training_run(db, project_id, request.training_run_id)
     parent = _leaderboard_parent(db, selected_run)
-    if parent.status != RunStatus.SUCCEEDED:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="The training run must succeed before a model can be registered.",
-        )
+    # Candidates publish their durable artifact before reporting success. A sibling
+    # still training (or failing) must not block registration of a completed model.
     candidate = next(
         (
             entry

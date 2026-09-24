@@ -101,3 +101,28 @@ def test_incomplete_models_are_not_mistaken_for_durable_checkpoints(monkeypatch)
         {**entry, "model": "incomplete", "model_artifact_sha256": None},
     ]
     assert set(pipeline._completed_candidates(run)) == {"Ridge"}
+
+
+def test_pending_phase_is_initialized_without_overwriting_another_workers_progress(monkeypatch):
+    from automl_api.models.enums import RunStatus
+
+    monkeypatch.setenv("AUTOML_MODEL_PODS", "1")
+    candidate = CandidateSpec("Ridge", MagicMock(), {}, "low", True)
+    pending = pipeline._pending_candidate(candidate)
+    initial = {**pending}
+    initial.pop("phase")
+    other = {**initial, "model": "Forest", "status": "running", "phase": "learning_curve"}
+    run = SimpleNamespace(
+        id=uuid.uuid4(), status=RunStatus.RUNNING, tags={"leaderboard": [initial, other]}
+    )
+    db = MagicMock()
+    monkeypatch.setattr(pipeline, "get_session_factory", lambda: lambda: db)
+    monkeypatch.setattr(pipeline, "_locked_run", lambda *a, **k: run)
+    pipeline._persist_partial_leaderboard(run.id, [pending, {**pending, "model": "Forest"}], "rmse")
+    by_model = {entry["model"]: entry for entry in run.tags["leaderboard"]}
+    assert by_model["Ridge"]["phase"] == "waiting_for_worker"
+    assert by_model["Forest"]["phase"] == "learning_curve"
+    assert by_model["Forest"]["status"] == "running"
+    assert run.tags["current_candidate"] == "Forest"
+    assert run.tags["candidate_phase"] == "learning_curve"
+    db.__enter__.return_value.commit.assert_called_once()

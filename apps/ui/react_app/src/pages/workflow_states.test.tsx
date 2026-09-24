@@ -368,6 +368,60 @@ describe("governed workflow states", () => {
     expect(screen.queryByRole("dialog", { name: "Shut down this deployment?" })).not.toBeInTheDocument();
   });
 
+  it("requires separate confirmations to resume, stop, and clean a deployment", async () => {
+    let status = "cancelled";
+    let runtime = "stopped";
+    let rejectStart = true;
+    const mutations: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
+      if (url.endsWith("/operations/health")) return response(health);
+      if (url.endsWith("/operations/registry") || url.endsWith("/operations/drift-runs")) return response([]);
+      if (url.endsWith("/operations/deployments")) return response([{
+        run: { ...trainingRun, id: "deploy-1", run_name: "Resume test" },
+        status, runtime_state: runtime, endpoint: null,
+      }]);
+      if (options?.method === "POST") {
+        mutations.push(url.split("/").at(-1)!);
+        if (url.endsWith("/start")) {
+          if (rejectStart) return response({ detail: "Capacity temporarily unavailable." }, 409);
+          status = "running"; runtime = "starting";
+        } else if (url.endsWith("/stop")) {
+          status = "cancelled"; runtime = "stopped";
+        } else if (url.endsWith("/cleanup")) {
+          runtime = "cleaned";
+        }
+        return response({});
+      }
+      return response([]);
+    });
+    const user = userEvent.setup();
+    renderRoute(<OperationsPage />, "/projects/project-1/operations");
+    await user.click(await screen.findByRole("button", { name: "Start" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(mutations).toEqual([]);
+    await user.click(screen.getByRole("button", { name: "Cleanup" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(mutations).toEqual([]);
+    await user.click(screen.getByRole("button", { name: "Start" }));
+    const startDialog = screen.getByRole("dialog", { name: "Start this deployment?" });
+    await user.click(within(startDialog).getByRole("button", { name: "Start" }));
+    expect(await screen.findByText("Capacity temporarily unavailable.")).toBeInTheDocument();
+    expect(startDialog).toBeInTheDocument();
+    rejectStart = false;
+    await user.click(within(startDialog).getByRole("button", { name: "Start" }));
+    await user.click(await screen.findByRole("button", { name: "Shutdown" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Shut down this deployment?" }))
+      .getByRole("button", { name: "Shutdown" }));
+    await user.click(await screen.findByRole("button", { name: "Cleanup" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Clean up this deployment?" }))
+      .getByRole("button", { name: "Cleanup" }));
+    expect(await screen.findByText("Cleaned")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Start" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cleanup" })).not.toBeInTheDocument();
+    expect(mutations).toEqual(["start", "start", "stop", "cleanup"]);
+  });
+
   it("renders degraded capacity, registry fallbacks, and protected cleanup results", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
       const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
@@ -406,7 +460,7 @@ describe("governed workflow states", () => {
     expect(screen.getByRole("button", { name: /Delete eligible resources/ })).toBeDisabled();
 
     await user.click(screen.getByRole("button", { name: "Register model" }));
-    expect(await screen.findByText("No successful runs")).toBeInTheDocument();
+    expect(await screen.findByText("No trained models yet")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Configure training" })).toHaveAttribute(
       "href", "/projects/project-1/training",
     );
@@ -424,7 +478,7 @@ describe("governed workflow states", () => {
       "/projects/project-1/operations?trainingRunId=run-missing&model=Estimator");
 
     const dialog = await screen.findByRole("dialog", { name: "Register a trained model" });
-    expect(await within(dialog).findByText("No successful runs")).toBeInTheDocument();
+    expect(await within(dialog).findByText("No trained models yet")).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog", { name: "Register a trained model" })).not.toBeInTheDocument();
   });
@@ -935,7 +989,10 @@ describe("governed workflow states", () => {
   });
 });
 
-it.each([false, true])("preserves the chosen nonwinning model during registration (older run: %s)", async olderRun => {
+it.each([
+  [false, "succeeded"], [true, "succeeded"], [false, "running"], [true, "running"],
+  [false, "failed"], [false, "cancelled"],
+])("preserves the chosen completed model during registration (older run: %s, status: %s)", async (olderRun, status) => {
   let submitted: unknown;
   vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
     const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
@@ -944,8 +1001,8 @@ it.each([false, true])("preserves the chosen nonwinning model during registratio
       submitted = JSON.parse(String(options.body));
       return response({ id: "selected-model" }, 201);
     }
-    if (url.endsWith("/training/runs")) return response(olderRun ? [] : [trainingRun]);
-    if (url.endsWith("/training/runs/run-1")) return response(trainingRun);
+    if (url.endsWith("/training/runs")) return response(olderRun ? [] : [{ ...trainingRun, status }]);
+    if (url.endsWith("/training/runs/run-1")) return response({ ...trainingRun, status });
     if (url.endsWith("/leaderboard")) return response({ winner: "RandomForestClassifier", entries: [
       { model: "RandomForestClassifier", status: "succeeded" },
       { model: "LogisticRegression", status: "succeeded" },

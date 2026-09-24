@@ -466,7 +466,7 @@ PLOT = colors.HexColor("#F8F9FC")
 CONTENT_WIDTH = 149 * mm
 
 
-def _audit_pdf(report: dict[str, Any]) -> bytes:
+def _audit_pdf(report: dict[str, Any], *, section_pages: dict[int, int] | None = None) -> bytes:
     """Render a branded, immutable governance package as a real PDF document."""
     output = io.BytesIO()
     document = report["document"]
@@ -502,7 +502,7 @@ def _audit_pdf(report: dict[str, Any]) -> bytes:
     story.append(_pdf_overview_grid(report, styles))
     story.append(Spacer(1, 5 * mm))
     story.append(Paragraph("Document contents", styles["subheading"]))
-    story.append(_pdf_contents_table(styles))
+    story.append(_pdf_contents_table(styles, section_pages))
     if document.get("missing_evidence"):
         story.append(Spacer(1, 3 * mm))
         story.append(
@@ -587,6 +587,8 @@ def _audit_pdf(report: dict[str, Any]) -> bytes:
             str(identity.get("task_type") or ""),
             metrics.get("diagnostics") or {},
             styles,
+            model_name=str(identity.get("model_name") or "Unknown model"),
+            target_name=str(identity.get("target_column") or "Not applicable"),
         )
     )
     story.append(Spacer(1, 1 * mm))
@@ -737,8 +739,20 @@ def _audit_pdf(report: dict[str, Any]) -> bytes:
     story.append(Spacer(1, 6 * mm))
     story.append(_pdf_notice(document["regulatory_note"], styles, warning=False))
 
-    decoration = _page_decoration(identity, document)
+    observed_pages: dict[int, int] = {}
+
+    def record_section(flowable: Any) -> None:
+        number = getattr(flowable, "audit_section_number", None)
+        if number is not None:
+            observed_pages[number] = pdf.page
+
+    pdf.afterFlowable = record_section
+    decoration = _page_decoration(identity, document, section_pages)
     pdf.build(story, onFirstPage=decoration, onLaterPages=decoration)
+    if section_pages is None:
+        # Rebuild with measured section starts. Tables and descriptions can span
+        # several pages; section numbers are not reliable page numbers.
+        return _audit_pdf(report, section_pages=observed_pages)
     return output.getvalue()
 
 
@@ -804,7 +818,9 @@ def _section_heading(
     anchor: str,
     styles: dict[str, ParagraphStyle],
 ) -> Paragraph:
-    return Paragraph(f'<a name="{anchor}"/>{_escape(title)}', styles["section_title"])
+    heading = Paragraph(f'<a name="{anchor}"/>{_escape(title)}', styles["section_title"])
+    heading.audit_section_number = int(title.split(".", 1)[0])
+    return heading
 
 
 def _pdf_overview_grid(
@@ -868,7 +884,9 @@ def _pdf_overview_grid(
     return table
 
 
-def _pdf_contents_table(styles: dict[str, ParagraphStyle]) -> Table:
+def _pdf_contents_table(
+    styles: dict[str, ParagraphStyle], section_pages: dict[int, int] | None = None
+) -> Table:
     sections = [
         ("overview", "Overview"),
         ("task-and-target", "Task type and target visualization"),
@@ -888,7 +906,7 @@ def _pdf_contents_table(styles: dict[str, ParagraphStyle]) -> Table:
                 f'<link href="#{anchor}" color="#2854C5">{_escape(title)}</link>',
                 styles["cell"],
             ),
-            Paragraph(str(index), styles["cell_key"]),
+            Paragraph(str((section_pages or {}).get(index, "—")), styles["cell_key"]),
         ]
         for index, (anchor, title) in enumerate(sections, 1)
     ]
@@ -1004,7 +1022,9 @@ def _explanation_card(
     return card
 
 
-def _page_decoration(identity: dict[str, Any], document: dict[str, Any]):
+def _page_decoration(
+    identity: dict[str, Any], document: dict[str, Any], section_pages: dict[int, int] | None = None
+):
     generated = str(document.get("generated_at") or "Not recorded")[:10]
 
     def draw(canvas: Any, doc: Any) -> None:
@@ -1031,7 +1051,7 @@ def _page_decoration(identity: dict[str, Any], document: dict[str, Any]):
         canvas.setStrokeColor(LINE)
         canvas.line(5 * mm, page_height - 29 * mm, 36 * mm, page_height - 29 * mm)
 
-        active_by_page = {
+        section_labels = {
             1: "Overview",
             2: "Task & target",
             3: "Feature prep",
@@ -1043,7 +1063,11 @@ def _page_decoration(identity: dict[str, Any], document: dict[str, Any]):
             9: "Approval",
             10: "Change log",
         }
-        active = active_by_page.get(doc.page)
+        active_section = max(
+            (number for number, page in (section_pages or {}).items() if page <= doc.page),
+            default=1,
+        )
+        active = section_labels[active_section]
         nav_items = [
             "Overview",
             "Task & target",
@@ -1701,6 +1725,9 @@ def _pdf_diagnostic_visuals(
     task: str,
     diagnostics: dict[str, Any],
     styles: dict[str, ParagraphStyle],
+    *,
+    model_name: str = "",
+    target_name: str = "",
 ) -> list[Any]:
     specs = _diagnostic_chart_specs(task, diagnostics)
     if not specs:
@@ -1712,10 +1739,17 @@ def _pdf_diagnostic_visuals(
             ),
         ]
     result: list[Any] = [Paragraph("Model diagnostics", styles["subheading"])]
+    if model_name:
+        result.append(Paragraph(
+            _escape(f"Model: {model_name}. Target: {target_name}. Values below are saved candidate diagnostics; target units follow the dataset."),
+            styles["body"],
+        ))
     for index in range(0, len(specs), 2):
         pair = specs[index : index + 2]
         charts: list[Any] = [
-            EvidenceChartFlowable(title, kind, payload) for title, kind, payload in pair
+            [EvidenceChartFlowable(title, kind, payload),
+             Paragraph(_escape(_diagnostic_caption(kind, payload)), styles["cell"])]
+            for title, kind, payload in pair
         ]
         if len(charts) == 1:
             charts.append(Spacer(72.5 * mm, 62 * mm))
@@ -1779,6 +1813,32 @@ def _diagnostic_chart_specs(
     elif task == "clustering" and cross_validation.get("fold_metrics"):
         specs.append(("Cross-validation by fold", "fold_metrics", cross_validation))
     return specs
+
+
+def _diagnostic_caption(kind: str, payload: Any) -> str:
+    captions = {
+        "actual_predicted": f"Showing {min(300, len(payload)) if isinstance(payload, list) else 0:,} of {len(payload) if isinstance(payload, list) else 0:,} saved validation predictions. The dashed line is perfect agreement; distance from it is prediction error. This is a sample, not the full validation partition.",
+        "histogram": "Residual = actual minus predicted, in target units. Positive values mean underprediction; negative values mean overprediction. Bars count saved prediction samples, not all validation rows.",
+        "chronological": "Blue is actual and orange is predicted, in saved holdout order. Divergence shows when prediction errors occur; the horizontal axis is row order, not elapsed time.",
+        "confusion_matrix": "Rows are actual classes; columns are predicted classes. Cells contain row counts. Diagonal cells are correct predictions. At most eight classes are shown.",
+        "roc": "Each line represents the labelled class against the rest (up to five classes shown). The dashed diagonal is random ranking. Higher true-positive rate at a given false-positive rate is better; business costs still determine the threshold.",
+        "precision_recall": "Each line represents the labelled class against the rest (up to five classes shown). Precision measures how often positive predictions are correct; recall measures how many positives are found. Compare both at your operating threshold.",
+        "per_class": "Blue: precision. Orange: recall. Green: F1. Scores range from 0 to 1; higher is better. At most seven class or aggregate entries are shown.",
+        "learning_curve": "Blue: training score. Orange: cross-validation score. The horizontal axis is the number of training rows per fit. A persistent gap can indicate overfitting; this chart does not by itself establish deployment readiness.",
+        "cluster_sizes": "Bars count sampled rows assigned to each cluster. Size imbalance describes the grouping; it does not establish cluster quality or business value.",
+        "fold_metrics": "Each labelled line is a metric across validation folds. Metrics may use different units and directions; compare a metric across folds, not against another metric's magnitude.",
+    }
+    if kind == "cross_validation":
+        scoring = str(payload.get("scoring") or "unrecorded scorer")
+        return (
+            f"Scorer: {scoring}. Mean {_display_value(payload.get('mean'))}; "
+            f"standard deviation {_display_value(payload.get('standard_deviation'))}; "
+            f"folds: {payload.get('folds', 'not recorded')}. "
+            "The dot is the mean; whiskers span one standard deviation across folds, not a confidence interval. "
+            + ("This negative-loss scorer is sign-inverted: values closer to zero are better."
+               if scoring.startswith("neg_") else "Interpret direction using the recorded scorer; small variation alone does not imply a good model.")
+        )
+    return captions.get(kind, "Persisted candidate diagnostic evidence.")
 
 
 class TargetDistributionFlowable(Flowable):
@@ -1894,7 +1954,7 @@ class EvidenceChartFlowable(Flowable):
         canvas.setFillColor(INK)
         canvas.setFont("Helvetica-Bold", 7.2)
         canvas.drawString(4 * mm, self.height - 7 * mm, _fit_text(self.title, 52))
-        plot = (11 * mm, 11 * mm, self.width - 16 * mm, self.height - 25 * mm)
+        plot = (15 * mm, 14 * mm, self.width - 20 * mm, self.height - 34 * mm)
         if self.kind == "actual_predicted":
             self._actual_predicted(plot)
         elif self.kind == "histogram":
@@ -1958,6 +2018,7 @@ class EvidenceChartFlowable(Flowable):
             return
         minimum = min(min(x, y) for x, y in points)
         maximum = max(max(x, y) for x, y in points)
+        self._ticks(plot, (minimum, maximum), (minimum, maximum))
         x, y, width, height = plot
         canvas = self.canv
         canvas.setStrokeColor(ORANGE)
@@ -1977,6 +2038,8 @@ class EvidenceChartFlowable(Flowable):
         bins = _histogram_counts(values, 12)
         self._axes(plot, x_label="Residual", y_label="Rows")
         self._draw_vertical_bars(plot, bins, BLUE)
+        if values:
+            self._ticks(plot, (min(values), max(values)), None)
 
     def _chronological(self, plot: tuple[float, float, float, float]) -> None:
         actual = []
@@ -1993,12 +2056,14 @@ class EvidenceChartFlowable(Flowable):
                 predicted.append((order, estimate))
         self._axes(plot, x_label="Holdout order", y_label="Target")
         self._draw_line_series(plot, [(actual, BLUE), (predicted, ORANGE)])
+        self._legend([("Actual", BLUE), ("Predicted", ORANGE)])
 
     def _confusion_matrix(self, plot: tuple[float, float, float, float]) -> None:
         matrix = list((self.payload or {}).get("matrix") or [])
         labels = [str(item) for item in (self.payload or {}).get("labels") or []]
         if not matrix:
             return
+        self._axes(plot, x_label="Predicted class", y_label="Actual class")
         matrix = [list(row)[:8] for row in matrix[:8]]
         labels = labels[: len(matrix)]
         x, y, width, height = plot
@@ -2033,7 +2098,7 @@ class EvidenceChartFlowable(Flowable):
         y_label = "True positive rate" if self.kind == "roc" else "Precision"
         self._axes(plot, x_label=x_label, y_label=y_label)
         series = []
-        for index, curve in enumerate(self.payload or []):
+        for index, curve in enumerate((self.payload or [])[:5]):
             points = [
                 (_finite_number(point.get(x_key)), _finite_number(point.get(y_key)))
                 for point in curve.get("points") or []
@@ -2041,6 +2106,8 @@ class EvidenceChartFlowable(Flowable):
             ]
             series.append(([(x, y) for x, y in points if x is not None and y is not None], self.SERIES_COLORS[index % len(self.SERIES_COLORS)]))
         self._draw_line_series(plot, series, fixed_bounds=(0.0, 1.0, 0.0, 1.0))
+        self._legend([(str(curve.get("label", index)), self.SERIES_COLORS[index % len(self.SERIES_COLORS)])
+                      for index, curve in enumerate(self.payload or [])])
         if self.kind == "roc":
             x, y, width, height = plot
             self.canv.setStrokeColor(MUTED)
@@ -2070,6 +2137,7 @@ class EvidenceChartFlowable(Flowable):
             )
         self._axes(plot, y_label="Score")
         self._draw_grouped_bars(plot, groups, maximum=1.0)
+        self._legend([("Precision", BLUE), ("Recall", ORANGE), ("F1", GREEN)])
 
     def _learning_curve(self, plot: tuple[float, float, float, float]) -> None:
         points = self.payload.get("points") or []
@@ -2089,14 +2157,26 @@ class EvidenceChartFlowable(Flowable):
                 ([(x, y) for x, y in validation if x is not None and y is not None], ORANGE),
             ],
         )
+        self._legend([("Training", BLUE), ("Validation", ORANGE)])
 
     def _cross_validation(self, plot: tuple[float, float, float, float]) -> None:
-        values = [
-            ("Mean", _finite_number(self.payload.get("mean"), 0.0) or 0.0),
-            ("Std dev", _finite_number(self.payload.get("standard_deviation"), 0.0) or 0.0),
-        ]
-        self._axes(plot)
-        self._draw_signed_category_bars(plot, values)
+        mean = _finite_number(self.payload.get("mean"), 0.0) or 0.0
+        deviation = abs(_finite_number(self.payload.get("standard_deviation"), 0.0) or 0.0)
+        extent = deviation * 1.5 or max(abs(mean) * 0.1, 0.1)
+        self._axes(plot, y_label="Recorded CV score")
+        self._ticks(plot, None, (mean - extent, mean + extent))
+        x, y, width, height = plot
+        center = x + width / 2
+        bottom = y + _scale(mean - deviation, mean - extent, mean + extent) * height
+        top = y + _scale(mean + deviation, mean - extent, mean + extent) * height
+        self.canv.setStrokeColor(BLUE)
+        self.canv.setFillColor(BLUE)
+        self.canv.setLineWidth(1.2)
+        self.canv.line(center, bottom, center, top)
+        for endpoint in (bottom, top):
+            self.canv.line(center - 5, endpoint, center + 5, endpoint)
+        self.canv.circle(center, y + height / 2, 2.5, stroke=0, fill=1)
+        self._legend([("Mean +/- 1 SD", BLUE)])
 
     def _fold_metrics(self, plot: tuple[float, float, float, float]) -> None:
         folds = self.payload.get("fold_metrics") or []
@@ -2110,6 +2190,7 @@ class EvidenceChartFlowable(Flowable):
             series.append(([(x, y) for x, y in points if y is not None], self.SERIES_COLORS[index]))
         self._axes(plot, x_label="Fold", y_label="Metric")
         self._draw_line_series(plot, series)
+        self._legend([(name, self.SERIES_COLORS[index]) for index, name in enumerate(names)])
 
     def _category_bars(
         self,
@@ -2132,6 +2213,7 @@ class EvidenceChartFlowable(Flowable):
             return
         x, y, width, height = plot
         maximum = max(values) or 1.0
+        self._ticks(plot, None, (0, maximum))
         slot = width / len(values)
         self.canv.setFillColor(color)
         for index, value in enumerate(values):
@@ -2154,6 +2236,7 @@ class EvidenceChartFlowable(Flowable):
             return
         x, y, width, height = plot
         group_width = width / len(groups)
+        self._ticks(plot, None, (0, maximum))
         bar_width = group_width * 0.72 / 3
         for group_index, (label, values) in enumerate(groups):
             start = x + group_index * group_width + group_width * 0.14
@@ -2205,6 +2288,7 @@ class EvidenceChartFlowable(Flowable):
             x_min, x_max = min(x_values), max(x_values)
             y_min, y_max = min(y_values), max(y_values)
         x, y, width, height = plot
+        self._ticks(plot, (x_min, x_max), (y_min, y_max))
         for points, color in populated:
             self.canv.setStrokeColor(color)
             self.canv.setFillColor(color)
@@ -2217,6 +2301,32 @@ class EvidenceChartFlowable(Flowable):
                     self.canv.line(previous[0], previous[1], px, py)
                 self.canv.circle(px, py, 0.8, stroke=0, fill=1)
                 previous = (px, py)
+
+    def _ticks(self, plot, x_bounds, y_bounds) -> None:
+        x, y, width, height = plot
+        self.canv.setFillColor(MUTED)
+        self.canv.setFont("Helvetica", 5.5)
+        for index in range(3):
+            fraction = index / 2
+            if x_bounds is not None:
+                value = x_bounds[0] + fraction * (x_bounds[1] - x_bounds[0])
+                self.canv.drawCentredString(x + width * fraction, y - 8, _axis_value(value))
+            if y_bounds is not None:
+                value = y_bounds[0] + fraction * (y_bounds[1] - y_bounds[0])
+                self.canv.drawRightString(x - 3, y + height * fraction - 2, _axis_value(value))
+
+    def _legend(self, items) -> None:
+        # Full class/metric names are retained in the caption/table; keep the key
+        # inside the chart and distinguish every displayed series by its label.
+        for index, (label, color) in enumerate(items[:5]):
+            column, row = index % 2, index // 2
+            x = (15 + column * 27) * mm
+            y = self.height - (11 + row * 3) * mm
+            self.canv.setFillColor(color)
+            self.canv.rect(x, y, 4, 2, stroke=0, fill=1)
+            self.canv.setFillColor(INK)
+            self.canv.setFont("Helvetica", 5)
+            self.canv.drawString(x + 6, y - 1, _fit_text(label, 25))
 
 
 def _finite_number(value: Any, default: float | None = None) -> float | None:

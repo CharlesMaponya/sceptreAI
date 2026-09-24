@@ -251,3 +251,90 @@ describe("project access and settings", () => {
     expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument();
   });
 });
+
+describe("project cleanup and invitation lifecycle", () => {
+  beforeEach(() => { setSession(session); vi.restoreAllMocks(); });
+
+  it("confirms project cleanup, preserves a rejection, and permits an explicit retry", async () => {
+    let attempts = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation((_url, options) => {
+      if (options?.method === "DELETE") {
+        attempts += 1;
+        return attempts === 1 ? response({ detail: "Active deployments must be cleaned up" }, 409) : response({ status: "pending" });
+      }
+      return response({ id: "project-1", name: "Cleanup project", description: null, status: "active",
+        settings: { deletion_in_progress: true, deletion_error: "Storage temporarily unavailable" } });
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/projects/project-1/settings"]}><Routes>
+      <Route path="/projects/:projectId/settings" element={<SettingsPage />} />
+      <Route path="/projects" element={<h1>Project list</h1>} />
+    </Routes></MemoryRouter></QueryClientProvider>);
+    const retry = await screen.findByRole("button", { name: "Retry project cleanup" });
+    expect(screen.getByText(/Storage temporarily unavailable/)).toBeInTheDocument();
+    await userEvent.click(retry);
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(attempts).toBe(0);
+    await userEvent.click(retry);
+    await userEvent.click(screen.getByRole("button", { name: "Delete project" }));
+    expect(await screen.findByText("Active deployments must be cleaned up")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Delete project" }));
+    expect(await screen.findByRole("heading", { name: "Project list" })).toBeInTheDocument();
+    expect(attempts).toBe(2);
+  });
+
+  it("revokes a newly issued token and removes a member only after confirmation", async () => {
+    const invitation = { id: "invite-1", role: "viewer", expires_at: "2099-01-01T00:00:00Z", max_uses: 1, used_count: 0, revoked_at: null as string | null };
+    let issued = false;
+    let removed = false;
+    const requests: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
+      const url = String(input);
+      if (options?.method === "DELETE") {
+        requests.push(url);
+        if (url.includes("/members/")) removed = true;
+        else invitation.revoked_at = "2026-09-21T00:00:00Z";
+        return response({});
+      }
+      if (options?.method === "POST") { issued = true; return response({ ...invitation, invite_token: "test-invite-token-123" }); }
+      if (url.includes("/share-links?")) return response(issued ? [invitation] : []);
+      return response(removed ? [] : [{ id: "member-1", email: "member@example.test", role: "editor", full_name: "Member", accepted_at: null }]);
+    });
+    renderProjectPage(<MembersPage />, "/projects/project-1/members");
+    await userEvent.click(await screen.findByRole("button", { name: "Remove access" }));
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(requests).toEqual([]);
+    await userEvent.click(screen.getByRole("button", { name: "Create invite token" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Revoke invite" }));
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await userEvent.click(screen.getByRole("button", { name: "Revoke invite" }));
+    await userEvent.click(screen.getAllByRole("button", { name: "Revoke invite" }).at(-1)!);
+    expect(await screen.findByText("Revoked", { exact: true })).toBeInTheDocument();
+    expect(screen.queryByText("test-invite-token-123")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Remove access" }));
+    await userEvent.click(screen.getAllByRole("button", { name: "Remove access" }).at(-1)!);
+    expect(await screen.findByText("No collaborators yet")).toBeInTheDocument();
+    expect(requests).toEqual(["/api/v1/projects/project-1/share-links/invite-1", "/api/v1/projects/project-1/members/member-1"]);
+  });
+
+  it("paginates invitation history and distinguishes expired, used, and revoked tokens", async () => {
+    const makeInvite = (index: number) => ({ id: `invite-${index}`, role: "viewer", expires_at: index === 0 ? "2000-01-01" : "2099-01-01",
+      max_uses: 1, used_count: index === 1 ? 1 : 0, revoked_at: index === 2 ? "2026-01-01" : null });
+    const urls: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input); urls.push(url);
+      if (url.includes("/share-links?")) return response(url.includes("offset=10") ? [makeInvite(12)] : Array.from({ length: 11 }, (_, index) => makeInvite(index)));
+      return response([]);
+    });
+    renderProjectPage(<MembersPage />, "/projects/project-1/members");
+    expect(await screen.findByText("Expired", { exact: true })).toBeInTheDocument();
+    expect(screen.getByText("Used", { exact: true })).toBeInTheDocument();
+    expect(screen.getByText("Revoked", { exact: true })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(await screen.findByText("Page 2")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Previous" })).toBeEnabled());
+    await userEvent.click(screen.getByRole("button", { name: "Previous" }));
+    expect(await screen.findByText("Page 1")).toBeInTheDocument();
+    expect(urls.some(url => url.includes("share-links?offset=10"))).toBe(true);
+  });
+});

@@ -868,12 +868,18 @@ def test_cleanup_preview_protects_active_deployment_artifacts() -> None:
     assert not db.deleted
 
 
-def test_register_model_persists_selected_nonwinning_artifact_and_version(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    "parent_status",
+    [RunStatus.SUCCEEDED, RunStatus.RUNNING, RunStatus.FAILED, RunStatus.CANCELLED],
+)
+def test_register_model_persists_selected_nonwinning_artifact_and_version(
+    monkeypatch, parent_status
+) -> None:
     project_id = uuid.uuid4()
     user = SimpleNamespace(id=uuid.uuid4())
     parent = SimpleNamespace(
         id=uuid.uuid4(),
-        status=RunStatus.SUCCEEDED,
+        status=parent_status,
         project_id=project_id,
         target_column="target",
         task_type=TaskType.CLASSIFICATION,
@@ -899,7 +905,7 @@ def test_register_model_persists_selected_nonwinning_artifact_and_version(monkey
                 "model_artifact_uri": "s3://models/model.joblib",
                 "model_artifact_sha256": "a" * 64,
                 "metrics": {"accuracy": 0.91},
-            }
+            },
         ],
     }
 
@@ -953,12 +959,20 @@ def test_register_model_persists_selected_nonwinning_artifact_and_version(monkey
 @pytest.mark.parametrize(
     ("parent_status", "leaderboard", "message"),
     [
-        (RunStatus.RUNNING, [], "must succeed"),
+        (RunStatus.RUNNING, [], "not found"),
+        (RunStatus.RUNNING, [{"model": "M", "status": "running"}], "not found"),
+        (RunStatus.RUNNING, [{"model": "M", "status": "failed"}], "not found"),
+        (RunStatus.RUNNING, [{"model": "M", "status": "pending"}], "not found"),
         (RunStatus.SUCCEEDED, [], "not found"),
         (
-            RunStatus.SUCCEEDED,
+            RunStatus.RUNNING,
             [{"model": "M", "status": "succeeded"}],
             "durable model artifact",
+        ),
+        (
+            RunStatus.RUNNING,
+            [{"model": "M", "status": "succeeded", "model_artifact_uri": "s3://m/model"}],
+            "integrity verification",
         ),
     ],
 )
@@ -1584,3 +1598,72 @@ def test_pending_deployment_remains_provisioning_until_resources_exist(monkeypat
     assert result[0].runtime_state == "progressing"
     assert run.failure_code is None
     assert run.finished_at is None
+
+
+@pytest.mark.parametrize("operation", ["stop", "start", "cleanup"])
+@pytest.mark.parametrize("kubernetes_status", [404, 403, 503])
+def test_deployment_lifecycle_handles_missing_runtime_without_hiding_provider_failures(
+    monkeypatch, operation, kubernetes_status
+):
+    from unittest.mock import MagicMock
+
+    from kubernetes.client import ApiException
+
+    run = SimpleNamespace(
+        id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        k8s_job_name="saved-serving",
+        status=RunStatus.SUCCEEDED if operation == "stop" else RunStatus.CANCELLED,
+        tags={},
+        params={"replicas": 2},
+        finished_at=datetime.now(UTC),
+        failure_code=None,
+        failure_message=None,
+    )
+    db, client = MagicMock(), MagicMock()
+    monkeypatch.setattr(operations_service, "_locked_deployment", lambda *a: run)
+    method = {
+        "stop": "shutdown_model_deployment",
+        "start": "start_model_deployment",
+        "cleanup": "delete_model_deployment",
+    }[operation]
+    getattr(client, method).side_effect = ApiException(status=kubernetes_status)
+    action = getattr(operations_service, f"{operation}_model_deployment")
+    if kubernetes_status == 404 and operation != "start":
+        action(db, SimpleNamespace(), run.project_id, run.id, client)
+        assert run.status == RunStatus.CANCELLED
+        if operation == "cleanup":
+            assert run.tags["runtime_cleaned_at"]
+    else:
+        expected = HTTPException if kubernetes_status == 404 else ApiException
+        with pytest.raises(expected) as error:
+            action(db, SimpleNamespace(), run.project_id, run.id, client)
+        assert (
+            error.value.status_code
+            if isinstance(error.value, HTTPException)
+            else error.value.status
+        ) == (409 if kubernetes_status == 404 else kubernetes_status)
+        assert "runtime_cleaned_at" not in run.tags
+        db.flush.assert_not_called()
+
+
+@pytest.mark.parametrize("operation", ["stop", "cleanup"])
+def test_deployment_cleanup_does_not_require_a_runtime_that_was_never_created(
+    monkeypatch, operation
+):
+    from unittest.mock import MagicMock
+
+    run = SimpleNamespace(
+        id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        k8s_job_name=None,
+        status=RunStatus.FAILED if operation == "stop" else RunStatus.CANCELLED,
+        tags={},
+    )
+    monkeypatch.setattr(operations_service, "_locked_deployment", lambda *a: run)
+    client = MagicMock()
+    getattr(operations_service, f"{operation}_model_deployment")(
+        MagicMock(), SimpleNamespace(), run.project_id, run.id, client
+    )
+    assert run.status == RunStatus.CANCELLED
+    assert not client.mock_calls

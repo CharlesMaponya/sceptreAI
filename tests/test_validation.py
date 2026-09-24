@@ -409,13 +409,20 @@ class _AnalysisClient:
         self.created.append(manifest)
 
 
-def test_analysis_launch_persists_desired_state_without_inline_side_effect(monkeypatch) -> None:
+@pytest.mark.parametrize("busy", [False, True])
+def test_analysis_launch_persists_desired_state_without_inline_side_effect(
+    monkeypatch, busy
+) -> None:
     source = _source_run()
     version = SimpleNamespace(id=uuid.uuid4())
     db = _AnalysisDB()
     client = _AnalysisClient()
     monkeypatch.setattr(validation_service, "_lock_training_admission", lambda *_: None)
-    monkeypatch.setattr(validation_service, "estimate_training_run", lambda *_: _estimate())
+    estimate = _estimate()
+    if busy:
+        estimate.can_launch = False
+        estimate.blockers = ["Concurrent training limit reached (1/1)."]
+    monkeypatch.setattr(validation_service, "estimate_training_run", lambda *_: estimate)
 
     result = validation_service._launch_analysis_run(
         db,
@@ -433,6 +440,7 @@ def test_analysis_launch_persists_desired_state_without_inline_side_effect(monke
     assert result.run.params["model_mlflow_run_id"] == "winner-run"
     assert result.manifest["metadata"]["name"].startswith("analysis-")
     assert db.added[0].tags["desired_state"] == "kubernetes_submission_pending"
+    assert db.added[0].tags["waiting_for_capacity"] is busy
     assert client.created == []
 
 

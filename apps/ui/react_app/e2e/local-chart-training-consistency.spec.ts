@@ -170,7 +170,7 @@ test("active project training disables estimation and re-enables it when the run
   }
 });
 
-test("a lower-ranked successful candidate opens deployment with that exact model selected", async ({ page, isMobile }, testInfo) => {
+test("a completed candidate opens deployment while another candidate is still training", async ({ page, isMobile }, testInfo) => {
   test.skip(!process.env.LIVE_RECOVERY || isMobile, "Isolated selection fixture");
   test.setTimeout(3 * 60_000);
   await login(page);
@@ -190,16 +190,20 @@ test("a lower-ranked successful candidate opens deployment with that exact model
     await page.locator('input[type="file"]').setInputFiles({ name: "choice.csv", mimeType: "text/csv", buffer: Buffer.from("x,target\n1,2\n2,4\n3,6\n") });
     await page.getByRole("dialog").getByRole("button", { name: "Upload dataset", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`${projectUrl}$`), { timeout: 90_000 });
-    // Synthetic completed candidates validate selection only, without registering
+    // Synthetic mixed-status candidates validate selection only, without registering
     // fake artifacts or replacing any of the user's deployed models.
     sql(`INSERT INTO model_runs (id,project_id,dataset_version_id,created_by_id,run_kind,status,task_type,run_name,params,tags,finished_at)
-      SELECT gen_random_uuid(),p.id,v.id,p.owner_id,'TRAINING','SUCCEEDED','REGRESSION','UI candidate selection fixture',
-      '{"candidate_models":["Ridge","DummyRegressor"],"candidate_limit":2}'::jsonb,
-      '{"leaderboard_primary_metric":"rmse","leaderboard":[{"model":"Ridge","status":"succeeded","cost_tier":"low","rank":1,"primary_score":0.1,"duration_seconds":1,"error":null,"metrics":{"rmse":0.1}},{"model":"DummyRegressor","status":"succeeded","cost_tier":"low","rank":2,"primary_score":2.0,"duration_seconds":0.1,"error":null,"metrics":{"rmse":2.0}}]}'::jsonb,now()
+      SELECT gen_random_uuid(),p.id,v.id,p.owner_id,'TRAINING','RUNNING','REGRESSION','UI candidate selection fixture',
+      '{"candidate_models":["Ridge","DummyRegressor","RandomForestRegressor"],"candidate_limit":3}'::jsonb,
+      '{"completed_candidates":2,"current_candidate":"RandomForestRegressor","candidate_phase":"hyperparameter_search","leaderboard_primary_metric":"rmse","leaderboard":[{"model":"Ridge","status":"succeeded","cost_tier":"low","rank":1,"primary_score":0.1,"duration_seconds":1,"error":null,"metrics":{"rmse":0.1}},{"model":"DummyRegressor","status":"succeeded","cost_tier":"low","rank":2,"primary_score":2.0,"duration_seconds":0.1,"error":null,"metrics":{"rmse":2.0}},{"model":"RandomForestRegressor","status":"running","cost_tier":"medium","rank":null,"primary_score":null,"duration_seconds":null,"error":null,"metrics":{}}]}'::jsonb,NULL
       FROM projects p JOIN dataset_versions v ON v.project_id=p.id WHERE p.id='${projectId}' AND p.name LIKE 'UI model choice check %';`);
     await page.goto(`${projectUrl}/runs`);
     const selected = page.locator(".training-model-row").filter({ hasText: "DummyRegressor" });
     await expect(selected).toContainText("Rank 2");
+    await expect(page.locator(".run-summary")).toContainText("Running");
+    await expect(page.getByText("Awaiting run completion", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Deploy RandomForestRegressor", exact: true })).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath("completed-candidate-action.png"), fullPage: true });
     await selected.getByRole("link", { name: "Deploy DummyRegressor", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Register a trained model" });
     await expect(dialog.getByLabel("Successful candidate")).toHaveValue("DummyRegressor");
@@ -207,6 +211,7 @@ test("a lower-ranked successful candidate opens deployment with that exact model
     await page.screenshot({ path: testInfo.outputPath("nonwinner-selected.png"), fullPage: true });
     await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   } finally {
+    sql(`UPDATE model_runs SET status='CANCELLED',finished_at=now() WHERE project_id='${projectId}' AND run_name='UI candidate selection fixture';`);
     await page.goto(`${projectUrl}/settings`);
     await page.getByRole("button", { name: "Delete project", exact: true }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Delete project", exact: true }).click();

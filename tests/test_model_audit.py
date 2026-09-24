@@ -389,6 +389,11 @@ def test_audit_pdf_is_branded_and_contains_complete_model_evidence() -> None:
     assert b"/Annots" in rendered
     assert b"Model governance document" in rendered
     assert b"Actual vs predicted" in rendered
+    assert b"perfect agreement" in rendered
+    assert b"actual minus predicted" in rendered
+    assert b"Training" in rendered and b"Validation" in rendered
+    assert b"not a confidence interval" in rendered
+    assert b"Mean +/- 1 SD" in rendered
     assert b"0.91" in rendered
     assert len(re.findall(rb"/Type\s*/Page\b", rendered)) == 10
     assert b"Task type and target visualization" in rendered

@@ -462,6 +462,48 @@ describe("core workflow integrations", () => {
     expect(click).not.toHaveBeenCalled();
   });
 
+  it("recalculates SHAP and keeps the new analysis selected over older successful evidence", async () => {
+    let launched = false;
+    let submitted: unknown;
+    const old = { ...run, id: "old-shap", run_kind: "explainability", status: "succeeded",
+      run_name: "Previous explanation", params: { model_name: "Ridge" } };
+    const fresh = { ...old, id: "new-shap", status: "running", run_name: "Fresh explanation" };
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
+      if (url.endsWith("/training/runs")) return response([run]);
+      if (url.endsWith("/leaderboard")) return response({ run_id: "run-1", status: "succeeded",
+        winner: "Ridge", entries: [{ model: "Ridge", status: "succeeded", cost_tier: "low", metrics: {} }] });
+      if (url.endsWith("/resources")) return response({ status: "succeeded" });
+      if (url.endsWith("/explanations") && options?.method === "POST") {
+        submitted = JSON.parse(String(options.body));
+        launched = true;
+        return response({ run: fresh });
+      }
+      if (url.endsWith("/analyses")) return response(launched ? [fresh, old] : [old]);
+      if (url.endsWith("/analyses/old-shap")) return response({ run_id: old.id, status: "succeeded",
+        model_name: "Ridge", metrics: {}, diagnostics: { sample_rows: 200, background_rows: 50,
+          analysis_pool_policy: "bounded_prepared_training_prefix" }, artifacts: [],
+        feature_importance: [{ feature: "old_feature", contribution_percent: 100 }] });
+      if (url.endsWith("/analyses/new-shap")) return response({ run_id: fresh.id, status: "running",
+        model_name: "Ridge", metrics: {}, diagnostics: {}, artifacts: [], feature_importance: [] });
+      return response([]);
+    });
+    renderRoute(<RunsPage />, "/projects/project-1/runs");
+    await userEvent.click(await screen.findByRole("tab", { name: "Validate & explain" }));
+    await userEvent.click(screen.getByRole("tab", { name: "SHAP explainability" }));
+    expect(await screen.findByText("old_feature")).toBeInTheDocument();
+    expect(screen.getByText(/Sample: 200 rows/)).toHaveTextContent("Background: 50 rows");
+    await userEvent.click(screen.getByRole("button", { name: "Recalculate SHAP" }));
+    await waitFor(() => expect(submitted).toEqual({ model_name: "Ridge", max_rows: 200,
+      expected_minutes: 10, force: true }));
+    expect(await screen.findByText(/Analysis is still running/)).toBeInTheDocument();
+    expect(screen.queryByText("old_feature")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "SHAP calculation underway" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: /Previous explanation/ }));
+    expect(await screen.findByText("old_feature")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "SHAP calculation underway" })).toBeDisabled();
+  });
+
   it("renders SHAP features automatically when explainability completes", async () => {
     let resultRequests = 0;
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {

@@ -28,6 +28,28 @@ from automl_api.services import final_test_authority as authority
 from automl_api.services import workflow_state as state
 
 
+@pytest.mark.parametrize("owner", ["worker-a", "another-worker"])
+def test_capacity_deferral_preserves_retry_budget_and_requires_lease(owner):
+    db = MagicMock()
+    row = SimpleNamespace(
+        status=OutboxStatus.CLAIMED, lease_owner=owner, delivery_attempts=1,
+        lease_expires_at=datetime.now(UTC) + timedelta(seconds=60),
+    )
+    if owner != "worker-a":
+        with pytest.raises(state.StaleFence):
+            state.defer_outbox(db, row, worker_id="worker-a")
+        assert row.status == OutboxStatus.CLAIMED
+        assert row.delivery_attempts == 1
+        db.flush.assert_not_called()
+    else:
+        before = datetime.now(UTC)
+        state.defer_outbox(db, row, worker_id="worker-a")
+        assert row.status == OutboxStatus.PENDING
+        assert row.delivery_attempts == 0
+        assert before < row.available_at <= datetime.now(UTC) + timedelta(seconds=5)
+        assert row.lease_owner is None and row.lease_expires_at is None
+
+
 def _command(**overrides):
     values = {
         "project_id": uuid.uuid4(),

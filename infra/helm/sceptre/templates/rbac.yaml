@@ -198,7 +198,7 @@ metadata:
     {{- include "sceptre.labels" . | nindent 4 }}
 rules:
   - apiGroups: [""]
-    resources: ["nodes"]
+    resources: ["nodes", "pods"]
     verbs: ["get", "list"]
   - apiGroups: ["scheduling.k8s.io"]
     resources: ["priorityclasses"]
