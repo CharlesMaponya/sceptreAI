@@ -969,6 +969,7 @@ def test_analysis_waits_for_capacity_without_spending_retry_budget(connected, po
     entry.delivery_attempts = 3
     db = MagicMock()
     db.scalar.side_effect = [run, submitted]
+    db.get.return_value = entry
     k8s = MagicMock()
     k8s.capacity_snapshot.return_value.capacity = SimpleNamespace(
         connected=connected, active_training_jobs=pods

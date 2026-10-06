@@ -5,11 +5,10 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
-from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from automl_api.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from automl_api.models.base import Base, StoredEnum, TimestampMixin, UUIDPrimaryKeyMixin
 from automl_api.models.enums import ProjectRole, ProjectStatus
 
 if TYPE_CHECKING:
@@ -34,7 +33,7 @@ class Project(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(180), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     status: Mapped[ProjectStatus] = mapped_column(
-        SQLEnum(ProjectStatus, name="project_status", native_enum=False),
+        StoredEnum(ProjectStatus),
         nullable=False,
         default=ProjectStatus.ACTIVE,
         server_default=ProjectStatus.ACTIVE.value,
@@ -125,7 +124,7 @@ class ProjectMembership(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("users.id", ondelete="SET NULL")
     )
     role: Mapped[ProjectRole] = mapped_column(
-        SQLEnum(ProjectRole, name="project_role", native_enum=False),
+        StoredEnum(ProjectRole),
         nullable=False,
         default=ProjectRole.VIEWER,
         server_default=ProjectRole.VIEWER.value,
@@ -166,7 +165,7 @@ class ProjectShareLink(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     token_hash: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
     role: Mapped[ProjectRole] = mapped_column(
-        SQLEnum(ProjectRole, name="project_share_role", native_enum=False),
+        StoredEnum(ProjectRole),
         nullable=False,
         default=ProjectRole.VIEWER,
         server_default=ProjectRole.VIEWER.value,

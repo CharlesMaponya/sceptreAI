@@ -1,0 +1,44 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-10-05T11:20:31.038589+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: Schema verifier structural drift detection
+tests:
+  tests: 7
+  failures: 0
+  errors: 0
+  skipped: 0
+application_schema_positive_control: 'Database schema is current: 42 tables, revision(s)
+  0010_phase3_contract_target.'
+source_sha256:
+  scripts/verify_database_schema.py: 27ea036e6775bd626cd5859f0d886f8a11c7911a4fe2dc99056276ad052e36b6
+  tests/test_database_schema_verifier.py: a9fb2a87ed1798315721509f51435841d247f1c7ab50359b87a6e0ba37fdb0c0
+artifacts:
+  .unlazy/phase1-champion/schema-drift-before.log: 8746a7299c24e50a9c98d8da4cffa71b9a98f45b04ee5b630e85ac19a119b915
+  .unlazy/phase1-champion/schema-structural.xml: d05691f2ce3cca6374e2104325282f784e6578eae5c08692c55541ea8c699173
+  .unlazy/phase1-champion/schema-full-positive.log: 617c229b76e3c5a8f0b55d7ad88d1d9987643ca5a241abb788c0d57b76cd4980
+  .unlazy/phase1-champion/schema-structural-gates.log: 1e34cbca55052c1dd3711539a223f890e90840ad322af73240a8fde75d860226
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+verified:
+- Unexpected columns rejected
+- Primary-key column identity/order compared
+- Foreign-key delete/update actions, deferrability, initial timing and match mode
+  compared
+- Referenced schemas retained in foreign-key targets
+- Seven real PostgreSQL mutations missed by old verifier now rejected; unchanged fixture
+  accepted
+- Current fully migrated application schema accepted
+remaining:
+- Check/default expression normalization currently removes grouping/literal case and
+  can mask semantic drift
+- Index expressions/predicates/order/options, constraint validation state and remaining
+  schema semantics need negative coverage
+- Expand/backfill compatibility and every-supported-schema production-sized migration
+  rehearsal
+- All other retained Phase 1 requirements

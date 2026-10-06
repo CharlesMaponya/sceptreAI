@@ -7,8 +7,9 @@ to boot with password login enabled.
 
 from __future__ import annotations
 
-from automl_api.core.config import Settings
 from urllib.parse import urlsplit
+
+from automl_api.core.config import Settings
 
 GOVERNED_ENVIRONMENTS = {"staging", "production"}
 

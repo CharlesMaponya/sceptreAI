@@ -22,6 +22,7 @@ dependencies = [
     "pandas==2.3.3",
     "polars==1.43.2",
     "psycopg[binary]>=3.1",
+    "prometheus-client==0.26.0",
     # Transitive via azure-*/mlflow/google-auth; floored to the patched
     # release for trivy HIGH findings. mlflow caps cryptography<50, so
     # CVE-2026-69249 is fixed by 49.0.0 while CVE-2026-69247 (fix 50.0.0)
@@ -36,6 +37,7 @@ dependencies = [
     "reportlab>=4.2",
     "s3fs==2026.7.0",
     "sqlalchemy>=2.0",
+    "sqlglot==30.21.0",
     "uvicorn[standard]>=0.30",
 ]
 

@@ -5,11 +5,10 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, text
-from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from automl_api.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from automl_api.models.base import Base, StoredEnum, TimestampMixin, UUIDPrimaryKeyMixin
 from automl_api.models.enums import AuthProvider, GlobalRole
 
 if TYPE_CHECKING:
@@ -27,13 +26,13 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     sso_issuer: Mapped[str | None] = mapped_column(String(512))
     sso_subject: Mapped[str | None] = mapped_column(String(512), unique=True)
     auth_provider: Mapped[AuthProvider] = mapped_column(
-        SQLEnum(AuthProvider, name="auth_provider", native_enum=False),
+        StoredEnum(AuthProvider),
         nullable=False,
         default=AuthProvider.SIMPLE,
         server_default=AuthProvider.SIMPLE.value,
     )
     global_role: Mapped[GlobalRole] = mapped_column(
-        SQLEnum(GlobalRole, name="global_role", native_enum=False),
+        StoredEnum(GlobalRole),
         nullable=False,
         default=GlobalRole.MEMBER,
         server_default=GlobalRole.MEMBER.value,

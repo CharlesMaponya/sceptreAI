@@ -1,0 +1,62 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-09-26T19:55:41.737587+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: Refit attestation and durable evaluator registration; not actual refit execution
+tests:
+  tests: 96
+  failures: 0
+  errors: 0
+  skipped: 0
+authority_image: k3d-sceptre-registry.localhost:5111/sceptreai@sha256:d7065b326365c2608e837f89854c2e17941f1f018e4a7e4ec4e69c6112411a7e
+source_overlay_not_hermetic: true
+live_registered_evaluator:
+  allocation_id: 1cb781f8-9e46-4107-b4a0-e00f52e82c96
+  checks:
+  - noncanonical_and_unauthenticated_denied
+  - durable_refit_attestation_and_dynamic_evaluator_identity
+  - one_of_five_receives_grant
+  - receipt_signature_and_binding
+  - version_pinned_reads_and_sha256
+  - unsigned_reads_wrong_keys_and_writes_denied
+  - immutable_result_receipt
+  evaluator_token_digest: 254c610dc25589d4cbca89d91b5c7cd1f59af811842b11e67160e2fc017602b9
+  manifest_digest: decb947e422a448b2a38d346458e9b1f7b100742bd0d7967f0c50e405b1234a1
+  production_qualified: false
+  receipt_digest: 5de08a1d61963b35ff7f921d2d77f80db1f73e72bfb563fb49ef6a5213431c2f
+  status: passed
+live_after_restart:
+  allocation_id: 1cb781f8-9e46-4107-b4a0-e00f52e82c96
+  checks:
+  - noncanonical_and_unauthenticated_denied
+  - durable_refit_attestation_and_dynamic_evaluator_identity
+  - restart_does_not_reissue_credentials
+  - immutable_result_receipt
+  evaluator_token_digest: 254c610dc25589d4cbca89d91b5c7cd1f59af811842b11e67160e2fc017602b9
+  manifest_digest: decb947e422a448b2a38d346458e9b1f7b100742bd0d7967f0c50e405b1234a1
+  production_qualified: false
+  receipt_digest: 5de08a1d61963b35ff7f921d2d77f80db1f73e72bfb563fb49ef6a5213431c2f
+  status: passed
+source_sha256:
+  apps/api/automl_api/qualification_control.py: cfacb9a99333f08bf375c93f2c6ccbf06dce9d818509fc282ac2c3a7a0710e72
+  apps/api/automl_api/services/final_evaluator_identity.py: eed6522ccf8b8bbbdc7e0bd424d08c661a09e059a8afb6854a4ef46c9efd348c
+  apps/api/automl_api/services/final_test_authority.py: 06daf83ba5ed94569bbc326393c12e6f8a9111f49db5ad04fc96282a70146795
+  apps/api/automl_api/services/final_test_credentials.py: f4c0849d876387c9c23d7c4ca497e531dc499a446523d80fa2e2f90b973c4734
+  tests/test_champion_identity.py: 224b6e825f73307968cce46363346f64c9cc17ee19faf5ece4b63f45c304d8c2
+  scripts/validate_champion_credentials.py: 0d3092bf8e1a8c48f39e39185fbc3d3a2e1c1714553c5c1ebd80d52e0a7c28ba
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+limitations:
+- Refit worker, frozen artifact CAS, evaluator worker and scheduler integration remain
+  missing.
+- Manifests remain operator-installed; no native cloud account qualification.
+- The local attestation references a synthetic pipeline digest and does not prove
+  model training.
+- Phase 1 migration, pooler, broader recovery and deletion requirements remain open.
+initial_failure: JSONB key ordering changed replay JWT bytes; deterministic claim
+  ordering repaired and verified.

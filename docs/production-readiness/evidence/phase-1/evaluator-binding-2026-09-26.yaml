@@ -1,0 +1,45 @@
+date: '2026-09-26'
+phase: '1'
+record_type: unsigned_local_evaluator_binding_verification
+production_qualified: false
+context: k3d-sceptre
+namespace: qa-phase1
+authority_image: k3d-sceptre-registry.localhost:5111/sceptreai@sha256:a0f1c5f47885fc9436be5993b659b2b0aede94724ba94ab11147f5a3f60d9f67
+tests:
+  tests: 79
+  failures: 0
+  errors: 0
+  skipped: 0
+legacy_postgresql_authority_tests: 2
+live_checks:
+- verified_https
+- public_key_receipts
+- evaluator_and_pipeline_binding
+- readiness
+- identity_rejection
+- allocation_replay_and_conflict
+- three_provider_open_race
+- concurrent_commit_replay
+- terminal_conflict
+- bound signed receipt identical after service replacement
+- Deployment uses Recreate with two ready replicas
+receipt_fingerprint: badda6bc6a5c9dc9ef403dfe1afd4174209c3c73d9c928c974672615440ec754
+schema_changes: none; binding stored in existing signed receipt payload
+limitations:
+- Binding is preregistered in trusted identity configuration; actual refit pipeline
+  CAS and workload identity issuance remain open.
+- No provider object credentials are minted; broker one-grant ledger and failed-mint
+  handling remain open.
+- Local source overlay reuses API image dependencies; not a hermetic release qualification.
+- Same local k3d environment; no production cloud or large-load qualification.
+source_sha256:
+  apps/api/automl_api/qualification_control.py: 7844da1fae94604e70cbb4bf396f6bb5d8aeb5d9821bf7ca83846b4bb8fdb30a
+  apps/api/automl_api/services/final_test_authority.py: 24c5cf28e0d5279eb3f99b56fd5fe4ffaa57f5c4dc1875aff1cc01210e2bba67
+  services/qualification-control/chart/templates/authority.yaml: b15b081e81cb13dcc9c0a381e257284ebd75fb8d5de858108548b21b5608cc3e
+  scripts/validate_qualification_authority.py: d8937e8991b9672737b6bdeee1de3c903b7213c57121988e14af94ec6e9c3ea3
+  tests/test_qualification_control.py: 92bee13ba9ce1967135739b0db16dd36a859430c9a5f2bcc5422d3707d2af44a
+  tests/test_phase1_workflow_state.py: 85ac03c12020c1e7660cb3e8853c1d768ee36567777d6f92491c693836ac3e95
+increment_gates:
+  met: 4
+  unmet: 0
+  abandoned: 0

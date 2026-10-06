@@ -42,7 +42,10 @@ def login() -> RedirectResponse:
     except (httpx.HTTPError, KeyError, ValueError) as exc:
         raise HTTPException(status_code=503, detail="Organization sign-in is unavailable.") from exc
     state, nonce, verifier = (secrets.token_urlsafe(32) for _ in range(3))
-    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    challenge = (
+        base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest())
+        .rstrip(b"=").decode()
+    )
     callback = f"{settings.public_app_url.rstrip('/')}/api/v1/auth/oidc/callback"
     query = urlencode({"client_id": settings.oidc_client_id, "response_type": "code",
                        "redirect_uri": callback, "scope": "openid profile email",
@@ -91,10 +94,15 @@ def callback(request: Request, db: Annotated[Session, Depends(get_db)],
         db.commit()
     except (TokenError, jwt.PyJWTError, httpx.HTTPError, KeyError, ValueError) as exc:
         db.rollback()
-        raise HTTPException(status_code=400, detail="Organization sign-in could not be verified. Start sign-in again.") from exc
+        raise HTTPException(
+            status_code=400,
+            detail="Organization sign-in could not be verified. Start sign-in again.",
+        ) from exc
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(status_code=409, detail="This identity conflicts with an existing account.") from exc
+        raise HTTPException(
+            status_code=409, detail="This identity conflicts with an existing account."
+        ) from exc
     response = RedirectResponse(f"{settings.public_app_url.rstrip('/')}/auth?session=browser", 303)
     response.delete_cookie(STATE_COOKIE, path=STATE_PATH)
     set_browser_session(response, tokens)

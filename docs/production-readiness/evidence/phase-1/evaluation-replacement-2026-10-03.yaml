@@ -1,0 +1,41 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-10-03T16:36:59.005804+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: Single pre-open evaluator replacement through existing planning/key/authority/submission
+  path
+tests:
+  tests: 367
+  failures: 0
+  errors: 0
+  skipped: 0
+source_sha256:
+  apps/api/automl_api/services/evaluation_keys.py: c44cf519ba684f73e36748b3c88514118a181fb7a5c476f5ae860d64652d4b7e
+  apps/api/automl_api/services/evaluation_planning.py: 0f47ab49d67c3d4beb9149d98ff4de2287c0deeb7b8ac45aa4418aef4c6c9607
+  apps/api/automl_api/services/evaluation_authority.py: 4123f056be727a0b253de1f4d62402ec769d33fb4aa9a80e079e8864b4d34223
+  tests/test_champion_evaluation_replacement.py: 3ff51dd9f8676c203fef10055e6ee7a331e223ad37d09d5f2baa0f4e25eac867
+artifacts:
+  .unlazy/phase1-champion/replacement-regression.xml: 85658d297aaeb62bc1626c6107da959a137225ff8f47c0bcf9907c9f819bcb1e
+  .unlazy/phase1-champion/replacement-gates.log: 7917d2cc3a01e60aaca761b1c0aab71d9b081ebcf1f21f86267c6ad6a72de48a
+  .unlazy/phase1-champion/replacement.log: 6daa81b8be0f77e8f15c5fec36467883ebcef7c34a67f9bfff31949b0f430d17
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+verified:
+- Replacement requires failed first attempt, retry budget and no output intent
+- New key/attempt/fence preserves frozen evaluation policy and allocation
+- Lost registration reply replays identical replacement; third generation and stale
+  initial replay rejected
+- Old identity revoked on replacement; old open winning race blocks replacement registration
+  and Job
+remaining:
+- Controller invocation and native lifecycle observation
+- Recovery/local failed-scope sealing and foreground cleanup
+- Helm wiring and live k3d probes
+- All other retained Phase 1 requirements
+environment: Local PostgreSQL, TestClient authority and fake Kubernetes API; no evaluator
+  deployment

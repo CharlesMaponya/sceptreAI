@@ -1,0 +1,61 @@
+status: local_increment_verified_production_unqualified
+date: '2026-09-25'
+source:
+  base_commit: 7a47ed8fe92703b392c6c7a2df41392da4fd653f
+  worktree_clean: false
+  file_sha256:
+    .github/workflows/ci.yml: d01d4639045e033784812949381eaa2fe88ccb95ea2910c6381cecdc0e0e2e82
+    .gitignore: 0b387e06fd6dae2d1e20928167409ef507eb873b3cc8dc9abc1de74b00117955
+    README.md: f50e7dfe66d5702268953f9a5e2d6a31604e22d43fef09f53712b189b0f4bb06
+    apps/api/automl_api/api/deps.py: 01ec8e2dde1bfdcd7dfe47e80f7e001f23a79043ef68f4bb1349a420cb53d256
+    apps/api/automl_api/api/routes/auth.py: af0771aefafe18221a1d299a50391ef31d6d606ec8efba46084432834f53c358
+    apps/api/automl_api/api/routes/oidc.py: d115ce310ab4587419bd08547c76d934777f19c243a3b1e9dd11553aeb07db4b
+    apps/api/automl_api/security/authentication_policy.py: 1fdf67969c3df08d88335041532f82e6e0625e7a5428c72d09ff8a5315cc3d07
+    apps/api/automl_api/security/oidc.py: 3e2cd27d181bed47dc55bbd09a8fa14168b801c8c3f7e0ce7fdbc46543020478
+    docs/architecture/kubernetes-portability.md: b8ea371dfde1d7370511802d8e40b73f3ed7d871f2b7619f321f82dd5a6cc2e0
+    docs/decisions/0001-decoupled-smme-automl.md: e11b39254d06c047e9e8a0f4b208185fb2c31d76a8ab91611acc28f2f069a8c2
+    docs/production-readiness/README.md: 355b855a2cebdbe07c519973c5c5a2a57d61610a9663654e241bee7220ac4c70
+    infra/helm/sceptre/README.md: 2bc4cbcef2220e9962f91893b9ab616f5985c9259d4276e5d98f4eb3d385ac21
+    infra/helm/sceptre/templates/application.yaml: 3c3eaee6407d276a5ed4c998e39baf5b754f0693cbf6a48851e5a6244302c66c
+    infra/helm/sceptre/templates/configmap.yaml: c41f58ba08e059f6d43c4f20ede2672583bb46b959c9e6f4268c12b6d4c3eac6
+    infra/helm/sceptre/templates/gateway.yaml: 8a645f87ec0397ebeff62e602a9c7158737aea1ec8dd5cb820f4d99d65cb3acf
+    infra/helm/sceptre/templates/production-policy.yaml: 313dfd09449c2a583f93d5701a25c144f7f49c06c535d8739bf8c3a56223ce97
+    infra/helm/sceptre/values.schema.json: 31749ab9f5895c97ed80f68b0e927cdd8b071e3452e757521cc2deef2591b8a3
+    infra/helm/sceptre/values.yaml: c67c4219a371a6cf7c6f34a57f024d62943c7badcbd0e342d8aef1ecbb9cb42c
+    scripts/test_backend.sh: ff278d28927cfdb21e325250571c724fb15cb3fde4a317823e1edfac59ca739c
+    scripts/validate_phase2_evidence.py: cbfc4aaf954dd8fc378db33d203f5c4bcda5969d0ab9e20d60d5e3af04359973
+    tests/fixtures/production-values.yaml: 7471331dbca176c47aeabfebc7ae4f840a7f061f8f5e12f1d6c9bfbd2682315c
+    tests/test_candidate_partitions.py: 16e206f5f10b3646d39d563873ccbe2c9608b571bd7a7c9fe4a0e15c994d36eb
+    tests/test_coverage_policy.py: 4ab7fa5315a9d55b0ec2637d0d9733dea25aa18ac35105a2e9fb5ceedf3bcced
+    tests/test_helm_chart_contracts.py: a300639446c3e9df81f1d511de64b42dcd0ad9562309668e4578901b7b06dd99
+    tests/test_phase2_evidence.py: 1ecf0ea189ebb8b25bac1a65175dcf1e6e8ae90a946708fe9f34b3187489c907
+checks:
+  backend_full:
+    passed: 1268
+    failed: 1
+    errors: 8
+    skipped: 0
+  database_rerun:
+    passed: 9
+    failed: 0
+    errors: 0
+  effective_backend_passed: 1277
+  targeted_helm_oidc_passed: 49
+  helm_profiles_rendered: 9
+  ruff: passed
+  historical_evidence_integrity: passed
+  current_candidate_binding: unqualified
+coverage:
+  statements_percent: 94.43920194122406
+  branches_percent: 87.82762096774194
+  combined_percent: 93.04403318442884
+  independent_minimum_percent: 90.01
+  status: failed_branch_threshold
+limitations:
+- Existing local Ray 2.56.1 and MLflow 3.14.0 differ from release requirements.
+- No new immutable candidate or independent qualification approval.
+- 15 concurrent 10 GiB campaign remains deferred to a provisioned qualification environment.
+- Ray database credential change remains open pending verified stage grants.
+- Live IdP, Gateway, trust-bundle, network-isolation and recovery qualification remains
+  open.
+local_logs: .unlazy/phase0-fixes/ and .unlazy/helm-auth-fixes/

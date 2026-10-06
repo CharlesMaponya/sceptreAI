@@ -1,0 +1,128 @@
+{{- if not (regexMatch "^.+@sha256:[a-f0-9]{64}$" .Values.image) }}
+{{- fail "image must use an immutable sha256 digest" }}
+{{- end }}
+{{- if eq (empty .Values.databaseCidr) (empty .Values.databasePodSelector) }}
+{{- fail "set exactly one of databaseCidr or databasePodSelector" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  # Never serve old and new authority identity/signing policies simultaneously.
+  strategy: {type: Recreate, rollingUpdate: null}
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels: {app: {{ .Release.Name }}}
+  template:
+    metadata:
+      labels: {app: {{ .Release.Name }}}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: authority
+          image: {{ .Values.image | quote }}
+          command: [uvicorn, automl_api.qualification_control:create_app, --factory, --host, "0.0.0.0", --port, "8443", --ssl-keyfile, /tls/tls.key, --ssl-certfile, /tls/tls.crt, --no-access-log]
+          ports: [{name: https, containerPort: 8443}]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
+          env:
+            - {name: ENVIRONMENT, value: production}
+            - name: QUALIFICATION_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "databaseSecret required" .Values.databaseSecret }}
+                  key: QUALIFICATION_DATABASE_URL
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.databaseSecret }}
+                  key: APPLICATION_DATABASE_REFERENCE_URL
+            - {name: DATABASE_SSL_MODE, value: verify-full}
+            - {name: DATABASE_SSL_ROOT_CERT, value: /database-ca/ca.crt}
+            - {name: DATABASE_POOL_SIZE, value: "4"}
+            - {name: DATABASE_MAX_OVERFLOW, value: "0"}
+            - {name: QUALIFICATION_IDENTITIES_FILE, value: /identity/identities.json}
+            - {name: QUALIFICATION_SIGNING_SECRET_FILE, value: /identity/signing-key}
+{{- if .Values.broker.secret }}
+            - {name: QUALIFICATION_FINAL_MANIFESTS_FILE, value: /broker/manifests.json}
+{{- if .Values.broker.credentialsSecret }}
+          envFrom:
+            - secretRef: {name: {{ .Values.broker.credentialsSecret }}}
+{{- end }}
+{{- end }}
+          readinessProbe:
+            httpGet: {path: /readyz, port: https, scheme: HTTPS}
+          livenessProbe:
+            httpGet: {path: /healthz, port: https, scheme: HTTPS}
+          volumeMounts:
+            - {name: identity, mountPath: /identity, readOnly: true}
+            - {name: tls, mountPath: /tls, readOnly: true}
+            - {name: database-ca, mountPath: /database-ca, readOnly: true}
+{{- if .Values.broker.secret }}
+            - {name: broker, mountPath: /broker, readOnly: true}
+{{- end }}
+      volumes:
+        - name: identity
+          secret: {secretName: {{ required "identitySecret required" .Values.identitySecret }}, defaultMode: 0440}
+        - name: tls
+          secret: {secretName: {{ required "tlsSecret required" .Values.tlsSecret }}, defaultMode: 0440}
+        - name: database-ca
+          secret: {secretName: {{ required "databaseCaSecret required" .Values.databaseCaSecret }}}
+{{- if .Values.broker.secret }}
+        - name: broker
+          secret: {secretName: {{ .Values.broker.secret }}, defaultMode: 0440}
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  selector: {app: {{ .Release.Name }}}
+  ports: [{name: https, port: 8443, targetPort: https}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  podSelector:
+    matchLabels: {app: {{ .Release.Name }}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{ .Values.clientNamespaceLabel }}: "true"
+      ports: [{protocol: TCP, port: 8443}]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+    - to:
+{{- if .Values.databasePodSelector }}
+        - podSelector:
+            matchLabels:
+              {{- toYaml .Values.databasePodSelector | nindent 14 }}
+{{- else }}
+        - ipBlock:
+            cidr: {{ .Values.databaseCidr }}
+{{- end }}
+      ports: [{protocol: TCP, port: {{ .Values.databasePort }}}]
+{{- if .Values.broker.secret }}
+{{- with .Values.broker.egress }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}

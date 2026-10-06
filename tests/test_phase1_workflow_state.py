@@ -32,9 +32,10 @@ from automl_api.services import workflow_state as state
 def test_capacity_deferral_preserves_retry_budget_and_requires_lease(owner):
     db = MagicMock()
     row = SimpleNamespace(
-        status=OutboxStatus.CLAIMED, lease_owner=owner, delivery_attempts=1,
+        id=uuid.uuid4(), status=OutboxStatus.CLAIMED, lease_owner=owner, delivery_attempts=1,
         lease_expires_at=datetime.now(UTC) + timedelta(seconds=60),
     )
+    db.get.return_value = row
     if owner != "worker-a":
         with pytest.raises(state.StaleFence):
             state.defer_outbox(db, row, worker_id="worker-a")
@@ -264,7 +265,7 @@ def test_enqueue_and_complete_outbox_are_idempotent() -> None:
         state.complete_outbox(db, existing.id, worker_id="worker", delivered=True)
     existing.lease_owner = "worker"
     command.max_retries = 5
-    db.get.side_effect = lambda model, _identity: (
+    db.get.side_effect = lambda model, _identity, **_kwargs: (
         existing if model is OutboxEntry else command
     )
     delivered = state.complete_outbox(db, existing.id, worker_id="worker", delivered=True)
@@ -288,7 +289,9 @@ def test_outbox_retry_budget_dead_letters_and_operator_replay() -> None:
     )
     entry.id = uuid.uuid4()
     db = MagicMock()
-    db.get.side_effect = lambda model, _identity: entry if model is OutboxEntry else command
+    db.get.side_effect = lambda model, _identity, **_kwargs: (
+        entry if model is OutboxEntry else command
+    )
 
     result = state.complete_outbox(
         db,
@@ -675,7 +678,7 @@ def test_final_authority_replays_and_rejects_changed_requests(monkeypatch) -> No
         result_digest="result",
     )
     allocation.id = uuid.uuid4()
-    receipt = SimpleNamespace(request_digest="request")
+    receipt = SimpleNamespace(request_digest="request", payload={})
     monkeypatch.setattr(authority, "_locked_allocation", lambda *_args: allocation)
     monkeypatch.setattr(authority, "_receipt", lambda *_args: receipt)
     assert authority.commit_result(
@@ -755,7 +758,7 @@ def test_final_authority_failure_and_fence_matrix(monkeypatch) -> None:
             signing_secret="secret",
         )
     allocation.status, allocation.cas_version = "allocated", 0
-    signed = SimpleNamespace(request_digest="fail")
+    signed = SimpleNamespace(request_digest="fail", payload={})
     monkeypatch.setattr(authority, "_signed_receipt", lambda *_args, **_kwargs: signed)
     assert authority.fail_allocation(
         MagicMock(),
@@ -782,11 +785,12 @@ def test_final_authority_fail_replay_stale_and_commit_state(monkeypatch) -> None
         scope_id=uuid.uuid4(),
         canonical_provider="aws",
         provider_manifest_digest="m" * 64,
-        status="allocated",
+        status="failed",
+        terminal_reason="reason",
         cas_version=0,
     )
     allocation.id = uuid.uuid4()
-    receipt = SimpleNamespace(request_digest="fail")
+    receipt = SimpleNamespace(request_digest="fail", payload={})
     monkeypatch.setattr(authority, "_locked_allocation", lambda *_args: allocation)
     monkeypatch.setattr(authority, "_receipt", lambda *_args: receipt)
     assert authority.fail_allocation(
@@ -801,6 +805,7 @@ def test_final_authority_fail_replay_stale_and_commit_state(monkeypatch) -> None
     ) is receipt
 
     monkeypatch.setattr(authority, "_receipt", lambda *_args: None)
+    allocation.status = "allocated"
     allocation.cas_version = 1
     with pytest.raises(state.StaleFence):
         authority.fail_allocation(
@@ -846,7 +851,95 @@ def test_receipt_signature_detects_tampering() -> None:
         request_digest="request",
         payload=payload,
         signature=hmac.new(b"secret", body, hashlib.sha256).hexdigest(),
+        signature_algorithm="hmac-sha256",
+        receipt_digest=hashlib.sha256(body).hexdigest(),
     )
     assert authority.verify_receipt(receipt, "secret")
+    receipt.signature_algorithm = "unknown"
+    assert not authority.verify_receipt(receipt, "secret")
+    receipt.signature_algorithm = "hmac-sha256"
+    receipt.receipt_digest = "0" * 64
+    assert not authority.verify_receipt(receipt, "secret")
+    receipt.receipt_digest = hashlib.sha256(body).hexdigest()
     receipt.signature = "tampered"
     assert not authority.verify_receipt(receipt, "secret")
+
+
+@pytest.mark.parametrize("race", [False, True])
+def test_allocation_replay_binds_project_even_after_unique_race(race) -> None:
+    from sqlalchemy.exc import IntegrityError
+
+    allocation = authority.FinalTestAllocation(
+        split_digest="split", project_reference="project-a", scope_id=uuid.uuid4(),
+        canonical_provider="aws", provider_manifest_digest="manifest",
+    )
+    for project in ("project-a", "project-b"):
+        db = MagicMock()
+        if race:
+            db.scalar.side_effect = [None, allocation]
+            db.flush.side_effect = IntegrityError("insert", {}, Exception("duplicate"))
+        else:
+            db.scalar.return_value = allocation
+        kwargs = dict(
+            split_digest=allocation.split_digest, project_reference=project,
+            scope_id=allocation.scope_id, canonical_provider="aws",
+            provider_manifest_digest="manifest",
+        )
+        if project == "project-a":
+            assert authority.allocate(db, **kwargs) is allocation
+        else:
+            with pytest.raises(state.IdempotencyConflict):
+                authority.allocate(db, **kwargs)
+
+
+def test_failure_replay_rejects_changed_reason(monkeypatch) -> None:
+    allocation = SimpleNamespace(
+        id=uuid.uuid4(), canonical_provider="aws", provider_manifest_digest="manifest",
+        terminal_reason="original", status="failed", cas_version=1,
+    )
+    receipt = SimpleNamespace(request_digest="same-request", payload={})
+    monkeypatch.setattr(authority, "_locked_allocation", lambda *_: allocation)
+    monkeypatch.setattr(authority, "_receipt", lambda *_: receipt)
+    with pytest.raises(state.IdempotencyConflict, match="recorded differently"):
+        authority.fail_allocation(
+            MagicMock(), allocation_id=allocation.id, provider="aws",
+            provider_manifest_digest="manifest", request_digest="same-request",
+            reason="changed", signing_secret="secret", expected_cas_version=0,
+        )
+    assert allocation.terminal_reason == "original"
+    assert allocation.cas_version == 1
+
+
+def test_public_key_receipts_reject_tampering_wrong_key_and_algorithm_confusion():
+    import hashlib
+    import hmac
+
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    key = Ed25519PrivateKey.generate()
+    public_pem = key.public_key().public_bytes(
+        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+    ).decode()
+    receipt = authority._signed_receipt(
+        MagicMock(), allocation=SimpleNamespace(id=uuid.uuid4()), operation="open",
+        provider="aws", request_digest="a" * 64, signing_secret=key,
+        payload={"cas_version": 1},
+    )
+    assert receipt.signature_algorithm == "ed25519"
+    assert authority.verify_receipt(receipt, public_pem)
+    assert authority.verify_receipt(receipt, key.public_key())
+    assert not authority.verify_receipt(receipt, Ed25519PrivateKey.generate().public_key())
+    receipt.signature = "0" * 128
+    assert not authority.verify_receipt(receipt, public_pem)
+    receipt.signature = "not-hex"
+    assert not authority.verify_receipt(receipt, public_pem)
+    body = authority._receipt_bytes(
+        allocation_id=receipt.allocation_id, operation=receipt.operation,
+        provider=receipt.provider, request_digest=receipt.request_digest,
+        payload=receipt.payload,
+    )
+    receipt.signature_algorithm = "hmac-sha256"
+    receipt.signature = hmac.new(public_pem.encode(), body, hashlib.sha256).hexdigest()
+    assert not authority.verify_receipt(receipt, public_pem)
+    assert not authority.verify_receipt(receipt, key.public_key())

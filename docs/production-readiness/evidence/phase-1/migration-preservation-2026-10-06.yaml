@@ -1,0 +1,315 @@
+{
+  "schema_revision": "sceptre-local-remediation-v1",
+  "observed_at": "2026-10-06T16:54:48.585035+00:00",
+  "phase": "1",
+  "phase_complete": false,
+  "production_qualified": false,
+  "review_status": "unsigned_local_evidence",
+  "scope": "Full field preservation and explicit per-row backfill validation for seeded migration tables",
+  "focused_tests": {
+    "tests": 20,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "regression_tests": {
+    "tests": 587,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "sha256": {
+    "scripts/rehearse_phase1_migrations.py": "5142852b3c762b0cfb8dad9409ada8133e328c9694bc77e6ed33f198522af386",
+    "tests/test_phase1_migration_rehearsal.py": "c7f30238fc0085a135276f8044f582d4582b59523e8fe9563f064723c542b074",
+    ".unlazy/phase1-champion/migration-preservation-before.log": "eafd3444bd0b1f8a7fd4c75cd44c53b0af6f6268ad7bf1a9605f485289ffe7c6",
+    ".unlazy/phase1-champion/migration-preservation-verified.xml": "b21a11c718a87ecfe94b0d920b772d47eb5ccec1d6cbf3fa180642b954981d13",
+    ".unlazy/phase1-champion/migration-preservation-regression.xml": "7cc685834cef0b20f3e364d9016c0da6374859344656529ad17b55dd2473d324",
+    ".unlazy/phase1-champion/migration-preservation-final-live.log": "664ec16691d4ffaff52cfba791c2f777ba2575a077617c24f4a1367cf5973762"
+  },
+  "migration_preservation": [
+    {
+      "preserved": {
+        "projects": {
+          "columns": [
+            "created_at",
+            "created_by_id",
+            "description",
+            "id",
+            "name",
+            "object_prefix",
+            "owner_id",
+            "settings",
+            "status",
+            "updated_at"
+          ],
+          "rows": 1,
+          "sha256": "4bc86277ac46aca7cf05170f8f7505a51d10ea2cc23d6fa3ae7b6d252bb5a99d"
+        },
+        "users": {
+          "columns": [
+            "auth_provider",
+            "created_at",
+            "email",
+            "full_name",
+            "global_role",
+            "id",
+            "is_active",
+            "is_verified",
+            "last_login_at",
+            "password_hash",
+            "preferences",
+            "token_version",
+            "updated_at"
+          ],
+          "rows": 1,
+          "sha256": "5933c1f8d49984b37a4bbd5b76f108285e103aaac349aee08094b7981cc4da35"
+        }
+      },
+      "start": "0001_initial"
+    },
+    {
+      "preserved": {
+        "projects": {
+          "columns": [
+            "created_at",
+            "created_by_id",
+            "description",
+            "id",
+            "name",
+            "object_prefix",
+            "owner_id",
+            "settings",
+            "status",
+            "updated_at"
+          ],
+          "rows": 1,
+          "sha256": "3f932d5de8a114a48fb8564f1d13748c476a839920230d8b29f69f4e75c13522"
+        },
+        "users": {
+          "columns": [
+            "auth_provider",
+            "created_at",
+            "email",
+            "full_name",
+            "global_role",
+            "id",
+            "is_active",
+            "is_verified",
+            "last_login_at",
+            "password_hash",
+            "preferences",
+            "token_version",
+            "updated_at"
+          ],
+          "rows": 1,
+          "sha256": "e3f37ee61e7fe683e2304c18f2110eae15b4bab4dc0707932781ed647e59cbaa"
+        }
+      },
+      "start": "0002_expand_artifact_kind"
+    },
+    {
+      "preserved": {
+        "projects": {
+          "columns": [
+            "created_at",
+            "created_by_id",
+            "description",
+            "id",
+            "name",
+            "object_prefix",
+            "owner_id",
+            "settings",
+            "status",
+            "updated_at"
+          ],
+          "rows": 1,
+          "sha256": "32164f161f421d686b801af51126a0a916ae4b74d77cd53d340cdb0d2d364393"
+        },
+        "users": {
+          "columns": [
+            "auth_provider",
+            "created_at",
+            "email",
+            "full_name",
+            "global_role",
+            "id",
+            "is_active",
+            "is_verified",
+            "last_login_at",
+            "password_hash",
+            "preferences",
+            "sso_issuer",
+            "sso_subject",
+            "token_version",
+            "updated_at"
+          ],
+          "rows": 1,
+          "sha256": "4040390c676f12d0dbc879c3a7aea885cd85b79635042898b750af526de95918"
+        }
+      },
+      "start": "0003_security_controls"
+    },
+    {
+      "preserved": {
+        "dataset_upload_sessions": {
+          "columns": [
+            "byte_size",
+            "completed_at",
+            "created_at",
+            "created_by_id",
+            "dataset_id",
+            "dataset_name",
+            "dataset_version_id",
+            "description",
+            "expires_at",
+            "id",
+            "multipart_upload_id",
+            "object_key",
+            "original_filename",
+            "part_size",
+            "project_id",
+            "resume_key",
+            "status",
+            "tags",
+            "total_parts",
+            "updated_at"
+          ],
+          "rows": 10000,
+          "sha256": "c1fc07a72cade3c62bab6169f1051d3def3dacd83d869ab31abd5287f5b20487"
+        },
+        "projects": {
+          "columns": [
+            "created_at",
+            "created_by_id",
+            "description",
+            "id",
+            "name",
+            "object_prefix",
+            "owner_id",
+            "settings",
+            "status",
+            "updated_at"
+          ],
+          "rows": 1,
+          "sha256": "3d54e4702a68597960de898de0dc15aa6307b77fcfa9be94414d8b17918ef182"
+        },
+        "users": {
+          "columns": [
+            "auth_provider",
+            "created_at",
+            "email",
+            "full_name",
+            "global_role",
+            "id",
+            "is_active",
+            "is_verified",
+            "last_login_at",
+            "password_hash",
+            "preferences",
+            "sso_issuer",
+            "sso_subject",
+            "token_version",
+            "updated_at"
+          ],
+          "rows": 1,
+          "sha256": "a81e2b78a1004598da436428b098abfaf98cee7cbd8a70da25981a1bc924a4d2"
+        }
+      },
+      "start": "0004_resumable_dataset_uploads"
+    },
+    {
+      "preserved": {
+        "dataset_upload_sessions": {
+          "columns": [
+            "byte_size",
+            "completed_at",
+            "created_at",
+            "created_by_id",
+            "dataset_id",
+            "dataset_name",
+            "dataset_version_id",
+            "description",
+            "digest_algorithm",
+            "digest_scope",
+            "expected_object_digest",
+            "expires_at",
+            "heartbeat_at",
+            "id",
+            "lease_expires_at",
+            "lease_owner",
+            "multipart_upload_id",
+            "object_key",
+            "observed_object_digest",
+            "original_filename",
+            "part_size",
+            "project_id",
+            "quarantine_reason",
+            "replayed_by",
+            "resume_key",
+            "retry_budget",
+            "retry_count",
+            "status",
+            "tags",
+            "terminal_reason",
+            "total_parts",
+            "updated_at"
+          ],
+          "rows": 10000,
+          "sha256": "a3c272e0262b56010b670dad703aff1c14f29a80fa183f3b7bc2f49da507e91b"
+        },
+        "projects": {
+          "columns": [
+            "created_at",
+            "created_by_id",
+            "description",
+            "id",
+            "name",
+            "object_prefix",
+            "owner_id",
+            "settings",
+            "status",
+            "updated_at"
+          ],
+          "rows": 1,
+          "sha256": "5fe0f498354838f2f454c54495cc7d9cc775da6c339614bde8c61308b326fbe7"
+        },
+        "users": {
+          "columns": [
+            "auth_provider",
+            "created_at",
+            "email",
+            "full_name",
+            "global_role",
+            "id",
+            "is_active",
+            "is_verified",
+            "last_login_at",
+            "password_hash",
+            "preferences",
+            "sso_issuer",
+            "sso_subject",
+            "token_version",
+            "updated_at"
+          ],
+          "rows": 1,
+          "sha256": "5350ae8fd7ed9c776fd5345e03337d9d0aaf2d93e640f4e0805b220b7ae948af"
+        }
+      },
+      "start": "0007_phase1_attempt_lineage"
+    }
+  ],
+  "negative_control": "Prior oracle missed eleven corruption cases; one deletion case already passed. Final suite covers sixteen corruption cases, positive controls, bounded batching, invalid counts and database cleanup on verification failure.",
+  "qualification_ceiling": {
+    "user_input": "the largest I can qualify is 45gb",
+    "database_bytes": 45000000000,
+    "unit_assumption": "decimal GB",
+    "largest_table_rows": "not yet specified",
+    "local_free_space_observed": "23 GiB on 2026-10-06; insufficient before WAL/index/rewrite overhead"
+  },
+  "remaining": [
+    "Seeded tables are users/projects/upload sessions only; representative workload data remains required",
+    "Production-sized run up to the user-provided 45 GB ceiling",
+    "Every prior schema inventory and previous-release concurrent-reader compatibility",
+    "Full Phase 1 ledger and integration gates remain open"
+  ]
+}

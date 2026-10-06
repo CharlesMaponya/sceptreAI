@@ -27,6 +27,12 @@ from automl_api.schemas.auth import (
     UserRead,
     UserUpdateRequest,
 )
+from automl_api.security.browser_sessions import (
+    REFRESH_COOKIE,
+    clear_browser_session,
+    require_same_origin,
+    set_browser_session,
+)
 from automl_api.services.auth import (
     authenticate_user,
     change_user_password,
@@ -39,9 +45,6 @@ from automl_api.services.auth import (
     update_user_profile,
 )
 from automl_api.services.email import send_password_reset_email
-from automl_api.security.browser_sessions import (
-    REFRESH_COOKIE, clear_browser_session, require_same_origin, set_browser_session,
-)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 logger = logging.getLogger(__name__)

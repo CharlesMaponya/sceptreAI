@@ -186,6 +186,11 @@ def test_main_uses_explicit_worker_identity_and_bounded_poll_interval(
         workflow_reconciler, "observe_once", lambda *_args, **_kwargs: active_observations
     )
     monkeypatch.setattr(workflow_reconciler, "cleanup_retention_once", lambda *_args: 0)
+    stages = {}
+    for name in ("plan_champions_once", "reconcile_refit_jobs_once",
+                 "reconcile_evaluation_jobs_once"):
+        stages[name] = MagicMock(return_value=0)
+        monkeypatch.setattr(workflow_reconciler, name, stages[name])
     processed = iter([1, 0])
     monkeypatch.setattr(
         workflow_reconciler,
@@ -206,6 +211,9 @@ def test_main_uses_explicit_worker_identity_and_bounded_poll_interval(
         workflow_reconciler.main()
 
     workflow_reconciler.time.sleep.assert_called_once_with(0.1)
+    for stage in stages.values():
+        assert stage.call_count == 2
+        assert all(call.args[0] is factory for call in stage.call_args_list)
 
 
 def test_main_derives_worker_identity_when_not_configured(monkeypatch) -> None:

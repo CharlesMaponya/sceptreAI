@@ -1,0 +1,24 @@
+# Supply an immutable image containing automl_api.qualification_control.
+image: ""
+replicas: 2
+# Secret keys: QUALIFICATION_DATABASE_URL and APPLICATION_DATABASE_REFERENCE_URL.
+# The application reference URL contains only host/port/database, no credentials.
+databaseSecret: ""
+# Secret keys: identities.json (hashed bearer credentials), signing-key.
+identitySecret: ""
+tlsSecret: ""
+databaseCaSecret: ""
+# Explicit egress boundary for the authority database.
+databaseCidr: ""
+# Alternative for an in-namespace database: labels on its pods.
+databasePodSelector: {}
+databasePort: 5432
+# Only clients in a namespace with this label may contact the authority.
+clientNamespaceLabel: qualification-client
+# Optional final-data broker. Manifests contain exact immutable object versions;
+# credentials are dedicated to these objects, never application storage credentials.
+broker:
+  secret: ""
+  # Secret keys: manifests.json, plus provider SDK environment in credentialsSecret.
+  credentialsSecret: ""
+  egress: []

@@ -49,7 +49,7 @@ def test_prepared_validation_stays_separate_and_remote_winner_is_loaded_only_onc
 
     def results(kind, jobs, snapshot):
         captured.extend(jobs)
-        for index, candidate, arguments in reversed(jobs):
+        for index, candidate, _arguments in reversed(jobs):
             yield (
                 index,
                 {

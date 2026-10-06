@@ -1,0 +1,111 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-09-29T16:49:30.587677+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: Durable isolated refit Jobs, failure replacement and cleanup
+tests:
+  tests: 287
+  failures: 0
+  errors: 0
+  skipped: 0
+environment:
+  namespace: qa-refit
+  context: k3d-sceptre
+  image: k3d-sceptre-registry.localhost:5111/sceptreai@sha256:73c420c26db43a6578b6b4b14f3476a0eb17ccdf278ef7712852786fc3c60ab7
+  runtime: Source overlay on existing local image; not pinned release qualification
+  database: PostgreSQL 16, application role without DDL, verified TLS
+  storage: TLS SeaweedFS synthetic refit-data bucket; no final data
+  exec_transport: Local Docker/crictl controller entry due to kubelet certificate/IP
+    mismatch; application TLS remained verified
+cases:
+  success:
+    status: passed
+    production_qualified: false
+    scope_id: b3c6198e-ea71-4f48-ab42-c474b2be54b1
+    case: success
+    first_attempt_id: f85f8a0f-f2d8-4ce9-9023-40485b86f380
+    attempts: 1
+    published_attempt_id: f85f8a0f-f2d8-4ce9-9023-40485b86f380
+    pipeline_digest: a6f108f956b3d4dd86d3e9284c203bdad49069e93a875ff23388ec1abd69dcf4
+    refit_rows: 10
+  lost_reply:
+    status: passed
+    production_qualified: false
+    scope_id: f4b1bbb9-9338-49a0-a5eb-b947d220d962
+    case: lost-reply
+    first_attempt_id: d15a7783-5bd7-43a1-847e-4f55329864bc
+    attempts: 1
+    published_attempt_id: d15a7783-5bd7-43a1-847e-4f55329864bc
+    pipeline_digest: a6f108f956b3d4dd86d3e9284c203bdad49069e93a875ff23388ec1abd69dcf4
+    refit_rows: 10
+  concurrent:
+    status: passed
+    production_qualified: false
+    scope_id: 13bc1d69-589e-4119-8dce-f3095e3e6aa9
+    case: concurrent
+    first_attempt_id: 5e66408b-e19b-4d0f-953b-86734e187a2f
+    attempts: 1
+    published_attempt_id: 5e66408b-e19b-4d0f-953b-86734e187a2f
+    pipeline_digest: a6f108f956b3d4dd86d3e9284c203bdad49069e93a875ff23388ec1abd69dcf4
+    refit_rows: 10
+  kill:
+    status: passed
+    production_qualified: false
+    scope_id: aa9d972a-fcc1-4d0b-8461-f2c45de985a3
+    case: kill
+    first_attempt_id: 229757e9-661a-4d4e-860b-c130baecc947
+    attempts: 2
+    published_attempt_id: db027ea1-faa8-4643-ad36-ac39a6f4ba80
+    pipeline_digest: a5a43bb928428eca72e8a37ce5f9a553b224e4c36e82c8a6a1fb478c6b4c6bcc
+    refit_rows: 10000
+network:
+  control_https: 200
+  unsigned_known_object: 403
+  database_control: Controller connection succeeded
+  isolated_database: Connection refused
+  metadata: Connection refused; no positive cloud endpoint control
+  identity: Diagnostic Pod cloned stored worker specification and policy; no control
+    token
+cleanup: No refit Jobs, attempt Secrets or NetworkPolicies remained
+source_sha256:
+  apps/api/automl_api/services/refit_jobs.py: b46955a8ad12dfbc20cf381d6d272cc954375183e970865d22f8c29d5f380caf
+  apps/api/automl_api/services/kubernetes_training.py: fd933f4a532a2f41415a0acacd8e3f3a523f919e0484ffae8a4dc0124051a890
+  apps/api/automl_api/training/refit_worker.py: b7c4a6e1b310a639a70892c309e9a44ada5194ee654759ad17114b1411ed8349
+  apps/api/automl_api/workflow_reconciler.py: dd2f840018add5e3224e3032ef0eb01deac29d8307b17e9b6a930ea2020c2317
+  scripts/validate_refit_workload.py: abceac606125d0be36419275b5d8ee4be5012b232f073d9ef2e76539619f4d0a
+  tests/test_champion_refit_jobs.py: 9dd81280dc376a411a0f874ff0c434aa211a9f3255c390e6791ac714717690c7
+  infra/helm/sceptre/values.yaml: a0cf1fc2eae44c866cb29694b455df57fe669396741b80d1ed1909575d010138
+  infra/helm/sceptre/values.schema.json: 968089a7566bd7efb59d1eb29944788bee22054fd3779a1f553892b74f95ddaf
+  infra/helm/sceptre/templates/configmap.yaml: 206f58072c736ec619b2bb2ef256b672bd0d27a451a52081947c9f78adb4343b
+  infra/helm/sceptre/templates/rbac.yaml: 327c28065b3e5f5c97233099584312c6c276955a0d10498f2f3d224f83cf94e1
+artifacts:
+  .unlazy/phase1-champion/jobs-regression.xml: bfee0e7bf413cb5c47f648035ef2e6a1e770432fe187830fe12de2ee91ff3997
+  .unlazy/phase1-refit-k3d/network-final.log: 4c50b4cacfa2c6ff9847e12dfe0ecd5aa83924b27b858a6c0d818e76e368f26d
+  .unlazy/phase1-refit-k3d/source-verified.json: b3dc713b18d2b7cd6d3cf50ecef0d93d9a78bd003c21bd98a37085a6d4f70635
+  .unlazy/phase1-champion/jobs-gates.log: 915b5427ee8d1cb5d6e38a22121e69de4bc473f0e6b6472e2e9fb0c7f99a79f7
+  .unlazy/phase1-refit-k3d/success-verified.log: 27d90e09487d62f82c26bd2be9d0f16277b4257fee2824c029dbe119825f930d
+  .unlazy/phase1-refit-k3d/lost-reply-verified.log: 6a2fd49c60b66047298ca925ee9e1d95683e191e46b6c815b29f9dc6415c8933
+  .unlazy/phase1-refit-k3d/concurrent-verified.log: 21d0791f10655e78d2225defbfc5e80e2cbb7d11e3f2ea12963a4dfb73cec177
+  .unlazy/phase1-refit-k3d/kill-fixed.log: 42a0b80a31b68ed41859fa54308b322bf838a7b33b63e3c164039110c657f765
+  .unlazy/phase1-refit-k3d/kill.log: 3539a5705af96a1e5fa4b7f4b3a72b1ed3af5fa87bd63f13577ac061a77ab495
+  .unlazy/phase1-refit-k3d/network-verified.log: 5ac735d104c326713f1524c44bd5069e3d8cfa01f45f480609085427fbb3d384
+  .unlazy/phase1-refit-k3d/network-fixed.log: c82c13bcfc7b3872450f9a21b2b2d608061fe528515a292ce7c90ab52bc667d7
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+limitations:
+- Synthetic terminal training fixtures, not full training-to-evaluation journey
+- Source overlay image and local dependencies, not pinned release runtime
+- Metadata denial has no positive cloud control
+- Network diagnostic initially failed on short DNS certificate mismatch, then rejected
+  the CNI connection-refused response; corrected probe retained TLS verification and
+  added a reachable database control
+- Initial live Job kill allowed original publication; corrected SIGTERM and terminating-state
+  handling passed replacement probe
+- Evaluator execution, immutable result recovery and authority handoff remain open
+- Other refit backends, automatic prepared manifests and remaining Phase 1 requirements
+  remain open

@@ -194,6 +194,23 @@ and is not the normal user-access path.
 
 ## Optional controls
 
+Champion refit Jobs require `championRefit.controlBaseUrl` pointing to the API's
+HTTPS `/api/v1/internal/refits` endpoint, a digest-pinned `championRefit.image`
+(or digest-pinned training image), and explicit `championRefit.egressRules`.
+Use Kubernetes NetworkPolicy peers for the API and object-store endpoints with
+TCP ports 443, 8443 or 8334. DNS egress is added separately. The cluster must
+enforce NetworkPolicies. An optional `championRefit.caSecret` contains only the
+public `ca.crt` trust bundle; no private key belongs in that Secret.
+
+`championRefit.cpuCores` and `championRefit.memoryMiB` set equal requests and
+limits. Input-budget validation is not a measured peak-memory guarantee. Each
+worker receives an attempt-scoped control token and registered input read URLs,
+with no database or bucket credentials. The reconciler commits the Job manifest
+before creation, owns retry generations, and retains the token Secret and deny
+policy until foreground Job deletion finishes. Kubernetes Job retries are off.
+These settings implement bounded sklearn refit; evaluator integration and
+production runtime, cloud identity, memory and capacity qualification remain open.
+
 - `resourceQuota` and `limitRange` can create namespace guardrails.
 - `training.priorityClass.enabled` creates an optional non-preempting class.
 - `capabilities.clusterObserver.enabled` grants read-only node/PriorityClass
@@ -236,3 +253,62 @@ for profile in infra/helm/sceptre/values*.yaml; do
   helm template sceptre "$chart" -n sceptre -f "$profile" >/dev/null
 done
 ```
+
+## Production OIDC and HTTPS
+
+Set `auth.simpleAuthEnabled: false`, `auth.publicAppUrl` to the public HTTPS
+origin, and `auth.oidc.issuer` / `auth.oidc.clientId` to the organization's OIDC
+configuration. Production requires `auth.oidc.requireMfa: true`. Register
+`<auth.publicAppUrl>/api/v1/auth/oidc/callback` with the identity provider and
+include the exact application origin in `uploads.allowedOrigins`.
+
+For a confidential client, set `auth.oidc.existingSecret` and optionally
+`auth.oidc.clientSecretKey` (default `OIDC_CLIENT_SECRET`). The chart references
+the existing Secret; it does not accept client secret material in values. Leave
+the Secret name empty for an identity-provider-approved public PKCE client.
+
+With `gateway.tls.enabled: true`, the chart creates only an HTTPS listener and
+binds the application route to it. Plain HTTP does not serve the application;
+there is no automatic HTTP redirect. Evaluation without TLS retains HTTP.
+
+These values wire application authentication and edge TLS only. Production
+database CA mounts, workload identities, NetworkPolicies, live IdP lifecycle
+tests and transport/rotation qualification remain separate readiness gates.
+
+### Champion evaluation
+
+Production requires `championEvaluation.enabled: true`. Set HTTPS
+`controlBaseUrl` (ending in `/api/v1/internal/evaluations`) and `authorityUrl`,
+plus nonempty `egressRules` selecting only the API, authority and object-store
+TLS endpoints. Ports are limited to 443, 8443 and 8334. The worker image defaults
+to `training.cpu.image`; the resulting image must use a SHA-256 digest, including
+in local environments when evaluation is enabled. `cpuCores` and `memoryMiB`
+bound the worker resources.
+
+Provision these existing Secrets in the release namespace:
+
+- `allocatorSecret`: `tokens.json`, a JSON object mapping each manifest's
+  `project_reference` to its project-scoped allocator token. Only the reconciler
+  mounts this Secret; no token material belongs in Helm values.
+- `authorityPublicKeySecret`: `public-key.pem`, the authority's public Ed25519
+  key. The API and reconciler mount it; evaluator Jobs reference the same Secret.
+- Optional `caSecret`: `ca.crt`, the trust bundle for controller and evaluator
+  HTTPS connections. Omitting it uses system trust roots.
+
+The reconciler shares the API's existing JWT Secret to sign local refit and
+evaluator capabilities. The chart supplies Secret references and configuration;
+it does not provision the separate authority or turn an HTTP API into a TLS
+endpoint. Live certificate rotation, network isolation and failure-recovery
+qualification remain required.
+
+### API database pool metrics
+
+Scrape each API Pod's `/metrics` endpoint on its application port through the private service/network. It exports `sceptre_database_pool_size` (configured persistent capacity), `sceptre_database_pool_checkedin`, `sceptre_database_pool_checkedout`, and `sceptre_database_pool_overflow` as Prometheus gauges. Counters are process-local; scraping a load-balanced Service alone does not measure every replica. Overflow is normalized to zero until connections exceed persistent capacity. Unsupported pool counters are omitted. Scraping reads pool state without acquiring a database connection.
+
+The UI reverse proxy does not forward `/metrics`; keep this endpoint internal and preserve the deployment's TLS verification when configuring a scraper. No ServiceMonitor, scraper, monitoring ingress exception or dashboard is installed by this change. Reconciler, worker and qualification-control pool export and PgBouncer transaction-mode qualification remain open. The implementation uses the already-locked [Prometheus Python client](https://prometheus.github.io/client_python/).
+
+### PgBouncer transaction mode
+
+Set `platform.database.pgbouncerTransactionMode: true` only when the configured database endpoint uses transaction pooling. Both application and qualification-control engine factories omit timeout startup options in that mode and apply statement, lock and idle-transaction limits with transaction-local `set_config` calls at each SQLAlchemy transaction begin. Direct PostgreSQL mode retains its startup timeout options. Psycopg automatic prepared statements remain disabled in pooler mode. Autocommit is rejected because it would bypass the transaction-local limits; migrations and administrative autocommit operations need a separate direct connection.
+
+Configure client TLS and pooler-to-PostgreSQL certificate verification independently. Do not work around startup rejection with `ignore_startup_parameters=options`: discarding those options would discard timeout protection. Local PgBouncer 1.25.1 testing verified one-backend reuse between differently configured clients, all three timeouts, rollback/reconnect, prepared-statement behavior, application names and TLS rejection controls. Production deployment, concurrent workflow claims and failover remain unqualified. See the [PgBouncer startup-parameter documentation](https://www.pgbouncer.org/config.html#ignore_startup_parameters) and [local evidence](../../../docs/production-readiness/evidence/phase-1/pgbouncer-2026-10-05.yaml).

@@ -11,6 +11,13 @@ A successful `helm install` proves that the application can be packaged and run
 on Kubernetes. It does not by itself prove high availability, security,
 recoverability, large-dataset safety, or production capacity.
 
+For the current branch, use the [2026-09-24 assessment](phase-0-9-branch-assessment-2026-09-24.md)
+and [remediation progress](remediation-progress.md). The baseline descriptions
+below predate the durable reconciler, resumable provider uploads, OIDC/browser
+sessions, and inference digest verification. They describe the original gaps,
+not an up-to-date inventory of missing code. The promotion requirements still
+apply; newly implemented controls need current qualification evidence.
+
 ## 1. Purpose and Sources of Truth
 
 This document separates three environments that were previously mixed together:
@@ -94,7 +101,7 @@ The current compatibility baseline includes:
 - Bundled single-replica PostgreSQL, SeaweedFS, and MLflow for local use, with
   external PostgreSQL, S3-compatible object storage, and MLflow configuration.
 - Revision-specific Alembic migration Jobs, fresh-database bootstrap, a
-  13-table schema verifier, and API startup gating on a complete schema.
+  full-schema verifier, and API startup gating on a complete schema.
 - Namespace-scoped RBAC, Kubernetes training and analysis Jobs, resource
   requests and limits, adaptive deadlines, job status/log reporting, and
   optional CPU/RAM telemetry.
@@ -152,9 +159,10 @@ boundaries, not current components.
 PVC retention annotations prevent an ordinary Helm uninstall from deleting some
 claims. They do not provide replication, backup, encryption, or recovery.
 
-## 4. Current Production Blockers
+## 4. Original Production Blockers
 
-The following are code or operational gaps, not configuration suggestions.
+The following records the original code and operational gaps. Consult the linked
+assessment and remediation ledger for current implementation and test status.
 
 | Area | Current baseline | Production implication |
 | --- | --- | --- |
@@ -212,7 +220,7 @@ It performs the complete local product installation:
 7. Port-forward the UI and open `http://127.0.0.1:8080`.
 
 The chart creates the bundled data services and schema for a fresh local
-installation. A developer should not manually create the 13 application tables.
+installation. A developer should not manually create the application tables.
 
 ### What localhost does and does not mean
 

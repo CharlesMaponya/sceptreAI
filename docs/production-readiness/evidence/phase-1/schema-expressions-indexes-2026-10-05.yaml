@@ -1,0 +1,75 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-10-05T11:45:30.754014+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: PostgreSQL expression structure and native index definition verification
+focused_tests:
+  tests: 40
+  failures: 0
+  errors: 0
+  skipped: 0
+regression_tests:
+  tests: 544
+  failures: 0
+  errors: 0
+  skipped: 0
+application_schema_positive_control: 'Database schema is current: 42 tables, revision(s)
+  0010_phase3_contract_target.'
+source_sha256:
+  scripts/verify_database_schema.py: 40e1ef323e0e6664a839ee59943facf18018550b592314db44d079918b4f99a0
+  tests/test_database_schema_verifier.py: 066673db79a152ebe7944130de91f0578316f58c65ec8363ce00d95edcc20bf9
+  pyproject.toml: 591fc3c389f65e872e29aefce347f78db591af1eeb1076196c54eb28ebf1a28a
+  infra/locks/requirements-api.lock: b48a6c57dd830783e3beee6fa52f5c635951a9cd836adbdd4fcfdb360f684f28
+artifacts:
+  .unlazy/phase1-champion/schema-expression-before.log: 74ba2640f42390b9b9dfa56e8162c3a670df4410a40cc592e54261cccdb27c40
+  .unlazy/phase1-champion/schema-expression-serialization.log: 5e0313e587223a66aed82add8cb9ef3d146271d1bc52e4461a7453c1a1d339d4
+  .unlazy/phase1-champion/schema-index-before.log: 330bdefe0f51033a6b666f7c29d685c0097aa29dce670aaba00518c834b86194
+  .unlazy/phase1-champion/schema-expression-index-final.xml: 271b6a794a187936927b76678fcd0fe7050099130d685022107d58616280f682
+  .unlazy/phase1-champion/schema-expression-regression.xml: c28ed1ad432fc6f4da381248c13b1bb44d52cbb1afe48070e7936a72eebded12
+  .unlazy/phase1-champion/schema-expression-index-positive.log: 617c229b76e3c5a8f0b55d7ad88d1d9987643ca5a241abb788c0d57b76cd4980
+  .unlazy/phase1-champion/schema-expression-index-gates.log: 2eb95e4afe6b8dd1a819137aea169d2555af27de0bf9fbc870ca00e969fae40f
+  .unlazy/phase1-champion/schema-expression-lock.log: fe1da66b4a1bade7a2fac313e2a19d4939e27f731ae7f1859188efd145c4c4ae
+  .unlazy/phase1-champion/schema-parser-hash-install.log: e29cc8413739058ef9ff85ea7f668e2fb70e5657e47d279f985e6616dd55816b
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+verified:
+- Replaced destructive CHECK string normalization with parsed PostgreSQL expression
+  structure
+- Rejects changed Boolean/arithmetic grouping, string contents, quoted identifier
+  identity and meaningful casts
+- Normalizes only recognized text-column literal comparisons and IN/ANY reflection
+  forms; arithmetic and unrelated casts remain structural
+- Native index definitions preserve predicates, expressions, uniqueness, sort/null
+  placement, include columns, access methods and operator classes
+- Rejects redundant duplicate index definitions and invalid/not-ready/not-live indexes
+- A real failed CREATE UNIQUE INDEX CONCURRENTLY leaves an invalid index that is rejected
+- Accepts equivalent index names, table qualification, default btree/ascending/null
+  ordering and creation-time concurrency option
+- Unchanged full 42-table schema passes, including the read-only connection test
+- SQLGlot 30.21.0 pinned; API hash-lock regeneration changed only that package; hash-enforced
+  package installation verified
+negative_controls:
+- Old CHECK normalizer missed ten actual PostgreSQL mutations
+- Old index comparator missed seven definition mutations plus an actual failed concurrent
+  index build; expression-column mutation was already rejected
+- First parser implementation had two failures serializing SQL type nodes; fixed and
+  preserved in schema-expression-serialization.log
+- Synthetic length() positive control now explicitly includes the PostgreSQL text
+  cast; arbitrary function cast equivalence is intentionally not inferred
+remaining:
+- Identity/sequence and computed-column semantics need coverage
+- Unique NULLS NOT DISTINCT, CHECK NO INHERIT and other constraint/type/collation
+  options need verification
+- Complete large-byte-column inventory and supported-prior-schema production-sized
+  migration rehearsal
+- Full API runtime image build/deployment qualification; these changes are not yet
+  deployed to k3d
+- All other retained Phase 1 requirements and five broader integration gates
+references:
+- https://sqlglot.com/sqlglot.html
+- https://www.postgresql.org/docs/16/catalog-pg-constraint.html

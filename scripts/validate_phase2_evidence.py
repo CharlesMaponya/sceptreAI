@@ -135,7 +135,9 @@ def _candidate_identities(root: Path, revision: str) -> dict[str, str]:
     }
 
 
-def _validate_candidate_position(*, root: Path, candidate: str, head: str) -> list[str]:
+def _validate_candidate_position(
+    *, root: Path, candidate: str, head: str, historical: bool = False
+) -> list[str]:
     """Require HEAD to be the candidate or a strictly evidence-only descendant.
 
     An evidence record cannot contain the identity of the commit that contains
@@ -155,6 +157,9 @@ def _validate_candidate_position(*, root: Path, candidate: str, head: str) -> li
     )
     if ancestry.returncode != 0:
         return ["The candidate Git commit is not an ancestor of the current commit."]
+    if historical:
+        # Historical records remain bound to their original candidate, not HEAD.
+        return []
     changed = {
         path
         for path in _git_output(root, "diff", "--name-only", f"{candidate}..{head}")
@@ -351,6 +356,7 @@ def validate_phase2_evidence(
     *,
     manifest_path: Path = DEFAULT_MANIFEST,
     root: Path = ROOT,
+    historical: bool = False,
 ) -> list[str]:
     errors: list[str] = []
     records_document = _load_yaml(records_path)
@@ -387,7 +393,9 @@ def validate_phase2_evidence(
         identities = {}
     if head:
         errors.extend(
-            _validate_candidate_position(root=root, candidate=str(candidate), head=head)
+            _validate_candidate_position(
+                root=root, candidate=str(candidate), head=head, historical=historical
+            )
         )
     manifest_candidate = manifest.get("candidate")
     if isinstance(manifest_candidate, Mapping):
@@ -423,13 +431,22 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("records", nargs="?", type=Path, default=DEFAULT_RECORDS)
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
+    parser.add_argument(
+        "--historical", action="store_true",
+        help="Check archived evidence integrity without qualifying the current checkout.",
+    )
     args = parser.parse_args()
-    errors = validate_phase2_evidence(args.records, manifest_path=args.manifest)
+    errors = validate_phase2_evidence(
+        args.records, manifest_path=args.manifest, historical=args.historical
+    )
     if errors:
         for error in errors:
             print(f"ERROR: {error}")
         return 1
-    print("validated 7 candidate-bound Phase 2 gate records")
+    if args.historical:
+        print("validated 7 historical Phase 2 records; current checkout is NOT qualified")
+    else:
+        print("validated 7 candidate-bound Phase 2 gate records (statuses unchanged)")
     return 0
 
 

@@ -1,0 +1,43 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-09-30T04:01:07.387679+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: Preregistered evaluation policy and initial durable evaluator plan
+tests:
+  tests: 321
+  failures: 0
+  errors: 0
+  skipped: 0
+new_planning_tests: 9
+source_sha256:
+  apps/api/automl_api/services/evaluation_planning.py: 80f122fe01c31c8ae9f7dfee0d92a6daf1bfc1058344bbaa941e0876482b95e8
+  apps/api/automl_api/services/final_test_credentials.py: 700ad6f35c41cf7977b777ebed75fbb0d66691c6c7d3b6253a1dc3f9b22cf268
+  apps/api/automl_api/training/champion_evaluation.py: ef3ec55a93264582b2f6f4ce158cbc9e92fbd447aa0dcc510e175084558b5629
+  apps/api/automl_api/services/contracts.py: 5b684acd9417d1f2561163685c8ed4d867b034a4d0e746f4e3940ba666bf3b4f
+  apps/api/automl_api/services/workflow_state.py: 8b4cec5d7f86c969ed2eae388560adfe2e1cefa95589e80f6a43d2ffae20c300
+  tests/test_champion_evaluation_planning.py: b66f3cd452739ba2a8d96138971eb66cb93fd83ce5f557a878d54f55ad8d5e80
+  tests/test_champion_planning.py: 6d6852ca95ef5164c93549606e6ecba370a7783789a2230ed792fe13b7226f27
+artifacts:
+  .unlazy/phase1-champion/evaluator-registration.xml: bee0bf3ffb7ba9b5d421a0fb35d430320ffb540089073a53e73281e9e6e0380b
+  .unlazy/phase1-champion/evaluator-registration-gates.log: 739ef68f45346b7c2db5b8d24f4f7d01680eb4ae469d4936e2ea84d596e1c4e6
+environment: Local PostgreSQL and sklearn; synthetic final object metadata; no new
+  k3d deployment
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+verified:
+- Scope creation validates a scope-free final object template
+- Scope sealing freezes evaluator policy before releasing member training
+- Policy validates split/experiment/provider/metric/rows/digest and final object prefixes/versions
+- Initial evaluator attempt requires matching successful frozen pipeline publication
+- Registration replays same plan and rejects changed allocation, key or sealed policy
+remaining:
+- Controller central-allocation authentication and private-key custody
+- Credential handoff, evaluator control/worker and Kubernetes submission/observation
+- Pre-open replacement and post-open stored-result recovery/failure sealing integration
+- Automatic physical object manifest generation and other backend coverage
+- Full k3d journey and all other Phase1 requirements

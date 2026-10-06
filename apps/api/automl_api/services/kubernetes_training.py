@@ -1127,6 +1127,8 @@ class KubernetesTrainingClient:
             if exc.status == 404:
                 return "missing"
             raise
+        if getattr(getattr(job, "metadata", None), "deletion_timestamp", None):
+            return "terminating"
         if job.status.succeeded:
             return "succeeded"
         if job.status.failed:

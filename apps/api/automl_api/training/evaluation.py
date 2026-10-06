@@ -43,6 +43,7 @@ from sklearn.preprocessing import label_binarize
 from automl_api.models.enums import TaskType
 
 LOWER_IS_BETTER_METRICS = {
+    "log_loss",
     "davies_bouldin",
     "mae",
     "mape",

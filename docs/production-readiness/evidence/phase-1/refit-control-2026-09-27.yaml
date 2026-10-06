@@ -1,0 +1,55 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-09-27T19:36:51.351759+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: Attempt-scoped refit control API and credential-free HTTPS worker execution
+tests:
+  tests: 168
+  failures: 0
+  errors: 0
+  skipped: 0
+control_tests: 11
+environment:
+  database: Disposable PostgreSQL 16 champion_tests, fully migrated
+  transport: FastAPI TestClient for control, real local TLS server for synthetic inputs
+  providers: S3 signing SDK mocked; native cloud paths not qualified
+  runtime: Local .venv-ci312, not pinned release-runtime evidence
+  k3d: No new refit pod deployed
+test_artifact:
+  path: .unlazy/phase1-champion/control-regression.xml
+  sha256: 1e5088a4def87944715e58e6d3bb1b494e271e6029d9823b5d48587db4b0adc1
+source_sha256:
+  apps/api/automl_api/api/routes/refit_control.py: 6cb4c3ca42f07a89a30b2d055c4fe37aea549be847105efb8bd68ecf3a3836a1
+  apps/api/automl_api/services/refit_access.py: e620bc736740876648219c7d835416814cfa3cf6d3f533fb727b1156ea224f4e
+  apps/api/automl_api/training/refit_worker.py: f2f4398c10f4ea9b0fe2441567f82630bd811e7f3968da6abd7fb8078943e7a0
+  apps/api/automl_api/training/champion_refit.py: 1ad0d11f8d664f833372f0c03d0c3e923d1ce6e9341d85aeb1c60e6cbe650b8f
+  apps/api/automl_api/main.py: faed93773a3dbc1c0d66fb50de1e59e235dd31671dc573fb722a43bdcb162336
+  tests/test_champion_refit_control.py: e9f58328247da23e184319a33b0460c6ad69b0e87de8493297e53cd03173797c
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+verified:
+- Worker runs real sklearn refit over HTTPS inputs and API-owned upload/publication
+  with no DATABASE_URL environment variable
+- Domain-separated token cannot authenticate as an application access token
+- Capability checks reject another attempt, bad signature, cancellation, stale fence,
+  deadline and lease expiry
+- Only indexed registered inputs receive read URLs, bounded by the current lease
+- Output intent precedes storage; bounds, byte digest, changed declaration and stored
+  corruption checks
+- Same publication replay succeeds; duplicate worker start and post-terminal input
+  requests fail
+- Failure reporting records no provider URL; mint failures return redacted errors
+remaining:
+- Kubernetes job submission, scoped Secret and NetworkPolicy lifecycle
+- Job and lease failure observation, concurrent reconciler and live pod/process recovery
+  tests
+- Actual deployed capability and network isolation on local k3d
+- Evaluator worker and signed-result recovery/authority integration
+- Automatic prepared shard manifest production and approved tier transitions
+- Distributed/incremental refit and other required task paths
+- Other Phase 1 migration, pooler, deletion, replay and recovery requirements

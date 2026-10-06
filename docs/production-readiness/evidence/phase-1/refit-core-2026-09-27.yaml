@@ -1,0 +1,53 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-09-27T13:54:55.077537+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: Bounded sklearn refit execution and fenced PostgreSQL pipeline publication
+  core
+tests:
+  tests: 118
+  failures: 0
+  errors: 0
+  skipped: 0
+refit_tests: 22
+environment:
+  database: disposable PostgreSQL 16, champion_tests, migrated to current Alembic
+    head
+  python: 3.12.13
+  scikit_learn: 1.9.0
+  numpy: 2.5.2
+  runtime_release_qualified: false
+  k3d_refit_deployment: false
+verified:
+- Exact registered object bytes, row identities, counts and train/validation role
+  lineage.
+- Real sklearn refit uses all registered rows without a new split or hyperparameter
+  search.
+- One checkpoint and completion event share terminal CAS; identical replay and stale/conflicting
+  publisher rejection.
+- Replacement attempt preserves data policy and selected candidate.
+- Submitted worker executes to publication; duplicate start and execution failure
+  are handled.
+- Controlled heartbeat SQL respects cancellation; expired lease and scope deadline
+  prevent publication.
+- S3-compatible, Azure container and GCS model URI compatibility.
+source_sha256:
+  apps/api/automl_api/training/champion_refit.py: 1b0312ad749669e661c6874b04062c9dbc4b4e916168327a17b9a87ac1772648
+  apps/api/automl_api/qualification_control.py: fdbb2ef505d00556da4136f7f2c39d5b6f311639ba0607198f3ae2e3116a2560
+  tests/test_champion_refit_execution.py: 988af43ca9f4a891d2feedd3480bc75752b021a14f9b0a434c7cb1dfd911718c
+  tests/test_champion_refit_publication.py: 48302f53f9ca1a783e795ed95ea9ec3cc766e7da0121dcc01ebf23180c47d42e
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+remaining:
+- Automatic scope winner selection and preregistered-plan creation.
+- Reconciler-owned attempt creation, replacement and isolated Kubernetes job submission.
+- Stage database/storage credentials and real pod/process failure drills.
+- Evaluator execution, immutable result recovery and actual authority handoff.
+- Distributed/incremental refit, other unsupported task paths and measured runtime
+  memory qualification.
+- Other Phase 1 migration, PgBouncer, deletion and recovery requirements remain open.

@@ -1,0 +1,4 @@
+apiVersion: v2
+name: qualification-control
+version: 0.1.0
+description: Dedicated receipt authority for release qualification

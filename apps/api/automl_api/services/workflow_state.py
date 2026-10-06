@@ -201,6 +201,7 @@ def claim_outbox(
             .order_by(OutboxEntry.available_at, OutboxEntry.id)
             .limit(limit)
             .with_for_update(skip_locked=True)
+            .execution_options(populate_existing=True)
         )
     )
     for row in rows:
@@ -229,6 +230,10 @@ def defer_outbox(
     db: Session, row: OutboxEntry, *, worker_id: str, delay_seconds: int = 5
 ) -> None:
     """Release a capacity wait without consuming the delivery failure budget."""
+    with db.no_autoflush:
+        row = db.get(OutboxEntry, row.id, with_for_update=True, populate_existing=True)
+    if row is None:
+        raise LookupError("Outbox entry was not found.")
     if row.status != OutboxStatus.CLAIMED or row.lease_owner != worker_id:
         raise StaleFence("The outbox lease is not owned by this worker.")
     row.status = OutboxStatus.PENDING
@@ -248,7 +253,8 @@ def complete_outbox(
     error: str | None = None,
     now: datetime | None = None,
 ) -> OutboxEntry:
-    row = db.get(OutboxEntry, entry_id)
+    with db.no_autoflush:
+        row = db.get(OutboxEntry, entry_id, with_for_update=True, populate_existing=True)
     if row is None:
         raise LookupError("Outbox entry was not found.")
     if row.status == OutboxStatus.DELIVERED:
@@ -436,6 +442,20 @@ def seal_promotional_scope(
     if ordinals != list(range(scope.expected_members)):
         raise InvalidTransition("Scope member ordinals are not exact and contiguous.")
 
+    if scope.mode == "promotional":
+        from automl_api.services.champion_planning import validate_refit_policy
+        from automl_api.services.evaluation_planning import validate_evaluation_policy
+
+        policy, digest = validate_refit_policy(db, scope)
+        evaluation_policy, evaluation_digest = validate_evaluation_policy(db, scope)
+        scope.comparison_policy = {
+            **(scope.comparison_policy or {}),
+            "refit_policy": policy.model_dump(mode="json"),
+            "refit_policy_digest": digest,
+            "evaluation_policy": evaluation_policy.model_dump(mode="json"),
+            "evaluation_policy_digest": evaluation_digest,
+        }
+
     scope.membership_digest = canonical_request_hash(
         [
             {"ordinal": member.ordinal, "model_run_id": str(member.model_run_id)}
@@ -495,6 +515,18 @@ def seal_promotional_scope(
     attempt_by_run = {attempt.model_run_id: attempt for attempt in attempts}
     if set(attempt_by_run) != set(run_ids):
         raise InvalidTransition("Every scope member must have one initial training attempt.")
+
+    if scope.mode == "promotional":
+        from automl_api.models.workflows import ExperimentSpecRevision
+        from automl_api.services.champion_planning import validate_refit_member
+
+        experiment = db.get(ExperimentSpecRevision, scope.experiment_spec_revision_id)
+        for run in runs:
+            if (run.status != RunStatus.PRECHECK_RUNNING
+                or (run.tags or {}).get("desired_state") != "barrier_pending"
+                or attempt_by_run[run.id].status != AttemptStatus.PENDING):
+                raise InvalidTransition("Promotional members cannot have executed before sealing")
+            validate_refit_member(run, scope, policy, experiment.primary_metric)
 
     for reservation in reservations:
         reservation.status = "consumed"

@@ -1,0 +1,56 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-09-27T19:18:05.546576+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: Durable scope refit planning, pre-search policy checks, bounded replacement,
+  shared log-loss direction
+tests:
+  tests: 157
+  failures: 0
+  errors: 0
+  skipped: 0
+planning_tests: 17
+environment:
+  database: Disposable PostgreSQL 16 champion_tests, migrated to current Alembic head
+  runtime: Local .venv-ci312; not pinned release runtime qualification
+  k3d: No new refit workload deployed
+test_artifact:
+  path: .unlazy/phase1-champion/planning-regression.xml
+  sha256: 97a961ed2c1380ef5bcdedf9b64f3005e9f787c2c8b8062fee37b7f5c12a7de6
+source_sha256:
+  apps/api/automl_api/services/champion_planning.py: 01f9122945ac7c33bfeb345161b8928b9f14ecaeaa4cff6eab3483adacdf01fe
+  apps/api/automl_api/services/contracts.py: 25c54204c747a77511b542627b778333ef735fc2b6ac41ab702d68519e20ff28
+  apps/api/automl_api/services/workflow_state.py: fc473377ce41854a5c8316bc924768ce25eb0d0497f9e21430e87fd035a40414
+  apps/api/automl_api/workflow_reconciler.py: 3b0f5593954c6829ef0d0ab9aa99e7bb791f73bce6e308ff3faf1fdc3284465c
+  apps/api/automl_api/training/champion_refit.py: 780ad1be6106afac03fa7370425c70dc9717b4578b6c8c6096ba3a898caaf458
+  apps/api/automl_api/training/evaluation.py: ce32d38b036c9cbafb39e3bbb64c010deb81833252b914ba8cf7ae96b2114d5d
+  tests/test_champion_planning.py: 98463ac4b63fa3ddd2c580d2d4130c50b52a083bb1c4af5b8aa4412aea31277f
+  tests/test_phase1_public_contracts.py: 69c0f6af83a9f96bdb7542e752ace50815b72962a4fae0912718e0421363ea8b
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+verified:
+- Global validation-score selection across terminal scope members; active training
+  blocks planning
+- Refit policy validates sealed split counts, row digests, role prefixes, experiment
+  and search tier
+- Sealing rejects previously executed promotional members and registers policy before
+  release
+- Durable initial/replacement plans, original selection preserved, one replacement
+  maximum
+- Planned replacement executes real sklearn refit and publishes through PostgreSQL
+  CAS
+- Reconciliation plans pending work, deduplicates and terminates invalid scopes
+- Classification log_loss is minimized by the shared metric-direction helper
+remaining:
+- Automatic partition manifest production and approved tier-transition support
+- Stage-scoped DB and storage credentials
+- Refit job submission and failure/lease observation, including concurrent reconcilers
+  and live process/pod-kill drills
+- Evaluator worker, signed immutable result recovery and actual authority handoff
+- Distributed/incremental refit and other required task paths
+- Full Phase 1 migration, PgBouncer, deletion, replay and recovery gates

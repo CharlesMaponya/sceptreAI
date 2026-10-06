@@ -1,0 +1,36 @@
+date: '2026-09-25'
+phase: '1'
+record_type: unsigned_local_remediation
+production_qualified: false
+checks:
+  targeted_tests:
+    tests: 62
+    failures: 0
+    errors: 0
+    skipped: 0
+  isolated_database_tests: 6
+  restored_database_tests: 6
+  restore_replay: exact allocation, CAS version, result and two receipt digests preserved
+  lint: passed
+  increment_gates:
+    met: 3
+    unmet: 0
+    abandoned: 0
+limitations:
+- Not a deployed service or production-sized qualification.
+- Provider broker, dedicated refit/evaluator jobs and grant integration remain incomplete.
+- Runtime is the existing local Python environment, not the required release lock.
+- No live PgBouncer, managed HA/PITR, IAM or Kubernetes network/TLS qualification.
+- Authority image isolation, public-key receipts and protected deployment workflow
+  remain open.
+source_sha256:
+  apps/api/automl_api/qualification_control.py: 9e22bf7129003d6a7120ec839c858b56dc62700b30b41e295c1aaa65a539ca6a
+  apps/api/automl_api/db/qualification_session.py: ed0c4dba942831b94b40b5670e87fc7ded1f7a876f8a4ebdebfc63d18f3b85ce
+  apps/api/automl_api/db/session.py: 4b459afd93c798ecb7f46fb380946673d1d0b66311d3f0c6232a206a088b9e28
+  apps/api/automl_api/services/final_test_authority.py: b7ea9b324259335ae42bf4faf14a768e291d927927bc58fe7679a14de2d65c54
+  services/qualification-control/migrations/0001_authority.sql: f3c0a8e6761356325b5addd009598f13843e1dcc8d4dd1183cdf277b5afe78c9
+  services/qualification-control/chart/templates/authority.yaml: e5c8202e948b5ab728c922cb9f0262a3a5c7e58e0bd33325baa7f9ede46c972a
+  services/qualification-control/chart/values.yaml: 636095c24bf6bb0864f10343341a3c2047fdbc072210b0fbb2b429ee587f5d65
+  services/qualification-control/chart/Chart.yaml: 2b4ef5b334a4e91efda0d3de62e2ba71f78b400f6ae37c38f8d3236df5e6fd37
+  tests/test_qualification_control.py: 9fe4f2842e2a52db92dde50261647105981a7f3baf04f5226ed26509260e1030
+  tests/test_runtime_foundations.py: 4c8f69d42d93bfb1d4045cada1723aeb26fa53d6771f9516440e2c3d73218070

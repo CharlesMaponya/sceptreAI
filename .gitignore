@@ -110,6 +110,8 @@ smme_tabular_automl.egg-info/
 infra/helm/sceptre/charts/*.tgz
 
 # Local agent skills
+.unlazy/
+.unlazy-hook-state.json
 .agents/
 skills-lock.json
 

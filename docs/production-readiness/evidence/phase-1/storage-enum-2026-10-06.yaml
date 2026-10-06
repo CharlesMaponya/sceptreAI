@@ -1,0 +1,58 @@
+{
+  "schema_revision": "sceptre-local-remediation-v1",
+  "observed_at": "2026-10-06T17:05:23.031555+00:00",
+  "phase": "1",
+  "phase_complete": false,
+  "production_qualified": false,
+  "review_status": "unsigned_local_evidence",
+  "scope": "Persisted storage enum names and migration values remain ORM-readable",
+  "focused_tests": {
+    "tests": 133,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "regression_tests": {
+    "tests": 625,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "sha256": {
+    "apps/api/automl_api/models/datasets.py": "4cd655ef9a02d9afa5d134a588e00b44d64a51d0826a8c458d87f28f2068e94b",
+    "scripts/verify_database_schema.py": "6c30776ea1f1f2828b68859a6e825dcb763bffe152c7cd46e6d3dfb6325ec3f7",
+    "tests/test_phase1_postgres_contracts.py": "f34f9a90776ef2b218fdfe60f0b090871449e3b41047625193a666ea3d1099d0",
+    "tests/test_phase1_migration_rehearsal.py": "32ff36db2b95520a73abf393043cae92d38de42b8c21a88e3af6e32f2cf015ca",
+    ".unlazy/phase1-champion/storage-enum-before.log": "9af835ebb13fe301fca9820672959ba916ecfaf99edffd876b08db2448fdc48d",
+    ".unlazy/phase1-champion/storage-enum-tests.log": "0005e1fb7f58d9b8ee09a833de8b4b76df5a32aa56f465f02989b35a492be96c",
+    ".unlazy/phase1-champion/storage-enum-final-tests.xml": "685a42a9daced642b3db1f60a019daf313cc96ada52b0abd052fcbeb977d5201",
+    ".unlazy/phase1-champion/storage-enum-regression.xml": "f3aab8c27c5bc6f94beb21e626d0a3cdf31dab6f2ee54824b6df46523c940be6",
+    ".unlazy/phase1-champion/storage-enum-alembic.log": "8a380081870e428e321e0e16bc0bd236d9e1146fc3f2b9885d1a28733abe476e",
+    ".unlazy/phase1-champion/storage-enum-gates.log": "5f89ac52025938528fcebcce228868272971264ccb44bf8ee44b30574b5f599c",
+    ".unlazy/phase1-champion/enum-default-inventory.json": "667cdd40dcb26386e0fca6a5cd53d5521e2dbba58c72b9b04d635152e6c32021"
+  },
+  "negative_control": {
+    "lowercase_read_failures": 8,
+    "uppercase_read_passes": 8
+  },
+  "verified": [
+    "All eight ObjectStoreType identities read from both enum names and lowercase values through real PostgreSQL rows",
+    "ORM writes retain prior enum-name spelling; no bulk data rewrite",
+    "Unknown read and bind values rejected without fallback",
+    "Actual 0007-to-head migration of eight dataset-version rows retains URI/hash/10 GiB numeric size and expected provider identities",
+    "Existing schema verifier and Alembic check accept unchanged database schema",
+    "Default comparison unwraps dialect-specific TypeDecorator storage types before matching implicit literal casts"
+  ],
+  "interim_failure": "First 110-test run had one schema-default comparison failure for TypeDecorator; fixed underlying type inspection; final suites pass",
+  "integration_gates": {
+    "met": 2,
+    "unmet": 5,
+    "abandoned": 0
+  },
+  "remaining": [
+    "Twelve other enum-backed server defaults reject their own lowercase values; inventory retained for next shared correction",
+    "Previous-release reader/writer concurrency and deployment qualification",
+    "Representative production-scale data and user-provided 45 GB qualification ceiling",
+    "All remaining Phase 1 ledger requirements; runtime changes not yet deployed to k3d"
+  ]
+}

@@ -1,0 +1,36 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-09-30T03:54:02.000593+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: Deterministic allocation conflicts and allocator-only signed-receipt recovery
+tests:
+  tests: 53
+  failures: 0
+  errors: 0
+  skipped: 0
+source_sha256:
+  apps/api/automl_api/services/final_test_authority.py: 2b6dd3179d2699e84dcff521f7980581b7537ec0cf3831aa9ed2ea170d1e947d
+  apps/api/automl_api/qualification_control.py: 2b93e30c69c8beb027677146cb68715a2b063f029a9c82bbf37f6b483483e249
+  tests/test_qualification_control.py: db01af870c5c82bb3d3d213634f3832e42f25d2e3e8009b92f20956cc078ab01
+artifacts:
+  .unlazy/phase1-champion/authority-recovery.xml: e7687ca4e35c611c9f44bb85c17b7f84c0555110a0df7b8429effd41fabb3369
+  .unlazy/phase1-champion/authority-recovery-gates.log: d84d16fb2b9991de54a50ff8521acb05bbb01029631d71fe27672e20090c2024
+environment: Disposable PostgreSQL16 and FastAPI TestClient; no new k3d deployment
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+verified:
+- 'Six requests forced past initial lookup: one allocation and five HTTP409 responses'
+- Winner replays identically; subsequent conflicting split for same scope returns409
+- Allocator can retrieve same signed commit after authority restart without worker
+  identities
+- Unauthenticated, provider and unrelated-project inspection denied
+- Recovery response contains state and receipts, no object URLs or evaluator tokens
+remaining:
+- Wire evaluator planning and registration
+- Connect worker/control/result-publication/reconciler and Jobs
+- Full live k3d lifecycle and other retained Phase1 requirements

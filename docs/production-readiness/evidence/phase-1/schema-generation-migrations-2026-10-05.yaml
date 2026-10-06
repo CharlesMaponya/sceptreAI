@@ -1,0 +1,109 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-10-05T19:14:17.560008+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: Generated columns, constraint options, byte storage and bounded migration rehearsal
+focused_tests:
+  tests: 63
+  failures: 0
+  errors: 0
+  skipped: 0
+regression_tests:
+  tests: 567
+  failures: 0
+  errors: 0
+  skipped: 0
+source_sha256:
+  scripts/verify_database_schema.py: c28706d9c778f695a2a37f9707ec52d0413c4543875ac5a963de4d8511093c17
+  scripts/rehearse_phase1_migrations.py: 2ff08036c5aaf2638406552049be1ad96130557cb002f80c783c13455f27c998
+  tests/test_database_schema_verifier.py: 4f243da04e0e1dff0f8a6880acf294659e5a394b1e0115ecb055c3dde08353e2
+artifacts:
+  .unlazy/phase1-champion/schema-generation-before.log: a644e15aae28f94e6cc80815e1481012b30aac9bcaefedd3a6e61d594b328390
+  .unlazy/phase1-champion/schema-generation-negative.log: 618a2ad3ea8516875b81e7a242a3c45d28bcac19dbda8dbc0b8dba9c3e8d0992
+  .unlazy/phase1-champion/schema-extra-constraint-before.log: 6cc20a542411ec9343c388ed0f11c78dbb2d6b497eabea3483b8d93ffd082ec2
+  .unlazy/phase1-champion/schema-generation-complete.xml: 8507dd190b689a5e7038663863b20956b7bb011d5b9d5408f2fa41a3034cbab9
+  .unlazy/phase1-champion/schema-generation-final-regression.xml: 302940872d4bcce6e42c8a7c6e7891e6b5d5a0eeb0c21ef7127314c7fa2586f5
+  .unlazy/phase1-champion/schema-generation-positive.log: 617c229b76e3c5a8f0b55d7ad88d1d9987643ca5a241abb788c0d57b76cd4980
+  .unlazy/phase1-champion/schema-generation-final-gates.log: 32d58a16a3bb3187e9af472ed813d0305caa988450a1c0dc50a15558c042eccf
+  .unlazy/phase1-champion/migration-rehearsal-final-20261005.log: 703e7abd2b1a0eac03393c11e39f87f7fdf5fa126391d1b55b18b0edbcd64be4
+  .unlazy/phase1-champion/byte-column-inventory.json: 680183d38bc50f292accfcb85ac357afe122ca85ca1b75efd2c044b4eb962843
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+byte_columns:
+- column: capacity_reservations.memory_bytes
+  model_type: BIGINT
+  database_type: BIGINT
+- column: dataset_versions.byte_size
+  model_type: BIGINT
+  database_type: BIGINT
+- column: dataset_upload_sessions.byte_size
+  model_type: BIGINT
+  database_type: BIGINT
+- column: dataset_upload_sessions.part_size
+  model_type: BIGINT
+  database_type: BIGINT
+- column: dataset_upload_sessions.confirmed_bytes
+  model_type: BIGINT
+  database_type: BIGINT
+- column: prepared_artifacts.byte_size
+  model_type: BIGINT
+  database_type: BIGINT
+- column: run_artifacts.byte_size
+  model_type: BIGINT
+  database_type: BIGINT
+byte_value_check:
+  values:
+  - 10737418240
+  - 9223372036854775807
+  method: CAST through each reflected database type; no object data uploaded
+migration_rehearsal:
+  starts:
+  - 0001_initial
+  - 0002_expand_artifact_kind
+  - 0003_security_controls
+  - 0004_resumable_dataset_uploads
+  - 0007_phase1_attempt_lineage
+  target: 0010_phase3_contract_target
+  upload_metadata_rows_per_applicable_start: 10000
+  upload_seed_starts:
+  - 0004_resumable_dataset_uploads
+  - 0007_phase1_attempt_lineage
+  other_starts: One user and project seeded; no upload table at those starting revisions
+  checks:
+  - schema verifier reports 42 current tables
+  - alembic check reports no new operations
+  - existing seeded-row/count/minimum-value checks
+  production_scale: false
+  limitations:
+  - 'Seed preservation oracle is incomplete: counts/minima do not prove every row
+    and field survived'
+  - No previous-release concurrent-reader/expand-backfill qualification
+  - Supported production release/schema inventory still needs final audit
+verified:
+- Detects unexpected identity/computed columns and changed computed expressions
+- Identity mode, start, increment, min/max, cache and cycle compared
+- Ascending/descending identities for smallint/integer/bigint accepted; moving sequence
+  value does not create schema drift
+- Unique NULLS NOT DISTINCT and CHECK NO INHERIT changes rejected
+- Duplicate CHECK/unique/FK constraints and unmodeled exclusion constraints rejected
+- Seven current byte-count columns are BIGINT in metadata and PostgreSQL
+- All five declared rehearsal paths pass against the final verifier
+negative_controls:
+- Twelve generated-column/identity/constraint-option cases reproduced misses in the
+  prior verifier
+- Four extra/duplicate constraint cases reproduced misses before Counter/type coverage
+- Initial MINVALUE 2 fixture conflicted with START 1 and errored; corrected to MINVALUE
+  0 and rerun before implementation
+remaining:
+- Strengthen migration data-preservation checks beyond counts and minima
+- Production-sized migration and previous-release expand/backfill/contract qualification
+- Final schema/type/collation/constraint coverage audit and deployed-image startup
+  validation
+- All other retained Phase 1 requirements and five broader integration gates
+references:
+- https://www.postgresql.org/docs/16/sql-createsequence.html

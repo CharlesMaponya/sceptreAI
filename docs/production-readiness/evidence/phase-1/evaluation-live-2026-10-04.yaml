@@ -1,0 +1,78 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-10-04T13:18:59.201286+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: Live synthetic native Kubernetes refit/evaluation, lost Job creation reply
+  and terminal replay
+image: k3d-sceptre-registry.localhost:5111/sceptreai@sha256:c2eb2fee07b7732496e4fd85f398545cde4413954f55358c69d42424ca340cea
+live_results:
+  normal:
+    scope_id: 679f7983-b7d8-4813-83b6-70a7d9037c76
+    status: succeeded
+    rows: 10
+    rmse: 5.503840364735051e-15
+    grants: 1
+    attempts: 2
+    result_sha256: e5662ec92469e4381bd298c660a42a2c0f93f2853879ed8fdc8f6833e2152ca1
+    cleanup: complete
+  lost_creation_reply:
+    scope_id: 12c1d03a-ce87-4a65-82dc-c8f0876b86bf
+    status: succeeded
+    rows: 10
+    rmse: 5.503840364735051e-15
+    grants: 1
+    attempts: 2
+    lost_create_replies: 1
+    result_sha256: 264952af72cbc8cc93a4ea0c599a8dcedcaa668088bc82d465f9d407ec5b3231
+    cleanup: complete
+  terminal_replay:
+    scope_id: 12c1d03a-ce87-4a65-82dc-c8f0876b86bf
+    status: succeeded
+    rows: 10
+    rmse: 5.503840364735051e-15
+    grants: 1
+    attempts: 2
+    lost_create_replies: 0
+    result_sha256: 264952af72cbc8cc93a4ea0c599a8dcedcaa668088bc82d465f9d407ec5b3231
+    cleanup: complete
+runtime_source_verification:
+  files: 133
+  mismatches: []
+source_sha256:
+  scripts/validate_evaluator_workload.py: 9fe7f0c15c978f623cc495c52bab50a891163e824347658ee4fb2dad1535dd35
+  scripts/validate_refit_workload.py: cb2be3c8d455c9cd8d463401f79126272e1601aa94583f1d327ffc9a7c93e38a
+artifacts:
+  .unlazy/phase1-evaluation-k3d/run.log: 42a3d149f6dd48612778a5967f48ceded6c8ff4f608f6a093a7b66e267951c01
+  .unlazy/phase1-evaluation-k3d/lost-reply-run.log: b461f2a930ff2854c8785bb2323a329d549b5634dabe19daf0f9b5f47fa9fbca
+  .unlazy/phase1-evaluation-k3d/replay-run.log: 41c159c3766734d85f6171139c6245921f10a18706ea2d4ac7d6a947a8f5dc66
+  .unlazy/phase1-evaluation-k3d/source-verified.json: d2455a9ad879f5e7ba91f7c54e15694e363aa22c93362d7362d945f11683e42d
+  .unlazy/phase1-champion/evaluator-live-gates.log: 14c057c583f97bcc7db528a3224be98f10ad780d7d90556b22ca2a0c81838b2a
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+verified:
+- Fresh final Parquet versions remain readable after newer objects overwrite their
+  keys
+- Real refit and evaluator Jobs run with pinned current application source and TLS
+- Lost native evaluator Job creation response produces no duplicate attempt or grant
+- Signed result validates; terminal replay preserves result digest
+- Both workload Jobs, token Secrets and NetworkPolicies are absent; evaluator signing-key
+  Secret is absent
+remaining:
+- Live evaluator death before and after final-data open, lost result/commit acknowledgements,
+  and network-denial probes
+- Legacy refit-only fixtures without evaluation_policy repeatedly log KeyError during
+  evaluator reconciliation
+- Broad refit/evaluation/reconciliation acceptance suites remain missing; narrow tests
+  do not replace them
+- Image overlays current source on older dependencies; hermetic production runtime
+  and native cloud qualification remain open
+- Fixture seeds a fitted candidate and terminal training member; not a complete real
+  search/qualification journey
+- All other retained Phase 1 requirements, including pooler, migrations, deletion
+  and trial replay
+- 15 simultaneous 10 GiB uploads require suitably provisioned qualification infrastructure

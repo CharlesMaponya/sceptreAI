@@ -17,9 +17,30 @@ metadata:
   labels:
     {{- include "sceptre.labels" . | nindent 4 }}
 data:
+  {{- if .Values.championEvaluation.enabled }}
+  EVALUATION_CONTROL_BASE_URL: {{ .Values.championEvaluation.controlBaseUrl | quote }}
+  EVALUATION_AUTHORITY_URL: {{ .Values.championEvaluation.authorityUrl | quote }}
+  EVALUATION_AUTHORITY_PUBLIC_KEY_SECRET: {{ .Values.championEvaluation.authorityPublicKeySecret | quote }}
+  EVALUATION_IMAGE: {{ default (include "sceptre.image" (dict "root" . "image" .Values.training.cpu.image)) .Values.championEvaluation.image | quote }}
+  EVALUATION_CA_SECRET: {{ .Values.championEvaluation.caSecret | quote }}
+  EVALUATION_CPU_CORES: {{ .Values.championEvaluation.cpuCores | quote }}
+  EVALUATION_MEMORY_MIB: {{ .Values.championEvaluation.memoryMiB | quote }}
+  EVALUATION_EGRESS_RULES: {{ .Values.championEvaluation.egressRules | toJson | quote }}
+  {{- end }}
+  REFIT_CONTROL_BASE_URL: {{ .Values.championRefit.controlBaseUrl | quote }}
+  {{- if .Values.championRefit.image }}
+  REFIT_IMAGE: {{ .Values.championRefit.image | quote }}
+  {{- end }}
+  REFIT_CA_SECRET: {{ .Values.championRefit.caSecret | quote }}
+  REFIT_CPU_CORES: {{ .Values.championRefit.cpuCores | quote }}
+  REFIT_MEMORY_MIB: {{ .Values.championRefit.memoryMiB | quote }}
+  REFIT_EGRESS_RULES: {{ .Values.championRefit.egressRules | toJson | quote }}
   INTERNAL_API_URL: {{ printf "http://%s-api:8000" (include "sceptre.fullname" .) | quote }}
   ENVIRONMENT: {{ .Values.environment | quote }}
   PUBLIC_APP_URL: {{ .Values.auth.publicAppUrl | quote }}
+  OIDC_ISSUER: {{ .Values.auth.oidc.issuer | quote }}
+  OIDC_CLIENT_ID: {{ .Values.auth.oidc.clientId | quote }}
+  OIDC_REQUIRE_MFA: {{ .Values.auth.oidc.requireMfa | quote }}
   SMTP_HOST: {{ .Values.auth.passwordResetEmail.host | quote }}
   SMTP_PORT: {{ .Values.auth.passwordResetEmail.port | quote }}
   SMTP_FROM_EMAIL: {{ .Values.auth.passwordResetEmail.fromEmail | quote }}

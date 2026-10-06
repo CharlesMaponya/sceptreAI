@@ -27,12 +27,14 @@ metadata:
 spec:
   gatewayClassName: {{ .Values.gateway.className }}
   listeners:
+    {{- if not .Values.gateway.tls.enabled }}
     - name: http
       port: {{ .Values.gateway.port }}
       protocol: HTTP
       allowedRoutes:
         namespaces:
           from: Same
+    {{- end }}
     {{- if .Values.gateway.tls.enabled }}
     - name: https
       port: 443
@@ -57,6 +59,7 @@ spec:
     - name: {{ include "sceptre.fullname" . }}
       kind: Gateway
       group: gateway.networking.k8s.io
+      sectionName: {{ ternary "https" "http" .Values.gateway.tls.enabled }}
   hostnames:
     - {{ .Values.ingress.host | default .Values.gateway.host | quote }}
   rules:

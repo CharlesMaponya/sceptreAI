@@ -1,0 +1,40 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-09-30T03:50:03.243244+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: Signed evaluation output intent, stored-byte recovery and authority-backed
+  scope CAS
+tests:
+  tests: 310
+  failures: 0
+  errors: 0
+  skipped: 0
+publication_tests: 8
+source_sha256:
+  apps/api/automl_api/services/evaluation_publication.py: 03e6589b39352a938610b3d6d516f7c36e0041c44ba2c9e3020d1a553765d241
+  tests/test_champion_evaluation_publication.py: 94f143c3f2ad6523bc0fc2138aba6886d2a22ca9d2b5c31c14e1a0eb69ffee40
+artifacts:
+  .unlazy/phase1-champion/evaluation-publication.xml: 644a27d4f971f8f20dd5a7c4621cc0d5b9a66811aa49ed4a08b8b4f8fab3e7a0
+  .unlazy/phase1-champion/publication-gates.log: ce2d29b95fa290dc87380c5d1feaacf9fc58de56fb129b95d6f79c5f41003783
+environment: Local PostgreSQL transaction/savepoint fixtures, local object store,
+  injected acknowledgement loss; no live process-kill test
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+verified:
+- Output intent committed before object write
+- Stored result signature and byte digest verified before authority call
+- Authority commit receipt verified before attempt/checkpoint/scope transaction
+- Lost storage and authority acknowledgement recovery replays same result
+- Expired lease permits stored result recovery; cancellation, stale fence and altered
+  plan reject
+- Corrupt/missing object and forged authority receipt cannot complete scope
+remaining:
+- Durable evaluation plan/key registration and prerequisite policy validation
+- Control API, worker and scheduled recovery lifecycle
+- Provider object-lock/version-retention qualification
+- Integrated live evaluator and all remaining Phase 1 requirements

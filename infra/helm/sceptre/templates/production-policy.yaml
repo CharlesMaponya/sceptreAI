@@ -1,5 +1,14 @@
+{{- if .Values.championEvaluation.enabled -}}
+{{- $evaluationImage := default (include "sceptre.image" (dict "root" . "image" .Values.training.cpu.image)) .Values.championEvaluation.image -}}
+{{- if not (regexMatch "^.+@sha256:[a-f0-9]{64}$" $evaluationImage) -}}
+{{- fail "Evaluator image must be pinned by sha256 digest" -}}
+{{- end -}}
+{{- end -}}
 {{/* Fail closed before creating any production resources. */}}
 {{- if eq .Values.environment "production" -}}
+{{- if not .Values.championEvaluation.enabled -}}
+{{- fail "Production requires championEvaluation configuration" -}}
+{{- end -}}
 {{- if or .Values.postgresql.enabled .Values.seaweedfs.enabled .Values.mlflow.enabled -}}
 {{- fail "Production requires external PostgreSQL, object storage, and MLflow; bundled data services are local-only" -}}
 {{- end -}}
@@ -8,6 +17,9 @@
 {{- end -}}
 {{- if .Values.auth.simpleAuthEnabled -}}
 {{- fail "Production requires OIDC; password authentication is local-only" -}}
+{{- end -}}
+{{- if or (not (hasPrefix "https://" .Values.auth.oidc.issuer)) (not .Values.auth.oidc.clientId) (not .Values.auth.oidc.requireMfa) (not (hasPrefix "https://" .Values.auth.publicAppUrl)) -}}
+{{- fail "Production OIDC requires an HTTPS issuer, clientId, MFA, and HTTPS publicAppUrl" -}}
 {{- end -}}
 {{- if or (not .Values.gateway.enabled) (not .Values.gateway.tls.enabled) -}}
 {{- fail "Production requires the TLS Gateway" -}}

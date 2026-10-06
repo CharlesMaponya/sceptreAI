@@ -1,0 +1,67 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-10-04T18:30:51.372026+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: Live synthetic evaluator death before and after final-data grant
+results:
+  before_open:
+    scope_id: 46180026-3b13-463e-84d0-885c7f4a9ace
+    status: succeeded
+    stage: before-open
+    evaluator_attempts: 2
+    grants: 1
+    commits: 1
+    terminal_replays: 2
+    cleanup: complete
+  after_open:
+    scope_id: fb061f89-9152-4451-9405-7016e54417fb
+    status: failed
+    evaluator_attempts: 1
+    grants: 1
+    commits: 0
+    terminal_replays: 2
+    cleanup: complete
+controller_image: sha256:1ca5c7ae6f3a09310ae74a8695d374874cc12671f6cb19cfd7678d13ce538270
+worker_api_authority_image: sha256:c2eb2fee07b7732496e4fd85f398545cde4413954f55358c69d42424ca340cea
+artifacts:
+  scripts/validate_evaluator_failure.py: 5a18ee7d6896679b85f74fa1986772ab8d3619dadda5e7478cea385983ec4465
+  .unlazy/phase1-evaluation-k3d/post-open-executed.py: 16014083b2885958acee43ad35eb5cf170acd7fff8f93e11b4bb57567ca1dfa4
+  .unlazy/phase1-evaluation-k3d/post-open-run.log: d24badda7301c0463ef5e90025dffa06b67a5d648ffc255759df7f7c38ad2f46
+  .unlazy/phase1-evaluation-k3d/pre-open/run.log: 334b34e57e57faec4702c1fd51c8f6ef327d43891934fbb2583b4eaaad7e4b24
+  .unlazy/phase1-evaluation-k3d/pre-open/source-verified.json: eed0d4054c9f53f85aa3edf23971575a5cf2bd09429601321dbf0907c9309301
+  .unlazy/phase1-champion/evaluator-death-gates.log: 27587f9aaa0b8126ca031f461f3209fc5b305dd2ac922c1d53ce61c99021b8e2
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+verified:
+- Real worker Pod running at each kill boundary; Job deleted through native foreground
+  deletion
+- 'Before open: no grant at deletion, one replacement, one grant and signed committed
+  result; no checkpoint for failed attempt'
+- 'After open: signed grant receipt before deletion, one evaluator only, terminal
+  failure without committed result'
+- 'Both cases: Job/token Secret/signing key/NetworkPolicy cleanup and two unchanged
+  authority terminal replays'
+- Pre-open probe and controller source hashes match workspace
+limitations:
+- Post-open probe ran the archived post-open-executed.py version before adding the
+  before-open branch
+- Network routes were withheld to hold the worker at the chosen boundary; this is
+  not full egress-denial qualification
+- k3d restarted between probes; controller restored with fresh allocator identity
+  and versioned fixtures, preserving old receipts
+- Kubelet serving certificate address mismatch prevented kubectl exec; local Docker/CRI
+  exec used without disabling application TLS
+- Synthetic prepared/fitted fixture and source-overlay dependencies do not qualify
+  real search, release runtime, native cloud or capacity
+remaining:
+- Live lost result/commit acknowledgements and stored-output recovery without new
+  final reads
+- Network denial with positive controls, full training-to-evaluation journey and broad
+  acceptance suites
+- Pool metrics export/live PgBouncer, migration, deletion, trial replay and other
+  retained Phase 1 requirements

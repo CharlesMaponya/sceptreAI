@@ -1015,7 +1015,29 @@
           }
         },
         "publicAppUrl": {},
-        "simpleAuthEnabled": {}
+        "simpleAuthEnabled": {},
+        "oidc": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "issuer": {
+              "type": "string"
+            },
+            "clientId": {
+              "type": "string"
+            },
+            "requireMfa": {
+              "type": "boolean"
+            },
+            "existingSecret": {
+              "type": "string"
+            },
+            "clientSecretKey": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
       }
     },
     "capabilities": {
@@ -1261,6 +1283,157 @@
           }
         }
       }
+    },
+    "championRefit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "controlBaseUrl": {
+          "type": "string"
+        },
+        "image": {
+          "type": "string"
+        },
+        "caSecret": {
+          "type": "string"
+        },
+        "cpuCores": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "memoryMiB": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "egressRules": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "championEvaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "controlBaseUrl": {
+          "type": "string"
+        },
+        "image": {
+          "type": "string",
+          "pattern": "^$|^.+@sha256:[a-f0-9]{64}$"
+        },
+        "caSecret": {
+          "type": "string"
+        },
+        "cpuCores": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "memoryMiB": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "egressRules": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "authorityUrl": {
+          "type": "string"
+        },
+        "allocatorSecret": {
+          "type": "string"
+        },
+        "authorityPublicKeySecret": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "enabled": {
+                "const": true
+              }
+            },
+            "required": [
+              "enabled"
+            ]
+          },
+          "then": {
+            "required": [
+              "controlBaseUrl",
+              "authorityUrl",
+              "allocatorSecret",
+              "authorityPublicKeySecret",
+              "egressRules"
+            ],
+            "properties": {
+              "allocatorSecret": {
+                "minLength": 1
+              },
+              "authorityPublicKeySecret": {
+                "minLength": 1
+              },
+              "controlBaseUrl": {
+                "pattern": "^https://[^/?#@]+(/[^?#]*)?$"
+              },
+              "authorityUrl": {
+                "pattern": "^https://[^/?#@]+(/[^?#]*)?$"
+              },
+              "egressRules": {
+                "minItems": 1,
+                "items": {
+                  "required": [
+                    "to",
+                    "ports"
+                  ],
+                  "properties": {
+                    "to": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "ports": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "port"
+                        ],
+                        "properties": {
+                          "port": {
+                            "enum": [
+                              443,
+                              8443,
+                              8334
+                            ]
+                          },
+                          "protocol": {
+                            "enum": [
+                              "TCP"
+                            ]
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
     }
   },
   "additionalProperties": false

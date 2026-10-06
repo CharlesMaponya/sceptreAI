@@ -7,8 +7,8 @@ from dataclasses import asdict, dataclass
 
 RUNS = 15
 DEADLINE_SECONDS = 7_200
-HEADROOM_FACTOR = 1.20
-WARM_CAPACITY_FRACTION = 0.25
+MINIMUM_QUOTA_HEADROOM = 0.20
+CAPACITY_RESERVE_FRACTION = 0.25
 SEED = 42
 
 
@@ -86,18 +86,27 @@ def schedule(profile: ProviderProfile) -> dict[str, object]:
     finalization = [240.0 for _ in range(RUNS)]
     walls = [sum(parts) for parts in zip(startup, fit, recovery, finalization, strict=True)]
 
-    per_node_workers = min(
-        math.floor((profile.node.cpu * 0.75 - HEAD.cpu) / WORKER.cpu),
-        math.floor((profile.node.memory_gib * 0.75 - HEAD.memory_gib) / WORKER.memory_gib),
-        math.floor(
-            (profile.node.ephemeral_gib * 0.75 - HEAD.ephemeral_gib) / WORKER.ephemeral_gib
+    # Conservative colocated head/worker pairs, with 25% node resources reserved.
+    # ponytail: static packing only; measured stage/gang scheduling remains required.
+    per_node_workers = max(
+        0,
+        min(
+            math.floor(
+                getattr(profile.node, resource)
+                * (1 - CAPACITY_RESERVE_FRACTION)
+                / (getattr(HEAD, resource) + getattr(WORKER, resource))
+            )
+            for resource in ("cpu", "memory_gib", "ephemeral_gib", "gpu")
+            if getattr(HEAD, resource) + getattr(WORKER, resource) > 0
         ),
     )
-    slots = per_node_workers * profile.node_count
-    warm_slots = math.floor(slots * (1 - WARM_CAPACITY_FRACTION))
-    required_nodes = math.ceil(RUNS / max(1, per_node_workers))
-    quota_headroom = (profile.quota_nodes - required_nodes) / required_nodes
-    unschedulable = 0 if warm_slots >= RUNS else RUNS - warm_slots
+    available_nodes = max(0, min(profile.node_count, profile.quota_nodes))
+    slots = per_node_workers * available_nodes
+    required_nodes = math.ceil(RUNS / per_node_workers) if per_node_workers else None
+    quota_headroom = (
+        (profile.quota_nodes - required_nodes) / required_nodes if required_nodes else None
+    )
+    unschedulable = max(0, RUNS - slots)
     return {
         "provider": profile.provider,
         "node_count": profile.node_count,
@@ -105,7 +114,7 @@ def schedule(profile: ProviderProfile) -> dict[str, object]:
         "required_nodes": required_nodes,
         "quota_headroom_fraction": quota_headroom,
         "slots": slots,
-        "warm_slots": warm_slots,
+        "available_nodes": available_nodes,
         "unschedulable_placements": unschedulable,
         "startup_seconds": {
             "p50": percentile(startup, 0.50),
@@ -149,20 +158,19 @@ def cost(profile: ProviderProfile, *, multiplier: float) -> float:
 
 def main() -> None:
     schedules = [schedule(profile) for profile in PROFILES]
-    for result in schedules:
-        if result["unschedulable_placements"] != 0:
-            raise RuntimeError(f"{result['provider']} has unschedulable placements")
-        if float(result["quota_headroom_fraction"]) < 0.20:
-            raise RuntimeError(f"{result['provider']} has less than 20% quota headroom")
-        wall = result["wall_seconds"]
-        if not isinstance(wall, dict) or float(wall["maximum"]) > DEADLINE_SECONDS:
-            raise RuntimeError(f"{result['provider']} misses the 7200-second deadline")
+    assumptions_pass = all(
+        result["unschedulable_placements"] == 0
+        and result["quota_headroom_fraction"] is not None
+        and result["quota_headroom_fraction"] >= MINIMUM_QUOTA_HEADROOM
+        and result["wall_seconds"]["maximum"] <= DEADLINE_SECONDS
+        for result in schedules
+    )
 
     envelope = {
         profile.provider: {
-            "expected_usd": cost(profile, multiplier=1.0),
-            "p90_usd": cost(profile, multiplier=1.35),
-            "worst_case_usd": cost(profile, multiplier=2.0),
+            "baseline_usd": cost(profile, multiplier=1.0),
+            "scenario_1_35x_usd": cost(profile, multiplier=1.35),
+            "scenario_2x_usd": cost(profile, multiplier=2.0),
             "inputs": asdict(profile),
         }
         for profile in PROFILES
@@ -172,11 +180,20 @@ def main() -> None:
             {
                 "cost_envelope": envelope,
                 "deadline_seconds": DEADLINE_SECONDS,
-                "headroom_factor": HEADROOM_FACTOR,
+                "minimum_quota_headroom_fraction": MINIMUM_QUOTA_HEADROOM,
+                "capacity_reserve_fraction": CAPACITY_RESERVE_FRACTION,
                 "runs": RUNS,
                 "schedules": schedules,
                 "seed": SEED,
-                "status": "passed",
+                "status": "synthetic_estimate",
+                "qualified": False,
+                "synthetic_constraints_pass": assumptions_pass,
+                "limitations": [
+                    "Timings are seeded synthetic samples, not measured benchmarks.",
+                    "Static colocated packing omits stage dependencies and autoscaling.",
+                    "Prices are unverified assumptions; multipliers are not cost quantiles.",
+                    "Measured runtime, recovery, provider and signed budget gates remain open.",
+                ],
             },
             indent=2,
             sort_keys=True,

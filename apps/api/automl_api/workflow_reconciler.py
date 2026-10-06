@@ -6,11 +6,16 @@ import socket
 import time
 import uuid
 from collections.abc import Callable
+from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from automl_api.db.session import get_session_factory
-from automl_api.models.workflows import OutboxEntry
+from automl_api.models.enums import AttemptStatus, ScopeStatus, WorkflowStage
+from automl_api.models.workflows import OutboxEntry, PromotionalScope, WorkflowAttempt
+from automl_api.services.champion_planning import plan_scope_refit
+from automl_api.services.evaluation_reconciler import reconcile_evaluation_jobs_once
 from automl_api.services.kubernetes_training import KubernetesTrainingClient
 from automl_api.services.reconciler import (
     observe_analysis_jobs,
@@ -18,9 +23,11 @@ from automl_api.services.reconciler import (
     observe_training_ray_jobs,
     reconcile_entry,
 )
+from automl_api.services.refit_jobs import reconcile_refit_jobs_once
 from automl_api.services.retention import purge_expired_audit_events
 from automl_api.services.uploads import cleanup_abandoned_uploads
 from automl_api.services.workflow_state import claim_outbox
+from automl_api.storage.object_store import get_object_store
 
 LOGGER = logging.getLogger(__name__)
 
@@ -120,6 +127,56 @@ def cleanup_uploads_once(session_factory: Callable[[], Session]) -> int:
         return sum(result.values())
 
 
+def plan_champions_once(session_factory: Callable[[], Session], *, store=None, limit=25) -> int:
+    """Commit desired refit work independently of the workload observation loop."""
+    try:
+        with session_factory() as db:
+            scope_ids = list(db.scalars(select(PromotionalScope.id).where(
+                PromotionalScope.mode == "promotional",
+                PromotionalScope.status.in_({ScopeStatus.SEALED, ScopeStatus.RUNNING}),
+                ~select(WorkflowAttempt.id).where(
+                    WorkflowAttempt.scope_id == PromotionalScope.id,
+                    WorkflowAttempt.stage == WorkflowStage.CHAMPION_REFIT,
+                    WorkflowAttempt.status != AttemptStatus.FAILED,
+                ).exists(),
+            ).order_by(PromotionalScope.updated_at, PromotionalScope.id).limit(limit)))
+        if not scope_ids:
+            return 0
+        object_store = store or get_object_store()
+    except Exception as exc:
+        LOGGER.error("champion planning unavailable", extra={"error_type": type(exc).__name__})
+        return 0
+    planned = 0
+    for scope_id in scope_ids:
+        try:
+            with session_factory() as db, db.begin():
+                attempt = plan_scope_refit(db, scope_id, object_store)
+                planned += int(attempt is not None)
+        except Exception as exc:
+            LOGGER.error("champion planning failed", extra={
+                "scope_id": str(scope_id), "error_type": type(exc).__name__,
+            })
+            try:
+                with session_factory() as db, db.begin():
+                    scope = db.scalar(select(PromotionalScope).where(
+                        PromotionalScope.id == scope_id,
+                        PromotionalScope.status.in_({ScopeStatus.SEALED, ScopeStatus.RUNNING}),
+                    ).with_for_update(skip_locked=True))
+                    if scope is not None:
+                        scope.updated_at = datetime.now(UTC)
+                        if isinstance(exc, (ValueError, LookupError)):
+                            scope.status = ScopeStatus.FAILED
+                            scope.comparison_policy = {
+                                **(scope.comparison_policy or {}),
+                                "planning_error": type(exc).__name__,
+                            }
+            except Exception as recovery_error:
+                LOGGER.error("champion planning recovery unavailable", extra={
+                    "scope_id": str(scope_id), "error_type": type(recovery_error).__name__,
+                })
+    return planned
+
+
 def cleanup_retention_once(session_factory: Callable[[], Session]) -> int:
     with session_factory() as db:
         try:
@@ -150,6 +207,17 @@ def main() -> None:
     while True:
         processed = run_once(session_factory, worker_id=worker_id)
         observe_once(session_factory, k8s=k8s)
+        plan_champions_once(session_factory)
+        try:
+            reconcile_refit_jobs_once(session_factory, k8s)
+        except Exception as exc:
+            LOGGER.error("refit observation unavailable", extra={"error_type": type(exc).__name__})
+        try:
+            reconcile_evaluation_jobs_once(session_factory, k8s)
+        except Exception as exc:
+            LOGGER.error(
+                "evaluation observation unavailable", extra={"error_type": type(exc).__name__}
+            )
         if time.monotonic() >= next_cleanup:
             cleanup_uploads_once(session_factory)
             next_cleanup = time.monotonic() + cleanup_interval

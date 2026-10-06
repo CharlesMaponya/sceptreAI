@@ -20,6 +20,9 @@ auth:
   existingSecret: test-auth
   simpleAuthEnabled: false
   publicAppUrl: https://sceptre.example.test
+  oidc:
+    issuer: https://identity.example.test
+    clientId: sceptre-test
 externalObjectStore:
   driver: s3_compatible
   endpoint: https://objects.example.test
@@ -55,3 +58,16 @@ training:
 inference:
   image:
     digest: *digest
+
+championEvaluation:
+  enabled: true
+  controlBaseUrl: https://api.example.test/api/v1/internal/evaluations
+  authorityUrl: https://authority.example.test
+  allocatorSecret: evaluation-allocators
+  authorityPublicKeySecret: evaluation-authority-public
+  caSecret: evaluation-ca
+  egressRules:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: qualification}
+      ports: [{port: 443, protocol: TCP}]

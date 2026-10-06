@@ -1,0 +1,41 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-10-04T07:48:07.885414+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: Evaluator Helm configuration and recovery of local test prerequisites
+tests:
+  tests: 394
+  failures: 0
+  errors: 0
+  skipped: 0
+helm_contract_tests: 30
+source_sha256:
+  infra/helm/sceptre/values.yaml: ad8188ebce495d06880420281dcf6bf929105513b7b253d57abdb5bdf43bdcda
+  infra/helm/sceptre/values.schema.json: 4a7b1803e34c59bc006baf8545e3a3c40f390027f59bcd67a18e05029aa5aff5
+  infra/helm/sceptre/templates/application.yaml: 4b34fa9fb598a6488420f20c20adda98d7c1803c330c87c40047c638ea0a5449
+  infra/helm/sceptre/templates/configmap.yaml: 8edab413e8515392aa0345550ec29f79e1ee35256478fdc79c0f5543b5032a9a
+  infra/helm/sceptre/templates/production-policy.yaml: 7ecfb738e03be70f457c8415b64277f802ac038dfeaf04d83781322f7b27c4df
+  tests/test_helm_chart_contracts.py: a8df1627b043b91ffc19c0ee156170396e04baeb62e037c239655b577fc8c50c
+  tests/fixtures/production-values.yaml: d033745332e58cd0deff539f46a99bc71130545f1cd77ad942c832ba7b3ca490
+artifacts:
+  .unlazy/phase1-champion/helm-regression.xml: ce0e2f419326559c170135d41be760af87310472b079e66aff8b3dd4db0178c9
+  .unlazy/phase1-champion/helm-gates.log: 10bd495a03c7d6dcdbb09b8d43cebc7ed13502cb495101a79e6e5870c2b4fe2e
+  .unlazy/phase1-champion/k3d-recovery-2026-10-04.json: d74c1843fed679222d70a163c7fc9783f47806d928c20646d2865c5523716a2d
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+verified:
+- Rendered allocator credentials mounted only in reconciler; API/controller public
+  key mounts
+- Matching API/reconciler JWT Secret references for control capabilities
+- Enabled evaluator TLS/digest/egress schema validation; production requires configuration
+- Test TLS renewed with existing keys; local databases/stores/APIs recovered
+remaining:
+- Build/deploy current evaluator image and full live k3d flow/failure probes
+- All other retained Phase 1 requirements
+environment: Helm render tests and local PostgreSQL regression; local k3d prerequisite
+  recovery is not evaluator qualification

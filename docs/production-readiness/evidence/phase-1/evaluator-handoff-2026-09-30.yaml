@@ -1,0 +1,41 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-09-30T04:09:07.403928+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: Replay-safe evaluator authority handoff and deadline-bound identity
+tests:
+  tests: 325
+  failures: 0
+  errors: 0
+  skipped: 0
+new_handoff_tests: 4
+source_sha256:
+  apps/api/automl_api/services/evaluation_authority.py: 9f2e55f83d8c1a7f716e2f61136d266a9cbe84bbdedd3cd64202dc8ab7813a42
+  apps/api/automl_api/services/final_evaluator_identity.py: 6d4b9c107dd520d29dee9df7290018b5dae46de0f04e8b154a87dd0078ae9d07
+  apps/api/automl_api/qualification_control.py: c97d46c4ed66ef10254bc762ec5cd249b0922322b7a82cb4ebccf9f3aa22a00b
+  tests/test_champion_evaluation_authority.py: 262bb889d1c9db7561e0c0d4c8202eb6176771b3368065f7f8750e0f0c4547e4
+artifacts:
+  .unlazy/phase1-champion/handoff-regression.xml: 90b8d0fe5633ce0201395f720074f72d260d2a1a80dac44a5036938447820f8a
+  .unlazy/phase1-champion/handoff-gates.log: 526b51a9221cbbe8423bb45627946d53d7a64fcdac302fe9f348749f449933a7
+environment: Real disposable PostgreSQL and FastAPI TestClient; local bytes with compatible-storage
+  URI fixture; no native S3 or k3d evidence
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+verified:
+- Intent before every authority POST; pending evaluator plan before identity registration
+- Lost allocation/refit/identity replies replay same plan and token
+- Allocation remains unopened with no grant receipts
+- Allocation project/scope/split/provider/manifest and signed receipt/JWT bindings
+  checked
+- Identity expiry bounded by scope deadline; public claims/token hash persisted without
+  raw token
+remaining:
+- Persistent matching private-key custody and Secret delivery
+- Controller invocation, evaluator control API/worker and Job lifecycle
+- Pre-open replacement and post-open recovery/failure integration
+- Full live k3d journey and all remaining Phase1 requirements

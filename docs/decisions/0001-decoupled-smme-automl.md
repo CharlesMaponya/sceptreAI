@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Superseded by [ADR 0002: React/FastAPI production architecture](0002-react-fastapi-production.md).
 
 ## Context
 

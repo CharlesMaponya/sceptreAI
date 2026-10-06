@@ -79,6 +79,13 @@ auth:
   jwtSecretKey: JWT_SECRET_KEY
   simpleAuthEnabled: true
   publicAppUrl: http://localhost:8080
+  oidc:
+    issuer: ""
+    clientId: ""
+    requireMfa: true
+    # Leave empty for a public PKCE client; confidential clients use an existing Secret.
+    existingSecret: ""
+    clientSecretKey: OIDC_CLIENT_SECRET
   passwordResetEmail:
     # Password reset links are delivered only by email. The API never returns them.
     host: ""
@@ -350,3 +357,25 @@ tests:
     tag: "1.36"
     digest: ""
     pullPolicy: IfNotPresent
+
+# Capability-only refit workloads require a TLS API endpoint and explicit storage/API peers.
+championRefit:
+  controlBaseUrl: ""
+  image: ""
+  caSecret: ""
+  cpuCores: 1
+  memoryMiB: 2048
+  egressRules: []
+
+# Dedicated evaluator Jobs; allocator credentials stay in the reconciler.
+championEvaluation:
+  enabled: false
+  controlBaseUrl: ""
+  authorityUrl: ""
+  allocatorSecret: "" # tokens.json: project_reference -> allocator token
+  authorityPublicKeySecret: "" # public-key.pem
+  image: "" # Defaults to the training CPU image; must be digest-pinned.
+  caSecret: "" # Optional ca.crt
+  cpuCores: 1
+  memoryMiB: 2048
+  egressRules: []

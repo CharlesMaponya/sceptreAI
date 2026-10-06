@@ -1,0 +1,42 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-10-03T10:25:47.667873+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: Fenced evaluator control API and receipt-backed signed-result publication
+tests:
+  tests: 338
+  failures: 0
+  errors: 0
+  skipped: 0
+new_control_tests: 5
+source_sha256:
+  apps/api/automl_api/api/routes/evaluation_control.py: dc65bafd9a97fcae1907253eb40338831c8df7b451cf6bcfa8d8cb9f1fdbb4d8
+  apps/api/automl_api/services/evaluation_access.py: 95a108f536e6861a6bade96f8097df391a5d342eca3e79f81b2a0ae6fa3ce035
+  apps/api/automl_api/services/evaluation_publication.py: 442c35f8a019d04a5a0c0443f2879eb48863720044b3795283e9cc38d6cbfc15
+  apps/api/automl_api/main.py: 0ecabaf644c951d9a6d5862f96f51d5b642772c2240b5877ef8801c2fe52d42b
+  tests/test_champion_evaluation_control.py: 9dc80ad61339f6a461cf1e16df45dbd1cebc754615400f98663df10f61e1f438
+artifacts:
+  .unlazy/phase1-champion/control-evaluation-regression.xml: 7a5a64d74208b3acba33d62c9d65613383e12f6734e51326b14fcb7b47c7f524
+  .unlazy/phase1-champion/evaluation-control-gates.log: 519e9ac69a6a52feecae362b7716b0d3308264a979458eb8a624d6bccc10f710
+environment: Local PostgreSQL, FastAPI TestClient, synthetic signed aggregate result;
+  explicit authority open/commit; no final object reads or deployed evaluator
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+verified:
+- Separate project/attempt/fence-bound evaluator capability cannot authenticate as
+  user
+- Single claim, heartbeat and exact frozen-pipeline capability require active ownership
+- Stale fence, expired lease and cancelled scope denied
+- 64KiB upload cap, signed result verification and independent stored-byte check
+- Signed central receipt permits one local terminal publication with idempotent replay
+- Failure report appends fixed event without preempting stored-result recovery
+remaining:
+- Evaluator worker entrypoint and actual one-shot grant execution through these routes
+- Kubernetes Job/Secret/policy submission, controller invocation and lifecycle cleanup
+- Pre-open replacement and post-open recovery/failure sealing integration
+- Complete k3d journey and all retained Phase1 requirements

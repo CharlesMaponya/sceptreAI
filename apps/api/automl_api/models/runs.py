@@ -25,7 +25,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from automl_api.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from automl_api.models.base import Base, StoredEnum, TimestampMixin, UUIDPrimaryKeyMixin
 from automl_api.models.datasets import DatasetVersion
 from automl_api.models.enums import (
     ArtifactKind,
@@ -65,19 +65,19 @@ class ModelRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
     run_kind: Mapped[RunKind] = mapped_column(
-        SQLEnum(RunKind, name="run_kind", native_enum=False),
+        StoredEnum(RunKind),
         nullable=False,
         default=RunKind.TRAINING,
         server_default=RunKind.TRAINING.value,
     )
     status: Mapped[RunStatus] = mapped_column(
-        SQLEnum(RunStatus, name="run_status", native_enum=False),
+        StoredEnum(RunStatus),
         nullable=False,
         default=RunStatus.QUEUED,
         server_default=RunStatus.QUEUED.value,
     )
     task_type: Mapped[TaskType] = mapped_column(
-        SQLEnum(TaskType, name="task_type", native_enum=False),
+        StoredEnum(TaskType),
         nullable=False,
         default=TaskType.UNSPECIFIED,
         server_default=TaskType.UNSPECIFIED.value,
@@ -182,13 +182,13 @@ class Metric(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     model_run_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     kind: Mapped[MetricKind] = mapped_column(
-        SQLEnum(MetricKind, name="metric_kind", native_enum=False),
+        StoredEnum(MetricKind),
         nullable=False,
         default=MetricKind.PERFORMANCE,
         server_default=MetricKind.PERFORMANCE.value,
     )
     split: Mapped[MetricSplit] = mapped_column(
-        SQLEnum(MetricSplit, name="metric_split", native_enum=False),
+        StoredEnum(MetricSplit),
         nullable=False,
         default=MetricSplit.VALIDATION,
         server_default=MetricSplit.VALIDATION.value,
@@ -304,7 +304,7 @@ class ModelRegistryEntry(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     model_run_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
     model_artifact_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
     stage: Mapped[ModelStage] = mapped_column(
-        SQLEnum(ModelStage, name="model_stage", native_enum=False),
+        StoredEnum(ModelStage),
         nullable=False,
         default=ModelStage.CANDIDATE,
         server_default=ModelStage.CANDIDATE.value,

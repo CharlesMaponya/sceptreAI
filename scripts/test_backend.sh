@@ -12,7 +12,7 @@ else
 fi
 
 "$coverage_python" scripts/generate_production_task_index.py --check
-"$coverage_python" scripts/validate_phase2_evidence.py
+"$coverage_python" scripts/validate_phase2_evidence.py --historical
 
 "$coverage_python" -m pytest tests/ -v --tb=short \
   --cov \

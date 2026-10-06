@@ -1,0 +1,40 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-10-03T16:09:16.152250+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: Connected evaluator worker with one-shot grant and receipt publication
+tests:
+  tests: 344
+  failures: 0
+  errors: 0
+  skipped: 0
+new_worker_tests: 6
+source_sha256:
+  apps/api/automl_api/training/evaluation_worker.py: a5caa1cceebd96bcd8dd936463a805c2f29832db18db9d2f127575e1243cfc30
+  tests/test_champion_evaluation_worker.py: 5d9ae65bed5656f7edfd7034139c030a0870a3891f953aaf987aa3dc8f5ef854
+artifacts:
+  .unlazy/phase1-champion/worker-regression.xml: 85fcaeea588169cc87b0becbf8d9e026a7c725bdb553a5310c1b0c4bf6934dbb
+  .unlazy/phase1-champion/worker-gates.log: 3e027c24595840fe517cb7e9cb8bfabedb357e3deba9ba9f5cd42e4cc43f47a4
+environment: Local PostgreSQL, actual sklearn refit/evaluation, FastAPI TestClient
+  APIs, real local HTTPS object reads; synthetic signed URL minting/version parameters
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+verified:
+- Connected worker completes scope through key custody, authority grant, real prediction
+  and signed-result publication
+- Pipeline fetched and byte-verified before grant consumption
+- One grant and three object requests; no Authorization headers on object reads
+- Lost upload/commit/publication replies replay identical result without evaluating
+  or reading final data again
+- Lost grant reply never retries and performs no final reads
+- Corrupt pipeline fails before grant issuance
+remaining:
+- Kubernetes evaluator Job and controller submission/observation
+- Pre-open replacement and post-open stored-result recovery or failed-scope sealing
+- Foreground workload/Secret/NetworkPolicy cleanup
+- Full live k3d journey and all other retained Phase1 requirements

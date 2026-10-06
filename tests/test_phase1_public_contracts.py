@@ -172,8 +172,12 @@ def test_scope_validation_and_cancel_are_explicit(monkeypatch) -> None:
         contracts.create_scope(db, SimpleNamespace(), uuid.uuid4(), EvaluationScopeCreate(**past))
 
     payload = EvaluationScopeCreate(**base, final_threshold_revision="threshold-v1")
+    with pytest.raises(HTTPException) as error:
+        contracts.create_scope(db, SimpleNamespace(), uuid.uuid4(), payload)
+    assert error.value.detail["code"] == "invalid_refit_policy"
+    payload = payload.model_copy(update={"mode": "validation_only"})
     scope = contracts.create_scope(db, SimpleNamespace(), uuid.uuid4(), payload)
-    assert scope.mode == "promotional"
+    assert scope.mode == "validation_only"
     scope.status = ScopeStatus.SUCCEEDED
     db.scalar.return_value = scope
     with pytest.raises(HTTPException) as error:

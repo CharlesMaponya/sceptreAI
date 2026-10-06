@@ -81,6 +81,9 @@ spec:
             - configMapRef:
                 name: {{ include "sceptre.fullname" . }}-config
           env:
+            {{- if .Values.championEvaluation.enabled }}
+            - {name: EVALUATION_AUTHORITY_PUBLIC_KEY_FILE, value: /evaluation-authority/public-key.pem}
+            {{- end }}
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
@@ -109,6 +112,13 @@ spec:
                   key: {{ .Values.auth.passwordResetEmail.passwordKey }}
                   optional: true
             - {name: SIMPLE_AUTH_ENABLED, value: {{ .Values.auth.simpleAuthEnabled | quote }}}
+            {{- if .Values.auth.oidc.existingSecret }}
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.oidc.existingSecret | quote }}
+                  key: {{ .Values.auth.oidc.clientSecretKey | quote }}
+            {{- end }}
             {{- if or .Values.seaweedfs.enabled (eq .Values.externalObjectStore.driver "s3_compatible") }}
             - name: OBJECT_STORE_ACCESS_KEY
               valueFrom:
@@ -161,8 +171,17 @@ spec:
             readOnlyRootFilesystem: true
             runAsNonRoot: true
           volumeMounts:
+            {{- if .Values.championEvaluation.enabled }}
+            - {name: evaluation-authority, mountPath: /evaluation-authority, readOnly: true}
+            {{- end }}
             - {name: tmp, mountPath: /tmp}
       volumes:
+        {{- if .Values.championEvaluation.enabled }}
+        - name: evaluation-authority
+          secret:
+            secretName: {{ .Values.championEvaluation.authorityPublicKeySecret | quote }}
+            items: [{key: public-key.pem, path: public-key.pem}]
+        {{- end }}
         - name: tmp
           emptyDir: {}
 ---
@@ -199,6 +218,18 @@ spec:
             - configMapRef:
                 name: {{ include "sceptre.fullname" . }}-config
           env:
+            {{- if .Values.championEvaluation.enabled }}
+            - {name: EVALUATION_AUTHORITY_PUBLIC_KEY_FILE, value: /evaluation-authority/public-key.pem}
+            - {name: EVALUATION_ALLOCATOR_TOKENS_FILE, value: /evaluation-allocator/tokens.json}
+            {{- if .Values.championEvaluation.caSecret }}
+            - {name: EVALUATION_CA_FILE, value: /evaluation-ca/ca.crt}
+            {{- end }}
+            {{- end }}
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sceptre.authSecretName" . }}
+                  key: {{ .Values.auth.jwtSecretKey }}
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
@@ -225,8 +256,31 @@ spec:
             readOnlyRootFilesystem: true
             runAsNonRoot: true
           volumeMounts:
+            {{- if .Values.championEvaluation.enabled }}
+            - {name: evaluation-authority, mountPath: /evaluation-authority, readOnly: true}
+            - {name: evaluation-allocator, mountPath: /evaluation-allocator, readOnly: true}
+            {{- if .Values.championEvaluation.caSecret }}
+            - {name: evaluation-ca, mountPath: /evaluation-ca, readOnly: true}
+            {{- end }}
+            {{- end }}
             - {name: tmp, mountPath: /tmp}
       volumes:
+        {{- if .Values.championEvaluation.enabled }}
+        - name: evaluation-authority
+          secret:
+            secretName: {{ .Values.championEvaluation.authorityPublicKeySecret | quote }}
+            items: [{key: public-key.pem, path: public-key.pem}]
+        - name: evaluation-allocator
+          secret:
+            secretName: {{ .Values.championEvaluation.allocatorSecret | quote }}
+            items: [{key: tokens.json, path: tokens.json}]
+        {{- if .Values.championEvaluation.caSecret }}
+        - name: evaluation-ca
+          secret:
+            secretName: {{ .Values.championEvaluation.caSecret | quote }}
+            items: [{key: ca.crt, path: ca.crt}]
+        {{- end }}
+        {{- end }}
         - name: tmp
           emptyDir: {}
 ---

@@ -1,0 +1,67 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-10-05T06:04:36.910629+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: Outbox stale ownership/counter fixes and real PgBouncer concurrent claims/connection
+  loss
+tests:
+  tests: 504
+  failures: 0
+  errors: 0
+  skipped: 0
+live:
+  status: passed
+  parallel_workers: 4
+  distinct_backends: 4
+  disjoint_claims: 32
+  rolled_back_claims: 1
+  recovered_deliveries: 1
+  terminal_replays: 33
+source_sha256:
+  apps/api/automl_api/services/workflow_state.py: 38d9d14a8e03991c0dabfb8087dfecb1bdb7228132020883c9b6b96062c25a34
+  scripts/validate_pooler_queue.py: aa711d9a84a398e39a68e5c9579375c6409512024b4e727b62a42717f511be67
+  tests/test_phase1_postgres_contracts.py: ab1f44a8be654ab1ab2c96ac329f80315f6f80a268b90af3de505500c095281b
+  tests/test_phase1_workflow_state.py: 759f1306704f5d8068f965db00af8ad921bb87aa4e68693a5c68b50ffb025a9a
+  tests/test_phase1_reconciler.py: a2861be08270e3d8860aa903397a63a1f0bb0818a27c1cc7873a789da24c073c
+  tests/test_phase1_reconciler_worker.py: c03b0cda4ce3a1d207c7ef778bb082e4fcf93168624ea6fd2987ee6ed9501f57
+artifacts:
+  .unlazy/phase1-pgbouncer/queue-final.xml: 3d05cbbf80a4d7bc66009059409052f6eb452c00e0dc2652343c0398b8175a3d
+  .unlazy/phase1-pgbouncer/queue-live-final.log: b2964f8d9705d75344a3d73173b5624a21ec49b386d18db079426afad09c01b7
+  .unlazy/phase1-pgbouncer/queue-gates.log: a725e7ffafeafdd090a78b247ffc45bb33b5821419ee79d1979a5f2662783ef9
+  .unlazy/phase1-pgbouncer/stale-owner-before.log: 23b8dd373f7085c92c0f2d378d8ff6fc6ad721a840a74c96db3ae1247abbf93c
+  .unlazy/phase1-pgbouncer/stale-counter-before.log: 700f92adbea8e0e45a6251839b5f4457aa3a941f0f86a8c63d75afead2b62791
+  .unlazy/phase1-pgbouncer/queue-regression.log: b5a4ab6bc7381409a1c9352bfe25864fa981a1b6e5597772ae7c836746f5b841
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+verified:
+- Completion and capacity deferral reload and lock the persisted outbox row without
+  autoflushing a stale snapshot
+- Claim selection refreshes persisted delivery counters while holding FOR UPDATE SKIP
+  LOCKED
+- Three actual PostgreSQL regression cases first reproduced stale writes/lost increment,
+  then passed
+- Four concurrent claim transactions held locks on four backends and received 32 disjoint
+  rows
+- Backend termination after claim flush before commit rolled the claim back; another
+  worker recovered it
+- All 33 delivered rows remained terminal on a repeated completion
+limitations:
+- Worker concurrency uses four threads and independent database sessions; no multi-Pod
+  deployment or crash-all-replicas qualification
+- This probes database claim ownership/recovery, not every handler external-side-effect
+  boundary
+- Initial expanded regression was interrupted after an infinite MagicMock pagination
+  loop; three outdated DB mocks also failed; corrected full run passed 504 tests
+- No k3d application image updated for this increment
+remaining:
+- Lease-expiry/generation ownership and all external side-effect recovery boundaries
+  require full audit
+- Pooler deployment/failover and production-sized concurrency qualification
+- Schema verification currently omits some FK semantics and has unsafe check-expression
+  normalization; requires correction
+- Other retained Phase 1 requirements

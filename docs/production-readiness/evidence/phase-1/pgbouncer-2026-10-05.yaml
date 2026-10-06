@@ -1,0 +1,64 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-10-05T05:48:26.009461+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: PgBouncer transaction-mode startup compatibility and transaction-local limits
+tests:
+  tests: 399
+  failures: 0
+  errors: 0
+  skipped: 0
+runtime:
+  pool_mode: transaction
+  default_pool_size: '1'
+  max_prepared_statements: '0'
+  client_tls_sslmode: require
+  server_tls_sslmode: verify-full
+  version: PgBouncer 1.25.1
+live:
+  status: passed
+  backend_reused: true
+  statement_timeout: true
+  lock_timeout: true
+  idle_timeout: true
+  prepared_statements: false
+  session_leakage: false
+  tls_client_and_backend: true
+  plaintext_rejected: true
+  wrong_ca_rejected: true
+source_sha256:
+  apps/api/automl_api/db/session.py: 086e01516c16e0699a9ccafa6b3bf98f1a2795f26513ca52905af2fede75a00a
+  apps/api/automl_api/db/qualification_session.py: a5281b126653320e1b707815f0f57572803d4cd7db60768b1ba7c1b4efdb6371
+  scripts/validate_pgbouncer.py: f60723335485ddc2fdbc64eaa154158a79b2287c4fb424ccde185db5615e1f24
+  tests/test_runtime_foundations.py: fb0baef770e41f752dee371eabab09dec87be2dbfec655667465b086ea47f223
+artifacts:
+  .unlazy/phase1-pgbouncer/baseline.log: 3511ef15e3519282ad3242a48e1dd90b106ce810a649db5f579be70001683b1c
+  .unlazy/phase1-pgbouncer/qualification.log: 49b1fc3e55455b01746c14b4e2dcab232eb4d8d313ac608ab4b4635927fa66d0
+  .unlazy/phase1-pgbouncer/runtime.json: 1a6675dfe177465933e744b88f24b4a14ded88bdda768ce39f20087e3f56830d
+  .unlazy/phase1-pgbouncer/regression.xml: 66c44956c33a981e13e460786383eb38b21e0a4f33d65f0881f8efe0aaca6f5a
+  .unlazy/phase1-pgbouncer/gates.log: cef415d49398fc34871df29ca46710d69b31c92b38536dd6bb6f281d97862058
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+verified:
+- Baseline application connection rejected by real PgBouncer for unsupported statement_timeout
+  startup parameter
+- Pooler mode omits startup options and applies bound set_config(..., true) values
+  on each SQLAlchemy transaction begin
+- Application and qualification-control engine factories install the shared transaction
+  hook
+- Two differently configured clients reuse one backend without timeout leakage; application
+  names remain distinct
+- Statement, lock and idle transaction limits enforced; rollback and fresh checkout
+  recover
+- Automatic prepared statements disabled; autocommit bypass rejected
+- Client/backend TLS verified; plaintext and wrong CA rejected
+remaining:
+- PgBouncer connection-loss/concurrent queue claim and deployment failover qualification
+- Production-sized concurrency and operational pooler deployment evidence
+- Other process pool metrics and scrape configuration
+- Other retained Phase 1 requirements; local fixture does not qualify production runtime

@@ -1,0 +1,41 @@
+date: '2026-09-25'
+phase: '1'
+record_type: unsigned_local_k3d_verification
+production_qualified: false
+context: k3d-sceptre
+namespaces:
+- qa-phase1
+- qa-phase1-clients
+- qa-phase1-denied
+authority_image: k3d-sceptre-registry.localhost:5111/sceptreai@sha256:9d3753822d97ad5b4a2633d7f5410a286b239f24fc3faf8e1ef5c4186856431e
+database: dedicated PostgreSQL 16, one 1 GiB local-path PVC
+test_counts:
+  tests: 76
+  failures: 0
+  errors: 0
+  skipped: 0
+live_checks:
+- HTTPS and PostgreSQL verify-full TLS
+- three-provider open race; only canonical provider succeeds
+- concurrent commit replays; changed result rejected
+- Ed25519 signatures verified with pinned public key
+- authority pod replacement preserves receipt fingerprint
+- PostgreSQL pod replacement on same PVC preserves receipt fingerprint
+- allowed namespace reaches both services; denied namespace rejected
+- runtime login cannot update receipts, delete allocations or create tables
+receipt_fingerprint: 8c8d1aa0a382ea54984fe11147dcfffcb93346533b673473fab8545b8c7c078e
+limitations:
+- Local overlay image reuses earlier API dependencies; not a hermetic release build.
+- PostgreSQL pod recovery uses the existing PVC; not HA, node-loss or PITR qualification.
+- Broker one-grant ledger, evaluator binding and refit/evaluator job integration remain
+  open.
+- Production cloud identities, transport and scale qualification remain open.
+- Test credentials expire in two days; certificates in seven days.
+source_sha256:
+  apps/api/automl_api/qualification_control.py: 9d48be4236cee02c8461a011f0dafbfad43ba940fbf8ab146e8eaba9e4c80cc6
+  apps/api/automl_api/services/final_test_authority.py: a75430bce332035863c4ee89874e6de43559a13ca32225b2eca26d316ba77199
+  services/qualification-control/chart/templates/authority.yaml: 057fd3177bb7b7068a4a1e4e6c8ebb1737490060866cc95617b789728988648b
+  services/qualification-control/chart/values.yaml: e4c5090ee0e3c3444797d77ef36bccda451cdec66829b1e3dfcacb69266c183e
+  scripts/validate_qualification_authority.py: 2964b2d00a034f58e6d085417c4cf54275774df41e41720a0067775457bcacf6
+  tests/test_qualification_control.py: d29d72ed01f6252bf15001cca1e83b9ec6c86f54f758f16a0cd2e5d6d158e5be
+  tests/test_phase1_workflow_state.py: cdd6be33bfdb5f2ffb75fe8cda6d76e66f6047a62342cda8998777864ea9e135

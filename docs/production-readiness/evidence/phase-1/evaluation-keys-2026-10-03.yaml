@@ -1,0 +1,46 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-10-03T10:19:30.766949+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: Initial evaluator result signing-key custody and authority preparation
+tests:
+  tests: 333
+  failures: 0
+  errors: 0
+  skipped: 0
+live_k3d_tests:
+  tests: 1
+  failures: 0
+  errors: 0
+  skipped: 0
+new_key_tests: 8
+source_sha256:
+  apps/api/automl_api/services/evaluation_keys.py: a5b4f87c927aec492cc527ae165dfdb34776f83aee14889523e81e9c101bfd27
+  tests/test_champion_evaluation_keys.py: c4e0249216df257911dd5bce135cd8bae8ea82879eaee09b3598a33004b2eaef
+artifacts:
+  .unlazy/phase1-champion/key-regression.xml: 263e9085baf76055ebc22d8de092b17e6248aeb9fd3f140275a31077a3a57a7e
+  .unlazy/phase1-champion/evaluation-key-k3d.xml: f53d98ca6b4f489e1bbc37cf8c17de7fe864aba6586ed5a8cc06d29afd325c68
+  .unlazy/phase1-champion/test_live_evaluator_key.py: d93e8e361e7af293b82b61bdba209d329a15e62370e091af8951854a721c8ff9
+  .unlazy/phase1-champion/key-gates.log: 6592ea52191970162abf8696a28fc73b04adcebbbe8ea5e7b64b065869abe93b
+environment: Local PostgreSQL; synthetic refit/authority fixtures; native k3d-sceptre
+  API temporary Secret in qa-refit
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+verified:
+- Key intent before Secret creation; public key recorded before authority handoff
+- Immutable Secret reused after normal/409/lost-response paths
+- Same custody key binds same evaluator plan and identity across replay
+- Private key and raw token absent from workflow events
+- Missing/mutable/malformed/wrong-owner/wrong-namespace key rejected
+- Native k3d rejected immutable flag mutation with422; deleted key was not regenerated
+cleanup: Temporary live Secret deleted and absence confirmed
+remaining:
+- Controller invocation, evaluator worker/control endpoints and Job delivery
+- Key and workload lifecycle cleanup
+- Pre-open replacement generations and post-open recovery integration
+- Complete k3d evaluation journey and all remaining Phase1 requirements

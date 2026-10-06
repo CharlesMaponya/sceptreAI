@@ -236,6 +236,7 @@ def create_scope(
             detail="Promotional scopes require a final-threshold revision.",
         )
     scope = PromotionalScope(
+        id=uuid.uuid4(),
         project_id=project_id,
         scope_key=payload.scope_key,
         split_revision_id=payload.split_revision_id,
@@ -247,6 +248,29 @@ def create_scope(
         comparison_policy=payload.comparison_policy,
         final_threshold_revision=payload.final_threshold_revision,
     )
+    if scope.mode == "promotional":
+        from automl_api.services.champion_planning import validate_refit_policy
+
+        try:
+            policy, _ = validate_refit_policy(db, scope)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "invalid_refit_policy"},
+            ) from exc
+        scope.comparison_policy = {
+            **scope.comparison_policy, "refit_policy": policy.model_dump(mode="json"),
+        }
+        from automl_api.services.evaluation_planning import validate_evaluation_policy
+
+        try:
+            evaluation_policy, _ = validate_evaluation_policy(db, scope)
+        except ValueError as exc:
+            raise HTTPException(422, detail={"code": "invalid_evaluation_policy"}) from exc
+        scope.comparison_policy = {
+            **scope.comparison_policy,
+            "evaluation_policy": evaluation_policy.model_dump(mode="json"),
+        }
     db.add(scope)
     db.flush()
     return scope

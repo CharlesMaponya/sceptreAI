@@ -24,8 +24,8 @@ def _write_records(tmp_path: Path, value: dict[str, object]) -> Path:
     return path
 
 
-def test_checked_in_phase2_gate_records_are_candidate_bound_and_valid() -> None:
-    assert validate_phase2_evidence() == []
+def test_checked_in_phase2_gate_records_retain_historical_integrity() -> None:
+    assert validate_phase2_evidence(historical=True) == []
 
 
 def test_phase2_gate_records_reject_duplicate_and_missing_gate_ids(tmp_path: Path) -> None:
@@ -110,3 +110,26 @@ def test_candidate_position_rejects_code_changes_after_candidate(monkeypatch) ->
         "Non-evidence files changed after the candidate Git commit: "
         "apps/api/automl_api/main.py"
     ]
+    assert _validate_candidate_position(
+        root=ROOT, candidate="candidate", head="head", historical=True
+    ) == []
+
+
+def test_historical_records_still_reject_tampering_and_unrelated_candidates(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    value = _records()
+    value["records"][0]["evidence"] = copy.deepcopy(value["records"][0]["evidence"])
+    value["records"][0]["evidence"]["files"][0]["digest"] = "sha256:" + "0" * 64
+    errors = validate_phase2_evidence(_write_records(tmp_path, value), historical=True)
+    assert any("P2-G01.evidence.files[0] digest" in error for error in errors)
+
+    class Result:
+        returncode = 1
+
+    monkeypatch.setattr(
+        "scripts.validate_phase2_evidence.subprocess.run", lambda *a, **k: Result()
+    )
+    assert _validate_candidate_position(
+        root=ROOT, candidate="unrelated", head="head", historical=True
+    ) == ["The candidate Git commit is not an ancestor of the current commit."]

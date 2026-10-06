@@ -1,0 +1,58 @@
+{
+  "schema_revision": "sceptre-local-remediation-v1",
+  "observed_at": "2026-10-06T17:11:59.530213+00:00",
+  "phase": "1",
+  "phase_complete": false,
+  "production_qualified": false,
+  "review_status": "unsigned_local_evidence",
+  "scope": "Shared legacy enum read/write and literal-filter compatibility for twelve default-bearing columns plus storage driver",
+  "final_focused_tests": {
+    "tests": 12,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "broad_run": {
+    "tests": 637,
+    "failures": 4,
+    "errors": 0,
+    "skipped": 0
+  },
+  "existing_regression_tests_passed": 625,
+  "verification_note": "The broad run passed all 625 preexisting tests and eight new cases. Four new cases failed because the unknown-value fixture exceeded VARCHAR(6). Only the fixture literal was shortened; the complete twelve-case suite then passed. No clean 637-test single run is claimed.",
+  "negative_control": "All twelve real PostgreSQL default-read cases failed before implementation",
+  "sha256": {
+    "apps/api/automl_api/models/base.py": "dda39c2e1b6eef92a43e2cf356804d0e78813cd2612142acc2dde5fa4b9e9dc3",
+    "apps/api/automl_api/models/datasets.py": "5c5a469a54c2c959adb86429a9ce6c43d584f384875b2d58c36a5df375d841a6",
+    "apps/api/automl_api/models/iam.py": "e4f66266b4468c65928bfc8aa6fd9fc66f165f3825a9f46366bbdd68828671f5",
+    "apps/api/automl_api/models/projects.py": "b64622edca658ee0b6387ff10e71199ac076d010ca9e435325ce95c793168f0f",
+    "apps/api/automl_api/models/runs.py": "584885d3bd745952956dc18de1d104e6bb85648ca58f5b3992bb26c1f1235dd6",
+    "tests/test_phase1_enum_defaults.py": "ae9d54df48407c1d49c84e3f9364f3528bbef1cfdf2bcc24cf4fd80507f087af",
+    "tests/test_phase1_postgres_contracts.py": "656912613d85748f76ab1d16da357ac7e2d7fbc70c2330883974d1d9c7196200",
+    ".unlazy/phase1-champion/enum-default-before.log": "d41873a0d3cf48b0f2c448db2838d0f8924b2946dbeb849fac9c8e9676986de4",
+    ".unlazy/phase1-champion/enum-default-tests.xml": "56bad9a1e81760a80e39a249b096ee700ecf56f710a0e78af7fbf416b36b6c9f",
+    ".unlazy/phase1-champion/enum-default-regression.xml": "c9782486902e8c82e12afdec909cb11a51b120f1aa00432606b7139adeab0500",
+    ".unlazy/phase1-champion/enum-default-final.xml": "50e73f8ca87c78842f04cd6708bfb839e874b2bb9f40c5daad6545c125ee4a76",
+    ".unlazy/phase1-champion/enum-default-alembic.log": "8a380081870e428e321e0e16bc0bd236d9e1146fc3f2b9885d1a28733abe476e",
+    ".unlazy/phase1-champion/enum-default-gates.log": "828b6661a5631784d952b6b7bd142ef8793cccc0971bbebe73d570f97473478c"
+  },
+  "verified": [
+    "Model-typed temporary PostgreSQL columns use actual model defaults; all twelve defaults decode to intended enum identities",
+    "Every member reads as name or value; literal equality/inequality and IN/NOT IN filters handle both spellings",
+    "Default-member ORM writes retain original enum-name spelling; existing database column widths unchanged",
+    "Empty IN, NULL read/write, unknown filter/bind/result rejection checked",
+    "Correctly configured values_callable workflow/authority enums unchanged",
+    "Schema verifier accepts complete application schema; Alembic reports no new operations"
+  ],
+  "integration_gates": {
+    "met": 2,
+    "unmet": 5,
+    "abandoned": 0
+  },
+  "remaining": [
+    "Previous-release binaries, concurrent expand/backfill behavior and deployment qualification",
+    "Literal comparison compatibility does not claim arbitrary column-to-column or externally supplied bind-expression normalization",
+    "45 GB database qualification requires additional local storage",
+    "All remaining Phase 1 requirements; changes not yet deployed to k3d"
+  ]
+}

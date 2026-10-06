@@ -1,0 +1,56 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-10-05T11:33:21.439407+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: Schema constraint state and literal-preserving default comparison
+tests:
+  tests: 20
+  failures: 0
+  errors: 0
+  skipped: 0
+application_schema_positive_control: 'Database schema is current: 42 tables, revision(s)
+  0010_phase3_contract_target.'
+source_sha256:
+  scripts/verify_database_schema.py: 2c1c2809a6e8092fe3092894bacb803110e7cd94130e3479fde75830e58583c4
+  tests/test_database_schema_verifier.py: 008523e2dbb001884dbe03dec41a819f9b7b423e88900694d1ff2460bd83bc03
+artifacts:
+  .unlazy/phase1-champion/schema-state-before.log: bec3b3e600c4274b58897c7883d259b22d074ce80ea971b0b084eb7ba4dddc21
+  .unlazy/phase1-champion/schema-pk-state-before.log: dfab5cc24df9aaf1ddca6d5612d804df34f2f97f777888252e8dd0c9d5090a56
+  .unlazy/phase1-champion/schema-default-before.log: cb75e65e1347f4bc4f405a5ba9974e7052d75e9b363f024b4b09853e16e72951
+  .unlazy/phase1-champion/schema-missing-test.log: 8e54128737d7166949cef357801c2d9c1cb2faad58c1ef6c9db4517fa9ec7f79
+  .unlazy/phase1-champion/schema-state-defaults.xml: a69d2b4723c3c0f29dc7df5ad29ae969772c4bfe1668b0800e7550c844ad39b9
+  .unlazy/phase1-champion/schema-state-defaults.log: 736c6cdf09d3eb602058648dcf4d3e7a5965887adce7ca2de6ce12e01f9189b7
+  .unlazy/phase1-champion/schema-state-defaults-positive.log: 617c229b76e3c5a8f0b55d7ad88d1d9987643ca5a241abb788c0d57b76cd4980
+  .unlazy/phase1-champion/schema-state-defaults-gates.log: 7c1bce02584e78b2c19d4f5871cf0a11b69ecead9a376ca2375e2630e14dc978
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+verified:
+- Rejects unvalidated PostgreSQL foreign-key and CHECK constraints
+- Compares primary-key and unique-constraint deferrability and initial timing
+- Catalog lookup honors relation visibility and ignores same-named hidden relations
+- Complete current application schema can be inspected in a read-only transaction
+- Default comparison preserves literal case, spaces, tabs, double quotes and cast-looking
+  text
+- Only recognized scalar literals with compatible column casts are simplified; unknown
+  expressions compare exactly
+- All seven earlier structural mutation tests remain passing
+negative_controls:
+- Four state mutations and two primary-key timing mutations failed before their fixes
+- Two default literal mutations failed before their fix
+- One verification invocation used a nonexistent migration test file and exited 4
+  without running tests; preserved, then corrected
+remaining:
+- CHECK expression normalization still erases grouping, casts and literal case; semantic
+  parity is not complete
+- Index expressions, predicates, order, validity and options need coverage
+- Identity/sequence defaults and additional default-expression equivalence remain
+  unqualified; unsupported spellings fail closed
+- Expand/backfill compatibility, supported-prior-schema and production-sized migration
+  rehearsal
+- All other retained Phase 1 release requirements and broader integration gates
+reference: https://www.postgresql.org/docs/16/catalog-pg-constraint.html

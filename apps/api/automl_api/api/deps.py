@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session
 
 from automl_api.core.config import get_settings
 from automl_api.db.session import get_db
-from automl_api.models.iam import User
 from automl_api.models.enums import AuthProvider
+from automl_api.models.iam import User
 from automl_api.security.browser_sessions import ACCESS_COOKIE, require_same_origin
 from automl_api.security.tokens import TokenError, decode_token
 

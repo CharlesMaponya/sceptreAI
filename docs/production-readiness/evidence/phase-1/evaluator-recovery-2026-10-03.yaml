@@ -1,0 +1,41 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-10-03T16:20:52.522296+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: Project-scoped evaluator recovery transitions after worker identity loss
+tests:
+  tests: 349
+  failures: 0
+  errors: 0
+  skipped: 0
+source_sha256:
+  apps/api/automl_api/qualification_control.py: 0f80f7a8f7e4e2e5af8564727d67ee4c57a8fffe8500e0de38039a7ff722d639
+  tests/test_champion_authority_recovery.py: c28227dcb34695c1d8f31be5cbd78f9808fc0340ae314cfc16cf6822dba4470e
+  tests/test_champion_evaluation_worker.py: 19744b8a71712fa75b15074be704294c8aae37ddec089153f944126846614fa5
+artifacts:
+  .unlazy/phase1-champion/recovery-regression.xml: 1cc57cb4c1871b941212e6dd9303ca9ef77fb4faa08846b70c0ac232accab738
+  .unlazy/phase1-champion/recovery-gates.log: 31c4f833de2113ebf86f21309297f4eb3b426b63bc441b2fc922f5a6b4b43179
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+verified:
+- Allocator recovers commit/failure with original worker JWT expired by authentication
+  clock
+- Attempt/pipeline/generation fence checked under allocation lock; stale replacement
+  and wrong project rejected
+- Identical recovery replays original signed receipt; conflicting terminal request
+  rejected
+- Connected worker loss before/after commit recovers verified stored result without
+  further final reads or grants
+remaining:
+- Evaluator Kubernetes scheduling and controller invocation
+- Pre-open replacement, stored-output inspection before failure, and local failed-scope
+  sealing
+- Foreground workload/Secret/network cleanup
+- Full live k3d journey and all remaining Phase 1 requirements
+environment: Local PostgreSQL and TestClient; real sklearn evaluation and local HTTPS
+  object reads with synthetic versioned URLs. No evaluator Kubernetes deployment.

@@ -1,0 +1,38 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-10-04T01:43:46.443451+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: Atomic abort of incomplete evaluator registration and durable controller recovery
+tests:
+  tests: 385
+  failures: 0
+  errors: 0
+  skipped: 0
+source_sha256:
+  apps/api/automl_api/services/final_test_authority.py: 1eff084ae666076ebdd6edba7426849c1c1608d4b4cee5f7d14b7ca2634ac65b
+  apps/api/automl_api/qualification_control.py: 11858eb5c645fd1326d554160ecd2028224e9a7434eafa47a8a3d3d5b8102f57
+  apps/api/automl_api/services/evaluation_reconciler.py: da8670e4497f37e2ccb5b7c539c24eb8076a40abd7bfdf2612fb24ff6e98ae80
+  tests/test_champion_registration_abort.py: 90ca91548ca9a521758d055e07a0b3b4833c9d0477fe91baf90dc5c23238ea9e
+artifacts:
+  .unlazy/phase1-champion/abort-regression.xml: ef7419c6688fc929c72383ba09f717f8801fdd1330fe47234d9d779630d7dd0d
+  .unlazy/phase1-champion/abort-gates.log: eed78350272f471943437bdcda9d338c355fb5221069c677b0ae542e1e8109a7
+  .unlazy/phase1-champion/registration-abort.log: 233787772938c4fe20d1d84f8b854009920a23db7bc7a4020e7a7876175b7dd9
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+verified:
+- Unregistered abort is project/scope/manifest bound, signed and replayable
+- Registered or opened allocations cannot use abort; concurrent registration/abort
+  has one winner
+- Controller seals expired/cancelled handoffs at allocation/refit/registration boundaries
+- Lost allocation reply can be recovered without a local evaluator row; no fresh final-data
+  access
+remaining:
+- Helm configuration and full live k3d journey
+- All other retained Phase 1 requirements
+environment: Local PostgreSQL, real authority/application APIs and fake Kubernetes;
+  no new live deployment

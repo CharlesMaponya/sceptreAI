@@ -1,0 +1,40 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-10-04T01:33:50.846570+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: Evaluator controller invocation, recovery fencing, native lifecycle and orphan
+  cleanup
+tests:
+  tests: 376
+  failures: 0
+  errors: 0
+  skipped: 0
+source_sha256:
+  apps/api/automl_api/services/evaluation_reconciler.py: 1254aa52bdd3552b6ea66dd0e64a971043d8ec65256fee190b2ea3a603564aba
+  apps/api/automl_api/services/evaluation_access.py: c6b596f55ca6d8876f5aa56b06be81dc2e3414b0964bb186be8ea48fc1bf6d89
+  apps/api/automl_api/services/evaluation_jobs.py: 148d73b22d298184e23174b7383aa5c614f8932298721e9a972e0c7006583432
+  apps/api/automl_api/workflow_reconciler.py: 7bfea959c35bb5a1bfc21171c1e47e0f4d43c48fc3536d94ff919919daf755c3
+  tests/test_champion_evaluation_reconciler.py: fb8a8a0adf3b215985d4cc324f9fcdbab096701b8f0535aa6627f8fea9e5a2c8
+artifacts:
+  .unlazy/phase1-champion/controller-regression.xml: aaf8b5db17e923f4ebd5359b8b5abf948225c6abf58713372711d8c0bbdb7679
+  .unlazy/phase1-champion/controller-gates.log: 5148c3b07bdea932e2e6e4e030a17536e61263b9d150c28181c9b725e17d079d
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+verified:
+- Submission and single pre-open replacement through controller with foreground cleanup
+- Recovery verifies stored result and never rereads final data or requests another
+  grant
+- Post-open failure and corrupt output seal allocation/scope; late worker start fenced
+- Heartbeat observation race deferred; cancellation after commit preserves receipt
+- Scope-deletion orphan sweep retains keys until Job absence
+remaining:
+- Terminal recovery for expiry before authority registration finishes
+- Helm configuration and full live k3d journey
+- Other retained Phase 1 requirements
+environment: Local PostgreSQL and real APIs/workers, Kubernetes fake; no evaluator
+  k3d deployment

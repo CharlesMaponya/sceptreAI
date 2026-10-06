@@ -1,0 +1,53 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-09-29T16:57:24.096768+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: Frozen sklearn evaluator, verified one-shot grant adapter and signed-result
+  verification
+tests:
+  tests: 302
+  failures: 0
+  errors: 0
+  skipped: 0
+evaluator_tests: 15
+environment:
+  database: Disposable fully migrated PostgreSQL16 champion_tests
+  runtime: Local .venv-ci312, not pinned release qualification
+  transport: FastAPI TestClient authority; object minting and transport mocked
+  k3d: No evaluator workload deployed
+source_sha256:
+  apps/api/automl_api/training/champion_evaluation.py: 0f0ef8207bb2250cb4aa299f839ea3993551517ebbd680e5578f9179c6239350
+  tests/test_champion_evaluation_execution.py: 50446a51802402dd412f172b8f46615b1cde54de0706b8ef0446ba92152cbe9b
+artifacts:
+  .unlazy/phase1-champion/evaluation-regression.xml: b38f1d003db152e2b6bbb31e506ae716cb90d1b2dc2fab8aca50793d9a321137
+  .unlazy/phase1-champion/evaluation-gates.log: 970cf5ab540fd8e298a66119128661bdc4dbea1f397d35d0902258029586e11a
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+verified:
+- Frozen pipeline predicts without fit; regression and classification aggregate metrics
+- Label partition ordering does not determine row alignment
+- Corrupt objects, invalid schemas, duplicate/missing rows, row digest mismatch and
+  memory budget fail closed
+- Binary positive label cannot be selected from final data
+- Authority receipt verifies allocation, attempt, manifest, pipeline, expiry and signed
+  URL-list hash
+- Local final object reads are consumed before I/O and cannot be replayed through
+  the adapter
+- Signed result verifies complete plan binding without reading final data
+- Real PostgreSQL authority restart permits identical result commit replay, denies
+  new grant and changed result digest
+remaining:
+- Durable evaluation plan and per-attempt key registration before execution
+- Immutable result object persistence and provider scope CAS; current authority commit
+  API remains digest-based
+- Evaluator control API, separate Job scheduling and pre-open replacement/post-open
+  failure sealing
+- Full live k3d journey and failure recovery; object transport here was mocked
+- Time-series, clustering, other backend coverage and production runtime/capacity
+  qualification
+- All other retained Phase 1 requirements

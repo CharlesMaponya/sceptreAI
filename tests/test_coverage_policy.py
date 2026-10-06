@@ -24,6 +24,15 @@ def test_backend_coverage_policy_is_shared_by_local_and_ci() -> None:
     assert "--cov-branch" in runner
     assert "check_coverage_thresholds.py coverage.json --minimum 90.01" in runner
     assert any(step.get("run") == "scripts/test_backend.sh" for step in test_steps)
+    run_tests = next(step for step in test_steps if step.get("run") == "scripts/test_backend.sh")
+    assert run_tests["env"]["SCEPTRE_TEST_DATABASE_URL"].endswith("/automl_tests")
+    assert workflow["jobs"]["test"]["services"]["postgres"]["env"]["POSTGRES_DB"] == "automl_tests"
+    release_steps = workflow["jobs"]["release-preflight"]["steps"]
+    assert any(
+        "python scripts/validate_phase2_evidence.py\n" in step.get("run", "")
+        and "--historical" not in step["run"]
+        for step in release_steps
+    )
 
 
 def test_backend_coverage_validator_enforces_each_dimension(tmp_path) -> None:

@@ -1,0 +1,39 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-10-03T16:28:59.830077+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: Durable isolated evaluator Job submission, not yet invoked by reconciler
+tests:
+  tests: 361
+  failures: 0
+  errors: 0
+  skipped: 0
+source_sha256:
+  apps/api/automl_api/services/champion_workloads.py: 981f4a9806274912c4c662c3c59e5aeee5daf67aef57e1f82b9fa8ff307ba0cd
+  apps/api/automl_api/services/refit_jobs.py: 5a7a669d635056094b0193313b70513676285be0a894773e0608b2790a8491f8
+  apps/api/automl_api/services/evaluation_jobs.py: 08236802f5370cb1db33b4cd3d5d242f7c1ddb4dc9ab576557ae7e1457b55b70
+  tests/test_champion_evaluation_jobs.py: d4184e489645910e85b1955da5c4e2a00ec282e15a5be8d7ed3e4bb86edd2a2b
+artifacts:
+  .unlazy/phase1-champion/job-submission-regression.xml: 1689b02e239292fe49e95bba0398a6d911da76979151e259f0e3c9592e843ec6
+  .unlazy/phase1-champion/job-submission-gates.log: d0b4b035834e6654554ca240258368ef528b866a9adf4475bdcf71e3481c9532
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+verified:
+- Durable submission and startup lease precede token/network/Job creation
+- Lost creation reply replays identical resources; wrong credentials/manifest rejected
+- Started or expired attempts cannot be resubmitted
+- Shared refit/evaluation isolation profile; no bucket/database credentials or API
+  token
+- Submission does not open final data
+remaining:
+- Reconciler invocation and Helm wiring
+- Pre-open generation replacement, observation, result recovery and failed-scope sealing
+- Foreground resource cleanup including private keys and late creates
+- Full live k3d journey and remaining Phase 1 requirements
+environment: Local PostgreSQL/authority APIs and fake Kubernetes API; no evaluator
+  deployment

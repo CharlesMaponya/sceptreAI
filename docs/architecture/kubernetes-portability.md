@@ -62,7 +62,7 @@ can instead consume external services and existing Secrets.
 
 Each Helm revision creates an idempotent database bootstrap and an Alembic
 migration Job. A fresh bundled PostgreSQL installation creates the application
-and MLflow databases; Alembic then creates the 13 application tables, constraints,
+and MLflow databases; Alembic then creates the application tables, constraints,
 and indexes. API pods do not start until both the current migration revision and
 all registered application tables are present. External PostgreSQL remains
 responsible for database creation and credentials, while the same migration Job

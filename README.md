@@ -237,7 +237,7 @@ The few infrastructure words used below mean:
 The Helm release creates PostgreSQL, SeaweedFS, MLflow, the API, the React UI,
 namespace-scoped permissions, training configuration, and persistent volumes.
 It also creates the `automl` and `mlflow` databases, applies every Alembic
-migration, creates all 13 application tables, and prevents the API from starting
+migration, creates all application tables, and prevents the API from starting
 against an incomplete schema.
 
 ### Choose a Kubernetes version

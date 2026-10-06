@@ -26,7 +26,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from automl_api.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from automl_api.models.base import Base, StoredEnum, TimestampMixin, UUIDPrimaryKeyMixin
 from automl_api.models.enums import DatasetFormat, DatasetStatus, ObjectStoreType
 
 if TYPE_CHECKING:
@@ -108,7 +108,7 @@ class DatasetVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     version_number: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[DatasetStatus] = mapped_column(
-        SQLEnum(DatasetStatus, name="dataset_status", native_enum=False),
+        StoredEnum(DatasetStatus),
         nullable=False,
         default=DatasetStatus.UPLOADED,
         server_default=DatasetStatus.UPLOADED.value,
@@ -118,12 +118,7 @@ class DatasetVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
     )
     object_store_type: Mapped[ObjectStoreType] = mapped_column(
-        SQLEnum(
-            ObjectStoreType,
-            name="object_store_type",
-            native_enum=False,
-            length=32,
-        ),
+        StoredEnum(ObjectStoreType, length=32),
         nullable=False,
         default=ObjectStoreType.S3_COMPATIBLE,
         server_default=ObjectStoreType.S3_COMPATIBLE.value,

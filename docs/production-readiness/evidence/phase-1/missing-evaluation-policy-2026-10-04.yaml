@@ -1,0 +1,51 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-10-04T13:28:11.451839+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: Missing-policy evaluator handoff recovery
+tests:
+  tests: 398
+  failures: 0
+  errors: 0
+  skipped: 0
+live:
+  closed_scopes: 7
+  replay_selected: 0
+  scope_ids:
+  - 10b01222-f97a-4183-bfb6-52bebb7763fb
+  - b8d9128c-d974-4d88-a39c-03ccb11edbb1
+  - fa34773c-c231-4019-89e1-ad89406d36d0
+  - aa9d972a-fcc1-4d0b-8461-f2c45de985a3
+  - b3c6198e-ea71-4f48-ab42-c474b2be54b1
+  - f4b1bbb9-9338-49a0-a5eb-b947d220d962
+  - 13bc1d69-589e-4119-8dce-f3095e3e6aa9
+  new_evaluators: 0
+controller_image: k3d-sceptre-registry.localhost:5111/sceptreai@sha256:1ca5c7ae6f3a09310ae74a8695d374874cc12671f6cb19cfd7678d13ce538270
+source_sha256:
+  apps/api/automl_api/services/evaluation_reconciler.py: c25f7442e8bc627f5c9c6d0ff08c83f15aa5aa4b9ef07176b3c631b50419e5d0
+  tests/test_champion_evaluation_reconciler.py: fe56bd383dbaa9a2d42cf87ce8c2e8d01c6c6625c42df6dc9b4e34d08701b314
+artifacts:
+  .unlazy/phase1-champion/missing-policy-regression.xml: 68b40e1c4691e2cc0a398d5d35515b23f6e997f1921105b8d066642ec7ceefe8
+  .unlazy/phase1-champion/missing-policy-gates.log: 0a5a5525141bb8197aedf5bc3778b97a4ace44fba62b7da9df6d0a99e075e41d
+  .unlazy/phase1-evaluation-k3d/missing-policy-live.log: 9c6733ba706d2f18ecf081a8f744673e701c30b299d009853b7b69b87a1c2be6
+  .unlazy/phase1-evaluation-k3d/verify_missing_policy.py: 28d79e8f6259752171c42a6dea3d905f19adb5340f31e1cc8e9332430c4790e9
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+verified:
+- Scope lock protects durable missing-policy closure; running scope fails, cancellation
+  remains cancelled
+- Existing evaluator attempt or allocation intent prevents local-only closure
+- Lost allocation reply retains authority recovery intent
+- Seven legacy test scopes closed once in live k3d; replay selected none and created
+  no evaluators
+- Running controller source hash matched workspace before live probe
+remaining:
+- Missing-policy scopes with existing external handoffs remain explicitly recoverable
+  errors requiring policy repair
+- Live evaluator death, lost result/commit acknowledgements and network-denial probes
+- Other retained Phase 1 requirements and production/runtime qualification

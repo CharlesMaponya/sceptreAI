@@ -37,7 +37,7 @@ from automl_api.services import final_test_authority as authority
 from automl_api.services import workflow_state as state
 from automl_api.services.idempotency import durable_mutation
 from pydantic import BaseModel
-from sqlalchemy import create_engine, delete, func, select
+from sqlalchemy import create_engine, delete, func, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -125,6 +125,56 @@ def tenant(phase1_db: Session) -> tuple[User, Project]:
     phase1_db.add(project)
     phase1_db.flush()
     return user, project
+
+
+@pytest.mark.parametrize("driver", list(ObjectStoreType))
+@pytest.mark.parametrize("spelling", ["name", "value"])
+def test_storage_identity_reads_persisted_names_and_values(phase1_db, tenant, driver, spelling):
+    user, project = tenant
+    dataset = Dataset(project_id=project.id, created_by_id=user.id, name="storage fixture")
+    phase1_db.add(dataset)
+    phase1_db.flush()
+    version = DatasetVersion(
+        project_id=project.id,
+        dataset_id=dataset.id,
+        created_by_id=user.id,
+        version_number=1,
+        format=DatasetFormat.CSV,
+        object_store_type=driver,
+        object_uri="s3://unchanged-bucket/immutable-key",
+        content_hash="a" * 64,
+        byte_size=10737418240,
+    )
+    phase1_db.add(version)
+    phase1_db.flush()
+    identity = version.id
+    assert (
+        phase1_db.scalar(
+            text("SELECT object_store_type FROM dataset_versions WHERE id = :id"), {"id": identity}
+        )
+        == driver.name
+    )
+    phase1_db.execute(
+        text("UPDATE dataset_versions SET object_store_type = :driver WHERE id = :id"),
+        {"id": identity, "driver": getattr(driver, spelling)},
+    )
+    phase1_db.expire(version)
+    assert version.object_store_type is driver
+    assert version.object_uri == "s3://unchanged-bucket/immutable-key"
+    assert version.content_hash == "a" * 64
+    assert version.byte_size == 10737418240
+
+
+def test_storage_identity_rejects_unknown_values(phase1_db):
+    column = DatasetVersion.__table__.c.object_store_type
+    with pytest.raises(ValueError):
+        phase1_db.scalar(select(column).where(column == "unrecognized-store"))
+    with pytest.raises(ValueError):
+        phase1_db.execute(
+            text("SELECT 'unrecognized-store' AS object_store_type").columns(
+                object_store_type=column.type
+            )
+        ).scalar_one()
 
 
 def test_command_and_outbox_replay_and_claim_are_durable(
@@ -513,9 +563,7 @@ def test_three_provider_race_allows_only_the_canonical_final_reader(
         assert results == {"local": "open", "aws": "rejected", "gcp": "rejected"}
     finally:
         with Session(phase1_engine) as db, db.begin():
-            db.execute(
-                delete(FinalTestAllocation).where(FinalTestAllocation.id == allocation_id)
-            )
+            db.execute(delete(FinalTestAllocation).where(FinalTestAllocation.id == allocation_id))
 
 
 def test_attempt_lineage_enforces_one_active_generation_and_run_parent(
@@ -657,3 +705,83 @@ def test_attempt_lineage_enforces_one_active_generation_and_run_parent(
             phase1_db.flush()
     finally:
         savepoint.rollback()
+
+
+@pytest.mark.parametrize("action", ["complete", "defer"])
+def test_cached_outbox_owner_cannot_write_after_reclaim(phase1_engine, committed_tenant, action):
+    user_id, project_id = committed_tenant
+    now = datetime.now(UTC) + timedelta(seconds=1)
+    with Session(phase1_engine) as db, db.begin():
+        command, _ = state.begin_command(
+            db,
+            project_id=project_id,
+            actor_id=user_id,
+            operation="training.launch",
+            idempotency_key=uuid.uuid4().hex,
+            payload={},
+        )
+        entry = state.enqueue_outbox(
+            db,
+            command,
+            topic="ray.training.submit",
+            aggregate_type="model_run",
+            aggregate_id=uuid.uuid4(),
+            payload={},
+        )
+        entry_id = entry.id
+    with Session(phase1_engine, expire_on_commit=False) as stale:
+        held = state.claim_outbox(stale, worker_id="old-owner", now=now, lease_seconds=1)
+        assert [row.id for row in held] == [entry_id]
+        stale.commit()
+        with Session(phase1_engine) as replacement, replacement.begin():
+            fresh = state.claim_outbox(
+                replacement, worker_id="new-owner", now=now + timedelta(seconds=2)
+            )
+            assert [row.id for row in fresh] == [entry_id]
+        with pytest.raises(state.StaleFence):
+            if action == "complete":
+                state.complete_outbox(stale, entry_id, worker_id="old-owner", delivered=True)
+            else:
+                state.defer_outbox(stale, held[0], worker_id="old-owner")
+        stale.rollback()
+    from automl_api.models.workflows import OutboxEntry
+
+    with Session(phase1_engine) as db:
+        current = db.get(OutboxEntry, entry_id)
+        assert current.status == OutboxStatus.CLAIMED
+        assert current.lease_owner == "new-owner" and current.delivery_attempts == 2
+
+
+def test_cached_reclaim_preserves_delivery_counter(phase1_engine, committed_tenant):
+    user_id, project_id = committed_tenant
+    now = datetime.now(UTC) + timedelta(seconds=1)
+    with Session(phase1_engine) as db, db.begin():
+        command, _ = state.begin_command(
+            db,
+            project_id=project_id,
+            actor_id=user_id,
+            operation="training.launch",
+            idempotency_key=uuid.uuid4().hex,
+            payload={},
+        )
+        entry = state.enqueue_outbox(
+            db,
+            command,
+            topic="ray.training.submit",
+            aggregate_type="model_run",
+            aggregate_id=uuid.uuid4(),
+            payload={},
+        )
+        entry_id = entry.id
+    with Session(phase1_engine, expire_on_commit=False) as cached:
+        held = state.claim_outbox(cached, worker_id="first", now=now, lease_seconds=1)
+        assert held[0].id == entry_id and held[0].delivery_attempts == 1
+        cached.commit()
+        with Session(phase1_engine) as other, other.begin():
+            second = state.claim_outbox(
+                other, worker_id="second", now=now + timedelta(seconds=2), lease_seconds=1
+            )
+            assert second[0].delivery_attempts == 2
+        third = state.claim_outbox(cached, worker_id="third", now=now + timedelta(seconds=4))
+        assert third[0].id == entry_id and third[0].delivery_attempts == 3
+        cached.rollback()

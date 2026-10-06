@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, Gauge, generate_latest
 from sqlalchemy import text
 
 from automl_api import __version__
@@ -13,18 +14,20 @@ from automl_api.api.routes import (
     auth,
     contracts,
     datasets,
+    evaluation_control,
     monitoring,
     oidc,
     operations,
     profiling,
     projects,
+    refit_control,
     serving_artifacts,
     training,
     validation,
 )
 from automl_api.core.config import get_settings
 from automl_api.core.structured_logging import bind_logging_context, configure_structured_logging
-from automl_api.db.session import get_engine
+from automl_api.db.session import get_engine, pool_metrics
 from automl_api.security.authentication_policy import validate_authentication_configuration
 from automl_api.services.profiling_jobs import resume_incomplete_profiling_jobs
 from automl_api.services.upload_policy import (
@@ -101,6 +104,24 @@ def create_app() -> FastAPI:
     async def upload_contract_error(_: Request, exc: UploadContractError) -> JSONResponse:
         return JSONResponse(status_code=422, content={"detail": str(exc)})
 
+    @app.get("/metrics", include_in_schema=False)
+    def metrics() -> Response:
+        registry = CollectorRegistry()
+        descriptions = {
+            "size": "Configured persistent connection capacity of this process pool.",
+            "checkedin": "Idle connections in this process pool.",
+            "checkedout": "Connections checked out from this process pool.",
+            "overflow": "Connections above persistent capacity in this process pool.",
+        }
+        for name, value in pool_metrics().items():
+            Gauge(f"sceptre_database_pool_{name}", descriptions[name], registry=registry).set(
+                max(0, value) if name == "overflow" else value
+            )
+        return Response(
+            generate_latest(registry),
+            headers={"Content-Type": CONTENT_TYPE_LATEST, "Cache-Control": "no-store"},
+        )
+
     @app.get("/health/live", tags=["health"])
     def live() -> dict[str, str]:
         return {"status": "ok"}
@@ -132,6 +153,8 @@ def create_app() -> FastAPI:
     app.include_router(auth.router, prefix="/api/v1")
     app.include_router(oidc.router, prefix="/api/v1")
     app.include_router(serving_artifacts.router, prefix="/api/v1")
+    app.include_router(refit_control.router, prefix="/api/v1")
+    app.include_router(evaluation_control.router, prefix="/api/v1")
     app.include_router(contracts.router, prefix="/api/v1")
     app.include_router(projects.router, prefix="/api/v1")
     app.include_router(datasets.router, prefix="/api/v1")

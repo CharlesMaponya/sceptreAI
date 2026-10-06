@@ -1,0 +1,49 @@
+schema_revision: sceptre-local-remediation-v1
+observed_at: '2026-10-04T18:36:06.904120+00:00'
+phase: '1'
+status: partial_implementation_verified
+phase_complete: false
+production_qualified: false
+review_status: unsigned_local_evidence
+scope: API process PostgreSQL pool metrics export
+tests:
+  tests: 38
+  failures: 0
+  errors: 0
+  skipped: 0
+live:
+  http_status: 200
+  tls_verified: true
+  gauges:
+    sceptre_database_pool_size: 10.0
+    sceptre_database_pool_checkedin: 1.0
+    sceptre_database_pool_checkedout: 0.0
+    sceptre_database_pool_overflow: 0.0
+test_image: sha256:2bd7872cdc9f8d09fb2bf4c660fa34505ed7b02df264942a906510b91f63a575
+source_sha256:
+  apps/api/automl_api/main.py: 301811a9204d0f250fc25a2b0f0ea2762e717b2e36a89b58230d54fca917eb48
+  tests/test_runtime_foundations.py: e8952c54d169cd629f2fa1b78160fe2b1be7d4887e194422584eec622b933662
+  pyproject.toml: ea84efec9696e6a66bbb15e7ac525ffe91f648a4235f15f4c9babe52d1bf33ee
+artifacts:
+  .unlazy/phase1-champion/pool-metrics.xml: 2817e55b7254624b32b9eae1287738f549c016bcb62fa94be07c9bf0b7b53425
+  .unlazy/phase1-champion/pool-metrics-live.json: 79d9f1b05f5a8fc34f933481ae5372985346060c1bad011a6d2bb1908f643187
+  .unlazy/phase1-champion/pool-metrics-gates.log: 13b6c5ce3bc829e18a407977f0c1a5e80552c7b570409aa6ba162390c61621e8
+  .unlazy/phase1-champion/verify_pool_metrics_live.py: 2cbf465016ffe538d017cca2a16df2591b9d6e29fedd954954e5b87413ad0232
+unlazy_champion_integration:
+  met: 2
+  unmet: 5
+  abandoned: 0
+verified:
+- HTTP /metrics emits four named Prometheus gauges from current API pool state
+- QueuePool checkout/overflow/saturation/release test; scrape does not acquire a connection
+- Unsupported pool counters omitted; fresh registry excludes default process metrics
+  and credentials
+- Live isolated API scrape over verified TLS against PostgreSQL
+- Prometheus client 0.26.0 already in API hash lock and installed test image; declared
+  direct dependency
+remaining:
+- Pool metrics for reconciler, workers and qualification-control process
+- Scraper deployment, dashboard/alerts, private-network enforcement and multi-process
+  coverage
+- Live PgBouncer transaction-mode qualification
+- Other retained Phase 1 requirements and hermetic release/runtime qualification

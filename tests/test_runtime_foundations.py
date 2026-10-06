@@ -476,3 +476,65 @@ def test_worker_failure_is_fenced_and_cannot_overwrite_a_successor(monkeypatch) 
     db.scalar.side_effect = [None]
     with pytest.raises(ValueError, match="lineage is missing"):
         worker._fail_fenced_attempt(run_id, context, RuntimeError("missing"))
+
+
+def test_transaction_pooling_disables_prepared_statements() -> None:
+    options = db_session.engine_options(Settings(pgbouncer_transaction_mode=True))
+    assert options["connect_args"]["prepare_threshold"] is None
+    assert "options" not in options["connect_args"]
+    assert "statement_timeout" in db_session.engine_options(Settings())["connect_args"]["options"]
+    assert "prepare_threshold" not in db_session.engine_options(Settings())["connect_args"]
+
+
+@pytest.mark.parametrize("authority_url", [
+    "postgresql+psycopg://other:password@localhost:55432/automl?sslmode=require",
+    "sqlite:///authority.db",
+])
+def test_authority_cannot_bypass_database_isolation(monkeypatch, authority_url) -> None:
+    monkeypatch.setattr(qualification_session, "_engine", None)
+    monkeypatch.setattr(qualification_session, "get_settings", lambda: Settings(
+        environment="production", qualification_database_url=authority_url,
+    ))
+    with pytest.raises(RuntimeError, match="separately protected|requires PostgreSQL"):
+        qualification_session.get_qualification_engine()
+
+
+
+def test_api_pool_metrics_scrape_real_saturated_pool_without_checkout(monkeypatch):
+    from fastapi.testclient import TestClient
+    from prometheus_client.parser import text_string_to_metric_families
+    from sqlalchemy import create_engine
+    from sqlalchemy.pool import QueuePool
+
+    engine = create_engine("sqlite://", poolclass=QueuePool, pool_size=1, max_overflow=1,
+                           pool_timeout=0.01, connect_args={"check_same_thread": False})
+    monkeypatch.setattr(db_session, "get_engine", lambda: engine)
+    monkeypatch.setattr("automl_api.main.get_settings",
+                        lambda: Settings(environment="test", object_store_type="embedded"))
+    app = create_app()
+    client = TestClient(app)
+
+    def scrape():
+        response = client.get("/metrics")
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/plain")
+        assert response.headers["cache-control"] == "no-store"
+        families = list(text_string_to_metric_families(response.text))
+        assert all(family.type == "gauge" for family in families)
+        assert "sqlite" not in response.text and "password" not in response.text
+        return {s.name.removeprefix("sceptre_database_pool_"): s.value
+                for f in families for s in f.samples}
+
+    try:
+        assert scrape() == dict(size=1, checkedin=0, checkedout=0, overflow=0)
+        with engine.connect():
+            assert scrape() == dict(size=1, checkedin=0, checkedout=1, overflow=0)
+            with engine.connect():
+                assert scrape() == dict(size=1, checkedin=0, checkedout=2, overflow=1)
+        assert scrape() == dict(size=1, checkedin=1, checkedout=0, overflow=0)
+        assert "/metrics" not in app.openapi()["paths"]
+        monkeypatch.setattr(db_session, "get_engine", lambda: SimpleNamespace(pool=object()))
+        assert scrape() == {}
+    finally:
+        client.close()
+        engine.dispose()

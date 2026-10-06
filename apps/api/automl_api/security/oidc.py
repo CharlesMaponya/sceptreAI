@@ -72,7 +72,11 @@ def identity_user(db: Session, claims: dict) -> User:
     if user is None:
         # Email alone never links a local account or an identity from another issuer.
         if db.scalar(select(User).where(User.email == claims["email"])) is not None:
-            raise HTTPException(status_code=409, detail="This email already belongs to another sign-in identity. Contact your administrator.")
+            raise HTTPException(
+                status_code=409,
+                detail=("This email already belongs to another sign-in identity. "
+                        "Contact your administrator."),
+            )
         user = User(email=claims["email"], full_name=str(claims.get("name", ""))[:200] or None,
                     sso_issuer=claims["iss"], sso_subject=claims["sub"],
                     auth_provider=AuthProvider.SSO, is_verified=True)
