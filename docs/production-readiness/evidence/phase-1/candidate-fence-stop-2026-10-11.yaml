@@ -1,0 +1,24 @@
+{
+  "verified_at": "2026-10-11T11:28:44.559181+00:00",
+  "phase_complete": false,
+  "finding": "Candidate exception handling swallowed StaleFence, optionally retried GPU work on CPU, and called MLflow failure logging after ownership was lost.",
+  "fix": "Propagate StaleFence before generic supervised and clustering failure handlers.",
+  "negative_control": "All three new CPU/GPU/clustering cases failed before the fix because StaleFence was swallowed.",
+  "verification": {
+    "tests": 61,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "source_sha256": {
+    "apps/api/automl_api/training/pipeline.py": "6ae5ec7abe7ca9fde41247d54608396524f21c9e4ffa8050cdb05980c51d323c",
+    "tests/test_training_pipeline_runtime.py": "69bc570afef00d109b9f7e5059f3732ddd59471f911ac60975b82c917c0d9d75"
+  },
+  "limits": [
+    "Focused candidate checks inject the ownership exception at progress publication and mock external effects; PostgreSQL publication cases are included as regressions.",
+    "No k3d deployment, real GPU or live MLflow failure test.",
+    "MLflow creation before durable tracking identifiers and separate lineage tagging remains open; this change only prevents extra work after an observed stale fence.",
+    "Only 41.1 GB is free on the mounted data filesystem; asked the user for another disk/environment for the 45 GB rehearsal.",
+    "Full Phase 1 and seven missing historical QA objects remain unresolved."
+  ]
+}

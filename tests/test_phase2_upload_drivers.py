@@ -118,6 +118,36 @@ class S3Client:
         del Bucket
         self.objects[Key] = Body
 
+    def get_paginator(self, operation):
+        def paginate(**options):
+            if operation == "list_multipart_uploads":
+                return [
+                    {
+                        "Uploads": [
+                            item
+                            for item in self.multipart_uploads
+                            if item["Key"].startswith(options["Prefix"])
+                        ]
+                    }
+                ]
+            assert operation == "list_object_versions"
+            return [
+                {
+                    "Versions": [
+                        {"Key": key, "VersionId": "null"}
+                        for key in self.objects
+                        if key.startswith(options["Prefix"])
+                    ]
+                }
+            ]
+
+        return SimpleNamespace(paginate=paginate)
+
+    def delete_objects(self, *, Bucket, Delete):
+        for item in Delete["Objects"]:
+            self.delete_object(Bucket=Bucket, Key=item["Key"])
+        return {}
+
     def delete_object(self, *, Bucket: str, Key: str) -> None:
         del Bucket
         self.objects.pop(Key, None)
@@ -292,7 +322,8 @@ class GCSBlob:
     def exists(self) -> bool:
         return self.name in self.bucket.objects
 
-    def delete(self) -> None:
+    def delete(self, *, if_generation_match=None) -> None:
+        assert if_generation_match == self.generation
         self.bucket.objects.pop(self.name, None)
 
 
@@ -314,6 +345,18 @@ class GCSClient:
 
     def bucket(self, _name: str) -> GCSBucket:
         return self.bucket_value
+
+    def list_blobs(self, _name, *, prefix, page_size, versions=False, soft_deleted=False):
+        assert page_size == 1000 and versions != soft_deleted
+        return (
+            []
+            if soft_deleted
+            else [
+                self.bucket_value.blob(key)
+                for key in self.bucket_value.objects
+                if key.startswith(prefix)
+            ]
+        )
 
     def get_bucket(self, _name: str) -> GCSBucket:
         if not self.healthy:
@@ -410,8 +453,20 @@ class AzureContainer:
         self.blobs: dict[str, AzureBlob] = {}
         self.healthy = True
 
-    def get_blob_client(self, name: str) -> AzureBlob:
+    def get_blob_client(self, name: str, *, version_id=None, snapshot=None) -> AzureBlob:
+        assert version_id is None and snapshot is None
         return self.blobs.setdefault(name, AzureBlob(name, self.objects))
+
+    def list_blobs(self, *, name_starts_with, include, results_per_page):
+        assert set(include) == {"versions", "snapshots", "deleted", "uncommittedblobs"}
+        assert results_per_page == 1000
+        return [
+            SimpleNamespace(
+                name=name, deleted=False, version_id=None, snapshot=None, is_current_version=None
+            )
+            for name in self.objects
+            if name.startswith(name_starts_with)
+        ]
 
     def get_container_properties(self) -> dict[str, object]:
         if not self.healthy:
@@ -597,3 +652,26 @@ def test_azure_contract_edge_branches(monkeypatch) -> None:
     for key in ("", "../bad", "folder/../bad"):
         with pytest.raises(ValueError, match="inside"):
             driver._key(key)
+
+
+@pytest.mark.parametrize("provider", ["azure", "gcs"])
+def test_missing_object_delete_is_idempotent_but_denial_propagates(provider):
+    from unittest.mock import MagicMock
+
+    if provider == "azure":
+        driver = object.__new__(AzureBlobObjectStoreDriver)
+        driver.account_name, driver.container_name = "account", "data"
+        driver.container = MagicMock()
+        listing = driver.container.list_blobs
+        uri = "az://account/data/missing"
+    else:
+        driver = object.__new__(GCSObjectStoreDriver)
+        driver.bucket_name = "bucket"
+        driver.client = MagicMock()
+        listing = driver.client.list_blobs
+        uri = "gs://bucket/missing"
+    listing.return_value = []
+    driver.delete(uri)
+    listing.side_effect = PermissionError("denied")
+    with pytest.raises(PermissionError, match="denied"):
+        driver.delete(uri)

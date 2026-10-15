@@ -78,6 +78,7 @@ def _entry(attempt: WorkflowAttempt, topic: str = "ray.training.submit") -> Outb
         payload={"attempt_id": str(attempt.id), "fencing_token": attempt.fencing_token},
         status=OutboxStatus.CLAIMED,
         lease_owner="worker-a",
+        lease_expires_at=datetime.now(UTC) + timedelta(minutes=5),
     )
     entry.id = uuid.uuid4()
     return entry
@@ -168,6 +169,7 @@ def test_ray_manifest_is_ephemeral_project_bound_and_fenced(monkeypatch) -> None
     assert {volume["name"] for volume in worker_spec["volumes"]} == {
         "ray-runtime",
         "shared-memory",
+        "attempt-identity",
     }
 
 
@@ -315,10 +317,11 @@ def test_cancel_reconciler_deletes_once_and_terminal_state_is_stable() -> None:
     entry = _entry(attempt, "ray.training.cancel")
     db = MagicMock()
     db.scalar.return_value = attempt
+    db.get.return_value = run
     k8s = MagicMock()
     result = reconciler.cancel_training_ray_job(db, entry, k8s)
     assert result.status == AttemptStatus.CANCELLED
-    k8s.delete_ray_job.assert_called_once_with("ray-job")
+    k8s.delete_ray_job.assert_called_once_with("ray-job", namespace=run.k8s_namespace)
 
     db.scalar.return_value = attempt
     reconciler.cancel_training_ray_job(db, entry, k8s)
@@ -408,7 +411,7 @@ def test_ray_observer_prioritizes_failed_deployment_over_stale_running_job(
     command = SimpleNamespace(id=uuid.uuid4())
     db = MagicMock()
     db.scalars.side_effect = [[attempt], []]
-    db.scalar.side_effect = [run, command]
+    db.scalar.side_effect = [run, run, command]
     enqueue = MagicMock()
     monkeypatch.setattr(reconciler, "enqueue_outbox", enqueue)
     k8s = MagicMock()
@@ -438,7 +441,7 @@ def test_ray_observer_replaces_terminal_jobs_without_a_terminal_cas(monkeypatch,
     command = SimpleNamespace(id=uuid.uuid4())
     db = MagicMock()
     db.scalars.side_effect = [[attempt], []]
-    db.scalar.side_effect = [run, command]
+    db.scalar.side_effect = [run, run, command]
     enqueue = MagicMock()
     monkeypatch.setattr(reconciler, "enqueue_outbox", enqueue)
     k8s = MagicMock()
@@ -479,7 +482,7 @@ def test_ray_observer_reclaims_a_missing_job_and_replaces_active_trials(monkeypa
     command = SimpleNamespace(id=uuid.uuid4())
     db = MagicMock()
     db.scalars.side_effect = [[attempt], [trial_attempt]]
-    db.scalar.side_effect = [run, command]
+    db.scalar.side_effect = [run, run, command]
     monkeypatch.setattr(reconciler, "enqueue_outbox", MagicMock())
     k8s = MagicMock()
     k8s.ray_job.side_effect = ApiException(status=404)
@@ -568,10 +571,16 @@ def test_ray_observer_propagates_api_errors_and_missing_commands() -> None:
     attempt = _attempt(run, AttemptStatus.SUBMITTED)
     db = MagicMock()
     db.scalars.side_effect = [[attempt], []]
-    db.scalar.side_effect = [run, None]
+    db.scalar.side_effect = [run, run, None]
     k8s.ray_job.side_effect = ApiException(status=404)
     with pytest.raises(LookupError, match="no durable launch command"):
         reconciler.observe_training_ray_jobs(db, k8s)
+
+
+def _delivery_db(entry):
+    db = MagicMock()
+    db.get.side_effect = lambda model, *_args, **_kwargs: entry if model is OutboxEntry else None
+    return db
 
 
 def test_entry_dispatch_requeues_failure_and_delivers_success(monkeypatch) -> None:
@@ -581,12 +590,12 @@ def test_entry_dispatch_requeues_failure_and_delivers_success(monkeypatch) -> No
     complete = MagicMock()
     monkeypatch.setattr(reconciler, "complete_outbox", complete)
     monkeypatch.setattr(reconciler, "submit_training_ray_job", MagicMock())
-    reconciler.reconcile_entry(MagicMock(), entry, worker_id="worker-a", k8s=MagicMock())
+    reconciler.reconcile_entry(_delivery_db(entry), entry, worker_id="worker-a", k8s=MagicMock())
     assert complete.call_args.kwargs["delivered"] is True
 
     handler = MagicMock(side_effect=RuntimeError("external down"))
     entry.topic = "custom.reconcile"
-    failed_db = MagicMock()
+    failed_db = _delivery_db(entry)
     with pytest.raises(RuntimeError, match="external down"):
         reconciler.reconcile_entry(
             failed_db,
@@ -598,7 +607,7 @@ def test_entry_dispatch_requeues_failure_and_delivers_success(monkeypatch) -> No
     assert complete.call_args.kwargs["delivered"] is False
     entry.topic = "unknown"
     with pytest.raises(reconciler.UnknownOutboxTopic):
-        reconciler.reconcile_entry(MagicMock(), entry, worker_id="worker-a")
+        reconciler.reconcile_entry(_delivery_db(entry), entry, worker_id="worker-a")
 
 
 @pytest.mark.parametrize(
@@ -621,7 +630,7 @@ def test_entry_dispatches_every_builtin_topic(monkeypatch, topic: str, handler_n
     monkeypatch.setattr(reconciler, "complete_outbox", complete)
     command = SimpleNamespace(status=CommandStatus.RUNNING)
     db = MagicMock()
-    db.get.return_value = command
+    db.get.side_effect = lambda model, *_args, **_kwargs: entry if model is OutboxEntry else command
 
     reconciler.reconcile_entry(db, entry, worker_id="worker-a", k8s=MagicMock())
 
@@ -636,7 +645,7 @@ def test_entry_rejects_known_topic_without_a_handler(monkeypatch) -> None:
     complete = MagicMock()
     monkeypatch.setattr(reconciler, "complete_outbox", complete)
     with pytest.raises(RuntimeError, match="No reconciler handler"):
-        reconciler.reconcile_entry(MagicMock(), entry, worker_id="worker-a")
+        reconciler.reconcile_entry(_delivery_db(entry), entry, worker_id="worker-a")
     assert complete.call_args.kwargs["delivered"] is False
 
 
@@ -703,6 +712,7 @@ def test_upload_reconciler_verifies_object_size_and_visibility(monkeypatch) -> N
         heartbeat_at=None,
     )
     db = MagicMock()
+    db.get.return_value = entry
     db.scalar.side_effect = [session, None]
     reconciler.reconcile_upload_session(db, entry)
     assert session.status == "quarantined"
@@ -770,6 +780,7 @@ def test_phase2_upload_reconciler_streams_scans_and_verifies_sha256(monkeypatch)
         column_count=None,
     )
     db = MagicMock()
+    db.get.return_value = entry
     db.scalar.side_effect = [session, version, session, version]
     store = MagicMock()
     store.exists.return_value = True
@@ -833,6 +844,7 @@ def test_phase2_upload_reconciler_quarantines_digest_and_scanner_failures(
     mismatch = session()
     store.open_stream.return_value = io.BytesIO(content)
     db = MagicMock()
+    db.get.return_value = entry
     db.scalar.side_effect = [mismatch, version, mismatch]
     reconciler.reconcile_upload_session(db, entry)
     assert mismatch.status == "quarantined"

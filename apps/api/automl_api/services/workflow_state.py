@@ -625,6 +625,7 @@ def claim_attempts(
             .order_by(WorkflowAttempt.available_at, WorkflowAttempt.id)
             .limit(limit)
             .with_for_update(skip_locked=True)
+            .execution_options(populate_existing=True)
         )
     )
     for row in rows:

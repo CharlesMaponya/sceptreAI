@@ -1,4 +1,5 @@
 .git
+.unlazy
 .env*
 .automl_object_store
 apps/api/automl_api/.automl_object_store

@@ -156,6 +156,7 @@ class Settings:
     inference_image_pull_policy: str = "IfNotPresent"
     inference_service_account: str = "default"
     inference_service_type: str = "ClusterIP"
+    attempt_control_base_url: str = ""
     internal_api_url: str = "http://sceptre-api:8000"
     inference_external_host: str | None = None
     inference_external_scheme: str = "http"
@@ -180,6 +181,8 @@ class Settings:
 def get_settings() -> Settings:
     dotenv = _read_dotenv()
     return Settings(
+        attempt_control_base_url=str(_get_env(
+            "ATTEMPT_CONTROL_BASE_URL", Settings.attempt_control_base_url, dotenv)),
         internal_api_url=str(_get_env("INTERNAL_API_URL", Settings.internal_api_url, dotenv)),
         environment=str(_get_env("ENVIRONMENT", Settings.environment, dotenv)),
         database_url=str(_get_env("DATABASE_URL", Settings.database_url, dotenv)),

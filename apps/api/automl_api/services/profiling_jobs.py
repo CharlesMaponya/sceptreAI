@@ -3,13 +3,14 @@ from __future__ import annotations
 import json
 import threading
 import uuid
-from concurrent.futures import Future, ThreadPoolExecutor
-from datetime import UTC, datetime
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pandas as pd
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from automl_api.core.config import get_settings
@@ -23,7 +24,7 @@ from automl_api.models.enums import (
     WorkflowStage,
 )
 from automl_api.models.iam import User
-from automl_api.models.workflows import WorkflowAttempt
+from automl_api.models.workflows import OutboxEntry, WorkflowAttempt, WorkflowCommand
 from automl_api.schemas.profiling import (
     ColumnProfileRead,
     DatasetProfileRead,
@@ -37,10 +38,11 @@ from automl_api.services.profiling import (
     _infer_task,
     _load_rows,
     _relationships_against_target,
-    build_dataset_profile,
+    profile_dataset_version,
 )
 from automl_api.services.projects import require_project_role
 from automl_api.services.workflow_state import (
+    StaleFence,
     begin_command,
     enqueue_outbox,
     transition_command,
@@ -51,13 +53,6 @@ FEATURE_BATCH_SIZE = 5
 PROFILE_ALGORITHM_VERSION = 4
 TERMINAL_STATUSES = {"succeeded", "failed", "cancelled"}
 MAX_CONTROL_PLANE_PROFILE_BYTES = 100 * 1024 * 1024
-
-_executor = ThreadPoolExecutor(
-    max_workers=max(1, get_settings().max_concurrent_jobs),
-    thread_name_prefix="profiling",
-)
-_scheduled_jobs: set[uuid.UUID] = set()
-_schedule_lock = threading.Lock()
 
 
 def create_profiling_job(
@@ -208,6 +203,8 @@ def create_profiling_job(
     db.flush()
     if distributed:
         _enqueue_distributed_profile(db, user, version, job)
+    else:
+        _enqueue_local_profile(db, job)
     return job, True
 
 
@@ -333,55 +330,133 @@ def latest_profiling_job(
     )
 
 
-def schedule_profiling_job(job_id: uuid.UUID) -> bool:
-    with _schedule_lock:
-        if job_id in _scheduled_jobs:
-            return False
-        _scheduled_jobs.add(job_id)
-    future = _executor.submit(_run_profiling_job, job_id)
-    future.add_done_callback(lambda completed: _job_finished(job_id, completed))
+@dataclass(frozen=True)
+class ProfileDelivery:
+    entry_id: uuid.UUID
+    worker_id: str
+    generation: int
+    available_at: datetime
+    artifact_id: uuid.UUID = field(default_factory=uuid.uuid4)
+
+
+def _enqueue_local_profile(db: Session, job: ProfilingJob) -> bool:
+    command, replayed = begin_command(
+        db,
+        project_id=job.project_id,
+        actor_id=job.created_by_id,
+        operation="dataset.profile.local",
+        idempotency_key=f"profiling-job:{job.id}",
+        payload={"profiling_job_id": str(job.id)},
+    )
+    if replayed:
+        return False
+    command.resource_type = "profiling_job"
+    command.resource_id = job.id
+    transition_command(command, CommandStatus.RUNNING)
+    enqueue_outbox(
+        db,
+        command,
+        topic="dataset.profile.local",
+        aggregate_type="profiling_job",
+        aggregate_id=job.id,
+        payload={"profiling_job_id": str(job.id)},
+    )
     return True
 
 
 def resume_incomplete_profiling_jobs() -> int:
-    session_factory = get_session_factory()
-    with session_factory() as db:
-        incomplete_jobs = list(
+    """Backfill legacy local jobs without changing live ownership or retry budgets."""
+    with get_session_factory()() as db:
+        pending = list(
             db.scalars(
-                select(ProfilingJob).where(
+                select(ProfilingJob)
+                .where(
                     ProfilingJob.status.in_(["queued", "running"]),
+                    func.coalesce(ProfilingJob.overview_json["execution_mode"].astext, "")
+                    != "kuberay",
+                    ~select(WorkflowCommand.id)
+                    .where(
+                        WorkflowCommand.project_id == ProfilingJob.project_id,
+                        WorkflowCommand.operation == "dataset.profile.local",
+                        WorkflowCommand.resource_id == ProfilingJob.id,
+                    )
+                    .exists(),
                 )
-            ).all()
-        )
-        job_ids = [job.id for job in incomplete_jobs if not is_distributed_profile(job)]
-        if job_ids:
-            db.query(ProfilingJob).filter(ProfilingJob.id.in_(job_ids)).update(
-                {
-                    ProfilingJob.status: "queued",
-                    ProfilingJob.failure_message: None,
-                },
-                synchronize_session=False,
+                .order_by(ProfilingJob.created_at, ProfilingJob.id)
+                .limit(100)
+                .with_for_update(skip_locked=True)
             )
-            db.commit()
-    return sum(1 for job_id in job_ids if schedule_profiling_job(job_id))
+        )
+        count = sum(_enqueue_local_profile(db, job) for job in pending)
+        db.commit()
+        return count
 
 
-def _job_finished(job_id: uuid.UUID, future: Future[None]) -> None:
-    with _schedule_lock:
-        _scheduled_jobs.discard(job_id)
+def _locked_profile_job(db: Session, job_id: uuid.UUID, delivery: ProfileDelivery):
+    from automl_api.services.reconciler import _lock_outbox_delivery
+
+    entry = _lock_outbox_delivery(db, delivery.entry_id, delivery.worker_id)
+    if (
+        entry is None
+        or entry.delivery_attempts != delivery.generation
+        or entry.available_at != delivery.available_at
+        or entry.topic != "dataset.profile.local"
+        or entry.payload.get("profiling_job_id") != str(job_id)
+    ):
+        raise StaleFence("The local profiling delivery is no longer current.")
+    job = db.get(ProfilingJob, job_id, with_for_update=True, populate_existing=True)
+    if job is None or job.status in {"succeeded", "cancelled"}:
+        return None
+    if job.project_id != entry.project_id or is_distributed_profile(job):
+        raise StaleFence("The profiling job does not belong to this local delivery.")
+    now = datetime.now(UTC)
+    entry.lease_expires_at = now + timedelta(seconds=90)
+    job.heartbeat_at = now
+    return job
+
+
+@contextmanager
+def _profile_heartbeat(job_id: uuid.UUID, delivery: ProfileDelivery):
+    stop = threading.Event()
+
+    def heartbeat():
+        while not stop.wait(15):
+            try:
+                with get_session_factory()() as db:
+                    if _locked_profile_job(db, job_id, delivery) is None:
+                        return
+                    db.commit()
+            except Exception:
+                # Checkpoint publication independently verifies the current database lease.
+                return
+
+    thread = threading.Thread(target=heartbeat, name="local-profile-heartbeat", daemon=True)
+    thread.start()
     try:
-        future.result()
-    except Exception:  # noqa: BLE001 - the worker persists the failure before re-raising
-        # The worker persists the user-facing failure before re-raising.
-        pass  # nosec B110 - failure already recorded on the job by the worker
+        yield
+    finally:
+        stop.set()
+        thread.join(timeout=1)
 
 
-def _run_profiling_job(job_id: uuid.UUID) -> None:
+def run_local_profile(db: Session, entry: OutboxEntry, worker_id: str) -> None:
+    job_id = uuid.UUID(str(entry.payload["profiling_job_id"]))
+    delivery = ProfileDelivery(entry.id, worker_id, entry.delivery_attempts, entry.available_at)
+    db.commit()
+    try:
+        with _profile_heartbeat(job_id, delivery):
+            _run_profiling_job(job_id, delivery)
+    finally:
+        # Keep the exact delivery locked until the dispatcher records its outcome.
+        _locked_profile_job(db, job_id, delivery)
+
+
+def _run_profiling_job(job_id: uuid.UUID, delivery: ProfileDelivery) -> None:
     session_factory = get_session_factory()
     try:
         with session_factory() as db:
-            job = db.get(ProfilingJob, job_id)
-            if job is None or job.status in TERMINAL_STATUSES:
+            job = _locked_profile_job(db, job_id, delivery)
+            if job is None or job.status in {"succeeded", "cancelled"}:
                 return
             features_fully_reused = bool(
                 job.total_columns
@@ -389,6 +464,8 @@ def _run_profiling_job(job_id: uuid.UUID) -> None:
                 and len(job.feature_profiles_json) == job.total_columns
             )
             job.status = "running"
+            job.finished_at = None
+            job.failure_message = None
             job.started_at = job.started_at or datetime.now(UTC)
             job.heartbeat_at = datetime.now(UTC)
             if features_fully_reused:
@@ -406,21 +483,27 @@ def _run_profiling_job(job_id: uuid.UUID) -> None:
                 job.dataset_version_id,
             )
             version.status = DatasetStatus.PROFILING
+            partitioned = _supports_partitioned_stages(version)
             db.commit()
 
-        if _supports_partitioned_stages(version):
-            _run_partitioned_stages(job_id)
+        if partitioned:
+            _run_partitioned_stages(job_id, delivery)
         else:
-            _run_monolithic_fallback(job_id)
+            _run_monolithic_fallback(job_id, delivery)
+    except StaleFence:
+        raise
     except Exception as exc:
         with session_factory() as db:
-            job = db.get(ProfilingJob, job_id)
+            job = _locked_profile_job(db, job_id, delivery)
             if job is not None:
                 if job.status == "cancelled":
                     return
-                job.status = "failed"
+                entry = db.get(OutboxEntry, delivery.entry_id)
+                command = db.get(WorkflowCommand, entry.command_id)
+                exhausted = entry.delivery_attempts >= command.max_retries
+                job.status = "failed" if exhausted else "queued"
                 job.failure_message = str(exc)
-                job.finished_at = datetime.now(UTC)
+                job.finished_at = datetime.now(UTC) if exhausted else None
                 job.heartbeat_at = datetime.now(UTC)
                 _set_stage(job, job.current_stage, "failed")
                 version = db.get(DatasetVersion, job.dataset_version_id)
@@ -432,7 +515,7 @@ def _run_profiling_job(job_id: uuid.UUID) -> None:
         raise
 
 
-def _run_partitioned_stages(job_id: uuid.UUID) -> None:
+def _run_partitioned_stages(job_id: uuid.UUID, delivery: ProfileDelivery) -> None:
     from automl_api.services.ray_polars_profiling import (
         _load_dataset,
         _profile_column,
@@ -444,14 +527,20 @@ def _run_partitioned_stages(job_id: uuid.UUID) -> None:
     with session_factory() as db:
         job = db.get(ProfilingJob, job_id)
         if job is None:
-            raise ValueError(f"Profiling job {job_id} was not found.")
+            return
         version = db.get(DatasetVersion, job.dataset_version_id)
         if version is None:
             raise ValueError("The profiling job's dataset version was not found.")
-        dataset = _load_dataset(version)
-        row_count = job.row_count or dataset.count()
-        columns = [str(column) for column in dataset.schema().names]
+        previous_count = job.row_count
         existing_profiles = dict(job.feature_profiles_json)
+        target_column = job.target_column
+    dataset = _load_dataset(version)
+    row_count = previous_count or dataset.count()
+    columns = [str(column) for column in dataset.schema().names]
+    with session_factory() as db:
+        job = _locked_profile_job(db, job_id, delivery)
+        if job is None:
+            return
         job.row_count = row_count
         job.total_columns = len(columns)
         db.commit()
@@ -465,7 +554,7 @@ def _run_partitioned_stages(job_id: uuid.UUID) -> None:
         batch = pending_columns[batch_start : batch_start + FEATURE_BATCH_SIZE]
         batch_profiles = [_profile_column(dataset, column, row_count) for column in batch]
         with session_factory() as db:
-            job = db.get(ProfilingJob, job_id)
+            job = _locked_profile_job(db, job_id, delivery)
             if job is None:
                 return
             merged_profiles = dict(job.feature_profiles_json)
@@ -480,11 +569,12 @@ def _run_partitioned_stages(job_id: uuid.UUID) -> None:
                 job,
                 "features",
                 merged_profiles,
+                delivery,
             )
             db.commit()
 
     with session_factory() as db:
-        job = db.get(ProfilingJob, job_id)
+        job = _locked_profile_job(db, job_id, delivery)
         if job is None or job.status == "cancelled":
             return
         if "features" not in job.artifact_uris_json:
@@ -492,6 +582,7 @@ def _run_partitioned_stages(job_id: uuid.UUID) -> None:
                 job,
                 "features",
                 job.feature_profiles_json,
+                delivery,
             )
         profiles = {
             name: ColumnProfileRead.model_validate(profile)
@@ -512,14 +603,14 @@ def _run_partitioned_stages(job_id: uuid.UUID) -> None:
     relationships, relationship_warnings = _relationships(
         dataset,
         profiles,
-        job.target_column,
+        target_column,
     )
     leakage_analysis = detect_target_leakage(
         pd.DataFrame(_sample_rows(dataset, LEAKAGE_SAMPLE_ROWS)),
-        job.target_column,
+        target_column,
     )
     with session_factory() as db:
-        job = db.get(ProfilingJob, job_id)
+        job = _locked_profile_job(db, job_id, delivery)
         if job is None or job.status == "cancelled":
             return
         relationship_payload = [
@@ -537,6 +628,7 @@ def _run_partitioned_stages(job_id: uuid.UUID) -> None:
             job,
             "relationships",
             relationship_payload,
+            delivery,
         )
         _set_stage(job, "relationships", "completed")
         _set_stage(job, "preparation", "running")
@@ -544,13 +636,13 @@ def _run_partitioned_stages(job_id: uuid.UUID) -> None:
         job.progress = 0.9
         db.commit()
 
-    _finish_preparation(job_id)
+    _finish_preparation(job_id, delivery)
 
 
-def _finish_preparation(job_id: uuid.UUID) -> None:
+def _finish_preparation(job_id: uuid.UUID, delivery: ProfileDelivery) -> None:
     session_factory = get_session_factory()
     with session_factory() as db:
-        job = db.get(ProfilingJob, job_id)
+        job = _locked_profile_job(db, job_id, delivery)
         if job is None or job.status == "cancelled":
             return
         version = db.get(DatasetVersion, job.dataset_version_id)
@@ -583,6 +675,7 @@ def _finish_preparation(job_id: uuid.UUID) -> None:
             job,
             "preparation",
             preparation_payload,
+            delivery,
         )
         complete_profile = DatasetProfileRead(
             project_id=job.project_id,
@@ -602,6 +695,7 @@ def _finish_preparation(job_id: uuid.UUID) -> None:
             job,
             "complete",
             complete_profile.model_dump(mode="json"),
+            delivery,
         )
         job.artifact_uris_json = final_uris
         job.status = "succeeded"
@@ -615,70 +709,66 @@ def _finish_preparation(job_id: uuid.UUID) -> None:
         db.commit()
 
 
-def _run_monolithic_fallback(job_id: uuid.UUID) -> None:
+def _run_monolithic_fallback(job_id: uuid.UUID, delivery: ProfileDelivery) -> None:
     session_factory = get_session_factory()
     with session_factory() as db:
         job = db.get(ProfilingJob, job_id)
         if job is None:
-            raise ValueError(f"Profiling job {job_id} was not found.")
+            return
         user = db.get(User, job.created_by_id)
         version = db.get(DatasetVersion, job.dataset_version_id)
         if user is None or version is None:
             raise ValueError("The profiling job's lineage was not found.")
-        features_fully_reused = bool(
-            job.total_columns
-            and job.completed_columns == job.total_columns
-            and len(job.feature_profiles_json) == job.total_columns
+        require_project_role(db, user, job.project_id, ProjectRole.VIEWER)
+    features_fully_reused = bool(
+        job.total_columns
+        and job.completed_columns == job.total_columns
+        and len(job.feature_profiles_json) == job.total_columns
+    )
+    if features_fully_reused:
+        profiles = [
+            ColumnProfileRead.model_validate(column)
+            for column in job.feature_profiles_json.values()
+        ]
+        profile_by_name = {column.name: column for column in profiles}
+        rows, warnings = _load_rows(version)
+        task_inference = _infer_task(job.target_column, profile_by_name)
+        leakage_analysis = detect_target_leakage(
+            pd.DataFrame(rows),
+            job.target_column,
         )
-        if features_fully_reused:
-            profiles = [
-                ColumnProfileRead.model_validate(column)
-                for column in job.feature_profiles_json.values()
-            ]
-            profile_by_name = {column.name: column for column in profiles}
-            rows, warnings = _load_rows(version)
-            task_inference = _infer_task(job.target_column, profile_by_name)
-            leakage_analysis = detect_target_leakage(
-                pd.DataFrame(rows),
-                job.target_column,
-            )
-            relationships = _relationships_against_target(
-                rows,
-                profile_by_name,
-                job.target_column,
-            )
-            preparation = _build_preparation_plan(
-                profiles,
-                job.target_column,
-                task_inference.task_type,
-                leakage_analysis,
-            )
-            profile = DatasetProfileRead(
-                project_id=job.project_id,
-                dataset_id=job.dataset_id,
-                dataset_version_id=job.dataset_version_id,
-                row_count_analyzed=job.row_count or len(rows),
-                column_count=len(profiles),
-                target_column=job.target_column,
-                task_inference=task_inference,
-                columns=profiles,
-                relationships=relationships,
-                preparation_plan=preparation,
-                leakage_analysis=leakage_analysis,
-                warnings=list(dict.fromkeys([*warnings, *leakage_analysis.warnings])),
-            )
-        else:
-            profile = build_dataset_profile(
-                db,
-                user,
-                job.project_id,
-                job.dataset_id,
-                job.dataset_version_id,
-                ProfileRequest(target_column=job.target_column),
-            )
-        db.refresh(job)
-        if job.status == "cancelled":
+        relationships = _relationships_against_target(
+            rows,
+            profile_by_name,
+            job.target_column,
+        )
+        preparation = _build_preparation_plan(
+            profiles,
+            job.target_column,
+            task_inference.task_type,
+            leakage_analysis,
+        )
+        profile = DatasetProfileRead(
+            project_id=job.project_id,
+            dataset_id=job.dataset_id,
+            dataset_version_id=job.dataset_version_id,
+            row_count_analyzed=job.row_count or len(rows),
+            column_count=len(profiles),
+            target_column=job.target_column,
+            task_inference=task_inference,
+            columns=profiles,
+            relationships=relationships,
+            preparation_plan=preparation,
+            leakage_analysis=leakage_analysis,
+            warnings=list(dict.fromkeys([*warnings, *leakage_analysis.warnings])),
+        )
+    else:
+        profile = profile_dataset_version(version, ProfileRequest(target_column=job.target_column))
+    with session_factory() as db:
+        job = _locked_profile_job(db, job_id, delivery)
+        if job is None:
             return
+        version = db.get(DatasetVersion, job.dataset_version_id)
         job.row_count = profile.row_count_analyzed
         job.total_columns = profile.column_count
         job.completed_columns = profile.column_count
@@ -704,7 +794,7 @@ def _run_monolithic_fallback(job_id: uuid.UUID) -> None:
             ("complete", profile.model_dump(mode="json")),
         ):
             if stage != "features" or "features" not in job.artifact_uris_json:
-                job.artifact_uris_json = _store_stage_artifact(job, stage, payload)
+                job.artifact_uris_json = _store_stage_artifact(job, stage, payload, delivery)
             if stage != "complete":
                 if (
                     stage != "features"
@@ -725,10 +815,12 @@ def _store_stage_artifact(
     job: ProfilingJob,
     stage: str,
     payload: Any,
+    delivery: ProfileDelivery,
 ) -> dict[str, Any]:
     key = (
         f"projects/{job.project_id}/datasets/{job.dataset_id}/"
-        f"versions/{job.dataset_version_id}/profiles/{job.id}/{stage}.json"
+        f"versions/{job.dataset_version_id}/profiles/{job.id}/"
+        f"deliveries/{delivery.entry_id}/{delivery.artifact_id}/{stage}.json"
     )
     content = json.dumps(payload, separators=(",", ":"), default=str).encode("utf-8")
     stored = get_object_store().put_bytes(key, content)

@@ -3,12 +3,14 @@ from __future__ import annotations
 import hashlib
 import io
 from datetime import UTC, datetime, timedelta
+from itertools import islice
 from typing import Any
 
 from automl_api.storage.contracts import (
     BeginUpload,
     ByteRange,
     CompletedObject,
+    DeletionPending,
     HealthcheckResult,
     ObjectMetadata,
     ProviderUpload,
@@ -220,12 +222,49 @@ class GCSObjectStoreDriver:
         return HealthcheckResult(True, self.driver_name)
 
     def delete_prefix(self, prefix: str) -> None:
-        prefix = self._key(prefix).rstrip("/") + "/"
-        for blob in self.client.list_blobs(self.bucket_name, prefix=prefix):
-            blob.delete()
+        self._delete_matching(self._key(prefix).rstrip("/") + "/", exact=False)
 
     def delete(self, uri: str) -> None:
-        self.bucket.blob(self._key_from_uri(uri)).delete()
+        self._delete_matching(self._key_from_uri(uri), exact=True)
+
+    def _delete_matching(self, prefix: str, *, exact: bool) -> None:
+        from google.api_core.exceptions import NotFound
+
+        previous = None
+        while True:
+            blobs = list(
+                islice(
+                    (
+                        blob
+                        for blob in self.client.list_blobs(
+                            self.bucket_name, prefix=prefix, versions=True, page_size=1000
+                        )
+                        if not exact or blob.name == prefix
+                    ),
+                    1000,
+                )
+            )
+            if not blobs:
+                break
+            identities = frozenset((blob.name, blob.generation) for blob in blobs)
+            if identities == previous:
+                raise RuntimeError("GCS generation deletion made no progress.")
+            previous = identities
+            for blob in blobs:
+                if not blob.name.startswith(prefix) or blob.generation is None:
+                    raise RuntimeError("GCS returned an unscoped or unversioned deletion target.")
+                try:
+                    blob.delete(if_generation_match=blob.generation)
+                except NotFound:
+                    pass  # Another cleanup may have already removed this generation.
+        # Disabled policies can still leave older retained data; never skip this query.
+        for blob in self.client.list_blobs(
+            self.bucket_name, prefix=prefix, soft_deleted=True, page_size=1000
+        ):
+            if not blob.name.startswith(prefix):
+                raise RuntimeError("GCS returned an unscoped retention result.")
+            if not exact or blob.name == prefix:
+                raise DeletionPending("GCS retains soft-deleted object generations.")
 
     def _validate_cursor(self, upload: ProviderUpload, cursor: TransferCursor) -> None:
         self._ensure_active(upload)

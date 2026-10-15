@@ -10,6 +10,7 @@ from typing import Any
 from kubernetes.client import ApiException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from urllib3.exceptions import HTTPError
 
 from automl_api.core.config import get_settings
 from automl_api.core.redaction import redact_text
@@ -18,6 +19,7 @@ from automl_api.models.enums import (
     AttemptStatus,
     CommandStatus,
     DatasetStatus,
+    OutboxStatus,
     RunKind,
     RunStatus,
     WorkflowStage,
@@ -27,8 +29,10 @@ from automl_api.models.workflows import (
     DeletionStage,
     DeletionTombstone,
     OutboxEntry,
+    TrainingTrial,
     WorkflowAttempt,
     WorkflowCommand,
+    WorkflowEvent,
 )
 from automl_api.services.kubernetes_training import (
     KubernetesTrainingClient,
@@ -36,13 +40,16 @@ from automl_api.services.kubernetes_training import (
 )
 from automl_api.services.upload_policy import inspect_and_scan_stream
 from automl_api.services.workflow_state import (
+    StaleFence,
+    canonical_request_hash,
+    cas_register_terminal_artifact,
     complete_outbox,
     defer_outbox,
     enqueue_outbox,
     transition_attempt,
     transition_command,
 )
-from automl_api.storage.contracts import ByteRange, ObjectStoreDriver
+from automl_api.storage.contracts import ByteRange, DeletionPending, ObjectStoreDriver
 from automl_api.storage.object_store import get_object_store
 
 
@@ -135,11 +142,14 @@ class _BoundedObjectReader:
 
 
 RETRY_OWNER = {
+    "dataset.profile.local": "workflow-reconciler",
     "ray.dataset.split.submit": "workflow-reconciler",
     "ray.dataset.prepare.submit": "workflow-reconciler",
+    "ray.dataset.cancel": "workflow-reconciler",
     "ray.training.submit": "workflow-reconciler",
     "ray.training.cancel": "workflow-reconciler",
     "kubernetes.analysis.submit": "workflow-reconciler",
+    "kubernetes.analysis.cancel": "workflow-reconciler",
     "upload.reconcile": "workflow-reconciler",
     "registry.reconcile": "workflow-reconciler",
     "deployment.reconcile": "workflow-reconciler",
@@ -150,6 +160,21 @@ RETRY_OWNER = {
 }
 
 
+def _lock_outbox_delivery(db: Session, entry_id: uuid.UUID, worker_id: str) -> OutboxEntry | None:
+    with db.no_autoflush:
+        entry = db.get(OutboxEntry, entry_id, with_for_update=True, populate_existing=True)
+    if entry is None or entry.status == OutboxStatus.DELIVERED:
+        return None
+    if (
+        entry.status != OutboxStatus.CLAIMED
+        or entry.lease_owner != worker_id
+        or entry.lease_expires_at is None
+        or entry.lease_expires_at <= datetime.now(UTC)
+    ):
+        raise StaleFence("The outbox delivery lease is no longer owned by this worker.")
+    return entry
+
+
 def reconcile_entry(
     db: Session,
     entry: OutboxEntry,
@@ -158,9 +183,18 @@ def reconcile_entry(
     k8s: KubernetesTrainingClient | None = None,
     handlers: dict[str, Callable[[OutboxEntry], None]] | None = None,
 ) -> None:
+    entry = _lock_outbox_delivery(db, entry.id, worker_id)
+    if entry is None:
+        return
     try:
-        if entry.topic in {"ray.dataset.split.submit", "ray.dataset.prepare.submit"}:
+        if entry.topic == "dataset.profile.local":
+            from automl_api.services.profiling_jobs import run_local_profile
+
+            run_local_profile(db, entry, worker_id)
+        elif entry.topic in {"ray.dataset.split.submit", "ray.dataset.prepare.submit"}:
             submit_dataset_ray_job(db, entry, k8s or KubernetesTrainingClient())
+        elif entry.topic == "ray.dataset.cancel":
+            cancel_dataset_ray_job(db, entry, k8s or KubernetesTrainingClient())
         elif entry.topic == "ray.training.submit":
             submit_training_ray_job(db, entry, k8s or KubernetesTrainingClient())
         elif entry.topic == "ray.training.cancel":
@@ -169,6 +203,8 @@ def reconcile_entry(
             if submit_analysis_job(db, entry, k8s or KubernetesTrainingClient()) is None:
                 defer_outbox(db, entry, worker_id=worker_id)
                 return
+        elif entry.topic == "kubernetes.analysis.cancel":
+            cancel_analysis_job(db, entry, k8s or KubernetesTrainingClient())
         elif entry.topic == "upload.reconcile":
             reconcile_upload_session(db, entry)
         elif entry.topic == "registry.reconcile":
@@ -181,7 +217,9 @@ def reconcile_entry(
             from automl_api.services.deletion import reconcile_deletion
 
             project_deletion = entry.topic == "project.delete"
-            reconcile_deletion(db, entry, k8s or KubernetesTrainingClient())
+            if not reconcile_deletion(db, entry, k8s or KubernetesTrainingClient()):
+                defer_outbox(db, entry, worker_id=worker_id)
+                return
             if project_deletion:
                 return  # The project cascade removed this outbox entry and its command.
         elif entry.topic == "cleanup.execute":
@@ -192,18 +230,20 @@ def reconcile_entry(
             raise RuntimeError(f"No reconciler handler is configured for {entry.topic}.")
         else:
             raise UnknownOutboxTopic(entry.topic)
+    except StaleFence:
+        db.rollback()
+        raise
+    except DeletionPending as exc:
+        defer_outbox(db, entry, worker_id=worker_id, delay_seconds=exc.retry_after_seconds)
+        entry.last_error = redact_text(str(exc))
+        db.flush()
+        return
     except Exception as exc:
         entry_id = entry.id
         deleting_project_id = (
             entry.project_id if entry.topic in {"project.delete", "run.delete"} else None
         )
         db.rollback()
-        if deleting_project_id:
-            from automl_api.models.projects import Project
-
-            project = db.get(Project, deleting_project_id)
-            if project is not None:
-                project.settings = {**project.settings, "deletion_error": redact_text(str(exc))}
         complete_outbox(
             db,
             entry_id,
@@ -211,6 +251,12 @@ def reconcile_entry(
             delivered=False,
             error=redact_text(str(exc)),
         )
+        if deleting_project_id:
+            from automl_api.models.projects import Project
+
+            project = db.get(Project, deleting_project_id)
+            if project is not None:
+                project.settings = {**project.settings, "deletion_error": redact_text(str(exc))}
         raise
     complete_outbox(db, entry.id, worker_id=worker_id, delivered=True)
     command = db.get(WorkflowCommand, entry.command_id)
@@ -225,6 +271,33 @@ def submit_analysis_job(
     from automl_api.services.training import _lock_training_admission
 
     _lock_training_admission(db)
+    manifest = dict(entry.payload["manifest"])
+    identity = (manifest.get("metadata") or {}).get("labels", {}).get("automl.platform/attempt-id")
+    attempt = None
+    if identity:
+        attempt = db.scalar(
+            select(WorkflowAttempt)
+            .where(WorkflowAttempt.id == uuid.UUID(identity))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        env = {
+            item["name"]: item.get("value")
+            for item in manifest["spec"]["template"]["spec"]["containers"][0]["env"]
+        }
+        if (
+            attempt is None
+            or attempt.project_id != entry.project_id
+            or attempt.stage != WorkflowStage.TRAINING_RUN
+            or str(attempt.model_run_id) != str(entry.payload["run_id"])
+            or attempt.logical_key != f"analysis-run:{attempt.model_run_id}"
+            or env.get("AUTOML_FENCING_TOKEN") != attempt.fencing_token
+        ):
+            raise StaleFence("The analysis submission scope or fence is stale.")
+        if attempt.status not in {AttemptStatus.PENDING, AttemptStatus.CLAIMED}:
+            return db.get(ModelRun, attempt.model_run_id)
+    elif get_settings().environment in {"production", "staging"}:
+        return _migrate_first_analysis_delivery(db, entry, k8s)
     run = db.scalar(
         select(ModelRun)
         .where(
@@ -232,6 +305,7 @@ def submit_analysis_job(
             ModelRun.id == uuid.UUID(str(entry.payload["run_id"])),
         )
         .with_for_update()
+        .execution_options(populate_existing=True)
     )
     if run is None:
         raise LookupError("The tracked analysis run no longer exists.")
@@ -239,18 +313,27 @@ def submit_analysis_job(
         return run
     if run.status in {RunStatus.CANCELLED, RunStatus.FAILED, RunStatus.SUCCEEDED}:
         return run
+    if attempt is not None and (
+        run.run_kind not in {RunKind.VALIDATION, RunKind.EXPLAINABILITY, RunKind.DRIFT}
+        or str(run.tags.get("workflow_attempt_id", "")) != str(attempt.id)
+        or manifest["metadata"].get("namespace") != run.k8s_namespace
+    ):
+        raise StaleFence("The analysis submission no longer owns this run.")
     capacity = k8s.capacity_snapshot().capacity
     # Include submitted rows whose pod has not appeared yet. The admission lock
     # prevents two reconcilers from both taking the last available slot.
-    submitted = int(db.scalar(
-        select(func.count(ModelRun.id)).where(
-            ModelRun.id != run.id,
-            ModelRun.k8s_namespace == k8s.settings.training_namespace,
-            ModelRun.run_kind.in_({RunKind.EXPLAINABILITY, RunKind.VALIDATION, RunKind.DRIFT}),
-            ModelRun.status.in_({RunStatus.QUEUED, RunStatus.RUNNING}),
-            ModelRun.tags["desired_state"].astext == "kubernetes_submitted",
+    submitted = int(
+        db.scalar(
+            select(func.count(ModelRun.id)).where(
+                ModelRun.id != run.id,
+                ModelRun.k8s_namespace == k8s.settings.training_namespace,
+                ModelRun.run_kind.in_({RunKind.EXPLAINABILITY, RunKind.VALIDATION, RunKind.DRIFT}),
+                ModelRun.status.in_({RunStatus.QUEUED, RunStatus.RUNNING}),
+                ModelRun.tags["desired_state"].astext == "kubernetes_submitted",
+            )
         )
-    ) or 0)
+        or 0
+    )
     if (
         not capacity.connected
         or max(capacity.active_training_jobs, submitted) >= k8s.settings.max_concurrent_jobs
@@ -258,11 +341,175 @@ def submit_analysis_job(
         run.tags = {**run.tags, "waiting_for_capacity": True}
         db.flush()
         return None
-    k8s.create_job(dict(entry.payload["manifest"]))
+    if attempt is not None:
+        if attempt.status == AttemptStatus.PENDING:
+            transition_attempt(attempt, AttemptStatus.CLAIMED, fencing_token=attempt.fencing_token)
+        k8s.ensure_service_account(attempt.workload_identity, namespace=run.k8s_namespace)
+    created = k8s.create_job(manifest)
+    if attempt is not None:
+        metadata = created.metadata
+        if (
+            not isinstance(metadata.uid, str)
+            or not metadata.uid
+            or metadata.namespace != run.k8s_namespace
+            or metadata.name != manifest["metadata"]["name"]
+        ):
+            raise StaleFence("The submitted analysis Job identity is incomplete.")
+        payload = {
+            "namespace": metadata.namespace,
+            "job_name": metadata.name,
+            "uid": metadata.uid,
+            "outbox_id": str(entry.id),
+            "manifest_sha256": canonical_request_hash(manifest),
+        }
+        sequence = (
+            db.scalar(
+                select(func.max(WorkflowEvent.sequence)).where(
+                    WorkflowEvent.attempt_id == attempt.id
+                )
+            )
+            or 0
+        )
+        db.add(
+            WorkflowEvent(
+                project_id=attempt.project_id,
+                attempt_id=attempt.id,
+                sequence=sequence + 1,
+                event_key="analysis.submitted",
+                event_type="analysis.submitted",
+                payload=payload,
+                result_digest=canonical_request_hash(payload),
+            )
+        )
+        transition_attempt(attempt, AttemptStatus.SUBMITTED, fencing_token=attempt.fencing_token)
     run.status = RunStatus.QUEUED
     run.tags = {**run.tags, "desired_state": "kubernetes_submitted", "waiting_for_capacity": False}
     db.flush()
     return run
+
+
+def _migrate_first_analysis_delivery(db, entry, k8s):
+    now = datetime.now(UTC)
+    command = db.get(WorkflowCommand, entry.command_id, populate_existing=True)
+    if (
+        entry.aggregate_type != "model_run"
+        or entry.delivery_attempts != 1
+        or entry.status != OutboxStatus.CLAIMED
+        or not entry.lease_owner
+        or entry.lease_expires_at is None
+        or entry.lease_expires_at <= now
+        or command is None
+        or command.project_id != entry.project_id
+        or command.replayed_by is not None
+    ):
+        raise StaleFence("Ambiguous legacy analysis delivery requires controlled replay.")
+    run = db.get(
+        ModelRun,
+        uuid.UUID(str(entry.payload["run_id"])),
+        with_for_update=True,
+        populate_existing=True,
+    )
+    if run is None or run.project_id != entry.project_id or entry.aggregate_id != run.id:
+        raise StaleFence("Legacy analysis delivery has invalid run scope.")
+    if run.status in {RunStatus.CANCELLED, RunStatus.FAILED, RunStatus.SUCCEEDED}:
+        return run
+    if (
+        run.run_kind not in {RunKind.VALIDATION, RunKind.EXPLAINABILITY, RunKind.DRIFT}
+        or run.status not in {RunStatus.QUEUED, RunStatus.PRECHECK_RUNNING}
+        or run.gpu_requested
+        or run.tags.get("desired_state") != "kubernetes_submission_pending"
+        or run.tags.get("workflow_attempt_id")
+        or run.tags.get("analysis_result_receipt")
+        or run.tags.get("artifact_uri")
+        or not run.k8s_namespace
+        or not run.k8s_job_name
+    ):
+        raise StaleFence("Legacy analysis is not an unsubmitted, unmoved pending scope.")
+    legacy = entry.payload["manifest"]
+    meta = legacy.get("metadata") or {}
+    labels = meta.get("labels") or {}
+    if (
+        meta.get("name") != run.k8s_job_name
+        or meta.get("namespace") != run.k8s_namespace
+        or labels.get("automl.platform/run-id") != str(run.id)
+        or labels.get("automl.platform/project-id") != str(run.project_id)
+        or legacy.get("spec", {})
+        .get("template", {})
+        .get("metadata", {})
+        .get("labels", {})
+        .get("automl.platform/run-id")
+        != str(run.id)
+    ):
+        raise StaleFence("Legacy analysis manifest identity is ambiguous.")
+    try:
+        k8s.batch.read_namespaced_job(
+            name=run.k8s_job_name, namespace=run.k8s_namespace, _request_timeout=5
+        )
+    except (ApiException, HTTPError) as exc:
+        if not isinstance(exc, ApiException) or exc.status != 404:
+            entry.last_error = redact_text(f"Legacy analysis preflight unavailable: {exc}")[:2000]
+            db.flush()
+            return None
+    else:
+        raise StaleFence("A legacy analysis Job still exists; drain it before controlled replay.")
+    try:
+        pods = k8s.core.list_namespaced_pod(
+            namespace=run.k8s_namespace,
+            label_selector=f"automl.platform/run-id={run.id}",
+            _request_timeout=5,
+        ).items
+    except (ApiException, HTTPError) as exc:
+        entry.last_error = redact_text(f"Legacy analysis preflight unavailable: {exc}")[:2000]
+        db.flush()
+        return None
+    if pods:
+        raise StaleFence("Legacy analysis Pods remain; drain them before controlled replay.")
+    attempt = WorkflowAttempt(
+        id=uuid.uuid4(),
+        project_id=run.project_id,
+        model_run_id=run.id,
+        stage=WorkflowStage.TRAINING_RUN,
+        logical_key=f"analysis-run:{run.id}",
+        workload_identity=f"project-{run.project_id}-analysis",
+        generation=1,
+        fencing_token=uuid.uuid4().hex,
+    )
+    manifest = k8s.bind_analysis_attempt_manifest(legacy, attempt)
+    pod = manifest["spec"]["template"]["spec"]
+    pod["containers"][0]["image"] = k8s.settings.training_image
+    pod["containers"][0]["imagePullPolicy"] = k8s.settings.training_image_pull_policy
+    if k8s.settings.workload_image_pull_secrets:
+        pod["imagePullSecrets"] = [
+            {"name": name} for name in k8s.settings.workload_image_pull_secrets
+        ]
+    else:
+        pod.pop("imagePullSecrets", None)
+    db.add(attempt)
+    db.flush()
+    evidence = {
+        "outbox_id": str(entry.id),
+        "legacy_manifest_sha256": canonical_request_hash(legacy),
+        "manifest_sha256": canonical_request_hash(manifest),
+        "legacy_job_name": run.k8s_job_name,
+        "namespace": run.k8s_namespace,
+    }
+    db.add(
+        WorkflowEvent(
+            project_id=run.project_id,
+            attempt_id=attempt.id,
+            sequence=1,
+            event_key="analysis.legacy.upgraded",
+            event_type="analysis.legacy.upgraded",
+            payload=evidence,
+            result_digest=canonical_request_hash(evidence),
+        )
+    )
+    entry.payload = {**entry.payload, "manifest": manifest}
+    run.k8s_job_name = manifest["metadata"]["name"]
+    run.tags = {**run.tags, "workflow_attempt_id": str(attempt.id)}
+    # Defer the delivery so tracking and the new manifest commit before any Job creation.
+    db.flush()
+    return None
 
 
 def reconcile_upload_session(db: Session, entry: OutboxEntry) -> DatasetUploadSession:
@@ -312,6 +559,7 @@ def reconcile_upload_session(db: Session, entry: OutboxEntry) -> DatasetUploadSe
         _quarantine_upload(session, "completed upload has no durable object URI")
         db.flush()
         return session
+    entry_id, worker_id = entry.id, entry.lease_owner
     session_id = session.id
     project_id = session.project_id
     expected_size = session.byte_size
@@ -348,6 +596,12 @@ def reconcile_upload_session(db: Session, entry: OutboxEntry) -> DatasetUploadSe
                 and (observed_at - last_heartbeat_at).total_seconds() < 30
             ):
                 return
+            if _lock_outbox_delivery(db, entry_id, worker_id) is None:
+                raise StaleFence("Upload verification no longer owns an active delivery.")
+            with db.no_autoflush:
+                db.refresh(session, with_for_update=True)
+            if session.lease_owner != worker_id or session.status != "verifying":
+                raise StaleFence("Upload verification ownership changed.")
             session.heartbeat_at = observed_at
             session.lease_expires_at = observed_at + timedelta(seconds=lease_seconds)
             entry.lease_expires_at = session.lease_expires_at
@@ -369,11 +623,15 @@ def reconcile_upload_session(db: Session, entry: OutboxEntry) -> DatasetUploadSe
                 settings=get_settings(),
                 on_progress=renew_verification_lease,
             )
+        except StaleFence:
+            raise
         except (TimeoutError, ValueError) as exc:
             inspection_error = exc
         finally:
             source.close()
 
+    if _lock_outbox_delivery(db, entry_id, worker_id) is None:
+        raise StaleFence("Upload verification no longer owns an active delivery.")
     session = db.scalar(
         select(DatasetUploadSession)
         .where(
@@ -381,11 +639,14 @@ def reconcile_upload_session(db: Session, entry: OutboxEntry) -> DatasetUploadSe
             DatasetUploadSession.id == session_id,
         )
         .with_for_update()
+        .execution_options(populate_existing=True)
     )
     if session is None:
         raise LookupError("The tracked upload session no longer exists.")
     if session.status in {"expired", "aborted", "quarantined", "failed", "ready"}:
         return session
+    if session.lease_owner != worker_id:
+        raise StaleFence("Upload verification ownership changed.")
     if observed_size != expected_size:
         _quarantine_upload(
             session,
@@ -712,30 +973,49 @@ def submit_dataset_ray_job(
     fencing_token = str(entry.payload["fencing_token"])
     profile_job_id = uuid.UUID(str(entry.payload["profiling_job_id"]))
     attempt = db.scalar(
-        select(WorkflowAttempt).where(WorkflowAttempt.id == attempt_id).with_for_update()
+        select(WorkflowAttempt)
+        .where(WorkflowAttempt.id == attempt_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     if attempt is None:
         raise LookupError("The tracked dataset Ray attempt no longer exists.")
     if attempt.fencing_token != fencing_token:
         raise ValueError("The submitted dataset Ray attempt fence does not match the command.")
-    if attempt.status in {AttemptStatus.SUBMITTED, AttemptStatus.RUNNING, AttemptStatus.SUCCEEDED}:
-        return attempt
-
     expected_stage = (
         WorkflowStage.SPLITTER
         if entry.topic == "ray.dataset.split.submit"
         else WorkflowStage.PREPARATION
     )
-    if attempt.stage != expected_stage:
+    if (
+        entry.topic not in {"ray.dataset.split.submit", "ray.dataset.prepare.submit"}
+        or attempt.stage != expected_stage
+    ):
         raise ValueError(f"Dataset Ray topic does not match attempt stage {attempt.stage.value}.")
+    if (
+        attempt.project_id != entry.project_id
+        or entry.aggregate_type != "profiling_job"
+        or entry.aggregate_id != profile_job_id
+        or attempt.logical_key != f"profile:{profile_job_id}:{expected_stage.value}"
+    ):
+        raise StaleFence("Dataset submission scope differs from its attempt.")
+    if attempt.status not in {AttemptStatus.PENDING, AttemptStatus.CLAIMED}:
+        return attempt
     job = db.scalar(
-        select(ProfilingJob).where(
+        select(ProfilingJob)
+        .where(
             ProfilingJob.project_id == attempt.project_id,
             ProfilingJob.id == profile_job_id,
         )
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     if job is None or job.dataset_version_id != attempt.dataset_version_id:
         raise LookupError("The dataset Ray attempt has no scoped profiling job.")
+    if job.status not in {"queued", "running"} or str(
+        job.overview_json.get("workflow_attempt_id", "")
+    ) != str(attempt.id):
+        raise StaleFence("Dataset submission no longer owns the active profile.")
     version = db.scalar(
         select(DatasetVersion).where(
             DatasetVersion.project_id == attempt.project_id,
@@ -767,8 +1047,63 @@ def submit_dataset_ray_job(
         "workflow_attempt_id": str(attempt.id),
         "workflow_generation": attempt.generation,
         "ray_job_name": attempt.ray_job_name,
+        "ray_job_namespace": manifest["metadata"]["namespace"],
     }
     version.status = DatasetStatus.PROFILING
+    db.flush()
+    return attempt
+
+
+def cancel_dataset_ray_job(
+    db: Session, entry: OutboxEntry, k8s: KubernetesTrainingClient
+) -> WorkflowAttempt:
+    attempt = db.scalar(
+        select(WorkflowAttempt)
+        .where(WorkflowAttempt.id == uuid.UUID(str(entry.payload["attempt_id"])))
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if (
+        attempt is None
+        or attempt.stage not in {WorkflowStage.SPLITTER, WorkflowStage.PREPARATION}
+        or attempt.project_id != entry.project_id
+        or attempt.fencing_token != str(entry.payload["fencing_token"])
+        or entry.aggregate_type != "profiling_job"
+        or attempt.status
+        not in {
+            AttemptStatus.SUPERSEDED,
+            AttemptStatus.FAILED,
+            AttemptStatus.CANCELLED,
+        }
+    ):
+        raise StaleFence("Dataset cancellation scope, status or fence is stale.")
+    profile = _profile_job_for_attempt(db, attempt)
+    namespace = entry.payload.get("namespace")
+    if profile.id != entry.aggregate_id or not isinstance(namespace, str) or not namespace:
+        raise StaleFence("Dataset cancellation profile or namespace is missing.")
+    if attempt.ray_job_name:
+        try:
+            job = k8s.ray_job(attempt.ray_job_name, namespace=namespace)
+        except ApiException as exc:
+            if exc.status != 404:
+                raise
+        else:
+            metadata = job.get("metadata") or {}
+            expected = {
+                "automl.platform/project-id": str(attempt.project_id),
+                "automl.platform/profile-job-id": str(profile.id),
+                "automl.platform/attempt-id": str(attempt.id),
+                "automl.platform/workflow-stage": attempt.stage.value,
+                "automl.platform/generation": str(attempt.generation),
+            }
+            if (
+                not metadata.get("uid")
+                or metadata.get("namespace") != namespace
+                or any((metadata.get("labels") or {}).get(k) != v for k, v in expected.items())
+            ):
+                raise StaleFence("Dataset cancellation RayJob identity differs from its attempt.")
+            k8s.delete_ray_job(attempt.ray_job_name, namespace=namespace, uid=metadata["uid"])
+    attempt.cleanup_state = "completed"
     db.flush()
     return attempt
 
@@ -780,11 +1115,23 @@ def cancel_training_ray_job(
         select(WorkflowAttempt)
         .where(WorkflowAttempt.id == uuid.UUID(str(entry.payload["attempt_id"])))
         .with_for_update()
+        .execution_options(populate_existing=True)
     )
     if attempt is None:
         raise LookupError("The tracked Ray attempt no longer exists.")
+    if (
+        attempt.stage != WorkflowStage.TRAINING_RUN
+        or attempt.fencing_token != str(entry.payload["fencing_token"])
+        or attempt.project_id != entry.project_id
+        or entry.aggregate_type != "model_run"
+        or attempt.model_run_id != entry.aggregate_id
+    ):
+        raise StaleFence("The Ray cancellation scope or fence is stale.")
     if attempt.ray_job_name:
-        k8s.delete_ray_job(attempt.ray_job_name)
+        run = db.get(ModelRun, attempt.model_run_id, populate_existing=True)
+        if run is None or run.project_id != attempt.project_id or not run.k8s_namespace:
+            raise StaleFence("The Ray cancellation run namespace is missing or inconsistent.")
+        k8s.delete_ray_job(attempt.ray_job_name, namespace=run.k8s_namespace)
     if attempt.status not in {
         AttemptStatus.SUCCEEDED,
         AttemptStatus.FAILED,
@@ -819,9 +1166,50 @@ def observe_training_ray_jobs(
             .order_by(WorkflowAttempt.updated_at, WorkflowAttempt.id)
             .limit(limit)
             .with_for_update(skip_locked=True)
+            .execution_options(populate_existing=True)
         )
     )
     for attempt in attempts:
+        run = db.scalar(
+            select(ModelRun)
+            .where(ModelRun.id == attempt.model_run_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        receipt = (run.tags or {}).get("training_result_receipt") if run is not None else None
+        if (
+            run is not None
+            and run.status == RunStatus.RUNNING
+            and receipt
+            and receipt.get("attempt_id") == str(attempt.id)
+            and run.tags.get("winner_model_artifact_uri")
+        ):
+            # The result transaction is authoritative even if its worker lost the commit response.
+            if not cas_register_terminal_artifact(
+                db,
+                attempt_id=attempt.id,
+                fencing_token=attempt.fencing_token,
+                expected_cas_version=attempt.terminal_cas_version,
+                checkpoint_uri=str(run.tags["winner_model_artifact_uri"]),
+            ):
+                raise StaleFence("The recovered training result no longer owns this attempt.")
+            run.status = RunStatus.SUCCEEDED
+            run.finished_at = datetime.now(UTC)
+            continue
+        expires = getattr(attempt, "lease_expires_at", None)
+        if expires is not None and expires <= datetime.now(UTC):
+            command = _training_launch_command(db, attempt)
+            enqueue_outbox(
+                db,
+                command,
+                topic="ray.training.cancel",
+                aggregate_type="model_run",
+                aggregate_id=attempt.model_run_id,
+                payload={"attempt_id": str(attempt.id), "fencing_token": attempt.fencing_token},
+                event_key=f"ray:{attempt.model_run_id}:generation:{attempt.generation}:expired:cancel",
+            )
+            _replace_lost_ray_attempt(db, attempt, reason="Training parent lease expired")
+            continue
         try:
             ray_job = k8s.ray_job(str(attempt.ray_job_name))
         except ApiException as exc:
@@ -846,7 +1234,11 @@ def observe_training_ray_jobs(
             out_of_memory = any(
                 marker in f"{status.get('reason', '')} {message}".lower()
                 for marker in (
-                    "outofmemory", "out of memory", "oomkill", "oom kill", "running low on memory",
+                    "outofmemory",
+                    "out of memory",
+                    "oomkill",
+                    "oom kill",
+                    "running low on memory",
                 )
             )
             _replace_lost_ray_attempt(
@@ -857,8 +1249,13 @@ def observe_training_ray_jobs(
                     if deadline_exceeded or out_of_memory
                     else (message or f"RayJob terminal status {terminal_status}")[:4000]
                 ),
-                terminal_failure_code=("JOB_DEADLINE_EXCEEDED" if deadline_exceeded
-                    else "TRAINING_OUT_OF_MEMORY" if out_of_memory else None),
+                terminal_failure_code=(
+                    "JOB_DEADLINE_EXCEEDED"
+                    if deadline_exceeded
+                    else "TRAINING_OUT_OF_MEMORY"
+                    if out_of_memory
+                    else None
+                ),
             )
         elif job_status == "SUCCEEDED" or deployment_status == "COMPLETE":
             _replace_lost_ray_attempt(
@@ -885,6 +1282,282 @@ def observe_training_ray_jobs(
     return len(attempts)
 
 
+def _analysis_submission(db, attempt):
+    event = db.scalar(
+        select(WorkflowEvent)
+        .where(
+            WorkflowEvent.attempt_id == attempt.id,
+            WorkflowEvent.event_key == "analysis.submitted",
+        )
+        .execution_options(populate_existing=True)
+    )
+    if (
+        event is None
+        or event.project_id != attempt.project_id
+        or event.event_type != "analysis.submitted"
+        or event.result_digest != canonical_request_hash(event.payload)
+        or any(
+            not isinstance(event.payload.get(k), str) or not event.payload[k]
+            for k in ("namespace", "job_name", "uid", "outbox_id", "manifest_sha256")
+        )
+    ):
+        raise StaleFence("Analysis submission evidence is missing or changed.")
+    source = db.get(OutboxEntry, uuid.UUID(event.payload["outbox_id"]), populate_existing=True)
+    if (
+        source is None
+        or source.project_id != attempt.project_id
+        or source.topic != "kubernetes.analysis.submit"
+        or source.aggregate_type != "model_run"
+        or source.aggregate_id != attempt.model_run_id
+        or canonical_request_hash(source.payload.get("manifest", {}))
+        != event.payload["manifest_sha256"]
+    ):
+        raise StaleFence("Analysis source manifest no longer matches its submission evidence.")
+    return event.payload, source
+
+
+def _queue_analysis_cleanup(db, attempt, identity, source):
+    command = db.get(WorkflowCommand, source.command_id)
+    if command is None or command.project_id != attempt.project_id:
+        raise StaleFence("Analysis cleanup has no scoped durable command.")
+    enqueue_outbox(
+        db,
+        command,
+        topic="kubernetes.analysis.cancel",
+        aggregate_type="model_run",
+        aggregate_id=attempt.model_run_id,
+        payload={
+            "attempt_id": str(attempt.id),
+            "fencing_token": attempt.fencing_token,
+            **{k: identity[k] for k in ("namespace", "job_name", "uid")},
+        },
+        event_key=f"analysis:{attempt.id}:cleanup",
+    )
+    attempt.cleanup_state = "queued"
+
+
+def cancel_analysis_job(db, entry, k8s):
+    attempt = db.scalar(
+        select(WorkflowAttempt)
+        .where(WorkflowAttempt.id == uuid.UUID(entry.payload["attempt_id"]))
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if (
+        attempt is None
+        or attempt.stage != WorkflowStage.TRAINING_RUN
+        or attempt.logical_key != f"analysis-run:{attempt.model_run_id}"
+        or attempt.project_id != entry.project_id
+        or entry.aggregate_type != "model_run"
+        or attempt.model_run_id != entry.aggregate_id
+        or attempt.fencing_token != entry.payload["fencing_token"]
+        or attempt.status
+        not in {
+            AttemptStatus.SUPERSEDED,
+            AttemptStatus.FAILED,
+            AttemptStatus.CANCELLED,
+            AttemptStatus.SUCCEEDED,
+        }
+    ):
+        raise StaleFence("Analysis cleanup scope, status or fence is stale.")
+    identity, _ = _analysis_submission(db, attempt)
+    if any(entry.payload.get(k) != identity[k] for k in ("namespace", "job_name", "uid")):
+        raise StaleFence("Analysis cleanup identity differs from its recorded Job.")
+    try:
+        job = k8s.batch.read_namespaced_job(
+            name=identity["job_name"], namespace=identity["namespace"], _request_timeout=5
+        )
+    except ApiException as exc:
+        if exc.status != 404:
+            raise
+    else:
+        _verify_analysis_job(job, attempt, identity)
+        try:
+            k8s.delete_job(
+                identity["job_name"], namespace=identity["namespace"], uid=identity["uid"]
+            )
+        except ApiException as exc:
+            if exc.status != 404:
+                raise
+    attempt.cleanup_state = "completed"
+    db.flush()
+    return attempt
+
+
+def _verify_analysis_job(job, attempt, identity):
+    expected = {
+        "project-id": str(attempt.project_id),
+        "run-id": str(attempt.model_run_id),
+        "attempt-id": str(attempt.id),
+        "generation": str(attempt.generation),
+        "workflow-stage": attempt.stage.value,
+    }
+    if (
+        job.metadata.uid != identity["uid"]
+        or job.metadata.namespace != identity["namespace"]
+        or job.metadata.name != identity["job_name"]
+        or any(
+            (job.metadata.labels or {}).get(f"automl.platform/{k}") != v
+            for k, v in expected.items()
+        )
+    ):
+        raise StaleFence("The physical analysis Job no longer matches this attempt.")
+
+
+def _replace_analysis_attempt(db, attempt, run, source, k8s, reason):
+    reason = redact_text(reason)[:2000]
+    exhausted = attempt.generation >= attempt.retry_budget
+    transition_attempt(
+        attempt,
+        AttemptStatus.FAILED if exhausted else AttemptStatus.SUPERSEDED,
+        fencing_token=attempt.fencing_token,
+        expected_cas_version=attempt.terminal_cas_version,
+        terminal_reason=reason,
+    )
+    if exhausted:
+        run.status = RunStatus.FAILED
+        run.failure_code, run.failure_message = "ANALYSIS_RETRY_EXHAUSTED", reason
+        run.finished_at = datetime.now(UTC)
+        return
+    replacement = WorkflowAttempt(
+        project_id=attempt.project_id,
+        model_run_id=run.id,
+        stage=attempt.stage,
+        logical_key=attempt.logical_key,
+        workload_identity=attempt.workload_identity,
+        generation=attempt.generation + 1,
+        fencing_token=uuid.uuid4().hex,
+        predecessor_attempt_id=attempt.id,
+        retry_budget=attempt.retry_budget,
+    )
+    db.add(replacement)
+    db.flush()
+    manifest = k8s.bind_analysis_attempt_manifest(source.payload["manifest"], replacement)
+    command = db.get(WorkflowCommand, source.command_id)
+    enqueue_outbox(
+        db,
+        command,
+        topic="kubernetes.analysis.submit",
+        aggregate_type="model_run",
+        aggregate_id=run.id,
+        payload={"run_id": str(run.id), "manifest": manifest},
+        event_key=f"analysis:{replacement.id}:submit",
+    )
+    run.k8s_job_name = manifest["metadata"]["name"]
+    run.status, run.finished_at = RunStatus.QUEUED, None
+    run.failure_code = run.failure_message = run.plain_english_failure = None
+    run.tags = {
+        **run.tags,
+        "workflow_attempt_id": str(replacement.id),
+        "desired_state": "kubernetes_submission_pending",
+        "waiting_for_capacity": False,
+    }
+
+
+def observe_analysis_attempts(db, k8s, *, limit=25):
+    attempts = list(
+        db.scalars(
+            select(WorkflowAttempt)
+            .join(
+                WorkflowEvent,
+                (WorkflowEvent.attempt_id == WorkflowAttempt.id)
+                & (WorkflowEvent.event_key == "analysis.submitted"),
+            )
+            .where(
+                WorkflowAttempt.stage == WorkflowStage.TRAINING_RUN,
+                WorkflowAttempt.logical_key.like("analysis-run:%"),
+                (WorkflowAttempt.status.in_({AttemptStatus.SUBMITTED, AttemptStatus.RUNNING}))
+                | (
+                    (
+                        WorkflowAttempt.status.in_(
+                            {
+                                AttemptStatus.SUCCEEDED,
+                                AttemptStatus.FAILED,
+                                AttemptStatus.CANCELLED,
+                                AttemptStatus.SUPERSEDED,
+                            }
+                        )
+                    )
+                    & (WorkflowAttempt.cleanup_state == "pending")
+                ),
+            )
+            .order_by(WorkflowAttempt.updated_at, WorkflowAttempt.id)
+            .limit(limit)
+            .with_for_update(of=WorkflowAttempt, skip_locked=True)
+            .execution_options(populate_existing=True)
+        )
+    )
+    for attempt in attempts:
+        run = db.get(ModelRun, attempt.model_run_id, with_for_update=True, populate_existing=True)
+        if (
+            run is None
+            or run.project_id != attempt.project_id
+            or run.run_kind
+            not in {
+                RunKind.VALIDATION,
+                RunKind.EXPLAINABILITY,
+                RunKind.DRIFT,
+            }
+        ):
+            raise StaleFence("Analysis observer run scope changed.")
+        identity, source = _analysis_submission(db, attempt)
+        if attempt.status in {
+            AttemptStatus.SUCCEEDED,
+            AttemptStatus.FAILED,
+            AttemptStatus.CANCELLED,
+            AttemptStatus.SUPERSEDED,
+        }:
+            _queue_analysis_cleanup(db, attempt, identity, source)
+            continue
+        if str(run.tags.get("workflow_attempt_id", "")) != str(attempt.id) or run.status in {
+            RunStatus.CANCELLED,
+            RunStatus.FAILED,
+        }:
+            transition_attempt(
+                attempt,
+                AttemptStatus.CANCELLED,
+                fencing_token=attempt.fencing_token,
+                expected_cas_version=attempt.terminal_cas_version,
+                terminal_reason="Analysis run no longer admits this attempt",
+            )
+            _queue_analysis_cleanup(db, attempt, identity, source)
+            continue
+        receipt = (run.tags or {}).get("analysis_result_receipt")
+        if receipt is not None or run.status == RunStatus.SUCCEEDED:
+            # Reports and CAS commit together. Never rerun an inconsistent committed scope.
+            raise StaleFence("Analysis receipt and terminal attempt state are inconsistent.")
+        now = datetime.now(UTC)
+        reason = None
+        if attempt.lease_expires_at is not None and attempt.lease_expires_at <= now:
+            reason = "Analysis worker lease expired"
+        elif (
+            attempt.lease_expires_at is None
+            and attempt.updated_at < now - RAYJOB_STARTUP_FAILURE_GRACE
+        ):
+            reason = "Analysis worker did not claim its startup lease"
+        if reason is None:
+            try:
+                job = k8s.batch.read_namespaced_job(
+                    name=identity["job_name"], namespace=identity["namespace"], _request_timeout=5
+                )
+            except ApiException as exc:
+                if exc.status != 404:
+                    raise
+                reason = "Analysis Job disappeared before report CAS"
+            else:
+                _verify_analysis_job(job, attempt, identity)
+                conditions = job.status.conditions or [] if job.status else []
+                if any(
+                    c.type in {"Failed", "Complete"} and c.status == "True" for c in conditions
+                ) or (job.status and (job.status.failed or job.status.succeeded)):
+                    reason = "Analysis Job terminated before report CAS"
+        if reason is not None:
+            _queue_analysis_cleanup(db, attempt, identity, source)
+            _replace_analysis_attempt(db, attempt, run, source, k8s, reason)
+    db.flush()
+    return len(attempts)
+
+
 def observe_analysis_jobs(db: Session, k8s: KubernetesTrainingClient, *, limit: int = 25) -> int:
     from automl_api.services.training import _sync_run_status
 
@@ -895,6 +1568,7 @@ def observe_analysis_jobs(db: Session, k8s: KubernetesTrainingClient, *, limit: 
                 ModelRun.run_kind.in_({RunKind.EXPLAINABILITY, RunKind.VALIDATION, RunKind.DRIFT}),
                 ModelRun.status.in_({RunStatus.QUEUED, RunStatus.RUNNING}),
                 ModelRun.tags["desired_state"].astext == "kubernetes_submitted",
+                ModelRun.tags["workflow_attempt_id"].astext.is_(None),
             )
             .order_by(ModelRun.updated_at, ModelRun.id)
             .limit(limit)
@@ -923,11 +1597,39 @@ def observe_dataset_ray_jobs(
             .order_by(WorkflowAttempt.updated_at, WorkflowAttempt.id)
             .limit(limit)
             .with_for_update(skip_locked=True)
+            .execution_options(populate_existing=True)
         )
     )
     for attempt in attempts:
+        profile = _profile_job_for_attempt(db, attempt)
+        if profile.status not in {"queued", "running"} or str(
+            profile.overview_json.get("workflow_attempt_id", "")
+        ) != str(attempt.id):
+            continue
+        # shortcut: legacy submissions use the configured namespace; retire after their jobs drain.
+        namespace = (
+            profile.overview_json.get("ray_job_namespace") or get_settings().training_namespace
+        )
+        expires = attempt.lease_expires_at
+        if expires is not None and expires <= datetime.now(UTC):
+            command = _dataset_profile_command(db, attempt, profile)
+            enqueue_outbox(
+                db,
+                command,
+                topic="ray.dataset.cancel",
+                aggregate_type="profiling_job",
+                aggregate_id=profile.id,
+                payload={
+                    "attempt_id": str(attempt.id),
+                    "fencing_token": attempt.fencing_token,
+                    "namespace": namespace,
+                },
+                event_key=f"profile:{profile.id}:{attempt.stage.value}:g{attempt.generation}:expired:cancel",
+            )
+            _replace_lost_dataset_attempt(db, attempt, reason="Dataset worker lease expired")
+            continue
         try:
-            ray_job = k8s.ray_job(str(attempt.ray_job_name))
+            ray_job = k8s.ray_job(str(attempt.ray_job_name), namespace=namespace)
         except ApiException as exc:
             if exc.status != 404:
                 raise
@@ -963,7 +1665,6 @@ def observe_dataset_ray_jobs(
                     AttemptStatus.RUNNING,
                     fencing_token=attempt.fencing_token,
                 )
-            profile = _profile_job_for_attempt(db, attempt)
             profile.heartbeat_at = datetime.now(UTC)
         elif startup_failure is not None:
             _replace_lost_dataset_attempt(db, attempt, reason=startup_failure)
@@ -1002,16 +1703,19 @@ def _ray_startup_failure(ray_status: dict[str, Any], updated_at: datetime | None
 
 
 def _profile_job_for_attempt(db: Session, attempt: WorkflowAttempt) -> ProfilingJob:
-    marker = "profile:"
-    if not attempt.logical_key.startswith(marker):
+    parts = attempt.logical_key.split(":")
+    if len(parts) != 3 or parts[0] != "profile" or parts[2] != attempt.stage.value:
         raise LookupError("The dataset attempt logical key is not profile-scoped.")
-    profile_id = uuid.UUID(attempt.logical_key.split(":", 2)[1])
+    profile_id = uuid.UUID(parts[1])
     profile = db.scalar(
-        select(ProfilingJob).where(
+        select(ProfilingJob)
+        .where(
             ProfilingJob.project_id == attempt.project_id,
             ProfilingJob.id == profile_id,
             ProfilingJob.dataset_version_id == attempt.dataset_version_id,
         )
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     if profile is None:
         raise LookupError("The dataset attempt has no tracked profiling job.")
@@ -1048,20 +1752,7 @@ def _replace_lost_dataset_attempt(
             version.status = DatasetStatus.READY
         return None
 
-    command = db.scalar(
-        select(WorkflowCommand)
-        .where(
-            WorkflowCommand.project_id == attempt.project_id,
-            WorkflowCommand.resource_type == "profiling_job",
-            WorkflowCommand.resource_id == profile.id,
-            WorkflowCommand.operation == "dataset.profile",
-        )
-        .order_by(WorkflowCommand.created_at.desc())
-        .limit(1)
-        .with_for_update()
-    )
-    if command is None:
-        raise LookupError("The lost dataset Ray attempt has no durable profile command.")
+    command = _dataset_profile_command(db, attempt, profile)
     replacement = WorkflowAttempt(
         project_id=attempt.project_id,
         stage=attempt.stage,
@@ -1109,6 +1800,42 @@ def _replace_lost_dataset_attempt(
     return replacement
 
 
+def _dataset_profile_command(db, attempt, profile):
+    command = db.scalar(
+        select(WorkflowCommand)
+        .where(
+            WorkflowCommand.project_id == attempt.project_id,
+            WorkflowCommand.resource_type == "profiling_job",
+            WorkflowCommand.resource_id == profile.id,
+            WorkflowCommand.operation == "dataset.profile",
+        )
+        .order_by(WorkflowCommand.created_at.desc())
+        .limit(1)
+        .with_for_update()
+    )
+    if command is None:
+        raise LookupError("The lost dataset Ray attempt has no durable profile command.")
+    return command
+
+
+def _training_launch_command(db, attempt):
+    command = db.scalar(
+        select(WorkflowCommand)
+        .where(
+            WorkflowCommand.project_id == attempt.project_id,
+            WorkflowCommand.resource_type == "model_run",
+            WorkflowCommand.resource_id == attempt.model_run_id,
+            WorkflowCommand.operation == "training.launch",
+        )
+        .order_by(WorkflowCommand.created_at.desc())
+        .limit(1)
+        .with_for_update()
+    )
+    if command is None:
+        raise LookupError("The lost Ray attempt has no durable launch command.")
+    return command
+
+
 def _replace_lost_ray_attempt(
     db: Session,
     attempt: WorkflowAttempt,
@@ -1126,7 +1853,7 @@ def _replace_lost_ray_attempt(
     )
     if run is None:
         raise LookupError("The lost Ray attempt has no tracked training run.")
-    active_trial_attempts = list(
+    trial_attempts = list(
         db.scalars(
             select(WorkflowAttempt)
             .where(
@@ -1139,13 +1866,31 @@ def _replace_lost_ray_attempt(
                         AttemptStatus.CLAIMED,
                         AttemptStatus.SUBMITTED,
                         AttemptStatus.RUNNING,
+                        AttemptStatus.SUCCEEDED,
+                        AttemptStatus.FAILED,
                     }
                 ),
             )
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
     )
-    terminal = terminal_failure_code is not None or attempt.generation >= attempt.retry_budget
+    active_trial_attempts = [
+        child
+        for child in trial_attempts
+        if child.status
+        in {
+            AttemptStatus.PENDING,
+            AttemptStatus.CLAIMED,
+            AttemptStatus.SUBMITTED,
+            AttemptStatus.RUNNING,
+        }
+    ]
+    terminal = (
+        terminal_failure_code is not None
+        or attempt.generation >= attempt.retry_budget
+        or any(child.generation >= child.retry_budget for child in active_trial_attempts)
+    )
     transition_attempt(
         attempt,
         AttemptStatus.FAILED if terminal else AttemptStatus.SUPERSEDED,
@@ -1154,13 +1899,24 @@ def _replace_lost_ray_attempt(
         expected_cas_version=attempt.terminal_cas_version,
     )
     for trial_attempt in active_trial_attempts:
+        target = AttemptStatus.SUPERSEDED
+        if terminal:
+            target = (
+                AttemptStatus.CANCELLED
+                if trial_attempt.status == AttemptStatus.PENDING
+                else AttemptStatus.FAILED
+            )
         transition_attempt(
             trial_attempt,
-            AttemptStatus.FAILED if terminal else AttemptStatus.SUPERSEDED,
+            target,
             fencing_token=trial_attempt.fencing_token,
             terminal_reason=reason,
             expected_cas_version=trial_attempt.terminal_cas_version,
         )
+        if terminal:
+            trial = db.get(TrainingTrial, trial_attempt.trial_id)
+            if trial is not None:
+                trial.status = trial_attempt.status.value
     db.flush()
     if terminal:
         run.status = RunStatus.FAILED
@@ -1180,20 +1936,29 @@ def _replace_lost_ray_attempt(
         run.finished_at = datetime.now(UTC)
         return None
 
-    command = db.scalar(
-        select(WorkflowCommand)
-        .where(
-            WorkflowCommand.project_id == attempt.project_id,
-            WorkflowCommand.resource_type == "model_run",
-            WorkflowCommand.resource_id == run.id,
-            WorkflowCommand.operation == "training.launch",
-        )
-        .order_by(WorkflowCommand.created_at.desc())
-        .limit(1)
-        .with_for_update()
-    )
-    if command is None:
-        raise LookupError("The lost Ray attempt has no durable launch command.")
+    command = _training_launch_command(db, attempt)
+    from automl_api.services.training_trials import authorized_trial_result, trial_result_reference
+
+    result_allowlist = [
+        trial_result_reference(db, attempt, child)
+        for child in trial_attempts
+        if child.status in {AttemptStatus.SUCCEEDED, AttemptStatus.FAILED}
+    ]
+    authorized_trials = {reference["trial_id"] for reference in result_allowlist}
+    for reference in attempt.predecessor_checkpoint_allowlist or []:
+        if not isinstance(reference, dict) or reference.get("kind") != "trial_result":
+            continue
+        if reference.get("trial_id") in authorized_trials:
+            continue
+        try:
+            source_id = uuid.UUID(reference["attempt_id"])
+        except (KeyError, ValueError, TypeError) as exc:
+            raise StaleFence("The inherited trial result identity is invalid.") from exc
+        source = db.get(WorkflowAttempt, source_id, populate_existing=True)
+        if source is None or authorized_trial_result(db, attempt, source) != reference:
+            raise StaleFence("The inherited trial result authorization is invalid.")
+        result_allowlist.append(reference)
+        authorized_trials.add(reference["trial_id"])
     replacement = WorkflowAttempt(
         project_id=attempt.project_id,
         stage=attempt.stage,
@@ -1204,7 +1969,7 @@ def _replace_lost_ray_attempt(
         fencing_token=uuid.uuid4().hex,
         predecessor_attempt_id=attempt.id,
         predecessor_checkpoint_allowlist=(
-            [attempt.checkpoint_uri] if attempt.checkpoint_uri else []
+            ([attempt.checkpoint_uri] if attempt.checkpoint_uri else []) + result_allowlist
         ),
         retry_budget=attempt.retry_budget,
     )
@@ -1251,14 +2016,18 @@ def _replace_lost_ray_attempt(
 
 
 def build_ray_job_manifest(run: ModelRun, attempt: WorkflowAttempt, *, name: str) -> dict[str, Any]:
+    from automl_api.training.attempt_admission import TRAINING_CATALOG_PROTOCOL
+
     settings = get_settings()
     environment = [
         {"name": "AUTOML_RUN_ID", "value": str(run.id)},
         {"name": "TRAINING_EXECUTION_MODE", "value": "ray"},
         {"name": "AUTOML_MODEL_PODS", "value": "1"},
         {"name": "AUTOML_TUNE_CONCURRENCY", "value": str(settings.training_max_concurrent_trials)},
-        {"name": "AUTOML_CPU_THREADS",
-         "value": str(run.cpu_limit_cores or settings.training_cpu_limit_cores)},
+        {
+            "name": "AUTOML_CPU_THREADS",
+            "value": str(run.cpu_limit_cores or settings.training_cpu_limit_cores),
+        },
         {"name": "AUTOML_GPU_VENDOR", "value": str((run.params or {}).get("gpu_vendor") or "")},
         {"name": "MLFLOW_TRACKING_URI", "value": settings.mlflow_tracking_uri},
         {"name": "MLFLOW_ENABLE_ASYNC_LOGGING", "value": "false"},
@@ -1286,7 +2055,10 @@ def build_ray_job_manifest(run: ModelRun, attempt: WorkflowAttempt, *, name: str
         project_id=run.project_id,
         attempt=attempt,
         name=name,
-        entrypoint=f"python -m automl_api.training.worker --run-id {run.id}",
+        entrypoint=(
+            f"python -m automl_api.training.worker --run-id {run.id} "
+            f"--attempt-protocol {TRAINING_CATALOG_PROTOCOL}"
+        ),
         environment=environment,
         labels=labels,
         worker_resources=worker_resources,
@@ -1375,6 +2147,14 @@ def _build_ephemeral_ray_job_manifest(
     worker_resources: dict[str, dict[str, str]],
 ) -> dict[str, Any]:
     settings = get_settings()
+    from automl_api.services.attempt_identity import attempt_audience
+    from automl_api.training.attempt_admission import TOKEN_PATH, control_base_url
+
+    admission_url = settings.attempt_control_base_url
+    if admission_url:
+        admission_url = control_base_url(admission_url)
+    elif settings.environment in {"production", "staging"}:
+        raise ValueError("Production Ray workloads require an HTTPS attempt admission URL.")
     workload_labels = {
         "app.kubernetes.io/name": "sceptre",
         "automl.platform/project-id": str(project_id),
@@ -1404,6 +2184,13 @@ def _build_ephemeral_ray_job_manifest(
         *object_store_workload_environment(settings),
         *environment,
     ]
+    common_environment.extend(
+        [
+            {"name": "ENVIRONMENT", "value": settings.environment},
+            {"name": "ATTEMPT_CONTROL_BASE_URL", "value": admission_url},
+            {"name": "AUTOML_IDENTITY_TOKEN_FILE", "value": TOKEN_PATH},
+        ]
+    )
     # Pod-scoped ephemeral volumes: emptyDir is created per-pod by the kubelet
     # (never a shared host path), so these mount points cannot collide across
     # workloads or outlive the attempt.
@@ -1419,6 +2206,24 @@ def _build_ephemeral_ray_job_manifest(
             "emptyDir": {"medium": "Memory", "sizeLimit": "2Gi"},
         },
     ]
+
+    volumes.append(
+        {
+            "name": "attempt-identity",
+            "projected": {
+                "defaultMode": 0o444,
+                "sources": [
+                    {
+                        "serviceAccountToken": {
+                            "path": "token",
+                            "expirationSeconds": 600,
+                            "audience": attempt_audience(attempt.id, attempt.fencing_token),
+                        }
+                    }
+                ],
+            },
+        }
+    )
 
     def pod_spec(container_name: str, resources: dict[str, dict[str, str]]) -> dict[str, Any]:
         spec = {
@@ -1440,6 +2245,11 @@ def _build_ephemeral_ray_job_manifest(
                     "volumeMounts": [
                         {"name": "ray-runtime", "mountPath": RAY_RUNTIME_MOUNT},
                         {"name": "shared-memory", "mountPath": SHARED_MEMORY_MOUNT},
+                        {
+                            "name": "attempt-identity",
+                            "mountPath": "/var/run/sceptre/identity",
+                            "readOnly": True,
+                        },
                     ],
                 }
             ],

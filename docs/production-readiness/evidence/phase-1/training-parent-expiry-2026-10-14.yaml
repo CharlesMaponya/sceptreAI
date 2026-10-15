@@ -1,0 +1,51 @@
+{
+  "verified_at": "2026-10-14T17:50:50.599818+00:00",
+  "phase_complete": false,
+  "scope": "Expired parent cancellation intent and bounded replacement",
+  "negative_control": "The initial PostgreSQL test failed because the old observer ignored expiry and queried Ray status instead of queuing cancellation/replacement.",
+  "changes": [
+    "Observe expiry from fresh locked rows after prioritizing committed-result recovery. In one transaction, queue existing durable cancellation for the old parent and supersede parent/active children plus queue bounded replacement; exhausted budgets still queue cleanup and stop replacement.",
+    "Shared training-launch command lookup preserves existing retry/outbox ownership. Repeated/concurrent observers and rollback do not duplicate cleanup or replacement.",
+    "Cancellation validates stage/project/run aggregate/fence before native deletion, including terminal attempts, and deletes in the recorded run namespace rather than the client default."
+  ],
+  "verification": {
+    "regressions": {
+      "tests": 369,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "native_control_plane": {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "focused_cases": 14,
+  "native_probe": {
+    "context": "k3d-sceptre",
+    "namespaces": [
+      "expiry-primary-a6d8d98f0cf5",
+      "expiry-neighbor-a6d8d98f0cf5"
+    ],
+    "cleanup": true,
+    "expiry-primary-a6d8d98f0cf5": "b3eea7f5-027d-4677-b7f6-f646c7bb8d08",
+    "expiry-neighbor-a6d8d98f0cf5": "10bf2358-9fe1-44e9-b30b-a99f206dc39f",
+    "neighbor_preserved": true,
+    "pods_started": 0
+  },
+  "environment": "Real PostgreSQL regression suite. Fresh suspended RayJobs in two isolated k3d-sceptre namespaces exercise current local Python observer/cancellation/SDK code; client default deliberately points to neighbor namespace. Stale fence causes no deletion, target deletion and 404 replay succeed, same-name neighbor UID is preserved, no pods observed and namespaces removed.",
+  "source_sha256": {
+    "apps/api/automl_api/services/reconciler.py": "f18f303b1ba3186cbae61e28b6ed52a88a4491c3e5341a43cb61a52d3a99dbf6",
+    "tests/test_training_parent_expiry.py": "ef9387aab561e9a2db18efa7fd2d1b39d3630ba1318913f8309a15227924699e",
+    "tests/test_phase1_reconciler.py": "d2a66cd535c56a8387dc46cb6799caad07c76e84a7b00d8e85347b40b870a1c9"
+  },
+  "native_script_sha256": "638556ab21e8ba3493a12a7462675e68d4f00511b2e3273c602942e7e07d6e7c",
+  "limits": [
+    "Native probe qualifies control-plane deletion using local worktree code, not a newly deployed worker image or real worker death/partition/restart.",
+    "Physical deletion uses recorded name/namespace; full native process-loss and credential revocation/expiry campaigns remain required.",
+    "Signed grants/delegated object credentials, predecessor object-checkpoint reads, production Train, final fitting/external effects and full recovery qualification remain open.",
+    "All four broad trial gates and all 36 Phase 1 requirements remain open. Adequate storage for the 45 GB rehearsal and seven missing historical QA objects remain unresolved."
+  ]
+}

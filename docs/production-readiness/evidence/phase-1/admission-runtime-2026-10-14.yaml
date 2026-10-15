@@ -1,0 +1,61 @@
+{
+  "verified_at": "2026-10-14T18:23:13.396316+00:00",
+  "phase_complete": false,
+  "scope": "Ray projected identity and training parent/trial admission consumption",
+  "changes": [
+    "Ray head/worker/submitter templates project a dedicated 600-second attempt/fence-audience token, mounted read-only as a directory without subPath. Preserve the head autoscaler identity; token bytes do not enter environment or Tune configurations.",
+    "Add explicit control URL configuration. Production Helm and Ray builder require HTTPS; production/staging worker admission cannot be disabled. Local no-URL legacy behavior remains explicit.",
+    "Training startup, pre-dispatch enrollment, trial execution and parent/child renewal request current admission before database locks; token files are reread to observe replacement. Reject redirects, unverifiable identity, changed project/generation/audience and expired/overlong proofs.",
+    "Parent leases are capped to verified proof expiry. Child leases are capped to parent and own proof expiry; existing publication/failure fences reject expired leases. Cached CV receipts still require admission."
+  ],
+  "verification": {
+    "regressions": {
+      "tests": 415,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "native_local_worker": {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "focused_cases": 20,
+  "native_probe": {
+    "context": "k3d-sceptre",
+    "namespace": "identity-proof-829c52e719a5",
+    "cleanup": true,
+    "worker_admission_and_rotation": true,
+    "pod_uid": "4c2899f2-0bda-4741-aa74-282d860391ef",
+    "valid": true,
+    "invalid_cases": 5,
+    "pod_scheduled": false
+  },
+  "environment": "Real PostgreSQL and actual worker.main/lifecycle with mocked HTTPS admission for regression cases; actual Helm rendering/schema/policy checks. Native probe uses a real k3d pod-bound token with current local worker startup/heartbeat and actual admission/TokenReview, relayed through in-process TestClient. Wrong token cannot renew; a manually replaced valid token can renew. Token file and isolated namespace removed; pod never scheduled.",
+  "source_sha256": {
+    "apps/api/automl_api/core/config.py": "4edf347c33a046074fb3098eb5d9041fa01f5bd80807afd26a70178bcb2ac000",
+    "apps/api/automl_api/services/reconciler.py": "efd6a0e489f0fd97719e5cb9c27a004a82bb18c41125c7f97a54b0075f245b36",
+    "apps/api/automl_api/services/training_trials.py": "4fa40be9beab68caddc68d011da9f8559dc19723faf2e0011b30aebd65f45e7c",
+    "apps/api/automl_api/training/attempt_admission.py": "ff075ffc79572df0b8cc4fdab5d11f2d71fc2c5d8c03f1a4002aa9b203054535",
+    "apps/api/automl_api/training/worker.py": "e2cde065ecb3a904b25945e13a29e87f8e060107a7bddadee65b0aaa2244d939",
+    "apps/api/automl_api/training/trial_runtime.py": "1aa6a255a654e2513291502eaed541ea3956b56faa5b153c50e8da55bfe0a27c",
+    "infra/helm/sceptre/templates/configmap.yaml": "2338ae819c69c04d4157abd1cd248253f9e32b3b1334b524ee32c37a188f93b6",
+    "infra/helm/sceptre/templates/production-policy.yaml": "3f3ffec87ea63f95a3a3e415f32c0a88d5d2222f730ddfb9ceb7570a00847ed3",
+    "infra/helm/sceptre/values.yaml": "03ccccc4cb8a31e73941d7eb5d51c6998bd5fb7b3e081b68dc99dc3a1967717a",
+    "infra/helm/sceptre/values.schema.json": "8a9c568688a8c94d349c18e780fc3c101b9398b41aff382775089af7f94fd645",
+    "tests/fixtures/production-values.yaml": "26a5c24b9d0fd9c068c3174e9ee6c2f7374a341eea2e8a28f3a75ada69bb4c54",
+    "tests/test_admission_runtime.py": "269964ee5917e3e3cf84b16f123625df08a175c75b91833606ef308580fc84cc",
+    "tests/test_phase1_reconciler.py": "7c930a4e15643bf6df5339ca78ec77789d29cc56beb88617eae97fd9ce19a0e9",
+    "tests/test_helm_chart_contracts.py": "799f25f5530c79ea0af3ec538d9cb0ac88739e4253689a27a09d0b5f3fe5662b"
+  },
+  "native_script_sha256": "fa60336a2ea05a98930cda20603f049f23c7741f60cd974964042e6850cf6981",
+  "limits": [
+    "Native HTTP is an in-process relay, not deployed TLS/egress. Token file replacement is manual, not observed kubelet automatic rotation. No immutable worker image rollout or running Ray head/worker qualification.",
+    "Preparation and non-Ray analysis consumers remain unintegrated/unqualified. Parent-bound pod proof plus durable child fencing does not replace separate child grant requirements.",
+    "Delegated provider credentials, exact object/version/method/byte access, predecessor object-checkpoint grants and provider revocation/expiry remain pending; existing database/object credentials are broad.",
+    "Configured expired workers cannot renew admission; committed results remain recoverable by the existing trusted reconciler. Local legacy helper behavior is not a production proof.",
+    "All four full credential gates, four broader trial gates and all 36 Phase 1 requirements remain open. The 45 GB rehearsal and seven missing historical QA objects remain unresolved."
+  ]
+}

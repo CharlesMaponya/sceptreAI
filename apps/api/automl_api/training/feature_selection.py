@@ -62,3 +62,11 @@ class BoundedFeatureSelector(SelectPercentile):
         self.input_rows_ = len(features)
         self.statistics_rows_ = len(sampled)
         return super().fit(sampled, sampled_target)
+
+
+    def _get_support_mask(self):
+        mask = super()._get_support_mask()
+        # Percentile rounding must not remove the only usable model input.
+        if self.percentile > 0 and not mask.any():
+            mask[np.argmax(np.nan_to_num(self.scores_, nan=-np.inf))] = True
+        return mask

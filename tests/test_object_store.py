@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 from automl_api.core.config import Settings
@@ -74,6 +75,30 @@ class _BotoClient:
         if self.fail:
             raise RuntimeError("object service unavailable")
         self.objects.pop((Bucket, Key), None)
+
+    def get_paginator(self, operation):
+        def paginate(**options):
+            if self.fail:
+                raise RuntimeError("object service unavailable")
+            if operation == "list_multipart_uploads":
+                return [{}]
+            assert operation == "list_object_versions"
+            return [
+                {
+                    "Versions": [
+                        {"Key": key, "VersionId": "null"}
+                        for bucket, key in self.objects
+                        if bucket == options["Bucket"] and key.startswith(options["Prefix"])
+                    ]
+                }
+            ]
+
+        return SimpleNamespace(paginate=paginate)
+
+    def delete_objects(self, *, Bucket, Delete):
+        for item in Delete["Objects"]:
+            self.delete_object(Bucket=Bucket, Key=item["Key"])
+        return {}
 
 
 def _settings(tmp_path: object, *, remote: bool = False) -> Settings:
@@ -306,3 +331,139 @@ def test_remote_store_rejects_foreign_bucket_uris(monkeypatch, tmp_path) -> None
     ):
         with pytest.raises(ValueError, match="configured S3 store"):
             operation(foreign)
+
+
+class _PrefixS3Client:
+    def __init__(self, failure=None):
+        self.failure = failure
+        self.versions = [
+            ("projects/p/raw/data", "v1"),
+            ("projects/p/raw/data", "v2"),
+            ("projects/p/raw/data", "marker"),
+            ("projects/p/raw/null", "null"),
+            ("projects/peer/keep", "v1"),
+        ]
+        self.uploads = [
+            ("projects/p/raw/upload", "u1"),
+            ("projects/p/raw/upload2", "u2"),
+            ("projects/peer/keep", "u3"),
+        ]
+        self.deleted = []
+
+    def list_multipart_uploads(self, *, Bucket, Prefix, MaxUploads):
+        assert Bucket == "bucket" and MaxUploads == 1000
+        rows = [(k, v) for k, v in self.uploads if k.startswith(Prefix)][:1]
+        return {"Uploads": [{"Key": k, "UploadId": v} for k, v in rows]}
+
+    def abort_multipart_upload(self, *, Bucket, Key, UploadId):
+        if self.failure == "abort_denied":
+            raise PermissionError("abort denied")
+        if self.failure != "ignored_abort":
+            self.uploads.remove((Key, UploadId))
+
+    def list_parts(self, *, Bucket, Key, UploadId, MaxParts):
+        assert MaxParts == 1
+        if self.failure == "remaining_parts":
+            return {"Parts": [{"PartNumber": 1}]}
+        from botocore.exceptions import ClientError
+
+        raise ClientError({"Error": {"Code": "NoSuchUpload"}}, "ListParts")
+
+    def list_object_versions(self, *, Bucket, Prefix, MaxKeys):
+        assert Bucket == "bucket" and MaxKeys == 1000
+        rows = [(k, v) for k, v in self.versions if k.startswith(Prefix)][:2]
+        return {
+            kind: [{"Key": k, "VersionId": v} for k, v in rows if (v == "marker") == marker]
+            for kind, marker in [("Versions", False), ("DeleteMarkers", True)]
+        }
+
+    def get_paginator(self, operation):
+        def paginate(**options):
+            multipart = operation == "list_multipart_uploads"
+            for key, version in reversed(self.uploads if multipart else self.versions):
+                if key.startswith(options["Prefix"]):
+                    kind = (
+                        "Uploads"
+                        if multipart
+                        else ("DeleteMarkers" if version == "marker" else "Versions")
+                    )
+                    yield {kind: [{"Key": key, "UploadId" if multipart else "VersionId": version}]}
+
+        return SimpleNamespace(paginate=paginate)
+
+    def delete_objects(self, *, Bucket, Delete):
+        assert Delete["Quiet"] is True
+        if self.failure == "version_denied":
+            return {"Errors": [{"Code": "AccessDenied"}]}
+        for item in Delete["Objects"]:
+            pair = (item["Key"], item["VersionId"])
+            self.deleted.append(pair)
+            if self.failure != "ignored_delete":
+                self.versions.remove(pair)
+        return {}
+
+
+def test_s3_prefix_cleanup_removes_versions_markers_and_uploads_with_replay():
+    client = _PrefixS3Client()
+    store = S3ObjectStoreDriver(bucket="bucket", client=client)
+    for _ in range(3):
+        store.delete_prefix("projects/p")
+    assert client.versions == [("projects/peer/keep", "v1")]
+    assert client.uploads == [("projects/peer/keep", "u3")]
+    assert len(client.deleted) == 4
+    assert {version for _, version in client.deleted} == {"v1", "v2", "marker", "null"}
+
+
+@pytest.mark.parametrize(
+    "failure",
+    ["abort_denied", "remaining_parts", "ignored_abort", "version_denied", "ignored_delete"],
+)
+def test_s3_prefix_cleanup_does_not_report_incomplete_work_as_success(failure):
+    client = _PrefixS3Client(failure)
+    with pytest.raises((PermissionError, RuntimeError)):
+        S3ObjectStoreDriver(bucket="bucket", client=client).delete_prefix("projects/p")
+    assert ("projects/peer/keep", "v1") in client.versions
+    assert ("projects/peer/keep", "u3") in client.uploads
+
+
+@pytest.mark.parametrize("target", ["data", "null", "missing"])
+def test_s3_exact_delete_preserves_prefix_neighbors_and_replays(target):
+    client = _PrefixS3Client()
+    key = "projects/p/raw/" + target
+    client.versions += [(key + "-extra", "v1"), (key + "/child", "v1")]
+    client.uploads += [(key, "target-upload"), (key + "-extra", "keep-upload")]
+    expected_versions = [v for v in client.versions if v[0] != key]
+    expected_uploads = [v for v in client.uploads if v[0] != key]
+    store = S3ObjectStoreDriver(bucket="bucket", client=client)
+    for _ in range(3):
+        store.delete("s3://bucket/" + key)
+    assert client.versions == expected_versions
+    assert client.uploads == expected_uploads
+    assert all(deleted_key == key for deleted_key, _ in client.deleted)
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_embedded_stream_replacement_never_exposes_partial_content(tmp_path, fail):
+    store = EmbeddedObjectStoreDriver(root=tmp_path, bucket="atomic")
+    uri = store.put_bytes("model", b"original").uri
+
+    class Source:
+        calls = 0
+
+        def read(self, _size):
+            assert store.read_bytes(uri) == b"original"
+            self.calls += 1
+            if self.calls == 1:
+                return b"replacement"
+            if fail:
+                raise OSError("input disconnected")
+            return b""
+
+    if fail:
+        with pytest.raises(OSError, match="input disconnected"):
+            store.put_stream(uri, Source())
+        assert store.read_bytes(uri) == b"original"
+    else:
+        store.put_stream(uri, Source())
+        assert store.read_bytes(uri) == b"replacement"
+    assert len(list(tmp_path.rglob("*"))) == 2  # bucket directory and the complete object

@@ -17,7 +17,9 @@ from automl_api.models.workflows import OutboxEntry, PromotionalScope, WorkflowA
 from automl_api.services.champion_planning import plan_scope_refit
 from automl_api.services.evaluation_reconciler import reconcile_evaluation_jobs_once
 from automl_api.services.kubernetes_training import KubernetesTrainingClient
+from automl_api.services.profiling_jobs import resume_incomplete_profiling_jobs
 from automl_api.services.reconciler import (
+    observe_analysis_attempts,
     observe_analysis_jobs,
     observe_dataset_ray_jobs,
     observe_training_ray_jobs,
@@ -25,6 +27,7 @@ from automl_api.services.reconciler import (
 )
 from automl_api.services.refit_jobs import reconcile_refit_jobs_once
 from automl_api.services.retention import purge_expired_audit_events
+from automl_api.services.tracking_reconciliation import reconcile_tracking_once
 from automl_api.services.uploads import cleanup_abandoned_uploads
 from automl_api.services.workflow_state import claim_outbox
 from automl_api.storage.object_store import get_object_store
@@ -106,6 +109,7 @@ def observe_once(
             client = k8s or KubernetesTrainingClient()
             observed = observe_training_ray_jobs(db, client)
             observed += observe_dataset_ray_jobs(db, client)
+            observed += observe_analysis_attempts(db, client)
             observed += observe_analysis_jobs(db, client)
         except Exception:
             db.rollback()
@@ -131,15 +135,24 @@ def plan_champions_once(session_factory: Callable[[], Session], *, store=None, l
     """Commit desired refit work independently of the workload observation loop."""
     try:
         with session_factory() as db:
-            scope_ids = list(db.scalars(select(PromotionalScope.id).where(
-                PromotionalScope.mode == "promotional",
-                PromotionalScope.status.in_({ScopeStatus.SEALED, ScopeStatus.RUNNING}),
-                ~select(WorkflowAttempt.id).where(
-                    WorkflowAttempt.scope_id == PromotionalScope.id,
-                    WorkflowAttempt.stage == WorkflowStage.CHAMPION_REFIT,
-                    WorkflowAttempt.status != AttemptStatus.FAILED,
-                ).exists(),
-            ).order_by(PromotionalScope.updated_at, PromotionalScope.id).limit(limit)))
+            scope_ids = list(
+                db.scalars(
+                    select(PromotionalScope.id)
+                    .where(
+                        PromotionalScope.mode == "promotional",
+                        PromotionalScope.status.in_({ScopeStatus.SEALED, ScopeStatus.RUNNING}),
+                        ~select(WorkflowAttempt.id)
+                        .where(
+                            WorkflowAttempt.scope_id == PromotionalScope.id,
+                            WorkflowAttempt.stage == WorkflowStage.CHAMPION_REFIT,
+                            WorkflowAttempt.status != AttemptStatus.FAILED,
+                        )
+                        .exists(),
+                    )
+                    .order_by(PromotionalScope.updated_at, PromotionalScope.id)
+                    .limit(limit)
+                )
+            )
         if not scope_ids:
             return 0
         object_store = store or get_object_store()
@@ -153,15 +166,23 @@ def plan_champions_once(session_factory: Callable[[], Session], *, store=None, l
                 attempt = plan_scope_refit(db, scope_id, object_store)
                 planned += int(attempt is not None)
         except Exception as exc:
-            LOGGER.error("champion planning failed", extra={
-                "scope_id": str(scope_id), "error_type": type(exc).__name__,
-            })
+            LOGGER.error(
+                "champion planning failed",
+                extra={
+                    "scope_id": str(scope_id),
+                    "error_type": type(exc).__name__,
+                },
+            )
             try:
                 with session_factory() as db, db.begin():
-                    scope = db.scalar(select(PromotionalScope).where(
-                        PromotionalScope.id == scope_id,
-                        PromotionalScope.status.in_({ScopeStatus.SEALED, ScopeStatus.RUNNING}),
-                    ).with_for_update(skip_locked=True))
+                    scope = db.scalar(
+                        select(PromotionalScope)
+                        .where(
+                            PromotionalScope.id == scope_id,
+                            PromotionalScope.status.in_({ScopeStatus.SEALED, ScopeStatus.RUNNING}),
+                        )
+                        .with_for_update(skip_locked=True)
+                    )
                     if scope is not None:
                         scope.updated_at = datetime.now(UTC)
                         if isinstance(exc, (ValueError, LookupError)):
@@ -171,9 +192,13 @@ def plan_champions_once(session_factory: Callable[[], Session], *, store=None, l
                                 "planning_error": type(exc).__name__,
                             }
             except Exception as recovery_error:
-                LOGGER.error("champion planning recovery unavailable", extra={
-                    "scope_id": str(scope_id), "error_type": type(recovery_error).__name__,
-                })
+                LOGGER.error(
+                    "champion planning recovery unavailable",
+                    extra={
+                        "scope_id": str(scope_id),
+                        "error_type": type(recovery_error).__name__,
+                    },
+                )
     return planned
 
 
@@ -218,7 +243,15 @@ def main() -> None:
             LOGGER.error(
                 "evaluation observation unavailable", extra={"error_type": type(exc).__name__}
             )
+        try:
+            reconcile_tracking_once(session_factory)
+        except Exception as exc:
+            LOGGER.error("tracking recovery unavailable", extra={"error_type": type(exc).__name__})
         if time.monotonic() >= next_cleanup:
+            try:
+                resume_incomplete_profiling_jobs()
+            except Exception:
+                LOGGER.exception("Local profiling recovery unavailable")
             cleanup_uploads_once(session_factory)
             next_cleanup = time.monotonic() + cleanup_interval
         if time.monotonic() >= next_retention:

@@ -1434,6 +1434,16 @@
           }
         }
       ]
+    },
+    "attemptIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "controlBaseUrl": {
+          "type": "string",
+          "pattern": "^$|^https://[^?#@]+$"
+        }
+      }
     }
   },
   "additionalProperties": false

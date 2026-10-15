@@ -35,4 +35,7 @@
 {{- if index .Values "kuberay-operator" "enabled" -}}
 {{- fail "Production requires a platform-managed, signature-verified KubeRay operator" -}}
 {{- end -}}
+{{- if not (regexMatch "^https://[^?#@]+$" .Values.attemptIdentity.controlBaseUrl) -}}
+{{- fail "Production requires an HTTPS attempt admission control URL" -}}
+{{- end -}}
 {{- end -}}

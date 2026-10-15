@@ -53,7 +53,10 @@ def begin_resumable_upload(
     payload: ResumableUploadBeginRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
+    idempotency_key: Annotated[
+        str,
+        Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S"),
+    ],
     origin: Annotated[str, Header(alias="Origin", min_length=1)],
 ) -> ResumableUploadRead:
     response = durable_mutation(
@@ -112,7 +115,10 @@ def create_upload_instruction(
     payload: TransferInstructionRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
+    idempotency_key: Annotated[
+        str,
+        Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S"),
+    ],
     origin: Annotated[str, Header(alias="Origin", min_length=1)],
 ) -> TransferInstructionRead:
     upload = get_upload_session(
@@ -160,7 +166,10 @@ def complete_resumable_upload(
     payload: CompleteUploadRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
+    idempotency_key: Annotated[
+        str,
+        Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S"),
+    ],
 ) -> UploadCompletionRead:
     upload = get_upload_session(
         db, current_user, project_id, session_id, for_update=True
@@ -195,7 +204,10 @@ def abort_resumable_upload(
     session_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
+    idempotency_key: Annotated[
+        str,
+        Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S"),
+    ],
 ) -> AbortUploadRead:
     upload = get_upload_session(
         db, current_user, project_id, session_id, for_update=True
@@ -235,7 +247,10 @@ def upload_dataset(
     dataset_name: Annotated[str, Form(min_length=1, max_length=220)],
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
+    idempotency_key: Annotated[
+        str,
+        Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S"),
+    ],
     description: Annotated[str | None, Form()] = None,
     tags: Annotated[str, Form()] = "{}",
 ) -> DatasetUploadResponse:

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from automl_api.api.deps import get_current_user
 from automl_api.db.session import get_db
+from automl_api.models.enums import ProjectRole
 from automl_api.models.iam import User
 from automl_api.schemas.operations import (
     ArtifactCleanupRead,
@@ -130,7 +131,10 @@ def drift(
     payload: DriftLaunchRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
+    idempotency_key: Annotated[
+        str,
+        Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S"),
+    ],
 ) -> DriftLaunchRead:
     result = durable_mutation(
         db,
@@ -177,13 +181,17 @@ def deploy(
     payload: ModelDeploymentRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
+    idempotency_key: Annotated[
+        str,
+        Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S"),
+    ],
 ) -> ModelDeploymentLaunchRead:
     result = durable_mutation(
         db,
         current_user,
         project_id,
         operation="deployment.launch",
+        minimum_role=ProjectRole.ADMIN,
         idempotency_key=idempotency_key,
         payload={"entry_id": str(entry_id), **payload.model_dump(mode="json")},
         execute=lambda: deploy_registered_model(db, current_user, project_id, entry_id, payload),
@@ -287,13 +295,17 @@ def cleanup(
     payload: ArtifactCleanupRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
+    idempotency_key: Annotated[
+        str,
+        Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S"),
+    ],
 ) -> ArtifactCleanupRead:
     result = durable_mutation(
         db,
         current_user,
         project_id,
         operation="cleanup.execute",
+        minimum_role=ProjectRole.ADMIN,
         idempotency_key=idempotency_key,
         payload=payload.model_dump(mode="json"),
         execute=lambda: cleanup_project_resources(

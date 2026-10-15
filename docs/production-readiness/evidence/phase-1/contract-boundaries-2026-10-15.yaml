@@ -1,0 +1,89 @@
+{
+  "verified_at": "2026-10-15T07:47:23.324641+00:00",
+  "scope": "Public cursor validation, concurrent revision allocation and estimator override boundaries",
+  "phase_complete": false,
+  "related_requirements": [
+    "P1-W13",
+    "P1-W14",
+    "P1-W24"
+  ],
+  "changes": [
+    "Strict bounded base64/JSON cursor decoding requires two strings and a valid UUID. Invalid candidate/trial/event cursors return HTTP 422 invalid_cursor before collection queries.",
+    "Contract mutations authenticate first, then lock the project row before command foreign-key insertion and revision allocation. Concurrent expected-revision requests return one success and one structured 409; omitted expected revisions allocate consecutive versions. Experiment conflicts include both requested and current revisions.",
+    "Reject duplicate or unselected estimator override names before ModelRun, candidate, reservation or outbox intent. Reject supplied per-estimator resource policies, including disabled overrides and empty policies, while that runtime capability is unsupported.",
+    "Persist each new candidate resource class from its resolved server catalog cost tier; remove the redundant second override lookup/filter."
+  ],
+  "verification": {
+    "focused": {
+      "tests": 28,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "regressions": {
+      "tests": 284,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "negative_controls": {
+    "tests": 20,
+    "failures": 18,
+    "errors": 0,
+    "skipped": 0
+  },
+  "concurrent_revision_cases": [
+    "test_revision_request_race_returns_versions_or_conflict[0-feature-contract]",
+    "test_revision_request_race_returns_versions_or_conflict[0-feature-search-space]",
+    "test_revision_request_race_returns_versions_or_conflict[0-search-objective]",
+    "test_revision_request_race_returns_versions_or_conflict[0-experiment-spec]",
+    "test_revision_request_race_returns_versions_or_conflict[None-feature-contract]",
+    "test_revision_request_race_returns_versions_or_conflict[None-feature-search-space]",
+    "test_revision_request_race_returns_versions_or_conflict[None-search-objective]",
+    "test_revision_request_race_returns_versions_or_conflict[None-experiment-spec]"
+  ],
+  "http_cursor_cases": [
+    "test_malformed_cursor_returns_http_422_before_collection_query[candidates]",
+    "test_malformed_cursor_returns_http_422_before_collection_query[trials]",
+    "test_malformed_cursor_returns_http_422_before_collection_query[events]"
+  ],
+  "regression_cases_by_module": {
+    "tests.test_phase1_public_contracts": 28,
+    "tests.test_training_service_runtime": 83,
+    "tests.test_phase1_postgres_contracts": 38,
+    "tests.test_phase1_idempotency": 3,
+    "tests.test_replay_authorization": 24,
+    "tests.test_phase1_reconciler": 75,
+    "tests.test_phase1_reconciler_worker": 11,
+    "tests.test_idempotency_headers": 22
+  },
+  "environment": "Real dedicated PostgreSQL. Revision race probes call actual route handlers, command/revision transactions and permission checks across two sessions; an independent pg_stat_activity observer verifies the competing backend waits on a real database lock. TestClient cursor probes use the actual router with injected identity/database and stubbed project/run authorization. Training launch probes stub capacity and infrastructure while inspecting actual persisted-intent objects and rejecting submission.",
+  "test_oracle_correction": "The initial regression invocation omitted SCEPTRE_TEST_DATABASE_URL and skipped 21 authorization cases. The gate rejected that result. The final invocation supplies both dedicated test database variables and passes without skips.",
+  "source_sha256": {
+    "apps/api/automl_api/services/contracts.py": "e6fe1c3ba4a70d29cba05d46aac25b10b6215e5bf9ae9f7ec7f7350e05897a3c",
+    "apps/api/automl_api/services/training.py": "5b309a312ee657967a57ac5df2658e15061c4c0fd4704ad801ab286cc9b5b11f",
+    "apps/api/automl_api/api/routes/contracts.py": "6dc889e9af4462e2d6bdefbabedab5bafde60080da404892cea945fea4c0535b",
+    "apps/api/automl_api/api/routes/training.py": "24651df6458dd33eb9388a385fb8bf958aba31f501ab6d44f5d008bda543e79c",
+    "apps/api/automl_api/schemas/contracts.py": "3e0a719e0a0917faad416d451ea91b6d82d9cdbbe7ce0eeea1143f447071c00e",
+    "apps/api/automl_api/schemas/training.py": "9daa9f2c81e7975b573010c70d1d6fd5691c566fd51d286daff05f85f7c8888f",
+    "apps/api/automl_api/services/idempotency.py": "504a522f23fe9c6647be0f1889e6868966798a597edcca0c687f7abeef0026a2",
+    "tests/test_phase1_public_contracts.py": "d0b66d987df471c362883c34f00048a438edbb1eed925fbf4b11e9fee603c392",
+    "tests/test_phase1_postgres_contracts.py": "03e29c45595e2e1a9ffbdf65b61936bf3ff6e1f9a1203e7af7ae3832f07d2e64",
+    "tests/test_training_service_runtime.py": "9d367d80fd294d97da4363c076c1863826db790b7cb57ba72c8a39dce7ad282a"
+  },
+  "verification_artifact_sha256": {
+    ".unlazy/phase1-contract-boundaries/check.py": "e037f2967c5dd2b1994b10e0058d77ff772dd9e927c8dcb85d880cda0fa502fe",
+    ".unlazy/phase1-contract-boundaries/focused.xml": "372a2b835d75e6642ce714a99b57bd2a19bc0192060bb5de563a607529eb3f82",
+    ".unlazy/phase1-contract-boundaries/regressions.xml": "8bbe53681b3fa33a4a479b09e6bcc7259f7a906b5172b06cc0dcb901c18f4a61",
+    ".unlazy/phase1-contract-boundaries/negative.xml": "4bcdcfcfaa40d1c2540609b06ca5e502eed9d25a55047b33e7c311c2822f0d80"
+  },
+  "limits": [
+    "P1-W13 and P1-W14 remain Open. Catalog responses still derive estimator rows from runtime discovery rather than a qualified immutable catalog artifact, and full selected-mode compatibility/spec resolution and candidate-detail history remain incomplete.",
+    "Feature-contract/search specifications still use generic dictionaries. Complete discriminated feature/estimator parameter schemas, semantic compatibility checks and their runtime enforcement remain required; this increment validates the currently supported estimator toggles only.",
+    "Existing candidate rows with missing resource classes are not backfilled by this change. Current-source unit/route/PostgreSQL checks do not qualify a deployed immutable image or real Ray execution.",
+    "Project-level contract mutations serialize within a project; different projects retain independent row locks. This is a correctness measure, not a throughput qualification.",
+    "The 45 GB migration, prior-release binaries and current-image native failure campaign remain open. No k3d/QA storage mutations occurred; seven historical QA objects remain missing.",
+    "Phase 1 remains one verified requirement and 35 open requirements. coverage.json remains untouched; no commit or push."
+  ]
+}

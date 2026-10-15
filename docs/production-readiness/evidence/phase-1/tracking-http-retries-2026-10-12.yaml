@@ -1,0 +1,41 @@
+{
+  "verified_at": "2026-10-12T06:30:48.381948+00:00",
+  "phase_complete": false,
+  "scope": "Prevent MLflow SDK HTTP retries from duplicating committed run creation",
+  "changes": [
+    "Force MLFLOW_HTTP_REQUEST_MAX_RETRIES=0 at worker entry and shared durable tracking helper; all four training tracking callers use this helper.",
+    "Keep TrackingCreationUnresolved on unresolved replay so supervised/clustering handlers stop fallback and failure-run creation.",
+    "HTTP fault fixtures use an isolated MLflow 3.15.1 server, SQLite tracking backend and real PostgreSQL workflow state; teardown stops owned process groups even if end_run raises."
+  ],
+  "negative_controls": [
+    "Before disabling SDK retries, a substituted 503 after committed creation produced two successful create RPCs and failed the expected unresolved-error assertion.",
+    "Before correcting replay exception type, the uncertain-outcome replay test failed because it raised generic RuntimeError."
+  ],
+  "verification": {
+    "tests": 72,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "http_faults": [
+    "503 after committed create",
+    "connection closed after committed create"
+  ],
+  "http_result": "Each fault leaves exactly one run and one successful create request; two replays resume that same ID without another create.",
+  "cleanup": "No isolated loopback MLflow server process remained after the test run.",
+  "source_sha256": {
+    "apps/api/automl_api/training/pipeline.py": "ad66f1d981cdec96ba4f2c7699a108836747b807c326e6ba3797e7d896d2f08d",
+    "apps/api/automl_api/training/worker.py": "989176af31a556331910690cf6172a099ea94bec73544f8bfb63752c639a4fd8",
+    "tests/test_training_tracking_http.py": "7dd0347a8950487f8a4b2dafa2f16782495c5784f54d48577153c1d12ba41657",
+    "tests/test_training_tracking.py": "cb9806b75a463b2750dcefd5953d3008f89570d86b1cc60a730ca78f91c6c126",
+    "tests/test_runtime_foundations.py": "335334aef3e1479a37e13c1801845c196f3cd5650afdcd392c0ea8dfc7d70d03",
+    "tests/test_training_pipeline_runtime.py": "13743a42e07fe48276897d8cbfe2627e3149e9d9be7f524f988140db429e67c0"
+  },
+  "limits": [
+    "Current worktree not deployed or tested against k3d MLflow, TLS/mTLS, production PostgreSQL tracking backend or remote artifact providers.",
+    "Zero HTTP retries applies process-wide in training workers; transient reads/logging failures surface immediately instead of receiving SDK retries. The full retry-owner inventory remains open.",
+    "Permanently unknown creation outcomes remain fail-closed; safe operator resolution, legacy records and complete external deletion remain open.",
+    "45 GB migration requires additional storage: current filesystem has about 41.1 GB free before fixture/migration overhead and cluster reserve.",
+    "Seven historical QA objects remain missing; original preservation gate remains abandoned. All 36 broad Phase 1 requirements remain open."
+  ]
+}

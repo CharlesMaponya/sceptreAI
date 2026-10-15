@@ -50,7 +50,7 @@ def _profile_and_version(attempt: WorkflowAttempt) -> tuple[SimpleNamespace, Sim
         current_stage="overview",
         started_at=None,
         heartbeat_at=None,
-        overview_json={"execution_mode": "kuberay"},
+        overview_json={"execution_mode": "kuberay", "workflow_attempt_id": str(attempt.id)},
     )
     version = SimpleNamespace(
         id=attempt.dataset_version_id,
@@ -203,7 +203,7 @@ def test_dataset_observer_marks_running_and_replaces_lost_generation(monkeypatch
     command = SimpleNamespace(id=uuid.uuid4())
     db = MagicMock()
     db.scalars.return_value = [attempt]
-    db.scalar.side_effect = [profile, command]
+    db.scalar.side_effect = [profile, profile, command]
     k8s.ray_job.side_effect = reconciler.ApiException(status=404)
     enqueue = MagicMock()
     monkeypatch.setattr(reconciler, "enqueue_outbox", enqueue)
@@ -250,7 +250,7 @@ def test_dataset_observer_retries_nested_image_pull_failure_after_grace(monkeypa
     command = SimpleNamespace(id=uuid.uuid4())
     db = MagicMock()
     db.scalars.return_value = [attempt]
-    db.scalar.side_effect = [profile, command]
+    db.scalar.side_effect = [profile, profile, command]
     k8s = MagicMock()
     k8s.ray_job.return_value = {
         "status": {
@@ -518,10 +518,12 @@ def test_begin_attempt_transitions_submitted_and_accepts_running(monkeypatch) ->
     _session_factory(monkeypatch, db)
     monkeypatch.setenv("AUTOML_ATTEMPT_ID", str(attempt.id))
     monkeypatch.setenv("AUTOML_FENCING_TOKEN", attempt.fencing_token)
-    transition = MagicMock()
+    transition = MagicMock(
+        side_effect=lambda attempt, state, **_k: setattr(attempt, "status", state)
+    )
     monkeypatch.setattr(worker, "transition_attempt", transition)
 
-    assert worker._begin_attempt(profile_id, WorkflowStage.SPLITTER) == (
+    assert worker._begin_attempt(profile_id, WorkflowStage.SPLITTER, worker_id="same-worker") == (
         attempt.id,
         attempt.fencing_token,
     )
@@ -530,7 +532,7 @@ def test_begin_attempt_transitions_submitted_and_accepts_running(monkeypatch) ->
 
     attempt.status = AttemptStatus.RUNNING
     transition.reset_mock()
-    worker._begin_attempt(profile_id, WorkflowStage.SPLITTER)
+    worker._begin_attempt(profile_id, WorkflowStage.SPLITTER, worker_id="same-worker")
     transition.assert_not_called()
 
 
@@ -636,6 +638,7 @@ def _split_result(project_id: uuid.UUID) -> dict:
 @pytest.mark.parametrize("failure", ["lineage", "cas", "command"])
 def test_persist_split_fails_closed_before_submitting_preparation(monkeypatch, failure) -> None:
     attempt = _dataset_attempt()
+    attempt.status = AttemptStatus.RUNNING
     attempt.terminal_cas_version = 0
     profile, _ = _profile_and_version(attempt)
     result = _split_result(profile.project_id)
@@ -768,8 +771,7 @@ def test_persist_profile_rejects_missing_lineage_and_stale_terminal_cas(
 ) -> None:
     profile_id = uuid.uuid4()
     attempt = _dataset_attempt(WorkflowStage.PREPARATION)
-    profile = SimpleNamespace()
-    version = SimpleNamespace()
+    profile, version = _profile_and_version(attempt)
     artifact = SimpleNamespace(project_id=attempt.project_id)
     store = MagicMock()
     store.put_bytes.return_value.uri = "s3://bucket/complete.json"
@@ -857,6 +859,12 @@ def test_feature_launch_revisions_are_metadata_only_and_metric_bound() -> None:
         worker.TASK_METRICS["classification"]
     )
     assert bindings["estimator_catalog_revision_id"]
+    from automl_api.training.catalog_contract import validate_catalog_revision
+
+    catalog = recipe_rows[1]
+    specification = validate_catalog_revision(catalog, worker.TaskType.CLASSIFICATION)
+    assert specification["runtime_lock_digest"]
+    assert specification["estimators"]
 
 
 def test_feature_launch_revisions_fail_closed_when_no_safe_inputs() -> None:
@@ -896,17 +904,17 @@ def test_record_failure_is_safe_with_partial_lineage(monkeypatch, objects_presen
 
     worker._record_failure(uuid.uuid4(), attempt_id, RuntimeError("worker failed"))
 
-    db.commit.assert_called_once()
+    db.commit.assert_not_called()
     if objects_present:
-        assert attempt.terminal_reason == "worker failed"
-        assert profile.failure_message == "worker failed"
+        assert attempt.terminal_reason is None
+        assert profile.failure_message is None
 
 
 def test_run_stage_dispatches_preparation_and_records_errors(monkeypatch) -> None:
     profile_id = uuid.uuid4()
     attempt_id = uuid.uuid4()
     artifact = SimpleNamespace()
-    monkeypatch.setattr(worker, "_begin_attempt", lambda *_args: (attempt_id, "fence"))
+    monkeypatch.setattr(worker, "_begin_attempt", lambda *_args, **_kwargs: (attempt_id, "fence"))
     monkeypatch.setattr(
         worker,
         "prepare_profile",
@@ -932,7 +940,7 @@ def test_run_stage_dispatches_splitter_and_rejects_missing_source(monkeypatch) -
     )
     version = SimpleNamespace()
     attempt = SimpleNamespace(generation=3)
-    monkeypatch.setattr(worker, "_begin_attempt", lambda *_args: (attempt_id, "fence"))
+    monkeypatch.setattr(worker, "_begin_attempt", lambda *_args, **_kwargs: (attempt_id, "fence"))
     db = MagicMock()
     db.get.side_effect = [profile, version, attempt]
     _session_factory(monkeypatch, db)
@@ -996,7 +1004,12 @@ def test_invalid_data_fails_current_profile_without_retry(monkeypatch, current_a
     db.get.return_value = version
     _session_factory(monkeypatch, db)
 
-    worker._record_failure(profile.id, attempt.id, ValueError("Not enough distinct times"))
+    worker._record_failure(
+        profile.id,
+        attempt.id,
+        ValueError("Not enough distinct times"),
+        fencing_token=attempt.fencing_token,
+    )
 
     if current_attempt:
         assert attempt.status == AttemptStatus.FAILED
@@ -1008,12 +1021,17 @@ def test_invalid_data_fails_current_profile_without_retry(monkeypatch, current_a
         assert attempt.status == AttemptStatus.RUNNING
         assert profile.status == "running"
         db.get.assert_not_called()
-    db.commit.assert_called_once()
+    if current_attempt:
+        db.commit.assert_called_once()
+    else:
+        db.commit.assert_not_called()
 
 
 def test_temporal_split_rejects_missing_observation_times():
     with pytest.raises(ValueError, match="missing values"):
         worker._assign_temporal_split_batch(
             pa.table({"time": [1, None, 3]}),
-            time_column="time", validation_start=2, final_start=3,
+            time_column="time",
+            validation_start=2,
+            final_start=3,
         )

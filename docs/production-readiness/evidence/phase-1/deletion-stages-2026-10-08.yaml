@@ -1,0 +1,55 @@
+{
+  "date": "2026-10-08",
+  "status": "bounded_stage_recovery_verified_phase_incomplete",
+  "changes": [
+    "Persist runtime/object_store/prepared_store/metadata stages with project deletion; run deletion omits prepared_store",
+    "One stage per outbox delivery; existing outbox lease/retry owner; progress defers without spending failure budget",
+    "Legacy queued deletions persist missing stages before any side effect",
+    "Reject active workflow attempts and promotional scopes both at request and execution",
+    "Retain tombstone and completed stage history after metadata deletion"
+  ],
+  "checks": {
+    "gate-retention": {
+      "tests": 24,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "gate-migration": {
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "stages-regression": {
+      "tests": 210,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "test_scope": [
+    "Real PostgreSQL and embedded filesystem storage",
+    "Lost prepared-store deletion acknowledgement retried without repeating committed object-store deletion",
+    "Terminal model run with active attempt or scope rejected for both project/run deletion, before and after queueing",
+    "Kubernetes operations are test doubles"
+  ],
+  "limits": [
+    "Regression 210 passes precede four additional late-writer cases; final 24 integration cases pass, counts overlap",
+    "Not deployed to k3d",
+    "Cloud object versions, multipart remnants, external MLflow/spill/replicas/backups remain unqualified",
+    "Full phase and 45 GB migration gate remain incomplete"
+  ],
+  "source_sha256": {
+    "apps/api/automl_api/services/deletion.py": "42db82d723785f5574ddba4ff4a207683a5b865c622c78bb2c4d250e7cb5cfbd",
+    "apps/api/automl_api/services/reconciler.py": "f0c62ec5fd520777cf938e332fdf02ea3deecf62b0cf3a40669d6df3b158403f",
+    "tests/test_project_management_integration.py": "1833195c5af3c946d8ac46e4cfa942b9b25d809c018c2cb59b0c578171a79243"
+  },
+  "combined_regression": {
+    "tests": 234,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "environment_recovery": "First combined run: 210 passed, 24 setup errors because disposable PostgreSQL container was stopped. Restarted same existing container, confirmed head 0011, reran full suite: 234 passed."
+}

@@ -1,0 +1,72 @@
+{
+  "date": "2026-10-09",
+  "status": "native_rehearsal_passed_historical_qa_object_preservation_failed_phase_incomplete",
+  "image": "k3d-sceptre-registry.localhost:5111/sceptreai@sha256:c0ae5a3ba688eda3c6be07ae2fad5e3740cc8dd5b059358e850964fdc30891cc",
+  "build": "Normal Dockerfile.api with hash-locked dependencies; no source overlay",
+  "schema": {
+    "revision": "0011_preserve_deletion_evidence",
+    "verified_tables": 42,
+    "pre_migration_qa_database_backup_bytes": 222205
+  },
+  "native": {
+    "image": "k3d-sceptre-registry.localhost:5111/sceptreai@sha256:c0ae5a3ba688eda3c6be07ae2fad5e3740cc8dd5b059358e850964fdc30891cc",
+    "project_id": "e4bc7e3a-af0e-45f9-8e12-1d91e8684615",
+    "user_id": "c79fb957-403b-4969-914f-61bf0f374b1e",
+    "status": "passed",
+    "seeded_project_id": "e4bc7e3a-af0e-45f9-8e12-1d91e8684615",
+    "tombstone_id": "dcb50955-ef62-4f37-a71b-2cc6ad51f7f5",
+    "entry_id": "3c3cd310-c73b-497e-a54b-7810d0584157",
+    "completed_stages": 4,
+    "terminal_replays": 2,
+    "lost_ack_recovered": true,
+    "unrelated_projects_preserved": true,
+    "neighbor_preserved": true,
+    "object_fixtures_cleaned": true,
+    "process_exit": 0
+  },
+  "incident": {
+    "action": "Restarted qa-refit/refit-store after adding bucket-scoped List permission",
+    "cause": "The pre-existing deployment used emptyDir; the restart discarded its ephemeral storage",
+    "impact": {
+      "distinct_dataset_and_artifact_uris": 13,
+      "configured_store_uris": 13,
+      "missing_configured_store_uris": 13,
+      "other_store_uris": 0
+    },
+    "recovery_limit": "No object backup found in the inspected QA evidence directories. Historical objects have not been recovered; missing-reference counts are post-incident observations, not a pre/post byte inventory.",
+    "unaffected": "No mutation of the main sceptre namespace; QA database backed up before migration and retained",
+    "repair": {
+      "cause": "Restart of pre-existing emptyDir-backed QA store discarded ephemeral files",
+      "scope": "qa-refit/refit-store only",
+      "recovery": "No artifact backup found in QA local evidence directories; database backup retained",
+      "repair": "1Gi local-path PVC and Recreate strategy; bucket bootstrap pending",
+      "control_key": "qa-storage-recovery/7b690f6e8d18459e9c6ceb3b41c09ff9",
+      "bucket_recreated": true,
+      "persistence_restart_verified": true
+    },
+    "gate": "G7 abandoned because historical QA object preservation cannot be certified. G8 measures a new fixture on the repaired store; it does not erase the incident.",
+    "subsequent_recovery": {
+      "evidence": "qa-storage-partial-recovery-2026-10-09.yaml",
+      "verified_objects": 50,
+      "missing_objects": 7,
+      "metadata_unchanged": true
+    }
+  },
+  "limits": [
+    "Rehearsal invokes the actual deployed reconciler in a separate process with a scoped manual outbox claim; it does not prove multiworker scheduling or process death",
+    "Lost acknowledgement injected after real object deletion; runtime stage fixture contains no Kubernetes jobs",
+    "Historical QA artifact recovery and requalification remain open",
+    "Native Azure/GCS behavior, external resource-class deletion, 45 GB migration and full Phase 1 remain open"
+  ],
+  "source_sha256": {
+    "apps/api/automl_api/services/deletion.py": "42db82d723785f5574ddba4ff4a207683a5b865c622c78bb2c4d250e7cb5cfbd",
+    "apps/api/automl_api/services/reconciler.py": "7cd1a5296eb809c2e5e5ceb9ab4ef240ec449483cc8e0fc253440eb16abe0f90",
+    "apps/api/automl_api/services/uploads.py": "cf0f61cae56352afd8c59ff039b757e6cb6c8accd0c0ea8e7967453b58d57cc7",
+    "apps/api/automl_api/models/workflows.py": "ce9a3ca3608a722dc13e7ccee57f30d80f43343aea475bfc1dafdc67a2f914ea",
+    "apps/api/automl_api/storage/s3.py": "b1cc760b2f6825ec88c9166e11d7041f5e79fcaac74d24c16d55afaa5439f600",
+    "apps/api/automl_api/storage/gcs.py": "fa1da9835908cbab015f449852700df4f8f3703365a018561d9ea0795e68972b",
+    "apps/api/automl_api/storage/azure.py": "fcdf59099ed56d81176b99acc8f669ecd9156a8ede38f60c8febcfba2063b5e3",
+    "apps/api/automl_api/storage/contracts.py": "2c8e2ded613ecd15d13fa2d0fc2378fa5613f91a62e09b9a47b81d660e25f16c",
+    "alembic/versions/0011_preserve_deletion_evidence.py": "893607c0feee2b4e1fc4eb06eacb67b4859f57d322f92aea87cfcd9b43cfbc8d"
+  }
+}

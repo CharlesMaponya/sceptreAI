@@ -1,0 +1,36 @@
+{
+  "verified_at": "2026-10-11T16:28:34.430180+00:00",
+  "phase_complete": false,
+  "scope": "Durable intent and identity for parent, candidate and failure MLflow runs",
+  "changes": [
+    "Persist a project/run/attempt/role-scoped WorkflowCommand before any tracking creation; hash the backend identity and reject changed lineage.",
+    "Create remote runs with command, project, dataset, run, attempt, role and parent tags in the creation request.",
+    "Recover a visible run by command identity after a lost creation response; persist the remote ID before model work and resume it on replay.",
+    "Persist creation_started before sending the request. An uncertain request with no visible result is never blindly retried.",
+    "Reject duplicate matches, deleted/missing remote records and changed lineage. Candidate fallback does not treat unresolved tracking as a model error.",
+    "Prevent new tracking activity for a committed training result."
+  ],
+  "verification": {
+    "tests": 114,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "focused_tracking_cases": 13,
+  "test_environment": "Real PostgreSQL application state and isolated local MLflow SQLite stores; all parent/candidate/failure creation uses installed MLflow API. Lost acknowledgements are injected after store or database commit.",
+  "source_sha256": {
+    "apps/api/automl_api/training/pipeline.py": "bbc8caef2775cb74979c132bc3742902d50bb6cb5d3c151b7f9d707ee59fd737",
+    "tests/test_training_tracking.py": "afc476a8be6b3281395d269a4381d7ae72417eb908fb7e25fa0b613d744513b4",
+    "tests/test_training_pipeline_runtime.py": "13743a42e07fe48276897d8cbfe2627e3149e9d9be7f524f988140db429e67c0",
+    "tests/test_training_pipeline_edge_contracts.py": "b0c8d3eca3a24b26a7a2bcf7b1eb1fcb33e6f68545a23f1c87e3a3d75af42c68",
+    "tests/test_training_cancellation.py": "22588c3fad9e7ef9800f3566c537d791fd3205197edaade4272dee09fe323d03"
+  },
+  "limits": [
+    "Not deployed to k3d or qualified through a live MLflow HTTP proxy.",
+    "A concurrent caller may receive unresolved while the original request is pending; replay resolves it after the record appears.",
+    "Creation that remains uncertain with no visible run stops without retry. Automatic/operator reconciliation of this state remains to be implemented and qualified; this does not close full recovery requirements.",
+    "The worker still resumes records by MLflow run ID; logging/model registration calls already in flight are not externally fenced by these application locks.",
+    "Legacy untagged runs, backend relocation and complete MLflow artifact/model deletion remain open.",
+    "The 45 GB rehearsal requires another storage location; seven historical QA objects remain missing."
+  ]
+}

@@ -33,6 +33,7 @@ from automl_api.services.upload_policy import validate_upload_data_region, valid
 from automl_api.storage.contracts import (
     BeginUpload,
     CompletedObject,
+    DeletionPending,
     ProviderUpload,
     TransferCursor,
     TransferReceipt,
@@ -346,6 +347,10 @@ def cleanup_abandoned_uploads(
                 | (
                     (DatasetUploadSession.status == "quarantined")
                     & (DatasetUploadSession.quarantine_delete_after <= observed_at)
+                    & (
+                        DatasetUploadSession.lease_expires_at.is_(None)
+                        | (DatasetUploadSession.lease_expires_at <= observed_at)
+                    )
                     & (DatasetUploadSession.legal_hold.is_(False))
                 )
             )
@@ -366,8 +371,16 @@ def cleanup_abandoned_uploads(
                 continue
             previous_status = upload.status
             uri = upload.completed_object_uri
-            if uri and driver.exists(uri):
-                driver.delete(uri)
+            if uri:
+                try:
+                    driver.delete(uri)
+                except DeletionPending as exc:
+                    upload.lease_owner = None
+                    upload.lease_expires_at = observed_at + timedelta(
+                        seconds=exc.retry_after_seconds
+                    )
+                    upload.terminal_reason = str(exc)
+                    continue
             upload.status = "failed"
             if upload.dataset_version_id:
                 version = db.get(DatasetVersion, upload.dataset_version_id)

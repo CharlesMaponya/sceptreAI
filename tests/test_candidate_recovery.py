@@ -113,7 +113,10 @@ def test_pending_phase_is_initialized_without_overwriting_another_workers_progre
     initial.pop("phase")
     other = {**initial, "model": "Forest", "status": "running", "phase": "learning_curve"}
     run = SimpleNamespace(
-        id=uuid.uuid4(), status=RunStatus.RUNNING, tags={"leaderboard": [initial, other]}
+        id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        status=RunStatus.RUNNING,
+        tags={"leaderboard": [initial, other]},
     )
     db = MagicMock()
     monkeypatch.setattr(pipeline, "get_session_factory", lambda: lambda: db)
@@ -126,3 +129,35 @@ def test_pending_phase_is_initialized_without_overwriting_another_workers_progre
     assert run.tags["current_candidate"] == "Forest"
     assert run.tags["candidate_phase"] == "learning_curve"
     db.__enter__.return_value.commit.assert_called_once()
+
+
+def test_candidate_content_cannot_overwrite_a_committed_model(monkeypatch, tmp_path):
+    from automl_api.storage.embedded import EmbeddedObjectStoreDriver
+    from sklearn.linear_model import Ridge
+
+    run = SimpleNamespace(id=uuid.uuid4(), project_id=uuid.uuid4())
+    monkeypatch.setenv("AUTOML_ATTEMPT_ID", str(uuid.uuid4()))
+    store = EmbeddedObjectStoreDriver(root=tmp_path, bucket="models")
+    monkeypatch.setattr(pipeline, "get_object_store", lambda: store)
+    original_model = Ridge(alpha=1).fit([[1], [2], [3]], [2, 4, 6])
+    replacement_model = Ridge(alpha=100).fit([[1], [2], [3]], [2, 4, 6])
+    first = pipeline._persist_candidate_model(run, "Ridge", original_model)
+    original = store.read_bytes(first[0])
+    assert pipeline._persist_candidate_model(run, "Ridge", original_model) == first
+    second = pipeline._persist_candidate_model(run, "Ridge", replacement_model)
+    assert second[0] != first[0]
+    assert store.read_bytes(first[0]) == original
+    recovered = pipeline._restore_candidate(
+        run,
+        {
+            "model_artifact_uri": first[0],
+            "model_artifact_sha256": first[1],
+        },
+    )
+    assert recovered["_model"].predict([[4]]).tolist() == pytest.approx(
+        original_model.predict([[4]]).tolist()
+    )
+    assert recovered["_model"].predict([[4]]).tolist() != pytest.approx(
+        replacement_model.predict([[4]]).tolist()
+    )
+    assert hashlib.sha256(store.read_bytes(second[0])).hexdigest() == second[1]

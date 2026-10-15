@@ -12,10 +12,12 @@ import numpy as np
 import pandas as pd
 import pyarrow.dataset as pa_dataset
 
+from automl_api.core.redaction import redact_text
 from automl_api.db.session import get_session_factory
 from automl_api.models.datasets import DatasetVersion
 from automl_api.models.enums import (
     ArtifactKind,
+    AttemptStatus,
     MetricKind,
     MetricSplit,
     RunKind,
@@ -23,8 +25,15 @@ from automl_api.models.enums import (
     TaskType,
 )
 from automl_api.models.runs import Metric, ModelRun, RunArtifact
+from automl_api.models.workflows import WorkflowAttempt
+from automl_api.services.workflow_state import (
+    StaleFence,
+    cas_register_terminal_artifact,
+    transition_attempt,
+)
 from automl_api.storage.object_store import get_object_store
 from automl_api.training.analysis_sampling import sample_source
+from automl_api.training.attempt_admission import admit_parent, proof_deadline
 from automl_api.training.evaluation import (
     classification_evaluation,
     clustering_evaluation,
@@ -40,24 +49,34 @@ from automl_api.training.feature_importance import (
 from automl_api.training.pipeline import (
     _bound_split_revision,
     _load_dataframe,
+    _locked_run,
     _normalize_temporal_features,
     _persist_candidate_model,
     _ray_source,
     rebuild_candidate_model,
 )
+from automl_api.training.worker import _fenced_attempt_context, _require_parent_lease
+
+
+def _analysis_run(db, run_id):
+    if _fenced_attempt_context() is not None:
+        return _locked_run(db, run_id)
+    return db.get(ModelRun, run_id, with_for_update=True, populate_existing=True)
 
 
 def execute_analysis_run(run_id: uuid.UUID) -> dict[str, Any]:
     session_factory = get_session_factory()
     with session_factory() as db:
-        run = db.get(ModelRun, run_id)
+        run = _analysis_run(db, run_id)
         if run is None:
             raise ValueError(f"Analysis run {run_id} was not found.")
         version = db.get(DatasetVersion, run.dataset_version_id)
         if version is None:
             raise ValueError("Analysis dataset version was not found.")
+        if run.status not in {RunStatus.QUEUED, RunStatus.PRECHECK_RUNNING, RunStatus.RUNNING}:
+            raise StaleFence("The analysis run no longer admits computation.")
         run.status = RunStatus.RUNNING
-        run.started_at = datetime.now(UTC)
+        run.started_at = run.started_at or datetime.now(UTC)
         db.commit()
 
     try:
@@ -71,6 +90,8 @@ def execute_analysis_run(run_id: uuid.UUID) -> dict[str, Any]:
             raise ValueError(f"Unsupported analysis kind: {run.run_kind.value}")
         _persist_analysis_result(run_id, result)
         return result
+    except StaleFence:
+        raise
     except Exception as exc:
         _mark_analysis_failed(run_id, exc)
         raise
@@ -649,16 +670,30 @@ def _persist_analysis_result(
     run_id: uuid.UUID,
     result: dict[str, Any],
 ) -> None:
-    payload = json.dumps(result, default=_json_default).encode("utf-8")
+    context = _fenced_attempt_context()
+    proof = admit_parent(context)
+    payload = json.dumps(result, default=_json_default, sort_keys=True, allow_nan=False).encode(
+        "utf-8"
+    )
+    digest = hashlib.sha256(payload).hexdigest()
     with get_session_factory()() as db:
-        run = db.get(ModelRun, run_id)
+        run = _analysis_run(db, run_id)
         if run is None:
             return
+        if run.status not in {RunStatus.QUEUED, RunStatus.PRECHECK_RUNNING, RunStatus.RUNNING}:
+            previous = run.tags.get("analysis_result_receipt") or {}
+            if run.status == RunStatus.SUCCEEDED and previous.get("digest") == digest:
+                return
+            raise StaleFence("The analysis result can no longer change this run.")
+        proof_deadline(proof)
+        if proof is not None and proof["project_id"] != str(run.project_id):
+            raise StaleFence("Analysis admission belongs to another project.")
         suffix = {
             RunKind.EXPLAINABILITY: "shap.json",
             RunKind.DRIFT: "drift.json",
         }.get(run.run_kind, "external-validation.json")
-        key = f"projects/{run.project_id}/runs/{run.id}/{suffix}"
+        attempt_path = f"attempts/{context[0]}/" if context else ""
+        key = f"projects/{run.project_id}/runs/{run.id}/{attempt_path}{digest}-{suffix}"
         stored = get_object_store().put_bytes(key, payload)
         artifact_kind = {
             RunKind.EXPLAINABILITY: ArtifactKind.SHAP_VALUES,
@@ -671,7 +706,7 @@ def _persist_analysis_result(
                 kind=artifact_kind,
                 name=suffix,
                 object_uri=stored.uri,
-                content_hash=hashlib.sha256(payload).hexdigest(),
+                content_hash=digest,
                 byte_size=len(payload),
                 artifact_metadata={
                     "source_training_run_id": run.params.get("source_training_run_id"),
@@ -705,14 +740,33 @@ def _persist_analysis_result(
             "diagnostics": result.get("diagnostics", {}),
             "feature_importance": result.get("feature_importance", []),
             "artifact_uri": stored.uri,
+            "analysis_result_receipt": {
+                "attempt_id": str(context[0]) if context else None,
+                "digest": digest,
+                "artifact_uri": stored.uri,
+            },
         }
+        if context is not None:
+            attempt = db.get(WorkflowAttempt, context[0])
+            proof_deadline(proof)
+            _require_parent_lease(attempt)
+            if not cas_register_terminal_artifact(
+                db,
+                attempt_id=context[0],
+                fencing_token=context[1],
+                expected_cas_version=attempt.terminal_cas_version,
+                checkpoint_uri=stored.uri,
+            ):
+                raise StaleFence("Analysis terminal publication CAS was rejected.")
         run.status = RunStatus.SUCCEEDED
         run.finished_at = datetime.now(UTC)
         db.commit()
 
 
 def _mark_analysis_failed(run_id: uuid.UUID, exc: Exception) -> None:
-    message = str(exc)
+    if isinstance(exc, StaleFence):
+        return
+    message = redact_text(str(exc))
     lower = message.lower()
     if "column" in lower or "feature" in lower:
         remediation = (
@@ -735,9 +789,24 @@ def _mark_analysis_failed(run_id: uuid.UUID, exc: Exception) -> None:
             "and the selected model artifact."
         )
     with get_session_factory()() as db:
-        run = db.get(ModelRun, run_id)
-        if run is None:
+        run = _analysis_run(db, run_id)
+        if run is None or run.status not in {
+            RunStatus.QUEUED,
+            RunStatus.PRECHECK_RUNNING,
+            RunStatus.RUNNING,
+        }:
             return
+        context = _fenced_attempt_context()
+        if context is not None:
+            attempt = db.get(WorkflowAttempt, context[0])
+            _require_parent_lease(attempt)
+            transition_attempt(
+                attempt,
+                AttemptStatus.FAILED,
+                fencing_token=context[1],
+                terminal_reason=message[:2000],
+                expected_cas_version=attempt.terminal_cas_version,
+            )
         run.status = RunStatus.FAILED
         run.failure_code = "ANALYSIS_FAILED"
         run.failure_message = message[:4000]

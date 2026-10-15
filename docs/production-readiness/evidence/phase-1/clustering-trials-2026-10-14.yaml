@@ -1,0 +1,30 @@
+{
+  "verified_at": "2026-10-14T17:05:19.039193+00:00",
+  "phase_complete": false,
+  "scope": "Durable clustering parameter evaluation",
+  "changes": [
+    "Enroll and lease each clustering parameter set before lazy fold preparation and fitting. Reuse prepared folds within an invocation.",
+    "Bind estimator parameters, full parameter sweep, CV specification, accelerator and external-evaluation flag to immutable trial identity.",
+    "Replay committed fold metrics, means and standard deviations; reject changed contracts or stale parent ownership. Preserve existing model failure and final-fit semantics."
+  ],
+  "verification": {
+    "tests": 72,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "focused_cases": 5,
+  "environment": "Real PostgreSQL, actual KMeans and AgglomerativeClustering, correlation filtering, preprocessing and clustering metrics. External tracking and artifacts are mocked. No current-image k3d or GPU hardware qualification.",
+  "source_sha256": {
+    "apps/api/automl_api/training/pipeline.py": "f8c48f1dfb6e4eb948b7162afdf7bf102e0614f9795782eab5ce257817431063",
+    "apps/api/automl_api/training/trial_runtime.py": "12e721adebfda6bfad13b751460e020d4d5f12e1395967b2bd31088cacb7268e",
+    "apps/api/automl_api/services/training_trials.py": "c856e2a248c53a8654bf144f12c993a26134e7617f619b2868cffc530d26ca0a",
+    "tests/test_clustering_trials.py": "d12170aa2238e457b7ffd7c1c00e1020b36c98073742f9765d1ff23fe6d8824f"
+  },
+  "limits": [
+    "Final full-data model fitting and external candidate side effects remain outside CV receipts.",
+    "GPU clustering uses the adapter but was not tested on GPU hardware. Supervised GPU CV/search, standalone Tune and production Train enrollment remain pending.",
+    "Signed grants, predecessor result/checkpoint adoption and durable child recovery remain open.",
+    "All four broader trial-ownership gates and all 36 Phase 1 requirements remain open. The 45 GB migration rehearsal and current-image qualification remain pending; seven historical QA objects remain missing."
+  ]
+}

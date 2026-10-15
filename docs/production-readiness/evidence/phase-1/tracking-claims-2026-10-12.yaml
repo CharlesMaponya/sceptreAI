@@ -1,0 +1,38 @@
+{
+  "verified_at": "2026-10-12T06:36:28.565811+00:00",
+  "phase_complete": false,
+  "scope": "Tracking reconciliation claims under PostgreSQL contention",
+  "changes": [
+    "Replace unlocked limited ID scan followed by separate locks with a joined command/run claim using FOR UPDATE OF both rows SKIP LOCKED, LIMIT 1.",
+    "Commit each lookup separately and bound claimed work by the requested batch limit.",
+    "Join by resource ID and project so missing application runs cannot occupy the eligible batch.",
+    "Retain remote read-only recovery, lineage/backend validation, delayed bounded lookups and caller failure isolation."
+  ],
+  "verification": {
+    "tests": 34,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "passing_runs": 2,
+  "negative_controls": [
+    "Run-row lock with batch limit 1 returned zero despite eligible work behind it.",
+    "Command-row lock caused real PostgreSQL lock_timeout under a 200 ms test bound.",
+    "Missing application-run row caused batch limit 1 to repeatedly select the orphan and return zero."
+  ],
+  "positive_controls": "With each obstruction, later eligible work succeeds while the first command remains pending with unchanged retry count. After releasing locks the original command succeeds. Repeated passes create no remote runs.",
+  "environment": "Real PostgreSQL transactions and isolated local SQLite MLflow stores; existing concurrent two-reconciler and worker-loop tests included.",
+  "source_sha256": {
+    "apps/api/automl_api/services/tracking_reconciliation.py": "88c192d1da7b5a190c92cb3986691b8726b2940d36dbc02e61b45fdf46328a1f",
+    "apps/api/automl_api/workflow_reconciler.py": "528a859e96889f646e4def3443ef19cfb10930c9887ab8d24108ea7e66848baf",
+    "tests/test_training_tracking.py": "55a0b42179a3dee0972addeb7f1750e77299cd2de239b854e005d0d96e5b6760",
+    "tests/test_phase1_reconciler_worker.py": "dc7679ea55bc12e4680f7c02ebd81f349a3590ff3720ee0722325566abd22242"
+  },
+  "limits": [
+    "Current worktree not deployed; native replica fairness, scale and remote provider qualification remain open.",
+    "Application run deletion still leaves tracking history needing scoped recovery/deletion; the join avoids queue starvation but does not repair that history.",
+    "Database row locks remain held during remote lookup; remote outage latency is not newly qualified.",
+    "45 GB migration needs additional storage; seven historical QA objects remain missing and original preservation gate remains abandoned.",
+    "All 36 broad Phase 1 requirements remain open."
+  ]
+}

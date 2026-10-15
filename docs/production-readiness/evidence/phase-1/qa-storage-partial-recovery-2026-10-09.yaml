@@ -1,0 +1,75 @@
+{
+  "date": "2026-10-09",
+  "status": "partial_byte_verified_qa_recovery_not_full_recovery",
+  "origin": "QA emptyDir store was discarded during the agent permission rollout; original preservation gate G7 remains abandoned",
+  "inventory_scope": [
+    "Dataset-version objects",
+    "Stored refit-policy train/validation partitions",
+    "Leaderboard candidate models",
+    "Workflow checkpoints",
+    "Refit/evaluation output intents"
+  ],
+  "projects": 13,
+  "references": 57,
+  "verification": {
+    "verified_objects": 50,
+    "missing_objects": 7,
+    "metadata_unchanged": true,
+    "output_intents_included": true
+  },
+  "metadata_sha256": "c7beb9e4e7e0e4c07ecd7b6fd13484a81707c4fe9f404b4a5057b99174ea89b6",
+  "metadata_tables": [
+    "projects",
+    "dataset_versions",
+    "model_runs",
+    "promotional_scopes",
+    "workflow_checkpoints",
+    "workflow_attempts",
+    "workflow_events"
+  ],
+  "unrecovered": [
+    {
+      "uri": "s3c://refit-data/projects/f888d5f0-49b7-4962-8809-8297f232f4a2/scopes/b8d9128c-d974-4d88-a39c-03ccb11edbb1/refit/ba8df8de-0138-4b84-b41e-2e32e7e837f8/a5a43bb928428eca72e8a37ce5f9a553b224e4c36e82c8a6a1fb478c6b4c6bcc/pipeline.joblib",
+      "sha256": "a5a43bb928428eca72e8a37ce5f9a553b224e4c36e82c8a6a1fb478c6b4c6bcc"
+    },
+    {
+      "uri": "s3c://refit-data/projects/88706629-c0e9-4955-b26a-55c8353f62b2/scopes/aa9d972a-fcc1-4d0b-8461-f2c45de985a3/refit/db027ea1-faa8-4643-ad36-ac39a6f4ba80/a5a43bb928428eca72e8a37ce5f9a553b224e4c36e82c8a6a1fb478c6b4c6bcc/pipeline.joblib",
+      "sha256": "a5a43bb928428eca72e8a37ce5f9a553b224e4c36e82c8a6a1fb478c6b4c6bcc"
+    },
+    {
+      "uri": "s3c://refit-data/projects/3e553b45-307a-465c-8868-490c6662b4ec/scopes/679f7983-b7d8-4813-83b6-70a7d9037c76/evaluation/a2c139f6-51df-4ba3-8a21-e2df852b9d34/e5662ec92469e4381bd298c660a42a2c0f93f2853879ed8fdc8f6833e2152ca1/result.json",
+      "sha256": "e5662ec92469e4381bd298c660a42a2c0f93f2853879ed8fdc8f6833e2152ca1"
+    },
+    {
+      "uri": "s3c://refit-data/projects/e65dd7b1-71d3-4c48-a358-b9053e78c742/scopes/12c1d03a-ce87-4a65-82dc-c8f0876b86bf/evaluation/f1768dd9-11cc-4c5b-b1bb-de30a7890a47/264952af72cbc8cc93a4ea0c599a8dcedcaa668088bc82d465f9d407ec5b3231/result.json",
+      "sha256": "264952af72cbc8cc93a4ea0c599a8dcedcaa668088bc82d465f9d407ec5b3231"
+    },
+    {
+      "uri": "s3c://refit-data/projects/46b3c5bb-5c8e-42c6-8f6f-fb1239ce4720/scopes/46180026-3b13-463e-84d0-885c7f4a9ace/evaluation/ce37bc4c-0742-4c13-bfdc-23c98e347c98/e6e1cd9b408c4b4c669adae26bc0c3647e7ecf15fae06a70bd7a9af8246d2745/result.json",
+      "sha256": "e6e1cd9b408c4b4c669adae26bc0c3647e7ecf15fae06a70bd7a9af8246d2745"
+    },
+    {
+      "uri": "s3c://refit-data/projects/52a3bdd3-7171-468a-a480-317eb2b778e8/scopes/8a920c75-a8ae-4960-9c23-531f6aa03551/evaluation/a51b360c-64a2-4e93-bc5f-cc38d51a7772/7f5e6be1075950097ccab1636986f2ad5c9590ea3a65249ac5469d85948d52f9/result.json",
+      "sha256": "7f5e6be1075950097ccab1636986f2ad5c9590ea3a65249ac5469d85948d52f9"
+    },
+    {
+      "uri": "s3c://refit-data/projects/6c319aa1-0d8a-4b42-a443-ad97c6c4c64e/scopes/dab04e24-3013-490a-af38-2e07084fff40/evaluation/ee00134f-48d4-47f8-a968-725ba7fb81aa/97aef76d9cb3a0487c6dcab223b70a37fe2cf2ed2d8ef5b5cbf10835bad3c515/result.json",
+      "sha256": "97aef76d9cb3a0487c6dcab223b70a37fe2cf2ed2d8ef5b5cbf10835bad3c515"
+    }
+  ],
+  "method": [
+    "Regenerated original deterministic synthetic fixture bytes from scripts/validate_refit_workload.py",
+    "Wrote only payloads with SHA-256 identical to pre-existing database records and verified downloaded bytes",
+    "Rechecked all referenced objects and metadata after a later host/cluster restart",
+    "Original slow-model refit plan was executed offline in the original image; result digest differed, so those bytes were not restored",
+    "No evaluator-scoped signing Secrets remain in qa-refit; signed-result bytes were not recovered or regenerated"
+  ],
+  "limits": [
+    "Two fitted pipeline objects and five signed result objects remain missing",
+    "Preservation of pre-incident QA object history was not achieved; restoring some bytes does not erase that failure",
+    "No new final-data reads, allocations, receipts or durable attempt records were created for recovery",
+    "Unreferenced historical objects cannot be inventoried from the retained database",
+    "Phase 1 is incomplete"
+  ],
+  "fixture_source_sha256": "cb2be3c8d455c9cd8d463401f79126272e1601aa94583f1d327ffc9a7c93e38a"
+}

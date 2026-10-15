@@ -846,3 +846,422 @@ Review identified twelve other enum-backed defaults whose lowercase values the c
 Reproduced all twelve remaining default-read failures against PostgreSQL, then generalized the storage mapping into `StoredEnum`. The affected columns now accept known enum names and values while retaining original write spelling and column widths. Literal equality/inequality and IN/NOT IN filters include both spellings, so reconcilers and status queries do not silently miss legacy rows. Existing value-based workflow/authority enum mappings remain unchanged.
 
 The 637-test regression run passed **all 625 preexisting tests** and eight new cases. Four new cases hit VARCHAR(6) before reaching the intended invalid-enum check; shortening only that fixture value resolved them. The final **12-case default/filter suite passed**, including all enum members, unknown read/write/filter rejection, NULL and empty IN behavior. No clean 637-test single run is claimed. Schema verification and Alembic checks pass; Ruff/diff checks pass. Gates remain **2 met / 5 unmet / 0 abandoned**. [Evidence](evidence/phase-1/enum-defaults-2026-10-06.yaml) preserves the failures and final checks. Previous-release binaries, deployment and the other Phase 1 requirements remain unqualified.
+
+### 2026-10-07 — recover an operator-aborted evaluator handoff
+
+An operator could seal an unregistered allocation with a reason different from the controller’s fixed reason. The controller then retried forever on an idempotency conflict. Six real-authority/controller cases reproduced this across allocation, refit and evaluator-registration crash boundaries, with both expiry and cancellation. The controller now recovers the original signed abort after a conflict, validating its allocation/scope/manifest/CAS, request digest and signature. It preserves the original reason and does not rewrite the receipt.
+
+**35 focused tests and 650 regression tests passed**, with no failures/errors/skips. The final regression includes two terminal replays, unchanged receipt checks, no evaluator registration or workloads, and seven tampered/missing/duplicate evidence cases. An interim test expected the wrong local event for handoffs with an existing evaluator plan; it was corrected to check the actual event and original receipt. [Evidence](evidence/phase-1/prior-abort-recovery-2026-10-07.yaml) preserves all results. Native k3d qualification and the full Phase 1 gate remain open.
+
+### 2026-10-07 — champion contract gates audited and reconnected
+
+Three gate commands still named aggregate test files that did not exist. Reviewed the actual source and assertion bodies before mapping them to explicit suites. Refit checks verify preregistered rows, sealed policy, unchanged selection on retry, stale publication rejection and one frozen checkpoint. Evaluation checks verify frozen inference, signed immutable results, lost acknowledgements, stored-output recovery and no second grant/read. Scheduling checks cover the application loop, exact membership barrier, separate durable Job submissions, replacement fences and stale-worker rejection.
+
+Fresh gate runs passed **61 refit**, **87 evaluation** and **146 reconciliation tests**, all without failures/errors/skips; these suites overlap. The champion ledger is now **5 met / 2 unmet / 0 abandoned**. [Audit evidence](evidence/phase-1/champion-contract-audit-2026-10-07.yaml) maps each gate to concrete assertions and preserves source/test hashes. English gate requirements were retained.
+
+These contract suites use real PostgreSQL, actual model execution and local HTTPS/authority flows where applicable, plus Kubernetes API doubles. They do not substitute for native Kubernetes/network qualification. G5’s remaining live matrix and G6’s final integration audit stay open, as do the separate Phase 1 ledger and 45 GB database qualification. Current host free space is about 22 GiB.
+
+## Phase 1 current image and native commit-fault preparation
+
+The normal API Dockerfile now builds the current source and locked dependencies; `.unlazy` is excluded from its build context. Image imports and selected source hashes were verified before deploying its immutable amd64 digest to the QA API and authority. The QA-only commit-fault proxy has seven passing local checks. Native stored-result recovery and lost-commit-reply recovery both passed on separate ten-row synthetic scopes on 2026-10-07/08. Each worker exited after the intended dropped connection, and the controller recovered the verified stored result with exactly one grant and one commit, complete cleanup and two terminal replays. The first probe needed QA pod-log read permission; it resumed the original scope without reseeding.
+
+The rollout caused shared-host disk pressure, interrupting existing MLflow and QA databases. All existing deployments and QA services recovered after removing selected unused API build cache and allowing Kubernetes to clear disk pressure. Verified TLS readiness checks pass for the QA API and authority. Application volumes and images were retained; eviction safeguards remain enabled. The [current image and fault record](evidence/phase-1/current-image-commit-fault-2026-10-07.yaml) records this limitation. This qualifies those two bounded failure cases; the full training journey, other native boundaries and whole-phase completion remain open. The user’s 45 GB migration qualification ceiling remains an unexecuted gate.
+
+## Phase 1 deletion evidence retention
+
+Project deletion previously erased its own tombstone and stage history through both explicit table cleanup and cascading project foreign keys. The cleanup now retains those two tables and records completion. Migration `0011_preserve_deletion_evidence` preserves their historical project IDs and retains the composite stage-to-tombstone tenant constraint. Run-deletion replay also preserves the original completion timestamp. Downgrade fails without changing data when retained evidence references a removed project.
+
+The PostgreSQL baseline reproduced the lost tombstone. The fix passes all 14 project-management integration tests, 23 migration tests and 267 related regression tests, with no skipped cases. These counts overlap. This change has not been deployed to k3d; its current API image remains on the prior schema. Full resource-class deletion stages, external-store and backup cleanup, the 45 GB rehearsal, and Phase 1 completion remain open.
+
+All ten prior schema revisions also passed rehearsal to head 0011, including 10,000 upload metadata rows at each of seven upload-capable starts, preserved row fingerprints, the 42-table schema verifier and Alembic drift checks. See [deletion retention evidence](evidence/phase-1/deletion-retention-2026-10-08.yaml). This bounded rehearsal does not qualify the 45 GB target.
+
+## Phase 1 durable deletion stages
+
+Project/run deletion now records its existing runtime, object-store and metadata work as durable stages; projects also record prepared-store cleanup. Each outbox delivery completes one stage and defers through the existing worker transaction without consuming the failure budget. Old queued requests first persist missing stages. A lost prepared-store deletion acknowledgement retries that stage without repeating committed object-store cleanup. Active attempts and promotional scopes block deletion both at admission and before each stage, even when their model run is terminal.
+
+The final 24 PostgreSQL integration cases pass; 210 related regression cases passed before four additional late-writer checks. Counts overlap. See [stage recovery evidence](evidence/phase-1/deletion-stages-2026-10-08.yaml). Kubernetes calls remain doubled in these checks, and this change is not deployed. Cloud object versions, multipart remnants, external MLflow/spill/replica/backup cleanup and the broader Phase 1 gates remain open.
+
+## Phase 1 S3 prefix deletion
+
+S3-compatible and AWS S3 prefix cleanup now removes explicit object versions and delete markers, aborts multipart uploads, verifies part removal and checks that the targeted listings become empty. It drains bounded first pages so deletion cannot invalidate a saved pagination marker, and fails if the provider denies deletion or reports no progress. It does not bypass retention controls.
+
+All 20 storage checks passed. A verified-TLS local SeaweedFS test removed two versions, a marker and an unfinished multipart upload, preserved an adjacent prefix and passed two replays. The current driver source was injected into the existing QA process for this probe; no rebuilt application image was deployed. See [S3 prefix evidence](evidence/phase-1/s3-prefix-deletion-2026-10-08.yaml). Exact-object artifact cleanup, Azure/GCS history, actual AWS IAM/retention, external replicas/backups and whole-phase qualification remain open.
+
+Final combined deletion/reconciler/operations/storage regression: **234 passed, no failures, errors or skips**. An earlier invocation had 24 setup errors because the disposable PostgreSQL container was stopped; all 234 passed in one run after restarting that same test database and verifying its schema revision.
+
+## Phase 1 exact-object deletion
+
+S3 artifact and expired-upload cleanup now reuse the prefix cleanup implementation with exact-key filtering across SDK pages. Upload cleanup always requests deletion for a recorded URI, including when a delete marker hides the current object. Missing-object deletion is also idempotent for Azure and GCS; authorization and other errors still propagate.
+
+All 40 storage/upload-service checks pass. A verified-TLS local SeaweedFS probe removed the target’s two versions, marker and multipart upload while preserving suffix, child and adjacent-project keys, then passed two replays and cleaned its test data. See [exact-object deletion evidence](evidence/phase-1/exact-object-deletion-2026-10-08.yaml). This does not qualify Azure/GCS historical versions, cloud retention/replication/backups, the 45 GB migration or a newly deployed application image.
+
+Final combined deletion, reconciliation, operations, storage and upload-service regression: **254 passed, no failures, errors or skips**.
+
+
+## Phase 1 GCS generations and retention waits
+
+GCS exact-key and prefix deletion now drain bounded batches of generation-pinned objects and check for soft-deleted history. Retained history keeps metadata and tombstones pending. The existing outbox retries after an hour without consuming its failure budget; expired and quarantined uploads also defer while allowing other cleanup rows to advance. Authorization errors, missing-policy listing errors and lack of deletion progress remain failures, never evidence of complete deletion.
+
+All **63 focused checks** and **270 combined regression checks** passed, with no failures, errors or skips; counts overlap. PostgreSQL cases exercise 32 retention deliveries for both project and run deletion and limit-one upload cleanup across three statuses. See [GCS retention evidence](evidence/phase-1/gcs-retention-deletion-2026-10-09.yaml). Native GCS configuration behavior, Azure history, external replicas/backups and a deployed-image rehearsal remain open. The 45 GB migration target is recorded; current free disk cannot safely accommodate the database plus migration overhead and the cluster’s reserve. Phase 1 remains incomplete.
+
+
+## Phase 1 Azure deletion history
+
+Azure exact-key and prefix cleanup now enumerate versions, snapshots, soft-deleted entries and uncommitted blobs. Deleting a current blob is followed by another pass to remove its demoted version. Snapshot and prior-version deletions use their individual identities; retained entries keep the request pending through the existing retention retry path. No policy changes or permanent-delete bypass are used.
+
+All **63 focused checks** and **278 combined regression checks** passed with no failures, errors or skips; counts overlap. The SDK contract fixtures cover more than 1,000 versions, replay, neighboring objects, retention expiry and provider failure cases. See [Azure history evidence](evidence/phase-1/azure-history-deletion-2026-10-09.yaml). Native Azure/GCS qualification, a rebuilt/deployed image, external replicas/backups, the 45 GB migration and broader Phase 1 requirements remain open.
+
+
+## Phase 1 native deletion rehearsal and QA storage incident
+
+The normal API image `sha256:c0ae5a3ba688eda3c6be07ae2fad5e3740cc8dd5b059358e850964fdc30891cc` is deployed only in `qa-refit`. The QA database was backed up, migrated to `0011_preserve_deletion_evidence`, and passed the 42-table schema verifier. Running source hashes match the worktree. A new native PostgreSQL/S3-compatible fixture passes four durable stages, recovery after a lost object-deletion acknowledgement, two terminal replays, retained tombstone/stage evidence, and neighboring-object preservation. This is not process-death or multiworker qualification.
+
+**QA incident:** while correcting the application identity’s missing bucket-scoped listing permission, the agent restarted `qa-refit/refit-store` without first checking its volume type. The existing deployment used `emptyDir`, so the restart discarded that ephemeral store. A subsequent inventory found 13 distinct historical dataset/artifact URIs in the QA database, all missing from the configured store. This is a post-incident inventory; no before/after byte inventory exists. No artifact backup was found in the inspected QA evidence directories. The main namespace was not modified, and the QA database remains intact.
+
+The QA store now uses a 1 GiB PVC with a Recreate rollout strategy. Its recreated bucket has versioning enabled, the application has bucket-scoped listing permission, and a control object survived a further store restart. This repair does not recover the historical objects. The original preservation gate G7 is abandoned and requires handoff; G8 records only the new rehearsal on the repaired store. Historical fixture recovery/requalification and Phase 1 completion remain open. See [native evidence and incident record](evidence/phase-1/native-deletion-and-qa-storage-incident-2026-10-09.yaml).
+
+
+## QA fixture recovery after the storage incident
+
+Expanded inspection found **57 distinct object references across 13 synthetic projects**, including partitions, candidate models, checkpoints and output intents. **50 objects were reconstructed and restored only after matching their original database SHA-256 records.** Downloaded-byte verification and a fingerprint of seven workflow tables passed again after a later host/cluster restart. All 13 dataset-version objects are among the restored objects.
+
+**Seven objects remain missing:** two fitted pipeline objects and five signed evaluation-result files. Offline execution of the original slow refit plan produced different model bytes, which were not substituted. No evaluator-scoped signing Secrets remain, and no final-data evaluation or receipt was repeated. G7 remains abandoned; G9 verifies only the bounded partial recovery and its remaining-reference inventory. This does not establish complete historical recovery or Phase 1 readiness. See [partial recovery evidence](evidence/phase-1/qa-storage-partial-recovery-2026-10-09.yaml).
+
+
+## Phase 1 training action replay
+
+Restart and add-model actions now persist the complete response, including parent/child links, through the existing durable mutation helper. Replays return before checking mutable dataset storage, estimator catalogs or completed leaderboards. Earlier launch-only records remain usable when their stored lineage and request fields match. Parent tags are refreshed under a row lock before merging links. Overlong generated model-selection keys are hashed; existing short keys retain replay compatibility.
+
+All **14 PostgreSQL-backed action checks** and **87 existing training/schema/route checks** passed without failures, errors or skips. Two-connection tests cover identical requests, conflicting tuning and different model additions. The new tests stub runtime launch; they do not qualify Kubernetes submission, process death or a full training journey. See [training replay evidence](evidence/phase-1/training-action-replay-2026-10-09.yaml). These changes are not yet deployed to k3d.
+
+Phase 1 remains incomplete. The 45 GB migration still exceeds available host storage before overhead and cluster reserve. External MLflow deletion, other provider/native failure tests and seven missing historical QA objects remain open.
+
+
+## Phase 1 replay authorization
+
+Cached durable-command and contract-command responses could bypass project permissions because the check ran only inside the new-command callback. Both shared entry points now verify current project permissions before command lookup or creation. Deployment, project cleanup and monitoring ingestion retain their admin requirement; other durable mutation callers require editor access.
+
+All **24 focused authorization checks** and **250 regression checks** passed without failures, errors or skips. PostgreSQL tests cover outsiders, revoked and expired membership, insufficient roles, and authorized replay. HTTP cleanup tests verify that viewers/editors receive 403 without private response data while admins replay without executing cleanup again. The audit covers all 14 durable mutation callers and both contract-helper call sites. See [replay authorization evidence](evidence/phase-1/replay-authorization-2026-10-09.yaml).
+
+These fixes remain local to the branch and are not deployed to k3d. Phase 1 remains incomplete; malformed idempotency headers, the broader runtime failure matrix, the 45 GB migration, external deletion coverage and historical QA recovery remain outstanding.
+
+
+## Phase 1 idempotency header boundary
+
+All 21 documented `Idempotency-Key` header parameters now enforce the database's 255-character limit and reject empty or whitespace-only values. Valid values are preserved exactly, and the estimate endpoint still accepts an omitted key when a reservation is not requested.
+
+All **41 boundary and route checks** pass without failures, errors or skips; 19 overlap the replay-authorization regression suite. Tests exercise each real endpoint annotation through FastAPI and reconcile the tested set with OpenAPI. See [header validation evidence](evidence/phase-1/idempotency-headers-2026-10-09.yaml). The fix is not yet deployed to k3d and does not complete Phase 1.
+
+
+## Phase 1 outbox delivery ownership
+
+The reconciler previously checked the outbox owner only after invoking an external handler. It now locks and refreshes the claim before dispatch, rejects expired or superseded ownership, and skips deleted or completed entries. Upload verification rechecks ownership before heartbeat renewal and terminal publication after releasing its transaction. A stale worker cannot extend the replacement lease or turn an ownership error into a scanner quarantine.
+
+All **14 focused PostgreSQL cases** and **190 regression checks** passed without failures, errors or skips. Tests cover actual claim takeover through another connection, stale ORM state, lock-held competition, two terminal replays and upload ownership changes at both commit boundaries. See [delivery ownership evidence](evidence/phase-1/outbox-delivery-fence-2026-10-10.yaml). These changes are not deployed to k3d and do not prove recovery from every external request already in flight at database loss.
+
+That audit also identified process-local profiling scheduling and unconditional startup resets. The following increment replaces that path. The unused generic attempt claimer and native worker recovery still require qualification; Phase 1 remains incomplete.
+
+## Phase 1 durable local profiling
+
+Local profiling now enqueues its command and outbox delivery in the same transaction as the job. The reconciler owns execution, renews the lease during computation and checks the exact delivery before every checkpoint and dispatcher outcome. Legacy recovery backfills missing commands without resetting running jobs. Artifact paths are unique to each execution, and retries reuse committed feature checkpoints.
+
+All **13 focused PostgreSQL cases and 171 regression checks** passed without failures, errors or skips. Coverage includes real CSV processing, existing Excel metadata-only behavior, actual claim takeover, same-worker replacement, operator replay after counter reset, cancellation, heartbeat renewal, exhausted retries and two completed replays. See [local profiling evidence](evidence/phase-1/local-profiling-delivery-2026-10-11.yaml).
+
+This change has not been deployed to k3d. Local computation occupies a reconciler process; replica fairness, process death and provider requests already in flight remain unqualified. It does not add typed workflow attempts for local profiling. The 45 GB migration target remains unrun with only about 41.1 GB free, and seven historical QA objects remain missing. The original QA preservation gate remains abandoned; Phase 1 remains incomplete.
+
+## Phase 1 generic attempt claim refresh
+
+A PostgreSQL session holding a cached attempt could reclaim it using an outdated retry count, overwriting another worker's increment and allowing additional claims beyond the configured budget. The generic attempt claimer now refreshes the locked row before changing ownership and incrementing the counter.
+
+The new database test failed before the fix and passed afterward; all **58 PostgreSQL and workflow-state checks** passed twice without skips. See [attempt claim evidence](evidence/phase-1/attempt-claim-refresh-2026-10-11.yaml). This helper currently has no production callers, so these results do not qualify the native workers. QA remains healthy on the older image; available disk is below the existing 43 GB build guard. No build or cluster mutation was performed.
+
+## Phase 1 training result commit recovery
+
+A lost acknowledgement after the training-result transaction could cause repeated metric insertion or allow the same attempt to replace an already committed result. Result publication now stores a canonical receipt with the metrics and metadata. Identical replay is a no-op; conflicting replay is rejected. Late progress and failure writes preserve that result. Worker startup and the observer can finish its terminal CAS without retraining or creating a replacement attempt.
+
+All **18 PostgreSQL cases and 156 regression checks** pass without skips. Two new tests reproduced duplicate metrics and conflicting overwrite before the fix. Tests also cover concurrent writers, superseded/cancelled fences, a successful successor, late progress, worker recovery and observer recovery. See [training result recovery evidence](evidence/phase-1/training-result-recovery-2026-10-11.yaml).
+
+Model artifacts and MLflow identifiers in these checks are synthetic. This does not prove live artifact preservation, native Ray process-loss recovery or full Phase 1 completion. Legacy results without receipts remain unqualified. The current worktree is not deployed; the 45 GB migration and seven missing historical QA objects remain unresolved.
+
+## Phase 1 candidate artifact isolation
+
+Different model results from the same attempt previously shared a model object key. Candidate keys now include the serialized content's SHA-256 digest, so a late different result cannot overwrite a committed model. Identical retries retain the same reference. Existing checkpoint URIs remain readable.
+
+Embedded storage previously truncated the destination before copying replacement bytes. It now writes and fsyncs a temporary sibling, then atomically replaces the destination. Input failures preserve the old complete file and remove temporary output. Byte writes use this same path.
+
+All **65 artifact, storage, PostgreSQL publication, profiling and upload-driver checks** pass without skips. Negative controls reproduced all three failures before the fix. A fitted Ridge model retains its original bytes and predictions after another model is stored. See [artifact isolation evidence](evidence/phase-1/model-artifact-isolation-2026-10-11.yaml).
+
+These are local embedded-store checks, not remote-provider or k3d qualification. Host power loss is untested; a process killed before replacement can leave an unreferenced temporary file. This change does not repair historical missing objects or complete Phase 1.
+
+## Phase 1 stop candidate work after lost ownership
+
+Supervised and clustering candidate exception handlers previously treated a stale fence as a model failure. GPU candidates could retry on CPU, and both paths could create a new MLflow failure run after losing ownership. Both handlers now propagate `StaleFence` immediately.
+
+All **61 training, candidate recovery and PostgreSQL publication checks** passed twice without skips. Three new negative controls reproduced the swallowed exception before the fix. Ordinary model-error and GPU fallback tests still pass. See [candidate fence evidence](evidence/phase-1/candidate-fence-stop-2026-10-11.yaml).
+
+External effects in the focused cases are mocked. This does not qualify a live GPU or MLflow deployment. MLflow run creation before durable identifier persistence, with some lineage tags added in a later request, remains an open recovery/deletion gap. The 45 GB rehearsal still requires additional storage; the mounted data filesystem has about 41.1 GB free, and an alternative disk/environment has been requested. Phase 1 remains incomplete.
+
+## Phase 1 durable MLflow tracking identity
+
+Parent, supervised candidate, clustering candidate and failure tracking now persist a workflow command before creating an MLflow run. Creation includes the command and project/run/attempt lineage tags in the same request. A visible run can therefore be found after a lost response, and its ID is persisted before model work. Replay resumes that ID instead of creating another record.
+
+A creation-start marker is committed before sending the request. If its outcome is uncertain and no run is visible, the worker refuses another creation request. Concurrent callers can encounter this state until the first result appears. Unresolved tracking bypasses candidate fallback and failure logging. Deleted, missing, duplicate or incorrectly tagged tracking records fail closed, and committed training results reject new tracking activity.
+
+All **13 focused PostgreSQL/MLflow cases and 101 regressions** pass without skips. MLflow uses isolated local SQLite stores; acknowledgement loss is injected after real store/database commits. See [tracking intent evidence](evidence/phase-1/tracking-intent-2026-10-11.yaml).
+
+The following increment adds bounded lookup reconciliation for visible outcomes; safe operator resolution of a permanently uncertain creation remains open. Live HTTP/k3d recovery, legacy untagged records, externally in-flight logging/model registration and full MLflow deletion remain open. This is progress toward the side-effect requirements, not Phase 1 completion.
+
+## Phase 1 tracking outcome reconciliation
+
+The worker loop now reconciles due MLflow creation intents independently of the original training worker. It only looks up remote records: one matching backend/lineage record is bound to the durable command without creating or resuming a remote run. Live writer locks are skipped, and competing reconcilers cannot bind the same intent twice.
+
+Unresolved lookups are delayed by 60 seconds and stop at the command's retry budget. The creation-start marker and a redacted reason remain, so exhaustion cannot trigger blind creation. A later explicit worker replay can adopt a record that has since become visible.
+
+All **78 tracking, PostgreSQL publication, training and worker-loop checks** pass without skips, including two concurrent reconcilers and a live writer lock. See [tracking reconciliation evidence](evidence/phase-1/tracking-reconciliation-2026-10-11.yaml).
+
+This recovers tracking metadata, not failed training jobs. Permanently unknown outcomes still need safe operator resolution; legacy untagged or deleted application-run histories, full external deletion and live HTTP/k3d qualification remain open. Phase 1 remains incomplete.
+
+## Phase 1 MLflow HTTP retry ownership
+
+MLflow's HTTP SDK retried run-creation POST requests internally. A real HTTP fault test reproduced two committed runs after a proxy substituted a 503 for the first successful response. The worker and shared tracking helper now force zero SDK HTTP retries, leaving uncertain creation with the durable command. A replay that still cannot find the remote result also retains `TrackingCreationUnresolved`, preventing candidate fallback from treating it as an ordinary model error.
+
+All **72 HTTP, tracking, worker and training checks** pass without skips. Both a substituted 503 and a dropped connection after committed creation leave one run; two replays recover the same ID without another creation request. The isolated server processes were cleaned up. See [HTTP retry evidence](evidence/phase-1/tracking-http-retries-2026-10-12.yaml).
+
+This is local HTTP qualification with SQLite tracking metadata and PostgreSQL workflow state. The current worktree remains undeployed; k3d, TLS and remote artifact providers are unqualified. Disabling SDK retries also surfaces transient read/logging failures immediately; the complete retry-owner inventory remains open. The 45 GB migration needs additional storage, seven historical QA objects remain missing, and Phase 1 is not complete.
+
+## Phase 1 tracking queue contention
+
+The tracking reconciler previously selected a limited list of oldest command IDs before checking ownership. A busy run or an orphaned command could repeatedly consume that list, starving eligible work behind it. Command-row contention could also block until PostgreSQL's lock timeout.
+
+The reconciler now selects and locks one eligible run/command pair with `FOR UPDATE SKIP LOCKED` before applying the limit, committing each lookup independently. The batch limit bounds actual claimed work. It preserves the read-only remote lookup, retry budget and fail-closed lineage checks.
+
+All **34 tracking and worker-loop checks** pass without skips. Three negative controls reproduced run-lock starvation, command-lock timeout and orphan-row starvation before the fix. With a one-item batch, later eligible work now completes while the blocked command remains unchanged; released locks allow subsequent recovery. See [tracking claim evidence](evidence/phase-1/tracking-claims-2026-10-12.yaml).
+
+These checks use real PostgreSQL contention and isolated SQLite MLflow stores. They do not qualify deployed replicas or recover orphaned tracking history; database locks remain held during remote lookup. The current worktree, 45 GB migration and historical QA object recovery remain unqualified. Phase 1 is not complete.
+
+## Phase 1 Ray candidate tracking errors
+
+Ray candidate collection previously converted `TrackingCreationUnresolved` into an ordinary failed-model result. A tournament could then finish while a candidate's remote tracking outcome was unknown. Collection now propagates that error, as it already did for stale ownership, and cancels pending candidate tasks through the existing cleanup path.
+
+All **70 candidate, partition, recovery, training and Tune checks** pass without skips. Six cases use actual Ray error wrappers and cloudpickle serialization for supervised/clustering modes: stale ownership and uncertain tracking abort, while ordinary model errors remain failed-candidate results. Both uncertain-tracking cases failed before the fix. See [Ray tracking error evidence](evidence/phase-1/ray-tracking-errors-2026-10-12.yaml).
+
+The retry inventory confirms explicit zero-retry settings for KubeRay job/submission, candidate Ray tasks and Tune trial failures. That does not prove durable per-trial/Train identity mapping or native process-loss recovery. The focused error-propagation cases mock task scheduling. The same suite also starts a local two-CPU Ray runtime for a separate two-trial Tune smoke test; that is not native failure/cancellation qualification. Current-image deployment, the 45 GB migration and seven missing historical QA objects remain unresolved; Phase 1 is incomplete.
+
+## Phase 1 actual trial execution paths
+
+The default production RayJob launches whole-candidate workers, which change execution mode and use local `BayesSearchCV`; they bypass the standalone Tune helper. Fixed-parameter supervised CV and clustering sweeps also need durable enrollment. No direct production `TrainingTrial` construction site was found. Wiring only Tune would therefore leave the default execution path untracked.
+
+The [trial ownership implementation contract](phase-1-trial-ownership.md) now covers all these paths, pre-execution enrollment, parent/child fencing, leases, immutable result replay, checkpoint allowlists and durable replacements. **This is an audited gap and implementation contract, not an implemented feature.** Fourteen manifest/candidate/Tune checks passed twice without skips; [source-bound evidence](evidence/phase-1/trial-execution-paths-2026-10-12.yaml) records the audit limits.
+
+Prior Ray tracking evidence was corrected: its focused error-propagation tests mocked scheduling, while the combined suite also ran a real local two-trial Tune smoke test. Neither qualifies deployed worker-loss/cancellation behavior. All 36 broad Phase 1 requirements remain open.
+
+## Phase 1 transactional trial enrollment primitive
+
+Added enrollment using the existing trial and typed attempt tables. A suggestion binds immutable parameters to one logical trial, with a parent-owned pending execution. Parent/run locks serialize concurrent enrollment and replacement. Stale ownership, conflicting identity, expired parent leases, unapproved predecessor results and exhausted replacement budgets fail before dispatch. Callers must commit enrollment before running work.
+
+All **50 PostgreSQL checks** pass without skips, including **20 enrollment cases**. These cover concurrent same/conflicting requests, rollback, a lost acknowledgement after a real database commit, cached stale parents, wrong candidate lineage and append-only superseded-parent replacement. See [enrollment evidence](evidence/phase-1/trial-enrollment-2026-10-13.yaml).
+
+There is no production execution caller yet. Worker start, heartbeat, child grants, result publication, accelerator fallback and search-path integration remain required by the [trial ownership contract](phase-1-trial-ownership.md). The primitive's two gates pass; the broader trial-ownership work retains four unmet gates. Phase 1 remains incomplete.
+
+## Phase 1 trial worker lifecycle primitives
+
+Added leased worker start, heartbeat and terminal publication around enrolled trials. Parent and child fences are checked with fresh database state. Only one worker can start; expired owners cannot renew or publish. Startup replay consumes one claim-budget use. Terminal status, logical result digest, event evidence and CAS are committed together; identical replay returns the existing result and conflicting publication fails.
+
+All **120 checks** pass without skips, including **38 lifecycle cases**, 20 enrollment cases and PostgreSQL/upload-policy regressions. Cases cover competing workers, expired ownership, superseded parents, concurrent same/conflicting results, lost start/terminal commit acknowledgements, rollback and stale/corrupted evidence. See [trial lifecycle evidence](evidence/phase-1/trial-lifecycle-2026-10-13.yaml).
+
+The failure-record test also exposed URL passwords surviving shared redaction. Backend URL userinfo is now removed, and malformed URLs no longer abort redaction. Eight new scheme/malformed-URL cases accompany the existing policy checks.
+
+Production workers still do not call these lifecycle primitives. Actual search-path integration, signed grants, predecessor adoption, owned fallback and recovery remain required. The primitive's two gates pass; all four broader trial-ownership gates and all 36 Phase 1 requirements remain open.
+
+## Phase 1 fixed CPU CV execution integration
+
+Fixed-parameter CPU cross-validation now calls the durable trial lifecycle. The adapter commits identity and the worker lease before scoring, maintains a heartbeat and commits terminal evidence afterward. Repeated calls return committed results or failures without rescoring. Missing production fences, conflicting identities and uncertain database commits stop execution instead of becoming ordinary candidate fallback.
+
+All **122 checks** pass without skips, including **15 adapter/integration cases**. Actual Ridge CV verifies the lease is visible from another PostgreSQL session before computation. The real preprocessing/selection/Ridge pipeline replays its CV result; external tracking and artifact effects are mocked. Tests cover lost enrollment/start/terminal acknowledgements, parent supersession, heartbeat, invalid numerical results and Ray exception propagation. See [fixed CPU trial evidence](evidence/phase-1/fixed-cpu-trials-2026-10-13.yaml).
+
+The real pipeline test exposed a feature-selector bug: positive percentile rounding could remove a sole input feature. The selector now retains one feature in that case while preserving explicit zero-percentile selection. Existing sampling, serialization and prediction checks still pass.
+
+GPU CV, parameter search, clustering, Tune and production Train are not yet enrolled. Final full-data model fitting and candidate side effects remain outside the CV trial. An uncertain start fails closed pending durable recovery; signed grants and predecessor adoption remain open. All four broader trial-ownership gates and all 36 Phase 1 requirements remain unmet.
+
+## Phase 1 default local CPU parameter search
+
+The default whole-candidate CPU worker now runs an explicit deterministic suggestion loop. Each suggestion is enrolled and leased before CV. Its durable identity includes the search revision, seed, dimensions, iteration count, scoring, CV specification, base estimator parameters and proposed configuration. Replay rebuilds the optimizer history from committed trial results without rescoring. This uses the shared versioned search policy; it does not claim the same proposal sequence as legacy `BayesSearchCV`.
+
+All **70 checks** pass without skips, including **seven local-search cases** with real PostgreSQL and Ridge CV. Actual candidate pipeline replay produces the same selected parameters while avoiding both untracked Bayes search and nested Tune scheduling. Changed search contracts and superseded parents stop further computation. Ordinary failed configurations remain failed on replay. The suite also includes the existing real local Tune smoke test. See [local CPU search evidence](evidence/phase-1/local-cpu-search-2026-10-13.yaml).
+
+Unfenced local legacy execution retains its existing behavior. GPU CV/search, clustering, standalone Tune enrollment, production Train, signed grants and predecessor adoption remain open. Final model fitting and external candidate side effects are outside the trial receipts. All four broader trial-ownership gates and all 36 Phase 1 requirements remain unmet.
+
+## Phase 1 clustering trial integration
+
+Each clustering parameter set now commits durable ownership before fold preparation or fitting. Lazy preparation retains fold reuse within the invocation. Replay reads committed fold metrics and selects the same winning parameters without repeating CV preprocessing or scoring. Changed CV contracts and superseded parent ownership stop execution; ordinary model failure is recorded and replayed.
+
+All **72 checks** pass with no failures, errors or skips, including **five clustering cases** with real PostgreSQL, KMeans, AgglomerativeClustering, preprocessing and metrics. External tracking and artifacts are mocked. The baseline ownership-before-preparation test failed against the previous implementation. See [clustering trial evidence](evidence/phase-1/clustering-trials-2026-10-14.yaml).
+
+Final model fitting remains outside the trial receipt. GPU hardware, current-image k3d execution, signed grants, predecessor adoption, durable child recovery and remaining supervised GPU/Tune/Train integration are unqualified. All four broader trial-ownership gates and all 36 Phase 1 requirements remain open. The 45 GB rehearsal still needs sufficient storage; seven historical QA objects remain missing.
+
+## Phase 1 supervised accelerator trial ownership
+
+GPU-selected fixed CV and fenced parameter search now use durable trial enrollment. Accelerator-prefixed identities preserve the GPU measurement; CPU fallback uses distinct cpu-fallback identities with the source accelerator recorded. The CPU fallback search remains local even when the parent mode is ray, avoiding an untracked switch to standalone Tune. Cached GPU failures and fallback results replay without CV recomputation; stale ownership propagates without fallback.
+
+All **86 checks** pass without skips, including **12 accelerator cases** covering candidate/ray modes, fixed/search models, success, ordinary failure and stale ownership. PostgreSQL, Ridge CV and preprocessing are real; GPU selection and kernel failures are simulated. See [accelerator trial evidence](evidence/phase-1/accelerator-trials-2026-10-14.yaml).
+
+These are separate logical accelerator measurements under one candidate and parent. They do not implement replacement generations or predecessor adoption. Final model fitting and external effects remain outside CV receipts and may repeat. Actual GPU hardware, current-image native execution, Tune/Train integration, grants and durable recovery remain open. All four broad trial gates and all 36 Phase 1 requirements remain unmet; storage for the 45 GB rehearsal and seven missing historical QA objects remain unresolved.
+
+## Phase 1 standalone Tune trial ownership
+
+Tune's searcher now commits each logical suggestion and a digest-bound physical Ray trial-ID event before returning the configuration for dispatch. Workers receive explicit parent context through Ray's parameter handoff and use the existing leased evaluation lifecycle. Fence tokens stay out of suggestion configurations and the searcher's JSON checkpoint. Restoring algorithm state retains the caller's execution context. Fenced dispatch requires a durable run/candidate contract before scheduling.
+
+All **103 checks** pass without failures, errors or skips, including **10 Tune ownership cases**. Real PostgreSQL and a local two-CPU Ray runtime execute two Ridge CV trials and redispatch them in a fresh Tune invocation; the database retains two terminal CAS operations and four physical dispatch events. A direct worker replay forbids scoring. Lost dispatch acknowledgements, corrupted events, changed contracts, stale parents and serialized Ray ownership errors are covered. The legacy real Tune smoke test also passes with explicit local mode. Shared CPU, simulated-GPU and clustering regressions pass. See [Tune ownership evidence](evidence/phase-1/tune-trials-2026-10-14.yaml).
+
+This proves same-parent CV receipt replay. Signed grants, predecessor adoption, durable replacement recovery, production Train and current-image native failure campaigns remain incomplete. Final fitting and external effects remain outside CV receipts. All four broad trial gates and all 36 Phase 1 requirements remain open. The 45 GB migration rehearsal still needs sufficient storage; seven historical QA objects remain missing.
+
+## Phase 1 replacement trial execution handoff
+
+The reconciler creates pending child replacements before resubmitting a lost run. Enrollment previously rejected these rows because their submission identity was unset. It now binds the first identity only to untouched pending replacements with matching predecessor, parent, project/run/trial, logical key, workload and generation budgets. Identical concurrent bindings converge; conflicting identities and altered rows fail closed.
+
+Exhausted child budgets now stop parent replacement. Testing also exposed a forbidden pending-to-failed transition. Terminal recovery now cancels pending children and fails started children, keeping logical trial status consistent.
+
+All **228 checks** pass without failures, errors or skips, including **21 replacement cases** with real PostgreSQL. Cases cover two active children superseded together, rejected old-worker publication, valid replacement completion/replay, actual Ridge CV after committed lease acquisition, transaction rollback, invalid replacement rows, concurrent binding, and child budget exhaustion in all four active statuses. See [replacement handoff evidence](evidence/phase-1/trial-replacement-handoff-2026-10-14.yaml).
+
+Signed grants, predecessor checkpoint/result adoption, full durable recovery, production Train and native failure qualification remain open. All four broad trial gates and all 36 Phase 1 requirements remain unmet. The 45 GB rehearsal and seven missing historical QA objects remain unresolved.
+
+## Phase 1 verified predecessor CV result adoption
+
+Replacement runs can now reuse explicitly authorized predecessor CV results and ordinary failures. The reconciler verifies terminal receipts and records exact source attempt/trial/digest references in the existing allowlist, alongside object checkpoint URIs. These structured database references grant no object access. Enrollment verifies terminal event type, payload digest, terminal CAS, parameters and parent lineage, then commits a new adoption event and terminal receipt without rewriting source evidence or running CV. Generation budgets remain enforced.
+
+A replacement may die before adopting every result. Verified references now carry forward, with exact authorization required at each skipped superseded-parent generation. Missing or changed authorization fails closed.
+
+All **259 checks** pass without failures, errors or skips, including **31 adoption cases** with real PostgreSQL, Ridge CV and local parameter search. A partial search recovers two completed scores and evaluates only its unfinished third suggestion; another replay performs no scoring. Cases also cover mixed active/completed trials, failures, concurrent adoption, lost commit acknowledgement, rollback, repeated replacements, corrupt event payload/type/digest, altered scope/workload/parameters, unauthorized references and exhausted budgets. See [trial result adoption evidence](evidence/phase-1/trial-result-adoption-2026-10-14.yaml).
+
+Signed grants, predecessor object-checkpoint authorization, full native recovery, production Train, final fitting and external effects remain open. All four broader trial gates and all 36 Phase 1 requirements remain unmet. The 45 GB rehearsal and seven missing historical QA objects remain unresolved.
+
+## Phase 1 owned training-parent leases
+
+The training entrypoint now claims one worker owner and a renewable 90-second parent lease. It renews every 15 seconds and stops its heartbeat when execution exits. Concurrent competing starts are rejected. Expired parents cannot restart, renew or publish progress/results/failure; another owner cannot complete or fail the parent. Already-committed result recovery remains valid after expiry through its existing receipt/fence/CAS.
+
+Heartbeat uncertainty and stale ownership now propagate without being recorded as ordinary model failure. Cancelled runs cannot be resurrected during worker start.
+
+All **318 checks** pass without failures, errors or skips, including **20 parent-lease cases** with real PostgreSQL. The actual worker entrypoint is exercised with synthetic training callbacks, including heartbeat renewal, real result/CAS publication, ordinary failure, ownership uncertainty, heartbeat connection failure and thread shutdown. Concurrency, expiry, wrong ownership and committed-result recovery are covered. See [parent lease evidence](evidence/phase-1/training-parent-lease-2026-10-14.yaml).
+
+This is a database lease prerequisite for grants; it is not a signed credential broker. Signed grants, delegated object credentials, predecessor object-checkpoint access, automatic native expiry cleanup/replacement, production Train and current-image qualification remain open. Legacy no-lease attempts remain compatible outside the updated entrypoint. All four broad trial gates and all 36 Phase 1 requirements remain unmet. The 45 GB rehearsal and seven missing historical QA objects remain unresolved.
+
+## Phase 1 expired-parent cancellation and replacement
+
+The observer now handles expired parent leases before querying Ray status, while preserving committed-result recovery priority. It queues durable cancellation of the old workload and bounded replacement of the parent/active trials in one transaction. Exhausted budgets still queue cancellation and stop replacement. Concurrent observation, repeat observation and rollback preserve one durable intent per generation.
+
+Cancellation now verifies stage, project, run aggregate and fence before deleting, including already-terminal attempts. It uses the run's recorded namespace rather than the Kubernetes client's default.
+
+All **369 regression checks** pass without skips, including **14 expiry cases** with real PostgreSQL. A separate **native k3d control-plane check** also passes: current local Python code rejects a stale fence, deletes a fresh suspended RayJob in its recorded namespace, replays deletion after absence and preserves a same-name neighbor in another namespace. No pods were observed; both isolated test namespaces were removed. See [parent expiry evidence](evidence/phase-1/training-parent-expiry-2026-10-14.yaml).
+
+The native check uses current local code and suspended objects. It does not qualify a newly deployed image or real worker death/partition/restart. Signed grants, delegated object credentials, predecessor object-checkpoint reads, production Train and full native recovery remain open. All four broad trial gates and all 36 Phase 1 requirements remain unmet. The 45 GB rehearsal and seven missing historical QA objects remain unresolved.
+
+## Phase 1 pod-bound admission API
+
+Added the server-side admission boundary for attempt credentials. Kubernetes TokenReview must attest the expected attempt/fence audience and a physical pod identity. Admission checks current attempt/run scope, pod UID, namespace, deletion state, labels and service-account subject. A KubeRay head's cluster-specific identity additionally requires the matching Pod → RayCluster → recorded RayJob controller UID chain. Accepted proofs expire within fifteen minutes; evidence stores token digests and scoped metadata. Replay checks evidence type and digest. The hidden API endpoint fails closed and uses no-store responses.
+
+Helm grants TokenReview create and controller metadata read only to the API identity. No signing key or TokenRequest permission is given to workers.
+
+All **364 regression checks** pass without failures, errors or skips, including **29 admission cases** and real PostgreSQL/Helm checks. A separate **native k3d admission check** passes with a real 600-second token bound to an unscheduled pod. Wrong audience, changed project/parent/fence and deleted pod are rejected; the pod never scheduled and its isolated namespace was removed. See [admission evidence](evidence/phase-1/attempt-admission-2026-10-14.yaml).
+
+Token projection, worker consumption and expiry enforcement remain unimplemented; existing workers do not call the new endpoint yet. The complete issuer/consumer/delegated-provider/native requirements are retained in the [credential contract](phase-1-attempt-credentials.md). This API is not a complete credential broker and does not restrict existing worker database/object credentials. All four full credential gates, four broader trial gates and all 36 Phase 1 requirements remain open. The 45 GB rehearsal and seven missing historical QA objects remain unresolved.
+
+## Phase 1 projected identity and training admission consumption
+
+Ray head, worker and submitter templates now project dedicated 600-second attempt-audience tokens into a read-only directory without `subPath`, while preserving the head's autoscaler identity. Token bytes stay out of environment values and Tune configurations. Configure `attemptIdentity.controlBaseUrl` with the trusted HTTPS admission base. Production Helm and Ray manifest construction require it; production/staging workers cannot disable admission.
+
+Training startup, trial dispatch/execution and parent/child renewal now request current admission before acquiring database locks. The client rereads the token file, rejects redirects and invalid identity/expiry, and caps leases to proof expiry. Child leases also respect the parent deadline. Cached results require current admission; late publication is rejected. Preparation and non-Ray analysis consumers still need integration.
+
+All **415 regression checks** pass without failures, errors or skips, including **20 runtime cases** and actual worker entrypoint/Helm checks. A separate **local-worker/k3d check** uses a real pod-bound token through the actual admission/TokenReview boundary: a wrong token cannot renew, and a manually replaced valid token can renew. The file and isolated namespace were removed; the pod never scheduled. See [runtime admission evidence](evidence/phase-1/admission-runtime-2026-10-14.yaml).
+
+The native HTTP path is an in-process relay. This does not qualify deployed HTTPS/egress, kubelet rotation, a current immutable image or running Ray head/worker identity. Separate child grants, delegated provider credentials, predecessor checkpoint access and full native recovery remain open. Existing database/object credentials remain broader than the final contract. All full credential/trial gates and all 36 Phase 1 requirements remain unmet; the 45 GB rehearsal and seven missing historical QA objects remain unresolved.
+
+
+## Phase 1 splitter and preparation admission — 2026-10-15
+
+Splitter/preparation startup now verifies admission, claims one worker owner and renews a 90-second lease every 15 seconds, capped to proof expiry. Progress and publication require current admission and live lineage/leases. Late failures cannot overwrite replacement or inactive-profile evidence. Server admission rejects inactive or moved profiles before TokenReview. Heartbeat uncertainty prevents publication; shutdown is requested on every exit.
+
+Final verification passed **509 regression tests**, including **34 focused admission cases** and the existing real local Ray splitting tests, plus **two k3d identity probes**, with zero failures, errors or skips. The probes use real pod-bound tokens and actual TokenReview through an in-process HTTP relay. Wrong tokens, inactive profiles and expired uploads are denied. Both pods remained unscheduled; token files and isolated namespaces were removed. See [preparation admission evidence](evidence/phase-1/preparation-admission-2026-10-15.yaml).
+
+Dataset lease-expiry cleanup/replacement, non-Ray analysis, separate child grants, provider object restrictions and full deployed TLS/rotation/process-loss qualification remain open. Existing database/object credentials remain broad; an upload racing expiry may leave an own-attempt orphan before metadata publication is rejected. All 36 Phase 1 requirements remain Open. The 45 GB migration ceiling is recorded; current free space is 42.8 GB before overhead. Seven historical QA objects remain missing and the original preservation gate remains abandoned.
+
+
+## Phase 1 dataset lease-expiry recovery — 2026-10-15
+
+The dataset observer now refreshes locked attempts/profile state, queues old-generation cancellation and bounded replacement atomically on lease expiry, and still queues cleanup when retries are exhausted. Cancellation uses a dedicated outbox handler with typed project/profile/stage/fence checks before external reads, physical RayJob scope-label checks and UID-preconditioned deletion. A missing RayJob is a successful cleanup replay. The old terminal CAS stays unchanged.
+
+Review also found that replaying a retired submission could recreate a RayJob before its invalid status transition failed. Submission now validates complete command scope, refreshes current state and returns retired generations without Kubernetes effects. New submissions record their namespace; cancellation retains that namespace across replacement. Legacy submissions use the configured namespace explicitly.
+
+Final verification passed **589 regression tests**, including **55 focused dataset cases**, and **two k3d control-plane probes**, without failures, errors or skips. Tests cover rollback, retry exhaustion, concurrent observers, stale identity maps, scope denial, retired submission replay and lost-delete acknowledgement. Each native probe verifies stale-fence denial, wrong-UID HTTP 409, exact deletion, 404 replay, neighbor preservation and isolated namespace cleanup. No pods started. See [dataset expiry evidence](evidence/phase-1/dataset-expiry-2026-10-15.yaml).
+
+This does not qualify deployed worker death/restart, current immutable images, TLS/egress or token rotation. Inconsistent legacy profile attempts remain an inventory gap. Non-Ray analysis, provider credential restrictions, separate child grants and complete recovery remain open. All 36 Phase 1 requirements remain Open. The 45 GB migration rehearsal lacks disk space; seven historical QA objects remain missing and the original preservation gate remains abandoned.
+
+
+## Phase 1 non-Ray analysis admission and atomic publication — 2026-10-15
+
+Validation, explainability and drift launches now persist a ModelRun-bound attempt, analysis logical key and project service account. Batch manifests project a short-lived attempt token and the HTTPS control configuration; production/staging cannot deliver legacy no-identity submissions. Submission locks the exact attempt before the run, validates current scope/fence/pointer/namespace, ensures its account and records submission. Retired delivery replay cannot create another Job.
+
+The existing worker now applies admission and owned proof-capped leases to analysis. Analysis guards status/report/failure writes with current fencing, uses content- and attempt-specific report keys, rechecks expiry after upload and commits report metadata, metrics, receipt and terminal CAS atomically. Failure commits attempt/run together with redaction. Shared completion recognizes an already committed analysis report without incrementing CAS again; a late worker error preserves user cancellation.
+
+Final verification passed **747 regression tests**, including **36 focused analysis cases**, plus **three local-worker/k3d identity probes**, without failures, errors or skips. Cases include actual launch/manifest/submission/main paths, stale/expired/cancelled writers, upload-time expiry, CAS rollback, lost commit acknowledgement and failure redaction. The native probes use actual pod-bound tokens and TokenReview, current local worker.main and PostgreSQL/embedded report publication; computation is mocked and HTTP uses an in-process relay. Each pod remained unscheduled and its token file and UID-owned namespace were removed. See [analysis admission evidence](evidence/phase-1/analysis-admission-2026-10-15.yaml).
+
+Batch observer attempt reconciliation, lease-expiry cancellation/replacement and legacy manifest migration remain open. Native probes do not qualify deployed images, full analysis computations, worker death, TLS/egress, rotation or deployed API RBAC. Provider credentials remain broad; separate child/object grants remain required. All 36 Phase 1 requirements remain Open; 45 GB migration storage and seven missing historical QA objects/original abandoned preservation gate remain unresolved.
+
+
+## Phase 1 managed analysis Job recovery — 2026-10-15
+
+Analysis submission now records physical namespace/name/UID and the original outbox/manifest digest in an attempt event. Lost creation acknowledgement can adopt only a Job whose scope labels match. Replacement binds a deep copy of that verified manifest to a fresh attempt, fence, Job name and projected-token audience. The original source remains unchanged.
+
+The managed observer locks attempt before run and refreshes state. Lease expiry, missing/terminated Jobs without report CAS and an unclaimed startup lease now queue exact old-Job cleanup plus bounded replacement in one transaction. Exhausted budgets still queue cleanup. Committed report CAS, cancellation and changed active pointers are preserved. Cleanup checks scope/fence/evidence and physical labels/UID before UID-preconditioned deletion; missing-Job replay leaves terminal CAS unchanged. Legacy observation excludes managed rows.
+
+Final verification passed **904 regression tests**, including **68 focused recovery cases**, and **three k3d control-plane probes**, without failures, errors or skips. Cases include concurrent observers, stale cached leases, rollback, retry exhaustion, changed source evidence, lost-delete acknowledgement and an actual replacement submit/claim/report commit. Native suspended Jobs verify creation replay, foreign-adoption denial, wrong-UID 409, exact old deletion, 404 replay, replacement submission and denial after same-name UID substitution. Neighboring Job UIDs stayed unchanged; no pods started; all owned namespaces were removed. See [analysis recovery evidence](evidence/phase-1/analysis-recovery-2026-10-15.yaml).
+
+The first broad run exposed a race in the earlier heartbeat test: live-thread enumeration could miss an already exited heartbeat and raise StopIteration. The test now captures its thread and synchronizes via an event. The full rerun includes that fix, with no test exclusions or product-code change to hide the failure.
+
+Legacy manifests and submitted rows without the new submission evidence still need migration/replay. Native checks do not qualify deployed worker death, full computation, immutable images, TLS/egress, rotation or deployed RBAC. Provider/database credentials remain broad; separate child/object grants remain required. All 36 Phase 1 requirements remain Open. The 45 GB rehearsal lacks disk space; seven historical QA objects remain missing and the original preservation gate remains abandoned.
+
+
+## Phase 1 first-delivery legacy analysis handoff — 2026-10-15
+
+Production/staging can now upgrade a first-claimed, never-operator-replayed CPU analysis delivery that is still pending with no active attempt or report evidence. The legacy manifest must match the recorded project/run/namespace/name, and the old Job and all run-labeled Pods must be absent. Retried, running, submitted, moved, GPU or ambiguous scopes stay blocked for controlled replay.
+
+The new attempt, rebound manifest and migration digests commit through deferred delivery before Job creation. The manifest selects the configured current CPU image/pull configuration and declares `--attempt-protocol analysis-v1`. Current workers reject missing/unknown protocol context before admission or status writes; a read-only inspection of the known deployed predecessor parser confirms it rejects the new argument. This is a compatibility guard, not image attestation or full binary qualification.
+
+Read-only preflight outages defer without spending the first delivery and preserve a redacted error. The first broad run caught diagnostics being lost during a row refresh; both paths now flush before deferral. Final verification passed **961 regression tests**, including **57 focused migration cases**, plus **three k3d handoff probes**, with zero failures, errors or skips. Native probes prove old Job/Pod denial, durable deferral and one tracked suspended Job; all owned namespaces were removed. See [legacy handoff evidence](evidence/phase-1/analysis-migration-2026-10-15.yaml).
+
+This does not migrate already running/retried/ambiguous legacy work or qualify claim loss before handoff commit, old-controller drain, missing historical submission evidence, previous-release readers, deployed process death, full model computation, TLS/egress, rotation or current images. Provider credentials and separate child/object grants remain open. All 36 requirements remain Open; the 45 GB storage gap and seven missing historical QA objects/original abandoned preservation gate remain unresolved.
+
+
+### 2026-10-15 — Phase 1 structural schema requirement verified
+
+Closed P1-W12 against its complete structural scope. The current PostgreSQL 16.15 schema has 41 application tables plus Alembic metadata, 608 columns, 191 modeled constraints (83 foreign keys), 41 explicit indexes and seven BIGINT byte-count columns. A negative control exposed case-folding of quoted collation names hiding a change in text equality. Shared normalization now preserves quoted case, whitespace and escaped quotes for both types and default casts; valid quoted enum defaults are accepted. All 93 schema/migration regressions pass with zero failures/errors/skips.
+
+All ten checked-in prior schemas migrate in isolated databases to head 0011, preserving every seeded legacy field and passing full schema and Alembic model comparisons. Upload-capable starts each use 10,000 metadata rows, including 10 GiB byte-size values; all owned rehearsal databases were removed. This does not qualify previous-release readers, a 45 GB database or a deployed image. W11, W25 and G05 remain Open. The ledger now records one verified requirement and 35 open; Phase 1 remains in progress. Evidence: `evidence/phase-1/schema-closure-2026-10-15.yaml`. No k3d rollout or QA storage mutation occurred; seven historical QA objects remain missing.
+
+
+### 2026-10-15 — Public contract validation and revision races
+
+Fixed malformed cursor handling, concurrent revision allocation and ignored estimator overrides. Cursor decoding now bounds and validates base64/JSON/string/UUID structure; actual candidate/trial/event HTTP routes return `422 invalid_cursor` before collection queries. Contract mutations lock their project before inserting command foreign keys, preventing revision races and lock upgrades. Eight controlled two-connection PostgreSQL races cover feature contracts, search spaces, search objectives and experiment specs: explicit expected versions yield one success/one structured conflict; implicit versions remain consecutive. Replays retain the original revision and failed requests leave no committed command.
+
+Training launch now rejects unknown/duplicate selected estimator names and unsupported resource policies before execution intent. Valid disable overrides retain the selected candidates, whose resource class comes from the server catalog. The negative run reproduced 18 failures in 20 cases; final checks pass 284 cases with zero failures/errors/skips, including 28 overlapping focused cases. The first broad invocation skipped 21 authorization cases due to a missing dedicated database setting; the gate rejected it and the corrected invocation ran those cases. Evidence: `evidence/phase-1/contract-boundaries-2026-10-15.yaml`.
+
+W13/W14 remain Open: immutable catalog ownership, legacy selected-mode/spec compatibility, complete candidate details, typed feature/search specifications and discriminated estimator parameter validation are still required. Phase 1 remains one verified requirement/35 open. No deployment, Ray execution or 45 GB qualification is implied; no k3d/QA storage changes occurred.
+
+
+### 2026-10-15 — Catalog identity from publication to training startup
+
+Preparation now publishes task-scoped estimator metadata and a runtime fingerprint covering estimator classes/defaults/search dimensions, catalog source, Python and installed package versions. Catalog APIs return persisted rows and revision UUIDs; they no longer attach another task's revision to fresh runtime discovery. Reads/admission detect content/runtime drift, and admission rejects stale content relative to the active task catalog. Equal-content republished IDs retain equivalent catalog semantics. Signatures remain unverified; sampling and serialization qualifications are not fabricated.
+
+Launch persists content/runtime digests. Training startup verifies the stored project/catalog/task/selection before data reads or MLflow activity. Selected-mode estimates count actual default candidates and reject duplicates. Ray training commands carry `--attempt-protocol training-catalog-v1`; workers reject mismatched/missing fenced protocols before admission/status writes, preserving `analysis-v1` for analysis. The known predecessor parser rejects the new command in a read-only QA Pod probe. Legacy catalogs are not rewritten; refreshing them requires a new published revision and compatible worker image.
+
+Final verification: 650 regressions and 37 overlapping focused cases, zero failures/errors/skips; real PostgreSQL project/task/stale-revision tests, independent-process identities, actual startup boundary checks and current local Ray/preparation/recovery checks. Evidence: `evidence/phase-1/catalog-binding-2026-10-15.yaml`. Full selected-mode immutable spec compatibility, candidate-detail histories, signed CI/native image/platform qualification and other Phase 1 requirements remain open. Ledger remains one verified/35 open. No image deployment, k3d training, real GPU or 45 GB rehearsal is implied; QA data and storage were not changed.
+
+
+### 2026-10-15 — Candidate detail and durable status
+
+Candidate detail now returns an explicit response with recorded lineage, parent/trial attempts, Ray identities, run resources, sample tiers, scoped sealed split digests, checkpoint digests, finite metrics, model SHA256 and terminal reasons. Trial receipts require consistent typed parent/trial lineage, parameter/result digests and terminal CAS; missing or inconsistent proof is labelled and its result withheld. Another candidate/project/run or extension-run summary cannot supply its metrics. Ambiguous legacy duplicates do not acquire a result. The read path does not repair or backfill data.
+
+Current fenced phase/partial/final training transactions now synchronize durable candidate rows with run evidence, preserve terminal outcomes on old nonterminal hints and reject contradictory outcomes. Stale writers leave candidate/run/metric evidence unchanged. Shared redaction now covers nested arrays, quoted/JSON/Bearer/Basic credentials and provider/private keys; candidate collections also redact metadata.
+
+Verification: 508 regressions and 37 overlapping focused cases, zero failures/errors/skips, using actual PostgreSQL producers/writers and read-only HTTP routes with real project-role checks. Query counts remain constant from one to 21 trials; 100 unrelated progress events are filtered before returning two relevant event rows. Provider-key negative controls caught a text/map mismatch that is corrected and reverified. Evidence: `evidence/phase-1/candidate-detail-2026-10-15.yaml`.
+
+W13/W18 and the phase remain open: complete legacy selected-mode immutable specs, historical status/cancellation/deletion migration, full state-machine inventory, signed/runtime/native qualification and other readiness requirements remain. Ledger stays one Verified/35 Open. No current-image, GPU, production-scale, k3d/QA storage or object-byte qualification is implied.

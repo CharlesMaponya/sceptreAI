@@ -11,6 +11,7 @@ from automl_api.storage.contracts import (
     BeginUpload,
     ByteRange,
     CompletedObject,
+    DeletionPending,
     HealthcheckResult,
     ObjectMetadata,
     ProviderUpload,
@@ -259,14 +260,56 @@ class AzureBlobObjectStoreDriver:
         return HealthcheckResult(True, self.driver_name)
 
     def delete_prefix(self, prefix: str) -> None:
-        prefix = self._key(prefix).rstrip("/") + "/"
-        for blob in self.container.list_blobs(name_starts_with=prefix):
-            self.container.delete_blob(blob.name, delete_snapshots="include")
+        self._delete_matching(self._key(prefix).rstrip("/") + "/", exact=False)
 
     def delete(self, uri: str) -> None:
-        self.container.get_blob_client(self._key_from_uri(uri)).delete_blob(
-            delete_snapshots="include"
-        )
+        self._delete_matching(self._key_from_uri(uri), exact=True)
+
+    def _delete_matching(self, prefix: str, *, exact: bool) -> None:
+        from azure.core.exceptions import ResourceNotFoundError
+
+        previous = None
+        while True:
+            targets = []
+            retained = False
+            for blob in self.container.list_blobs(
+                name_starts_with=prefix,
+                include=["versions", "snapshots", "deleted", "uncommittedblobs"],
+                results_per_page=1000,
+            ):
+                if not blob.name.startswith(prefix):
+                    raise RuntimeError("Azure returned an unscoped deletion target.")
+                if exact and blob.name != prefix:
+                    continue
+                if blob.deleted:
+                    retained = True
+                    continue
+                targets.append((blob.name, blob.version_id, blob.snapshot, blob.is_current_version))
+                if len(targets) == 1000:
+                    break
+            if not targets:
+                if retained:
+                    raise DeletionPending(
+                        "Azure retains soft-deleted blobs, versions or snapshots."
+                    )
+                return
+            identities = frozenset(targets)
+            if identities == previous:
+                raise RuntimeError("Azure blob deletion made no progress.")
+            previous = identities
+            for name, version, snapshot, current in targets:
+                # Deleting the base demotes the current version; the next pass removes it.
+                version = version if not current and not snapshot else None
+                blob_client = self.container.get_blob_client(
+                    name, version_id=version, snapshot=snapshot
+                )
+                try:
+                    if version or snapshot:
+                        blob_client.delete_blob()
+                    else:
+                        blob_client.delete_blob(delete_snapshots="include")
+                except ResourceNotFoundError:
+                    pass  # A base deletion or another cleanup may have removed this snapshot.
 
     def _validate_cursor(self, upload: ProviderUpload, cursor: TransferCursor) -> None:
         self._ensure_active(upload)

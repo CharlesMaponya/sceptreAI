@@ -26,7 +26,11 @@ def test_catalog_dimensions_retain_their_types():
         _dimensions({"bad": object()})
 
 
-def test_real_tune_executes_requested_trials_and_persists_cv_evidence(tmp_path):
+def test_real_tune_executes_requested_trials_and_persists_cv_evidence(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRAINING_EXECUTION_MODE", "local")
+    monkeypatch.setenv("AUTOML_MODEL_PODS", "0")
+    monkeypatch.delenv("AUTOML_ATTEMPT_ID", raising=False)
+    monkeypatch.delenv("AUTOML_FENCING_TOKEN", raising=False)
     # Other preparation tests may have initialized a local Ray runtime.
     ray.shutdown()
     ray.init(num_cpus=2, include_dashboard=False, object_store_memory=256 * 1024**2)

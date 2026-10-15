@@ -30,9 +30,7 @@ from automl_api.services.profiling_jobs import (
     TERMINAL_STATUSES,
     create_profiling_job,
     get_profiling_job,
-    is_distributed_profile,
     latest_profiling_job,
-    schedule_profiling_job,
 )
 
 router = APIRouter(
@@ -84,10 +82,7 @@ def start_profile_job(
     )
     db.commit()
     db.refresh(job)
-    if created:
-        if not is_distributed_profile(job):
-            schedule_profiling_job(job.id)
-    else:
+    if not created:
         response.status_code = status.HTTP_200_OK
     return ProfilingJobStatusRead.model_validate(job)
 

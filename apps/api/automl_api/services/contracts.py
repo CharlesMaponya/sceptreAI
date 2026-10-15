@@ -10,8 +10,9 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select, tuple_
 from sqlalchemy.orm import Session
 
-from automl_api.models.enums import ProjectRole, ScopeStatus
+from automl_api.models.enums import ProjectRole, ScopeStatus, TaskType
 from automl_api.models.iam import User
+from automl_api.models.projects import Project
 from automl_api.models.runs import ModelRun
 from automl_api.models.workflows import (
     DatasetSplitRevision,
@@ -34,6 +35,13 @@ from automl_api.schemas.contracts import (
     RevisionCreate,
     SearchSpaceCreate,
 )
+from automl_api.schemas.training import TrainingEstimateRequest
+from automl_api.services.experiment_identity import (
+    OBJECTIVE_PREFIX,
+    SPEC_PREFIX,
+    build_identity,
+    specification_values,
+)
 from automl_api.services.projects import require_project_role
 from automl_api.services.workflow_state import (
     IdempotencyConflict,
@@ -43,6 +51,7 @@ from automl_api.services.workflow_state import (
     canonical_request_hash,
     seal_promotional_scope,
 )
+from automl_api.training.catalog_contract import validate_catalog_revision
 
 REVISION_MODELS = {
     "feature-contract": FeatureContractRevision,
@@ -59,6 +68,10 @@ def begin_contract_mutation(
     idempotency_key: str,
     payload: dict[str, Any],
 ):
+    require_project_role(db, user, project_id, ProjectRole.EDITOR)
+    # Lock before command FK checks to serialize revision allocation without lock upgrades.
+    if db.scalar(select(Project.id).where(Project.id == project_id).with_for_update()) is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
     try:
         command, replayed = begin_command(
             db,
@@ -85,6 +98,8 @@ def create_revision(
 ):
     require_project_role(db, user, project_id, ProjectRole.EDITOR)
     model = REVISION_MODELS[kind]
+    if kind == "search-objective" and payload.name.startswith(OBJECTIVE_PREFIX):
+        raise HTTPException(status_code=422, detail={"code": "reserved_revision_name"})
     current = int(
         db.scalar(
             select(func.max(model.revision)).where(
@@ -148,17 +163,8 @@ def create_experiment_spec(
     payload: ExperimentSpecCreate,
 ) -> ExperimentSpecRevision:
     require_project_role(db, user, project_id, ProjectRole.EDITOR)
-    _require_project_references(
-        db,
-        project_id,
-        {
-            DatasetSplitRevision: payload.split_revision_id,
-            FeatureContractRevision: payload.feature_contract_revision_id,
-            FeatureSearchSpaceRevision: payload.feature_search_space_revision_id,
-            SearchObjectiveRevision: payload.search_objective_revision_id,
-            EstimatorCatalogRevision: payload.catalog_revision_id,
-        },
-    )
+    if payload.name.startswith(SPEC_PREFIX):
+        raise HTTPException(status_code=422, detail={"code": "reserved_revision_name"})
     current = int(
         db.scalar(
             select(func.max(ExperimentSpecRevision.revision)).where(
@@ -171,25 +177,20 @@ def create_experiment_spec(
     if payload.expected_revision is not None and payload.expected_revision != current:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={"code": "experiment_spec_revision_changed", "current_revision": current},
+            detail={
+                "code": "experiment_spec_revision_changed",
+                "requested_revision": payload.expected_revision,
+                "current_revision": current,
+            },
         )
+    fields = set(TrainingEstimateRequest.model_fields) & set(type(payload).model_fields)
+    request = TrainingEstimateRequest.model_validate(
+        payload.model_dump(include=fields, exclude_unset=True)
+    )
+    identity = build_identity(db, project_id, request)
     spec = ExperimentSpecRevision(
-        project_id=project_id,
-        name=payload.name,
         revision=current + 1,
-        digest_algorithm="sha256",
-        digest_scope="experiment-spec-v1",
-        content_digest=canonical_request_hash(payload.model_dump(mode="json")),
-        specification=payload.specification,
-        dataset_version_id=payload.dataset_version_id,
-        split_revision_id=payload.split_revision_id,
-        feature_contract_revision_id=payload.feature_contract_revision_id,
-        feature_search_space_revision_id=payload.feature_search_space_revision_id,
-        search_objective_revision_id=payload.search_objective_revision_id,
-        catalog_revision_id=payload.catalog_revision_id,
-        task_type=payload.task_type.value,
-        target_column=payload.target_column,
-        primary_metric=payload.primary_metric,
+        **specification_values(project_id, payload.name, identity, metadata=payload.specification),
     )
     db.add(spec)
     db.flush()
@@ -259,7 +260,8 @@ def create_scope(
                 detail={"code": "invalid_refit_policy"},
             ) from exc
         scope.comparison_policy = {
-            **scope.comparison_policy, "refit_policy": policy.model_dump(mode="json"),
+            **scope.comparison_policy,
+            "refit_policy": policy.model_dump(mode="json"),
         }
         from automl_api.services.evaluation_planning import validate_evaluation_policy
 
@@ -354,10 +356,16 @@ def decode_cursor(cursor: str | None) -> tuple[str, str] | None:
     if cursor is None:
         return None
     try:
-        values = json.loads(base64.urlsafe_b64decode(cursor.encode()).decode())
-        if not isinstance(values, list) or len(values) != 2:
+        if len(cursor) > 1024:
             raise ValueError
-        return str(values[0]), str(values[1])
+        values = json.loads(base64.b64decode(cursor, altchars=b"-_", validate=True).decode())
+        if (
+            not isinstance(values, list)
+            or len(values) != 2
+            or not all(isinstance(value, str) for value in values)
+        ):
+            raise ValueError
+        return values[0], str(uuid.UUID(values[1]))
     except (ValueError, json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise HTTPException(status_code=422, detail={"code": "invalid_cursor"}) from exc
 
@@ -484,3 +492,54 @@ def _require_run(db: Session, project_id: uuid.UUID, run_id: uuid.UUID) -> None:
     ):
         return
     raise HTTPException(status_code=404, detail="Training run not found.")
+
+
+def resolve_catalog_revision(
+    db: Session,
+    project_id: uuid.UUID,
+    task_type: TaskType,
+    revision_id: uuid.UUID | None = None,
+    *,
+    require_current: bool = False,
+) -> EstimatorCatalogRevision | None:
+    query = select(EstimatorCatalogRevision).where(
+        EstimatorCatalogRevision.project_id == project_id,
+        EstimatorCatalogRevision.specification["task_type"].astext == task_type.value,
+    )
+    latest = query.order_by(
+        EstimatorCatalogRevision.created_at.desc(),
+        EstimatorCatalogRevision.id.desc(),
+    )
+    revision = db.scalar(
+        query.where(EstimatorCatalogRevision.id == revision_id) if revision_id else latest
+    )
+    current = db.scalar(latest) if require_current and revision_id else revision
+    error = None
+    if revision is not None:
+        try:
+            if (
+                require_current
+                and current is not None
+                and revision.content_digest != current.content_digest
+            ):
+                raise ValueError("Requested catalog is no longer the active revision for this task")
+            validate_catalog_revision(revision, task_type)
+        except ValueError as exc:
+            error = exc
+        else:
+            return revision
+    elif revision_id is None:
+        return None
+    if revision_id and not require_current:
+        current = db.scalar(latest)
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "code": "catalog_revision_changed",
+            "requested_revision": str(revision_id) if revision_id else None,
+            "current_revision": str(current.id) if current is not None else None,
+            "message": str(error)
+            if error is not None
+            else "Requested catalog is unavailable for this task.",
+        },
+    )

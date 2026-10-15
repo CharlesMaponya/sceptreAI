@@ -349,3 +349,20 @@ def test_upload_region_is_resolved_and_enforced_before_instructions() -> None:
                 upload_scanner_command="/usr/bin/sha256sum",
             )
         )
+
+
+@pytest.mark.parametrize(
+    "scheme", ["https", "http", "postgresql", "postgresql+psycopg", "redis", "amqp"],
+)
+def test_redaction_removes_url_userinfo_across_backend_schemes(scheme):
+    value = f"{scheme}://private-user:private-password@[::1]:5432/data?token=secret#fragment"
+    redacted = redact_text(f"request failed: {value}")
+    assert "private-user" not in redacted and "private-password" not in redacted
+    assert "secret" not in redacted and "fragment" not in redacted
+    assert f"{scheme}://[::1]:5432/data" in redacted
+
+
+@pytest.mark.parametrize("scheme", ["https", "postgresql+psycopg"])
+def test_malformed_url_redaction_does_not_abort_failure_recording(scheme):
+    value = f"{scheme}://private-user:private-password@[broken"
+    assert redact_text(f"request failed: {value}") == "request failed: <redacted-url>"

@@ -1,0 +1,23 @@
+{
+  "verified_at": "2026-10-11T06:17:58.279380+00:00",
+  "phase_complete": false,
+  "finding": "A cached WorkflowAttempt overwrote a newer retry_count during reclaim, allowing extra claims beyond the durable retry budget.",
+  "fix": "Refresh rows selected FOR UPDATE SKIP LOCKED before incrementing attempt retry_count.",
+  "verification": {
+    "tests": 58,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "negative_control": "New PostgreSQL test failed before the change: third claimant retained retry_count 2 instead of 3.",
+  "source_sha256": {
+    "apps/api/automl_api/services/workflow_state.py": "fc0f1b26ba527ddcc31fd1a8278a68b7254409bbd8735b4278b8eca27aad79d9",
+    "tests/test_phase1_postgres_contracts.py": "e9ff4694ad942a58946c2894dadff03e9a5e7a710074a82305cefc9d986f092b"
+  },
+  "limits": [
+    "claim_attempts has no production callers; this does not qualify native workflow ownership.",
+    "QA image remains c0ae5a3ba688eda3c6be07ae2fad5e3740cc8dd5b059358e850964fdc30891cc and predates current fixes.",
+    "Current disk is below the existing 43 GB build guard; no build, deployment or storage restart performed.",
+    "Full Phase 1, 45 GB migration and seven missing historical QA objects remain unresolved."
+  ]
+}

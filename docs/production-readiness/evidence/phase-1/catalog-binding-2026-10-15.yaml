@@ -1,0 +1,134 @@
+{
+  "verified_at": "2026-10-15T08:18:14.258470+00:00",
+  "scope": "Published catalog content and task/runtime identity through training startup",
+  "phase_complete": false,
+  "related_requirements": [
+    "P1-W13",
+    "P1-W19"
+  ],
+  "changes": [
+    "Preparation publishes exact server-owned public estimator rows and a catalog runtime digest, preserving existing release/task/execution-policy metadata. Definitions bind estimator classes, defaults, search dimensions, source hash, Python and the installed distribution-version inventory. Nonfinite server defaults use explicit JSON-safe identities.",
+    "Catalog reads resolve within project and task, return stored rows and a usable revision UUID, expose the runtime digest and retain signature_verified=false. Missing catalogs return 404; invalid bound content/task/runtime returns a structured 409. Latest resolution is deterministic by creation time and ID.",
+    "Admission rejects stale content relative to the active task catalog, while pinned read requests retain their stored revision identity when runtime-compatible. Equal-content republished IDs are semantically equivalent. Conflicting launch catalog aliases reject before execution intent.",
+    "Launch records catalog content/runtime digests alongside the catalog ID. Training startup revalidates project-scoped stored content, task/runtime and selected estimator names/count before dataset reads, object reads or MLflow activity. Bound/fenced and production/staging workers cannot skip missing catalog identity.",
+    "Selected-mode estimates use the actual number of available default candidates. Duplicate selected estimator names are rejected, and nullable legacy candidate limits resolve before persistence.",
+    "New Ray training commands declare --attempt-protocol training-catalog-v1. Shared workers verify the protocol against durable run kind before admission or status writes. Analysis retains analysis-v1; unsupported typed kinds fail closed. The known predecessor parser rejects the new flag."
+  ],
+  "verification": {
+    "focused": {
+      "tests": 37,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "regressions": {
+      "tests": 650,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "regression_cases_by_module": {
+    "tests.test_catalog_binding": 37,
+    "tests.test_training_service_runtime": 86,
+    "tests.test_training_pipeline_runtime": 29,
+    "tests.test_training_pipeline_edge_contracts": 10,
+    "tests.test_training_analysis_edge_contracts": 24,
+    "tests.test_phase3_preparation": 47,
+    "tests.test_phase1_public_contracts": 28,
+    "tests.test_phase1_postgres_contracts": 38,
+    "tests.test_replay_authorization": 24,
+    "tests.test_training_action_replay": 14,
+    "tests.test_training_parent_lease": 20,
+    "tests.test_training_publication_postgres": 18,
+    "tests.test_model_catalog_edge_contracts": 18,
+    "tests.test_candidate_partitions": 21,
+    "tests.test_phase0_snapshots": 2,
+    "tests.test_admission_runtime": 20,
+    "tests.test_training_parent_expiry": 14,
+    "tests.test_phase1_reconciler": 75,
+    "tests.test_phase1_reconciler_worker": 11,
+    "tests.test_runtime_foundations": 21,
+    "tests.test_analysis_admission": 36,
+    "tests.test_analysis_migration": 57
+  },
+  "runtime_inventory": {
+    "package_version_entries": 219,
+    "package_inventory_digest": "5d466d5dc6dab7150dc6c7d3c6661d77f60f94698543d8e13196fe98104eae7c",
+    "tasks": {
+      "classification": {
+        "estimators": 37,
+        "runtime_lock_digest": "36eb4cc06d16d9dad41309140b2ef9bb28129086df0bc2db696e47126de28dcc",
+        "catalog_content_digest": "437721ad7d5e0ec74ea6ceb3274e4f2067995be70f35a2c91f0536aeb3fa381c"
+      },
+      "regression": {
+        "estimators": 50,
+        "runtime_lock_digest": "6f357cd28017e2728cb6b1c6f683291386f4f0ace62ee16458e19d6a2cf9bcde",
+        "catalog_content_digest": "de2429827918115c43b0463d7c3f25c0345055f9dafa4ffc4b4899c73e006935"
+      },
+      "time_series": {
+        "estimators": 50,
+        "runtime_lock_digest": "e745acff9eec8333539c51949065f9ce4f422f9a6cb96ab52fddd220fba123a4",
+        "catalog_content_digest": "bd5c53069fc3a0bc446974e6aedd95b857e3c23eb2894e005b38e7abe1528519"
+      },
+      "clustering": {
+        "estimators": 11,
+        "runtime_lock_digest": "61ea79dd94b4fd7e90b982c634f58a8f1b4bca1e59b0e64ca9b4f815ae84b22f",
+        "catalog_content_digest": "77cf6171e0c30f1e7bb0100993bb8d66166628c3b6b83fe8277cbe43985c432f"
+      }
+    }
+  },
+  "predecessor_parser_probe": {
+    "worker_source_sha256": "d1bde2088a3e9ca799b13b1c74b18f291c242e34df075e693f94b76bc9b99c0f",
+    "run_id_supported": true,
+    "protocol_denied": true,
+    "namespace": "qa-refit",
+    "pod": "refit-api-84b7765d66-jsqmg",
+    "pod_uid": "a36e9bbe-b409-4885-adb9-aaef1b388f46",
+    "mode": "read-only source/parser inspection; worker main not executed",
+    "image": "k3d-sceptre-registry.localhost:5111/sceptreai@sha256:c0ae5a3ba688eda3c6be07ae2fad5e3740cc8dd5b059358e850964fdc30891cc"
+  },
+  "initial_verification": {
+    "tests": 182,
+    "failures": 1,
+    "errors": 0,
+    "skipped": 0
+  },
+  "initial_verification_note": "One older failure-reporting test omitted the newly mandatory fenced catalog. That case now explicitly isolates failure reporting; dedicated tests exercise actual startup with valid and invalid catalogs. A separate early runtime probe exposed nonfinite regression defaults; explicit JSON-safe float identities fixed publication before the integration runs.",
+  "source_sha256": {
+    "apps/api/automl_api/training/catalog_contract.py": "2b66cc6369361748358d2f0844de3c88eb240cb8d7bc7ab3e65b4c0483e1aaf7",
+    "apps/api/automl_api/preparation_worker.py": "9851005eb0e9a914b1eff6d48d7dc345906f5d1dc46a8feab195dce9afd34bed",
+    "apps/api/automl_api/services/contracts.py": "999f127ebeca0c1f45374412d3d7d40f0abe9e0b47bd2eb26700b75ab8a632aa",
+    "apps/api/automl_api/services/training.py": "702d5ae9f47bffc98f67c9de0ee9ee23c296aca0591dc6527adbab22bcabf488",
+    "apps/api/automl_api/api/routes/contracts.py": "c4df18dc7ea1e1b55c7b9715feb0e223eda7d81737142ab288aedc41e370b1d0",
+    "apps/api/automl_api/schemas/contracts.py": "2eeb77a6f1028ed968c2edf8b3228e980a001d3a4da75ec1a9f7872a8e7cd983",
+    "apps/api/automl_api/services/reconciler.py": "12f96ca6ef6c0b15dc5b867f3b90c1823e851b9b6289f5e71091c305ba3a01ee",
+    "apps/api/automl_api/training/pipeline.py": "5e41d5fb30ea0e37886c7909cd6e23718930f340e3bcdcf4665eb60d17efa81b",
+    "apps/api/automl_api/training/worker.py": "c51571e9c64f8af1f373e26220c672e5814984c7966bfad42f4502640a9c89a1",
+    "apps/api/automl_api/training/attempt_admission.py": "57f045a16fe21747111224c475b5f769033819b778109b97b4168ff1286817f7",
+    "tests/test_catalog_binding.py": "d685ff9ac8afacddcc13bf20ba792d694bd3e765c7db658c751fdd8bddcacb1e",
+    "tests/test_training_service_runtime.py": "3ae94c0b727da5f943c08d2bbf10be7e6d9128d9acc47403853a5f83753342b5",
+    "tests/test_training_pipeline_runtime.py": "a50e0788b358de57edfbe4cbab47562a5555be750a39c2167076e2bbcb33557a",
+    "tests/test_phase3_preparation.py": "01c5a8b4c5b02e935aae5fdb84b0548c565e9b26ba167258ad39fcd1b5b07ddb",
+    "tests/test_training_parent_lease.py": "76f1df0e537eb66ff48f65fa06ad1e45a4a3ddeb96a35f86b43e8dd7fdc6c429",
+    "tests/test_admission_runtime.py": "715aa6a282cdb39984dd0378a83eb0a451a8c2257d7cb5ff79d84d70b6ec72af"
+  },
+  "verification_artifact_sha256": {
+    ".unlazy/phase1-catalog-binding/check.py": "ac98e369aab5ca01c7e7ae2a3572ac78da8a76056712f1c2c5eb56f18d24ff4d",
+    ".unlazy/phase1-catalog-binding/focused.xml": "a4118c3b0af38e9abcce1455fa4780d1d2663c63f6609ed197432f366b90402b",
+    ".unlazy/phase1-catalog-binding/regressions.xml": "25be5970e5e329bde809aad3463ffe7e250f7b0b710dc8f065c4ee36ae240880",
+    ".unlazy/phase1-catalog-binding/runtime-catalogs.json": "50358cdfc8e198f79b3f2219f1471cc9a4835e108b66c75085180920ef072f0e",
+    ".unlazy/phase1-catalog-binding/previous_worker_probe.py": "4f646cefde43ee20f131f7976b953723bd01b0a8dac7156cbd39096fe739e591",
+    ".unlazy/phase1-catalog-binding/previous-worker-report.json": "e3b2ec42d87f5b5612c303cc6e949ba085e77ab18711bbea6a7edc4a68b274be"
+  },
+  "environment": "Real dedicated PostgreSQL catalog/project/task isolation and actual handler/admission resolution; local Ray/preparation and training/recovery regressions; actual training startup boundary tests with data/MLflow stopped at a controlled boundary; independent Python-process catalog identity comparison. Predecessor check is read-only AST/literal argparse reconstruction in the existing QA API Pod, with positive run-id parsing and unchanged Pod UID. No workload main/imports are executed inside that Pod.",
+  "limits": [
+    "This binds runtime-discovered supported candidates; it does not establish reviewed fit/sampling/serialization qualifications. Signature verification remains false. No signed CI catalog, binary/platform attestation or production capacity qualification is claimed.",
+    "The boot-time installed package-version inventory must match between publisher and worker. Distinct CPU/GPU images and platform variants require explicit compatible qualification; matching version strings alone do not attest binary identity.",
+    "Legacy catalogs lacking the new definition are not rewritten in place; new bound launches/workers require a fresh published catalog and matching configured image. Previously admitted/running/uncertain legacy work still needs controlled migration/drain. Worker protocol is a compatibility guard, not cryptographic attestation of arbitrary custom images.",
+    "Unbound local in-process training calls remain a documented compatibility shortcut. Fenced and production/staging execution rejects missing catalog pointers. Full legacy selected-mode immutable experiment-spec resolution and complete candidate-detail history remain required, so W13 stays Open.",
+    "Typed feature/search specifications, full discriminated estimator overrides, provider object/child grants, production Train and current-image native process-loss/TLS/rotation remain open.",
+    "No current workload image was built/deployed and no real GPU or k3d training execution was performed. The 45 GB rehearsal remains open due to storage; seven historical QA objects remain missing. No QA storage/data mutation occurred.",
+    "Phase 1 remains one verified requirement and 35 open requirements. coverage.json remains untouched; no commit/push."
+  ]
+}

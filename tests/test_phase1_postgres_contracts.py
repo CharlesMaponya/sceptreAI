@@ -17,12 +17,13 @@ from automl_api.models.enums import (
     GlobalRole,
     ObjectStoreType,
     OutboxStatus,
+    ProjectRole,
     RunKind,
     RunStatus,
     TaskType,
 )
 from automl_api.models.iam import User
-from automl_api.models.projects import Project
+from automl_api.models.projects import Project, ProjectMembership
 from automl_api.models.qualification import FinalTestAllocation
 from automl_api.models.runs import ModelRun
 from automl_api.models.workflows import (
@@ -97,6 +98,14 @@ def committed_tenant(phase1_engine: Engine) -> tuple[uuid.UUID, uuid.UUID]:
         )
         db.add(project)
         db.flush()
+        db.add(
+            ProjectMembership(
+                project_id=project.id,
+                user_id=user.id,
+                role=ProjectRole.OWNER,
+                accepted_at=datetime.now(UTC),
+            )
+        )
         identity = (user.id, project.id)
     try:
         yield identity
@@ -785,3 +794,261 @@ def test_cached_reclaim_preserves_delivery_counter(phase1_engine, committed_tena
         third = state.claim_outbox(cached, worker_id="third", now=now + timedelta(seconds=4))
         assert third[0].id == entry_id and third[0].delivery_attempts == 3
         cached.rollback()
+
+
+def test_cached_attempt_reclaim_preserves_retry_budget(phase1_engine, committed_tenant):
+    user_id, project_id = committed_tenant
+    now = datetime.now(UTC)
+    with Session(phase1_engine) as db, db.begin():
+        dataset = Dataset(project_id=project_id, created_by_id=user_id, name="attempt-claim")
+        db.add(dataset)
+        db.flush()
+        version = DatasetVersion(
+            project_id=project_id,
+            dataset_id=dataset.id,
+            created_by_id=user_id,
+            version_number=1,
+            format=DatasetFormat.CSV,
+            object_uri="s3://test/claim.csv",
+            content_hash="a" * 64,
+        )
+        db.add(version)
+        db.flush()
+        run = ModelRun(
+            project_id=project_id,
+            dataset_version_id=version.id,
+            created_by_id=user_id,
+            run_kind=RunKind.TRAINING,
+            status=RunStatus.QUEUED,
+            task_type=TaskType.REGRESSION,
+            target_column="target",
+        )
+        db.add(run)
+        db.flush()
+        attempt = WorkflowAttempt(
+            project_id=project_id,
+            model_run_id=run.id,
+            stage="training_run",
+            logical_key=f"claim:{run.id}",
+            workload_identity="project-training",
+            generation=1,
+            fencing_token=uuid.uuid4().hex,
+            status=AttemptStatus.PENDING,
+            available_at=now,
+            retry_budget=3,
+        )
+        db.add(attempt)
+        db.flush()
+        attempt_id = attempt.id
+    with Session(phase1_engine, expire_on_commit=False) as cached:
+        first = state.claim_attempts(cached, worker_id="one", now=now, lease_seconds=1)[0]
+        cached.commit()
+        with Session(phase1_engine) as other, other.begin():
+            second = state.claim_attempts(
+                other, worker_id="two", now=now + timedelta(seconds=2), lease_seconds=1
+            )[0]
+            assert second.id == attempt_id and second.retry_count == 2
+        assert first.retry_count == 1  # Cached snapshot predates the other owner's claim.
+        third = state.claim_attempts(
+            cached, worker_id="three", now=now + timedelta(seconds=4), lease_seconds=1
+        )[0]
+        assert third.id == attempt_id and third.retry_count == 3
+        cached.commit()
+    with Session(phase1_engine) as db:
+        assert state.claim_attempts(db, worker_id="four", now=now + timedelta(seconds=6)) == []
+        assert db.get(WorkflowAttempt, attempt_id).retry_count == 3
+
+
+@pytest.mark.parametrize(
+    "kind", ["feature-contract", "feature-search-space", "search-objective", "experiment-spec"]
+)
+@pytest.mark.parametrize("expected_revision", [0, None])
+def test_revision_request_race_returns_versions_or_conflict(
+    phase1_engine, committed_tenant, monkeypatch, kind, expected_revision, request
+):
+    from threading import Event
+    from time import monotonic
+
+    from automl_api.api.routes import contracts as routes
+    from automl_api.schemas.contracts import (
+        ExperimentSpecCreate,
+        FeatureContractCreate,
+        SearchSpaceCreate,
+    )
+    from automl_api.services import contracts
+    from fastapi import HTTPException
+
+    user_id, project_id = committed_tenant
+    body = {
+        "name": "concurrent-revision",
+        "specification": {},
+        "expected_revision": expected_revision,
+    }
+    if kind == "experiment-spec":
+        payload = ExperimentSpecCreate(
+            **body,
+            **request.getfixturevalue("revision_experiment_bindings"),
+            task_type=TaskType.REGRESSION,
+            target_column="target",
+            primary_metric="rmse",
+        )
+        invoke = routes.post_experiment_spec
+    elif kind == "feature-contract":
+        payload = FeatureContractCreate(
+            **body, task_type=TaskType.REGRESSION, target_column="target"
+        )
+        invoke = routes.post_feature_contract
+    else:
+        payload = SearchSpaceCreate(**body, metric_name="rmse", metric_direction="minimize")
+        invoke = (
+            routes.post_search_space
+            if kind == "feature-search-space"
+            else routes.post_search_objective
+        )
+    first_flushed, release_first, second_connected = Event(), Event(), Event()
+    backend = []
+    creator = "create_experiment_spec" if kind == "experiment-spec" else "create_revision"
+    actual_create = getattr(contracts, creator)
+
+    def hold_first(db, *args, **kwargs):
+        row = actual_create(db, *args, **kwargs)
+        if db.info["worker"] == 0:
+            first_flushed.set()
+            assert release_first.wait(10), "test did not release first transaction"
+        return row
+
+    monkeypatch.setattr(routes, creator, hold_first)
+
+    def issue(worker):
+        with Session(phase1_engine) as db:
+            db.info["worker"] = worker
+            db.execute(text("SET LOCAL lock_timeout = '8s'"))
+            db.execute(text("SET LOCAL statement_timeout = '12s'"))
+            if worker:
+                backend.append(db.scalar(text("SELECT pg_backend_pid()")))
+                second_connected.set()
+            user = db.get(User, user_id)
+            try:
+                result = invoke(project_id, payload, db, user, f"revision-{worker}")
+                return result.revision
+            except HTTPException as exc:
+                db.rollback()
+                assert exc.status_code == 409
+                assert exc.detail["code"] == f"{kind.replace('-', '_')}_revision_changed"
+                assert exc.detail["current_revision"] == 1
+                assert exc.detail["requested_revision"] == expected_revision
+                return "conflict"
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(issue, 0)
+        try:
+            assert first_flushed.wait(5)
+            second = executor.submit(issue, 1)
+            assert second_connected.wait(5)
+            deadline = monotonic() + 5
+            with phase1_engine.connect().execution_options(
+                isolation_level="AUTOCOMMIT"
+            ) as observer:
+                while monotonic() < deadline:
+                    waiting = observer.scalar(
+                        text("SELECT wait_event_type FROM pg_stat_activity WHERE pid = :pid"),
+                        {"pid": backend[0]},
+                    )
+                    if waiting == "Lock":
+                        break
+                    sleep(0.01)
+                else:
+                    pytest.fail("competing revision request did not reach a database lock")
+        finally:
+            release_first.set()
+        assert first.result(timeout=5) == 1
+        assert second.result(timeout=5) == ("conflict" if expected_revision == 0 else 2)
+
+    with Session(phase1_engine) as db:
+        model = (
+            contracts.ExperimentSpecRevision
+            if kind == "experiment-spec"
+            else contracts.REVISION_MODELS[kind]
+        )
+        rows = list(
+            db.scalars(select(model).where(model.project_id == project_id).order_by(model.revision))
+        )
+        assert [row.revision for row in rows] == ([1] if expected_revision == 0 else [1, 2])
+        commands = list(
+            db.scalars(
+                select(state.WorkflowCommand).where(state.WorkflowCommand.project_id == project_id)
+            )
+        )
+        assert len(commands) == len(rows)
+        assert all(
+            command.response_payload["id"] in {str(row.id) for row in rows} for command in commands
+        )
+        replay = invoke(project_id, payload, db, db.get(User, user_id), "revision-0")
+        assert replay.id == rows[0].id
+
+
+@pytest.fixture
+def revision_experiment_bindings(phase1_engine, committed_tenant):
+    from automl_api.models.workflows import (
+        DatasetSplitRevision,
+        ExperimentSpecRevision,
+        FeatureContractRevision,
+        FeatureSearchSpaceRevision,
+        SearchObjectiveRevision,
+    )
+
+    user_id, project_id = committed_tenant
+    with Session(phase1_engine) as db, db.begin():
+        dataset = Dataset(project_id=project_id, created_by_id=user_id, name="revision-race")
+        db.add(dataset)
+        db.flush()
+        version = DatasetVersion(
+            project_id=project_id,
+            dataset_id=dataset.id,
+            created_by_id=user_id,
+            version_number=1,
+            format=DatasetFormat.CSV,
+            object_uri="embedded://revision-race/source",
+            content_hash="a" * 64,
+        )
+        db.add(version)
+        db.flush()
+        common = dict(
+            project_id=project_id,
+            revision=1,
+            digest_scope="revision-race-v1",
+            content_digest="a" * 64,
+        )
+        split = DatasetSplitRevision(
+            **common,
+            dataset_version_id=version.id,
+            train_digest="b" * 64,
+            validation_digest="c" * 64,
+            final_test_digest="d" * 64,
+        )
+        contract = FeatureContractRevision(
+            **common, name="bound-contract", task_type="regression", target_column="target"
+        )
+        search = FeatureSearchSpaceRevision(
+            **common, name="bound-search", metric_name="rmse", metric_direction="minimize"
+        )
+        objective = SearchObjectiveRevision(
+            **common, name="bound-objective", metric_name="rmse", metric_direction="minimize"
+        )
+        catalog = EstimatorCatalogRevision(**common, name="bound-catalog", release_version="test")
+        db.add_all([split, contract, search, objective, catalog])
+        db.flush()
+        bindings = dict(
+            dataset_version_id=version.id,
+            split_revision_id=split.id,
+            feature_contract_revision_id=contract.id,
+            feature_search_space_revision_id=search.id,
+            search_objective_revision_id=objective.id,
+            catalog_revision_id=catalog.id,
+        )
+    try:
+        yield bindings
+    finally:
+        with Session(phase1_engine) as db, db.begin():
+            for model in (ExperimentSpecRevision, DatasetSplitRevision, DatasetVersion, Dataset):
+                db.execute(delete(model).where(model.project_id == project_id))

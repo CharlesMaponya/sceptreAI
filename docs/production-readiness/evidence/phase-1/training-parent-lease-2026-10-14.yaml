@@ -1,0 +1,31 @@
+{
+  "verified_at": "2026-10-14T17:43:09.643624+00:00",
+  "phase_complete": false,
+  "scope": "Owned renewable training-parent entrypoint leases",
+  "negative_control": "The initial test failed against the old worker because it had no explicit owner admission API. Code inspection confirmed the old entrypoint wrote only heartbeat_at and never acquired or renewed a parent lease.",
+  "changes": [
+    "Fenced entrypoint claims a bounded worker identity and 90-second lease with fresh locked state; identical owner replay is allowed while competing owners, expired leases and cancelled runs are rejected.",
+    "Entrypoint renews every 15 seconds and stops its heartbeat in finally. Heartbeat uncertainty and StaleFence propagate without being marked ordinary model failure.",
+    "Shared training result/progress writes and worker failure/completion reject expired parent leases. Explicit worker identities guard completion/failure ownership. Already-committed result recovery remains allowed after expiry under the existing receipt/fence/CAS contract."
+  ],
+  "verification": {
+    "tests": 318,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "focused_cases": 20,
+  "environment": "Real PostgreSQL and actual worker.main entrypoint with synthetic training callbacks. Successful entrypoint test commits actual training result and terminal CAS. No Ray/Kubernetes scheduling or current-image native loss test.",
+  "source_sha256": {
+    "apps/api/automl_api/training/worker.py": "fedbb12169e70536d7f533b51f93a7b26bddeabd65b44ba39c5e6b4fbc737e01",
+    "apps/api/automl_api/training/pipeline.py": "de7005f35df07f4fd94c9575e2b964eeb7f1c4f2ddc9dfbe61536b8ee0c44db6",
+    "tests/test_training_parent_lease.py": "cc1c5525488c40faaea65890fd01853e65324dd537db559cb54f2411df0e839f"
+  },
+  "limits": [
+    "This implements database worker leases, not signed attempt grants or delegated object credentials. Broker issuer/key delivery and restricted worker/provider credentials remain required.",
+    "Legacy attempts without a lease remain compatible outside the updated entrypoint. Current-image deployment and full worker inventory remain unqualified.",
+    "Automatic expiry-driven native workload cleanup/replacement remains pending; existing RayJob failure observation remains the recovery path.",
+    "Predecessor object-checkpoint authorization, production Train, final fitting/external effects and full native recovery qualification remain open.",
+    "All four broad trial gates and all 36 Phase 1 requirements remain open. Adequate storage for the 45 GB rehearsal and seven missing historical QA objects remain unresolved."
+  ]
+}

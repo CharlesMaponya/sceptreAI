@@ -5,9 +5,10 @@ import hashlib
 import json
 import math
 import os
+import threading
 import uuid
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 
@@ -22,9 +23,16 @@ from ray.data.aggregate import Max, Min
 from ray.data.datasource import SaveMode
 from sqlalchemy import select
 
+from automl_api.core.redaction import redact_text
 from automl_api.db.session import get_session_factory
 from automl_api.models.datasets import DatasetVersion, ProfilingJob
-from automl_api.models.enums import AttemptStatus, DatasetFormat, DatasetStatus, WorkflowStage
+from automl_api.models.enums import (
+    AttemptStatus,
+    DatasetFormat,
+    DatasetStatus,
+    TaskType,
+    WorkflowStage,
+)
 from automl_api.models.workflows import (
     DatasetSplitRevision,
     EstimatorCatalogRevision,
@@ -51,9 +59,12 @@ from automl_api.services.workflow_state import (
     transition_attempt,
 )
 from automl_api.storage.object_store import get_object_store
+from automl_api.training.attempt_admission import admit_parent, proof_deadline
+from automl_api.training.catalog_contract import catalog_specification
 
 SPLIT_SEED_REVISION = "dataset-content-sha256-v1"
 IDENTITY_DIGEST_REVISION = "xor-sha256-row-id-v1"
+HEARTBEAT_SECONDS = 15
 
 TASK_METRICS = {
     "classification": {
@@ -97,8 +108,14 @@ def _attempt_context() -> tuple[uuid.UUID, str]:
 def _begin_attempt(
     profile_job_id: uuid.UUID,
     stage: WorkflowStage,
+    *,
+    worker_id: str | None = None,
 ) -> tuple[uuid.UUID, str]:
     attempt_id, fencing_token = _attempt_context()
+    proof = admit_parent((attempt_id, fencing_token))
+    worker_id = uuid.uuid4().hex if worker_id is None else worker_id
+    if not isinstance(worker_id, str) or not worker_id.strip() or len(worker_id) > 255:
+        raise ValueError("A bounded dataset worker identity is required.")
     with get_session_factory()() as db:
         attempt = (
             db.query(WorkflowAttempt)
@@ -106,7 +123,9 @@ def _begin_attempt(
             .with_for_update()
             .one_or_none()
         )
-        profile = db.get(ProfilingJob, profile_job_id)
+        if attempt is not None:
+            db.refresh(attempt, with_for_update=True)
+        profile = db.get(ProfilingJob, profile_job_id, with_for_update=True, populate_existing=True)
         if (
             attempt is None
             or profile is None
@@ -115,13 +134,20 @@ def _begin_attempt(
             or attempt.stage != stage
         ):
             raise ValueError("The fenced dataset attempt does not belong to this profile stage.")
+        if str(profile.overview_json.get("workflow_attempt_id", "")) != str(
+            attempt_id
+        ) or profile.status not in {"queued", "running"}:
+            raise StaleFence("The profile no longer admits this dataset attempt.")
         if attempt.fencing_token != fencing_token:
             raise StaleFence("The Ray worker received a stale dataset fence.")
         if attempt.status == AttemptStatus.SUBMITTED:
             transition_attempt(attempt, AttemptStatus.RUNNING, fencing_token=fencing_token)
         elif attempt.status != AttemptStatus.RUNNING:
             raise StaleFence(f"The Ray worker cannot start an attempt in {attempt.status} state.")
+        _require_dataset_lease(attempt, fencing_token, worker_id=worker_id)
         now = datetime.now(UTC)
+        attempt.lease_owner = worker_id
+        attempt.lease_expires_at = _dataset_deadline(attempt, proof, now)
         attempt.heartbeat_at = now
         profile.status = "running"
         profile.current_stage = stage.value
@@ -129,6 +155,65 @@ def _begin_attempt(
         profile.heartbeat_at = now
         db.commit()
     return attempt_id, fencing_token
+
+
+def _require_dataset_lease(attempt, fencing_token, *, worker_id=None):
+    if (
+        attempt.fencing_token != fencing_token
+        or attempt.status != AttemptStatus.RUNNING
+        or (
+            getattr(attempt, "lease_expires_at", None) is not None
+            and attempt.lease_expires_at <= datetime.now(UTC)
+        )
+        or (
+            worker_id is not None
+            and getattr(attempt, "lease_owner", None) is not None
+            and attempt.lease_owner != worker_id
+        )
+    ):
+        raise StaleFence("The dataset attempt fence, owner or lease is stale.")
+
+
+def _dataset_deadline(attempt, proof, now):
+    deadline = now + timedelta(seconds=90)
+    if proof is None:
+        return deadline
+    if (
+        proof.get("project_id") != str(attempt.project_id)
+        or proof.get("generation") != attempt.generation
+    ):
+        raise StaleFence("Dataset admission differs from its current lineage.")
+    return min(deadline, proof_deadline(proof))
+
+
+def _heartbeat_attempt(profile_id, context, worker_id):
+    proof = admit_parent(context)
+    with get_session_factory()() as db:
+        attempt = db.scalar(
+            select(WorkflowAttempt)
+            .where(
+                WorkflowAttempt.id == context[0],
+            )
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        profile = db.get(ProfilingJob, profile_id, with_for_update=True, populate_existing=True)
+        if (
+            attempt is None
+            or profile is None
+            or attempt.project_id != profile.project_id
+            or attempt.dataset_version_id != profile.dataset_version_id
+            or str(profile.overview_json.get("workflow_attempt_id", "")) != str(attempt.id)
+            or profile.status not in {"queued", "running"}
+            or attempt.lease_owner != worker_id
+            or attempt.lease_expires_at is None
+        ):
+            raise StaleFence("The dataset heartbeat no longer owns this profile.")
+        _require_dataset_lease(attempt, context[1], worker_id=worker_id)
+        now = datetime.now(UTC)
+        attempt.heartbeat_at = profile.heartbeat_at = now
+        attempt.lease_expires_at = _dataset_deadline(attempt, proof, now)
+        db.commit()
 
 
 def _verify_raw(version: DatasetVersion) -> str:
@@ -500,6 +585,9 @@ def _persist_split(
     fencing_token: str,
     result: dict[str, Any],
 ) -> None:
+    proof = admit_parent((attempt_id, fencing_token))
+    if proof is not None and result.get("project_id") != proof["project_id"]:
+        raise StaleFence("Splitter output belongs to another project.")
     store = get_object_store()
     manifest = json.dumps(result, sort_keys=True, separators=(",", ":")).encode()
     # Terminal payloads are immutable and attempt-scoped. A superseded worker may
@@ -521,6 +609,19 @@ def _persist_split(
         profile = db.get(ProfilingJob, profile_job_id)
         if profile is None or attempt.dataset_version_id != profile.dataset_version_id:
             raise ValueError("The splitter completion lineage is missing.")
+        db.refresh(profile, with_for_update=True)
+        if (
+            profile.project_id != attempt.project_id
+            or profile.status not in {"queued", "running"}
+            or profile.dataset_version_id != attempt.dataset_version_id
+            or str(profile.overview_json.get("workflow_attempt_id", "")) != str(attempt_id)
+        ):
+            raise StaleFence("The dataset publication profile is no longer current.")
+        db.refresh(attempt, with_for_update=True)
+        proof_deadline(proof)
+        if attempt.stage != WorkflowStage.SPLITTER:
+            raise StaleFence("The dataset publication stage is invalid.")
+        _require_dataset_lease(attempt, fencing_token)
         digest = hashlib.sha256(manifest).hexdigest()
         revision = _next_revision(db, PreparedArtifact, profile.dataset_version_id)
         prepared = PreparedArtifact(
@@ -759,6 +860,7 @@ def _feature_launch_revisions(
         registry_revision_id=registry.id,
     )
     catalog_spec = {
+        **catalog_specification(TaskType(task_type)),
         "release": "phase3-polars-ray-v1",
         "task_type": task_type,
         "execution_policy": "ray_owned_concurrency",
@@ -818,6 +920,7 @@ def _record_preparation_progress(
     total_columns: int | None = None,
     row_count: int | None = None,
 ) -> None:
+    proof = admit_parent((attempt_id, fencing_token))
     with get_session_factory()() as db:
         attempt = db.scalar(
             select(WorkflowAttempt).where(WorkflowAttempt.id == attempt_id).with_for_update()
@@ -825,6 +928,8 @@ def _record_preparation_progress(
         profile = db.scalar(
             select(ProfilingJob).where(ProfilingJob.id == profile_job_id).with_for_update()
         )
+        if profile is not None:
+            db.refresh(profile, with_for_update=True)
         active_attempt_id = (
             str(profile.overview_json.get("workflow_attempt_id", "")) if profile else ""
         )
@@ -832,10 +937,17 @@ def _record_preparation_progress(
             attempt is None
             or profile is None
             or attempt.fencing_token != fencing_token
+            or profile.status not in {"queued", "running"}
+            or attempt.stage != WorkflowStage.PREPARATION
+            or attempt.project_id != profile.project_id
+            or attempt.dataset_version_id != profile.dataset_version_id
             or attempt.status != AttemptStatus.RUNNING
             or active_attempt_id != str(attempt_id)
         ):
             raise StaleFence("A stale preparation worker cannot update profile progress.")
+        db.refresh(attempt, with_for_update=True)
+        proof_deadline(proof)
+        _require_dataset_lease(attempt, fencing_token)
         now = datetime.now(UTC)
         attempt.heartbeat_at = now
         profile.heartbeat_at = now
@@ -1000,6 +1112,9 @@ def _persist_profile(
     result: dict[str, Any],
     artifact: PreparedArtifact,
 ) -> None:
+    proof = admit_parent((attempt_id, fencing_token))
+    if proof is not None and str(artifact.project_id) != proof["project_id"]:
+        raise StaleFence("Preparation output belongs to another project.")
     store = get_object_store()
     payload = json.dumps(result, sort_keys=True, separators=(",", ":")).encode()
     # See _persist_split: the CAS controls which URI becomes authoritative, while
@@ -1020,6 +1135,19 @@ def _persist_profile(
         version = db.get(DatasetVersion, attempt.dataset_version_id)
         if profile is None or version is None:
             raise ValueError("The preparation completion lineage is missing.")
+        db.refresh(profile, with_for_update=True)
+        if (
+            profile.project_id != attempt.project_id
+            or profile.status not in {"queued", "running"}
+            or profile.dataset_version_id != attempt.dataset_version_id
+            or str(profile.overview_json.get("workflow_attempt_id", "")) != str(attempt_id)
+        ):
+            raise StaleFence("The dataset publication profile is no longer current.")
+        db.refresh(attempt, with_for_update=True)
+        proof_deadline(proof)
+        if attempt.stage != WorkflowStage.PREPARATION:
+            raise StaleFence("The dataset publication stage is invalid.")
+        _require_dataset_lease(attempt, fencing_token)
         if not cas_register_terminal_artifact(
             db,
             attempt_id=attempt.id,
@@ -1078,7 +1206,16 @@ def _persist_profile(
         db.commit()
 
 
-def _record_failure(profile_job_id: uuid.UUID, attempt_id: uuid.UUID, exc: Exception) -> None:
+def _record_failure(
+    profile_job_id: uuid.UUID,
+    attempt_id: uuid.UUID,
+    exc: Exception,
+    *,
+    fencing_token=None,
+    worker_id=None,
+) -> None:
+    if isinstance(exc, StaleFence):
+        return
     with get_session_factory()() as db:
         # The observer locks attempts before profiles. Keep the same order here so
         # a terminal Ray status and the worker's root-cause write cannot deadlock.
@@ -1088,41 +1225,61 @@ def _record_failure(profile_job_id: uuid.UUID, attempt_id: uuid.UUID, exc: Excep
         profile = db.scalar(
             select(ProfilingJob).where(ProfilingJob.id == profile_job_id).with_for_update()
         )
-        now = datetime.now(UTC)
+        if profile is not None:
+            db.refresh(profile, with_for_update=True)
         if attempt is not None:
-            attempt.heartbeat_at = now
-            attempt.terminal_reason = str(exc)[:2000]
-        active_attempt_id = (
-            str(profile.overview_json.get("workflow_attempt_id", "")) if profile else ""
-        )
-        if profile is not None and active_attempt_id == str(attempt_id):
-            profile.heartbeat_at = now
-            profile.failure_message = str(exc)[:2000]
-            if (
-                isinstance(exc, (ValueError, TypeError))
-                and not isinstance(exc, StaleFence)
-                and attempt is not None
-                and attempt.status
-                in {AttemptStatus.CLAIMED, AttemptStatus.SUBMITTED, AttemptStatus.RUNNING}
-            ):
-                transition_attempt(
-                    attempt,
-                    AttemptStatus.FAILED,
-                    fencing_token=attempt.fencing_token,
-                    terminal_reason=str(exc)[:2000],
-                    expected_cas_version=attempt.terminal_cas_version,
-                )
-                profile.status = "failed"
-                profile.current_stage = "failed"
-                profile.finished_at = now
-                version = db.get(DatasetVersion, profile.dataset_version_id)
-                if version is not None:
-                    version.status = DatasetStatus.READY
+            db.refresh(attempt, with_for_update=True)
+        if (
+            attempt is None
+            or profile is None
+            or fencing_token is None
+            or attempt.fencing_token != fencing_token
+            or attempt.status != AttemptStatus.RUNNING
+            or profile.status not in {"queued", "running"}
+            or attempt.project_id != profile.project_id
+            or attempt.dataset_version_id != profile.dataset_version_id
+            or str(profile.overview_json.get("workflow_attempt_id", "")) != str(attempt_id)
+        ):
+            return
+        _require_dataset_lease(attempt, fencing_token, worker_id=worker_id)
+        message = redact_text(str(exc))[:2000]
+        now = datetime.now(UTC)
+        attempt.heartbeat_at = now
+        attempt.terminal_reason = message
+        profile.heartbeat_at = now
+        profile.failure_message = message
+        if isinstance(exc, (ValueError, TypeError)):
+            transition_attempt(
+                attempt,
+                AttemptStatus.FAILED,
+                fencing_token=attempt.fencing_token,
+                terminal_reason=message,
+                expected_cas_version=attempt.terminal_cas_version,
+            )
+            profile.status = profile.current_stage = "failed"
+            profile.finished_at = now
+            version = db.get(DatasetVersion, profile.dataset_version_id)
+            if version is not None:
+                version.status = DatasetStatus.READY
         db.commit()
 
 
 def run_stage(profile_job_id: uuid.UUID, stage: WorkflowStage) -> None:
-    attempt_id, fencing_token = _begin_attempt(profile_job_id, stage)
+    worker_id = uuid.uuid4().hex
+    attempt_id, fencing_token = _begin_attempt(profile_job_id, stage, worker_id=worker_id)
+    stop = threading.Event()
+    heartbeat_errors = []
+
+    def heartbeat():
+        while not stop.wait(HEARTBEAT_SECONDS):
+            try:
+                _heartbeat_attempt(profile_job_id, (attempt_id, fencing_token), worker_id)
+            except Exception as exc:
+                heartbeat_errors.append(exc)
+                return
+
+    thread = threading.Thread(target=heartbeat, name="dataset-attempt-heartbeat", daemon=True)
+    thread.start()
     try:
         if stage == WorkflowStage.SPLITTER:
             with get_session_factory()() as db:
@@ -1137,6 +1294,10 @@ def run_stage(profile_job_id: uuid.UUID, stage: WorkflowStage) -> None:
             result = split_dataset(
                 version, profile_job_id, generation, target_column, time_column=time_column
             )
+            if heartbeat_errors:
+                raise StaleFence(
+                    "Dataset heartbeat could not verify ownership."
+                ) from heartbeat_errors[0]
             _persist_split(profile_job_id, attempt_id, fencing_token, result)
         elif stage == WorkflowStage.PREPARATION:
             result, artifact = prepare_profile(
@@ -1144,12 +1305,23 @@ def run_stage(profile_job_id: uuid.UUID, stage: WorkflowStage) -> None:
                 attempt_id=attempt_id,
                 fencing_token=fencing_token,
             )
+            if heartbeat_errors:
+                raise StaleFence(
+                    "Dataset heartbeat could not verify ownership."
+                ) from heartbeat_errors[0]
             _persist_profile(profile_job_id, attempt_id, fencing_token, result, artifact)
         else:
             raise ValueError(f"Unsupported dataset stage: {stage.value}")
-    except Exception as exc:
-        _record_failure(profile_job_id, attempt_id, exc)
+    except StaleFence:
         raise
+    except Exception as exc:
+        _record_failure(
+            profile_job_id, attempt_id, exc, fencing_token=fencing_token, worker_id=worker_id
+        )
+        raise
+    finally:
+        stop.set()
+        thread.join(timeout=1)
 
 
 def main() -> None:

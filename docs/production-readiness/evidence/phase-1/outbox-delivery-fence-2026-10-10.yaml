@@ -1,0 +1,46 @@
+{
+  "verified_at": "2026-10-10T13:26:38.536408+00:00",
+  "phase_complete": false,
+  "scope": "Outbox delivery ownership before external effects and across upload verification commits",
+  "finding": "reconcile_entry called external handlers before verifying the current outbox owner; stale, expired and already delivered entries could execute effects. Upload heartbeats could extend a replacement owner lease.",
+  "changes": [
+    "Refresh and row-lock the outbox before dispatch; reject stale, expired, missing-lease and pending claims. Deleted/delivered entries are no-ops.",
+    "Hold the row lock through ordinary handlers so competitors skip an in-flight transaction.",
+    "Recheck ownership after upload verification commits, before heartbeat renewal and terminal publication. Refresh upload state before merging writes.",
+    "Propagate StaleFence distinctly from scanner ValueError and do not consume another owner retry budget or quarantine its upload.",
+    "On handler failure, validate completion ownership before writing a project deletion error."
+  ],
+  "verification": {
+    "fence": {
+      "tests": 14,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "regression": {
+      "tests": 190,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "tests": [
+    "Two PostgreSQL connections exercise actual claim takeover, stale ORM state, expired/missing leases, pending status, deletion and two completed replays.",
+    "A competing claimant skips a row locked during its external handler, even when its clock is beyond the nominal lease.",
+    "Upload positive controls and outbox/upload ownership takeover at heartbeat and publication boundaries preserve the replacement lease and reject stale writes."
+  ],
+  "source_sha256": {
+    "apps/api/automl_api/services/reconciler.py": "44e54bceb09e362510fa54fc08adf680e32b4fc5e3a41c80a7332629522ea741",
+    "tests/test_outbox_delivery_fence.py": "00caf689d91deff2cd52e8d9f8fe7e98fc134812215308786375ee46905a872f",
+    "tests/test_phase1_reconciler.py": "357242c3c4f03e1f5bec67d88e0a9ffde537d7e9670d739f3fdcd8e7e774a06e"
+  },
+  "audit_gaps": [
+    "Local profiling still uses _scheduled_jobs and threading.Lock; resume_incomplete_profiling_jobs unconditionally resets non-distributed running jobs, and _run_profiling_job has no durable owner fence.",
+    "claim_attempts is currently unused by production callers; its ORM query lacks populate_existing, unlike claim_outbox. Review before qualifying this generic path."
+  ],
+  "limits": [
+    "No native k3d deployment or process-kill qualification of these changes.",
+    "A database lock cannot cancel an external request already in flight when a connection dies; handler-specific idempotency and attempt fencing remain necessary.",
+    "Full Phase 1, 45 GB migration, external MLflow deletion and historical QA recovery remain open."
+  ]
+}

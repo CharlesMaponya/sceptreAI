@@ -569,7 +569,7 @@ def test_progress_completion_and_cleanup_failure_branches(monkeypatch) -> None:
         "completed_deleted": 0,
         "quarantine_deleted": 1,
     }
-    assert driver.deleted == []
+    assert driver.deleted == [missing_object.completed_object_uri]
 
     cleanup_db.row_values = [[_upload(provider_driver="gcs")]]
     with pytest.raises(RuntimeError, match="Cleanup driver"):
@@ -692,3 +692,31 @@ def test_contract_value_guards() -> None:
     with pytest.raises(ValueError, match="ordered"):
         ByteRange(4, 2)
     assert tuple(RayDataSourceDescriptor("path", {"a": 1}, "gcs")) == ("path", {"a": 1})
+
+
+@pytest.mark.parametrize("status", ["quarantined", "object_completed", "verifying"])
+def test_retention_wait_does_not_starve_other_upload_cleanup(monkeypatch, status):
+    from automl_api.storage.contracts import DeletionPending
+
+    driver = Driver()
+    monkeypatch.setattr(uploads, "get_object_store", lambda *_: driver)
+    pending = _upload(status=status, completed_object_uri="s3c://bucket/retained")
+    other = _upload(status="quarantined", completed_object_uri="s3c://bucket/other")
+    now = datetime.now(UTC)
+    original = driver.delete
+
+    def delete(uri):
+        if uri == pending.completed_object_uri:
+            raise DeletionPending("Provider retains deleted generations")
+        original(uri)
+
+    monkeypatch.setattr(driver, "delete", delete)
+    db = Session()
+    db.row_values = [[pending, other]]
+    result = uploads.cleanup_abandoned_uploads(db, settings=_settings(), now=now)
+    assert pending.status == status
+    assert pending.lease_expires_at == now + timedelta(hours=1)
+    assert pending.lease_owner is None
+    assert "retains" in pending.terminal_reason
+    assert other.status == "failed"
+    assert result == {"expired": 0, "completed_deleted": 0, "quarantine_deleted": 1}

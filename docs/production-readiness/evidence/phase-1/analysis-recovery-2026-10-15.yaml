@@ -1,0 +1,122 @@
+{
+  "verified_at": "2026-10-15T05:53:09.906978+00:00",
+  "phase_complete": false,
+  "scope": "Managed analysis Job identity, durable cleanup and bounded replacement",
+  "changes": [
+    "Submission records physical namespace/name/UID plus original outbox ID and canonical manifest digest in a typed append-only attempt event. Unknown creation acknowledgement adopts only a Job with matching project/run/attempt/generation/stage labels.",
+    "Managed attempt observer locks fresh attempt before run, preserves committed report CAS and control-plane cancellation, and atomically queues exact cleanup plus bounded fresh-generation replacement for lease expiry, missing/failed/completed-without-CAS Jobs or an unclaimed startup lease. Exhausted budgets still clean up.",
+    "Replacement reuses a deep copy of the immutable submitted manifest while rebinding generation, name, fence and projected-token audience; original source remains unchanged. Actual replacement submit/claim/report commit is tested.",
+    "Typed cancellation validates scope, fence, recorded event/source digest, namespace/name/UID and current physical scope labels; deletion has a UID precondition. Lost deletion acknowledgement and 404 replay preserve terminal CAS. Legacy Job observation excludes managed attempt rows.",
+    "Heartbeat failure test now captures the actual thread and synchronizes through an event, removing a race when the failed thread exits before live-thread enumeration."
+  ],
+  "verification": {
+    "regressions": {
+      "tests": 904,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "native_control_plane": {
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "focused_cases": 68,
+  "format_verification": {
+    "path": "tests/test_phase1_reconciler_worker.py",
+    "ast_unchanged": true,
+    "before_sha256": "5452888f46a6ee32e834cef0abdc0a109c8d54c3bab4cb44e0f13fa2656418b3",
+    "after_sha256": "dc8131f724807887d3b10f4a7a229ee3371121c46f72d71ea54c0dbed3775139"
+  },
+  "initial_verification": {
+    "tests": 904,
+    "failures": 1,
+    "cause": "Existing failed-heartbeat test searched live threads after the heartbeat could exit; StopIteration. Captured thread reference plus Event synchronization fixes the test; no product-code change or exclusion. The final complete regression rerun supersedes it."
+  },
+  "native_probes": [
+    {
+      "namespaces": [
+        "analysis-recover-9c9f2e01dd",
+        "analysis-neighbor-9c9f2e01dd"
+      ],
+      "cleanup": true,
+      "kind": "validation",
+      "old_uid": "837117e3-db61-4c21-87a6-4fd840f30544",
+      "new_attempt_id": "93a924ae-c3b9-4159-b235-9315545baa33",
+      "replacement_submitted": true,
+      "stale_fence_denied": true,
+      "uid_substitution_denied": true,
+      "wrong_uid_denied": true,
+      "foreign_adoption_denied": true,
+      "adoption_replay": true,
+      "neighbor_preserved": true,
+      "cancel_replay": true,
+      "pods_started": 0
+    },
+    {
+      "namespaces": [
+        "analysis-recover-3f398cb85a",
+        "analysis-neighbor-3f398cb85a"
+      ],
+      "cleanup": true,
+      "kind": "explainability",
+      "old_uid": "6c4f0abd-19e3-46ab-8544-95fd601ad757",
+      "new_attempt_id": "385f3643-ae68-426c-94b2-7098724209bc",
+      "replacement_submitted": true,
+      "stale_fence_denied": true,
+      "uid_substitution_denied": true,
+      "wrong_uid_denied": true,
+      "foreign_adoption_denied": true,
+      "adoption_replay": true,
+      "neighbor_preserved": true,
+      "cancel_replay": true,
+      "pods_started": 0
+    },
+    {
+      "namespaces": [
+        "analysis-recover-462409cdf9",
+        "analysis-neighbor-462409cdf9"
+      ],
+      "cleanup": true,
+      "kind": "drift",
+      "old_uid": "eb89509e-198c-4a81-ae67-3cd70133c624",
+      "new_attempt_id": "4a64ccb8-2f4f-4c22-9dd1-10de11840b3c",
+      "replacement_submitted": true,
+      "stale_fence_denied": true,
+      "uid_substitution_denied": true,
+      "wrong_uid_denied": true,
+      "foreign_adoption_denied": true,
+      "adoption_replay": true,
+      "neighbor_preserved": true,
+      "cancel_replay": true,
+      "pods_started": 0
+    }
+  ],
+  "source_sha256": {
+    "apps/api/automl_api/services/reconciler.py": "03841b6a50de4e81b77ca9e2df66fc22b4a3fc4f50a3067fedb85830f3ba8ad4",
+    "apps/api/automl_api/services/kubernetes_training.py": "6bbad540cee7839e8b6e53f837e41b92002dc4bf4bdcca3f587021e4e109dbb6",
+    "apps/api/automl_api/workflow_reconciler.py": "4d5cf6aa976fcbb6ec4f5c40da0db569d56359d78df89a0f4f82f0b3bfa050c7",
+    "apps/api/automl_api/training/analysis.py": "254cffc283f65814487bff5bc5938745f645a3c6a8e12a2a8eeda87e30710810",
+    "apps/api/automl_api/training/worker.py": "bf5df82561e2701b5a851196fa8d96fd92401abfe3445075d81601eff08de478",
+    "apps/api/automl_api/services/workflow_state.py": "fc0f1b26ba527ddcc31fd1a8278a68b7254409bbd8735b4278b8eca27aad79d9",
+    "tests/test_analysis_recovery.py": "a249e2f46068065cf7a164959340e29e4b680c7029d4ec17904d5fe42f43a6ef",
+    "tests/test_analysis_admission.py": "fd624bb4780246455ad342a6ec8b81e64995eaca8777ffb191c8f19b71269fe2",
+    "tests/test_phase1_reconciler_worker.py": "dc8131f724807887d3b10f4a7a229ee3371121c46f72d71ea54c0dbed3775139",
+    "tests/test_preparation_admission.py": "7015f3fc8c25455216e7dd09ac265009effad5cc5b43427811c87037a1f816f1"
+  },
+  "verification_script_sha256": {
+    "check.py": "b632bc4c616a1fcc607831dfd220b8f654d94813734ddb3f2150c800d4492bac",
+    "native_check.py": "6130d426997f6d97571dbd587379d2593f86f4099eaca143a0544dab4b291be4",
+    "native_test.py": "92226857d0366fd56f6726bc289cad89e3de39a6bbf236fcedb8e3ce5a962002"
+  },
+  "environment": "Real PostgreSQL, shared worker admission/lease/report code, actual Job manifest binding and outbox dispatch. Native current local control plane uses real k3d suspended batch Jobs in fresh target/neighbor namespaces; capacity response is mocked, no pods start. Probes verify adoption replay, foreign adoption denial, wrong-UID 409, exact old deletion/404 replay, replacement submission and same-name recreated-UID denial; all owned namespaces removed.",
+  "limits": [
+    "Legacy queued manifests without attempt identity, and previously submitted typed rows without the new submission event, still need explicit migration/replay. The legacy observer is not qualification of those workflows.",
+    "Native tests are control-plane probes with deliberately suspended Jobs; they do not prove deployed worker/process death, full model computation, current immutable images, TLS/egress, kubelet rotation or deployed RBAC.",
+    "Provider/database credentials remain broad. Exact object/version/method/byte grants, separate child grants and predecessor object grants remain open. Application-reported deterministic failures remain terminal; this does not qualify every transient failure classification.",
+    "An inconsistent committed report/CAS is rejected rather than retrained. Scope/UID/evidence mismatches fail closed and may need operator intervention.",
+    "All 36 broad Phase 1 requirements remain Open. The 45 GB migration rehearsal lacks storage; seven historical QA objects remain missing and original preservation gate remains abandoned."
+  ]
+}

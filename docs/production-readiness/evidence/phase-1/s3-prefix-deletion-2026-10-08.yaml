@@ -1,0 +1,55 @@
+{
+  "date": "2026-10-08",
+  "status": "local_s3_prefix_cleanup_verified_phase_incomplete",
+  "changes": [
+    "Abort prefix-scoped multipart uploads and verify ListParts absence",
+    "Delete explicit versions including null versions and delete markers in bounded batches",
+    "Drain from first page to avoid deleting continuation markers during pagination",
+    "Require empty post-delete listing and fail if cleanup makes no progress, listing is incomplete, or provider denies deletion"
+  ],
+  "checks": {
+    "tests": 20,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "native": [
+    {
+      "prefix": "projects/qa-deletion-0611f7f2164a432d907968b4951ba037",
+      "seeded_versions": 2,
+      "seeded_delete_markers": 1,
+      "seeded_multipart_uploads": 1
+    },
+    {
+      "status": "passed",
+      "prefix": "projects/qa-deletion-0611f7f2164a432d907968b4951ba037",
+      "verified_tls": true,
+      "replays": 2,
+      "adjacent_prefix_preserved": true,
+      "test_data_cleaned": true,
+      "source_sha256": "9a890b17dcf7f6ac8ce5a1e53bef0d18cb9c9c7ebc40ee9f1a77ae45865de2ee"
+    }
+  ],
+  "sources": [
+    "https://docs.aws.amazon.com/boto3/latest/reference/services/s3/client/list_object_versions.html",
+    "https://docs.aws.amazon.com/boto3/latest/reference/services/s3/client/abort_multipart_upload.html",
+    "https://docs.aws.amazon.com/boto3/latest/reference/services/s3/client/delete_objects.html"
+  ],
+  "limits": [
+    "Current source executed inside existing QA API pod for this probe, not a rebuilt/deployed application image",
+    "Real AWS IAM, retention, replication and backups not qualified",
+    "Exact-object delete still uses existing logical-delete behavior; artifact cleanup and Azure/GCS historical versions remain open",
+    "Full Phase 1 and 45 GB migration qualification incomplete"
+  ],
+  "source_sha256": {
+    "apps/api/automl_api/storage/s3.py": "9a890b17dcf7f6ac8ce5a1e53bef0d18cb9c9c7ebc40ee9f1a77ae45865de2ee",
+    "tests/test_object_store.py": "6138e2d0cd78239915d2f0f42b8c4a9ecbf16e4e3ecf32f8f4e6e5a9ff0951a6"
+  },
+  "combined_regression": {
+    "tests": 234,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "environment_recovery": "First combined run: 210 passed, 24 setup errors because disposable PostgreSQL container was stopped. Restarted same existing container, confirmed head 0011, reran full suite: 234 passed."
+}

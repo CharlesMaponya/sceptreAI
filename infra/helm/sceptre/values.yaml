@@ -379,3 +379,6 @@ championEvaluation:
   cpuCores: 1
   memoryMiB: 2048
   egressRules: []
+
+attemptIdentity:
+  controlBaseUrl: ""

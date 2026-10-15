@@ -1,0 +1,153 @@
+{
+  "status": "bounded_native_commit_recovery_passed_phase_incomplete",
+  "date": "2026-10-07",
+  "image": {
+    "dockerfile": "Dockerfile.api",
+    "amd64_manifest": "sha256:9e055799d554317abc71b3439b957bf5749a1319ddf5ade1f401567082496765",
+    "build_exit": 0,
+    "push_exit": 0,
+    "source_import_validation": {
+      "sqlglot": "30.21.0",
+      "hashes": {
+        "apps/api/automl_api/models/base.py": "dda39c2e1b6eef92a43e2cf356804d0e78813cd2612142acc2dde5fa4b9e9dc3",
+        "apps/api/automl_api/services/evaluation_reconciler.py": "543b1d6593d34f894f903fd98c4f2a368f1e7e783ac5c9176e70f3c73972933c",
+        "apps/api/automl_api/db/session.py": "086e01516c16e0699a9ccafa6b3bf98f1a2795f26513ca52905af2fede75a00a",
+        "scripts/verify_database_schema.py": "6c30776ea1f1f2828b68859a6e825dcb763bffe152c7cd46e6d3dfb6325ec3f7",
+        "requirements-api.lock": "b48a6c57dd830783e3beee6fa52f5c635951a9cd836adbdd4fcfdb360f684f28"
+      }
+    },
+    "live_verified_tls": {
+      "api_ready": 200,
+      "authority_ready": 200,
+      "proxy_forwarded_invalid_identity": 401
+    }
+  },
+  "fault_proxy": {
+    "local_tests_passed": 7,
+    "native_before_commit": {
+      "status": "passed_after_probe_permission_repair",
+      "worker_exit": 1,
+      "worker_error": "RemoteProtocolError",
+      "proxy_dropped_commit_attempts": 2,
+      "initial_observation_failure": "QA controller lacked pods/log get permission; added namespace-scoped read and resumed same scope without reseeding",
+      "observations": [
+        {
+          "scope": "8a920c75-a8ae-4960-9c23-531f6aa03551",
+          "fault_mode": "before",
+          "failed_job": "evaluation-a51b360c64a24e93bc5fcc38d51a7772",
+          "stored_result_verified": true,
+          "authority_status_before_recovery": "opened"
+        },
+        {
+          "scope_id": "8a920c75-a8ae-4960-9c23-531f6aa03551",
+          "status": "succeeded",
+          "rows": 10,
+          "rmse": 5.503840364735051e-15,
+          "grants": 1,
+          "attempts": 2,
+          "lost_create_replies": 0,
+          "result_sha256": "7f5e6be1075950097ccab1636986f2ad5c9590ea3a65249ac5469d85948d52f9",
+          "cleanup": "complete"
+        },
+        {
+          "scope_id": "8a920c75-a8ae-4960-9c23-531f6aa03551",
+          "status": "succeeded",
+          "rows": 10,
+          "rmse": 5.503840364735051e-15,
+          "grants": 1,
+          "attempts": 2,
+          "lost_create_replies": 0,
+          "result_sha256": "7f5e6be1075950097ccab1636986f2ad5c9590ea3a65249ac5469d85948d52f9",
+          "cleanup": "complete"
+        },
+        {
+          "scope_id": "8a920c75-a8ae-4960-9c23-531f6aa03551",
+          "status": "succeeded",
+          "rows": 10,
+          "rmse": 5.503840364735051e-15,
+          "grants": 1,
+          "attempts": 2,
+          "lost_create_replies": 0,
+          "result_sha256": "7f5e6be1075950097ccab1636986f2ad5c9590ea3a65249ac5469d85948d52f9",
+          "cleanup": "complete"
+        }
+      ],
+      "asserted_commits_after_recovery": 1,
+      "asserted_terminal_replays": 2
+    },
+    "native_lost_commit_reply": {
+      "status": "passed",
+      "worker_exit": 1,
+      "worker_error": "RemoteProtocolError",
+      "proxy_dropped_successful_commit_responses": 2,
+      "observations": [
+        {
+          "scope": "dab04e24-3013-490a-af38-2e07084fff40",
+          "fault_mode": "after",
+          "failed_job": "evaluation-ee00134f48d447f8a968725ba7fb81aa",
+          "stored_result_verified": true,
+          "authority_status_before_recovery": "committed"
+        },
+        {
+          "scope_id": "dab04e24-3013-490a-af38-2e07084fff40",
+          "status": "succeeded",
+          "rows": 10,
+          "rmse": 5.503840364735051e-15,
+          "grants": 1,
+          "attempts": 2,
+          "lost_create_replies": 0,
+          "result_sha256": "97aef76d9cb3a0487c6dcab223b70a37fe2cf2ed2d8ef5b5cbf10835bad3c515",
+          "cleanup": "complete"
+        },
+        {
+          "scope_id": "dab04e24-3013-490a-af38-2e07084fff40",
+          "status": "succeeded",
+          "rows": 10,
+          "rmse": 5.503840364735051e-15,
+          "grants": 1,
+          "attempts": 2,
+          "lost_create_replies": 0,
+          "result_sha256": "97aef76d9cb3a0487c6dcab223b70a37fe2cf2ed2d8ef5b5cbf10835bad3c515",
+          "cleanup": "complete"
+        },
+        {
+          "scope_id": "dab04e24-3013-490a-af38-2e07084fff40",
+          "status": "succeeded",
+          "rows": 10,
+          "rmse": 5.503840364735051e-15,
+          "grants": 1,
+          "attempts": 2,
+          "lost_create_replies": 0,
+          "result_sha256": "97aef76d9cb3a0487c6dcab223b70a37fe2cf2ed2d8ef5b5cbf10835bad3c515",
+          "cleanup": "complete"
+        }
+      ],
+      "asserted_commits_before_recovery": 1,
+      "asserted_commits_after_recovery": 1,
+      "asserted_terminal_replays": 2
+    },
+    "scope_seeded": true,
+    "before_scope": "8a920c75-a8ae-4960-9c23-531f6aa03551",
+    "after_scope": "dab04e24-3013-490a-af38-2e07084fff40"
+  },
+  "incident": {
+    "trigger": "QA image rollout temporarily exhausted shared k3d host storage",
+    "impact": "Existing sceptre MLflow and QA databases unable to schedule under disk-pressure taints; other sceptre deployments recovered",
+    "recovery_threshold": "5% eviction threshold plus 10% minimum reclaim; 5 minute pressure transition",
+    "action": "Removed explicitly selected unused API build cache; retained application images and volumes",
+    "free_bytes_after_cache_reclaim": 47797829632,
+    "recovery": "All three nodes DiskPressure false; every existing sceptre deployment ready; QA API, two authority replicas and both QA databases ready at 2026-10-07T18:30Z"
+  },
+  "limits": [
+    "45 GB is the user qualification ceiling, not a completed migration rehearsal",
+    "Both native commit-fault boundaries passed on ten synthetic rows; capacity and full training-to-evaluation journey remain unqualified",
+    "Other Phase 1 requirements remain open"
+  ],
+  "source_sha256": {
+    ".dockerignore": "d2fcbb0c4477d59a3d065e961baac0fb3d25e5efac958a0d35c5213a30aeaa21",
+    "scripts/evaluator_commit_fault.py": "b9dc55bae651cdf84b8d31edf539b95ec0f1c57d8c2f29b07c2752131309253e",
+    "scripts/validate_evaluator_commit_recovery.py": "7f63a2ff759160c6abf539bc1bbd5d9f18e7f6a74b69fdbf09d032db6904a8c8",
+    "tests/test_evaluator_commit_fault.py": "c65a543d4cd0434c08f856280c69d4ba4474284a240fd6b9338ec9c1ddbc58f7"
+  },
+  "verified_through": "2026-10-08"
+}

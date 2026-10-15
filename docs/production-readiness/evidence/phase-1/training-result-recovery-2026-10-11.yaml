@@ -1,0 +1,33 @@
+{
+  "verified_at": "2026-10-11T11:20:18.349332+00:00",
+  "phase_complete": false,
+  "scope": "Training result commit acknowledgement loss and durable terminal recovery",
+  "negative_control": "Two new PostgreSQL cases failed before implementation: repeated result commit inserted three metric sets, and conflicting same-attempt publication was accepted.",
+  "changes": [
+    "Persist an attempt-scoped canonical result receipt atomically with metrics and run metadata. Identical replays are no-ops and conflicting replays fail.",
+    "Late candidate progress, partial leaderboard and failure writes preserve a committed result.",
+    "Worker startup and the observer finalize a committed receipt with the existing terminal CAS, without repeating training or creating a successor attempt.",
+    "Failure handling leaves a committed result available for recovery."
+  ],
+  "verification": {
+    "tests": 174,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "focused_postgres_cases": 18,
+  "source_sha256": {
+    "apps/api/automl_api/training/pipeline.py": "663a23c130806fa8de050b6ee4b1f9a50b1e1dd237b10e718966b5e67a8f9909",
+    "apps/api/automl_api/training/worker.py": "e113429d689b1b9be0e287795a1c28c277c3b0f9d10bb06dc6e7eb2f0c9b16d5",
+    "apps/api/automl_api/services/reconciler.py": "ac305706391ecf999a5b743d16f57c80e2ef8081f6396cdc3425f69118a724d1",
+    "tests/test_training_publication_postgres.py": "9f025890c82d97fc77301133a97db999a1c4937f01ebbf8ee23ce7f1bb3a99c7",
+    "tests/test_phase1_reconciler.py": "13f5abec6314870e5cd18da64f4370128fb6dc794d25e6494c90e411b7f99042"
+  },
+  "limits": [
+    "Tests use real PostgreSQL and the production publication code; model artifacts and MLflow identifiers are synthetic.",
+    "No process kill, network-proxy lost acknowledgement, k3d deployment or live model retraining qualification.",
+    "This receipt is for application training results, not the separately signed final-test authority receipt.",
+    "Legacy pre-receipt results and external artifact writes already in flight remain unqualified.",
+    "The full Phase 1 matrix, 45 GB migration, external MLflow deletion and seven missing historical QA objects remain unresolved."
+  ]
+}

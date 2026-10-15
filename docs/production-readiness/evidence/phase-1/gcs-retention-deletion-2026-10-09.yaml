@@ -1,0 +1,52 @@
+{
+  "date": "2026-10-09",
+  "status": "gcs_generation_cleanup_and_retention_waits_locally_verified_phase_incomplete",
+  "changes": [
+    "GCS exact/prefix deletion drains bounded batches of pinned generations, verifies absence and preserves neighbors",
+    "Soft-deleted generations keep deletion pending; failed history queries never prove absence",
+    "Existing outbox defers retention waits for one hour without consuming failure retries",
+    "Expired/quarantined upload cleanup preserves metadata, defers retained objects and advances other rows"
+  ],
+  "checks": {
+    "tests": 63,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "combined_regression": {
+    "tests": 270,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "controls": [
+    "More than 1000 generations and repeated cleanup",
+    "Soft-deletion present then expired; exact-key neighbor-only listing entries",
+    "No-progress provider, generation disappearance, forbidden and disabled-policy history queries",
+    "Real PostgreSQL project/run deletion preserves metadata across 32 retention deliveries then completes",
+    "Real PostgreSQL upload limit=1 advances another row during retention for quarantined/object_completed/verifying statuses"
+  ],
+  "sources": [
+    "https://docs.cloud.google.com/storage/docs/json_api/v1/objects/list",
+    "https://docs.cloud.google.com/storage/docs/json_api/v1/objects/delete",
+    "https://docs.cloud.google.com/storage/docs/use-soft-delete",
+    "https://docs.cloud.google.com/storage/docs/soft-delete"
+  ],
+  "limits": [
+    "SDK contract doubles, not native GCS qualification or a deployed image",
+    "GCS rejects soft-deleted listings on some disabled-policy configurations; failure is surfaced and deletion remains incomplete, never silently certified",
+    "Azure historical generations/snapshots/soft-deletion remain open",
+    "External replicas/backups and full resource-class deletion remain open",
+    "45 GB qualification and whole Phase 1 remain open"
+  ],
+  "source_sha256": {
+    "apps/api/automl_api/storage/gcs.py": "fa1da9835908cbab015f449852700df4f8f3703365a018561d9ea0795e68972b",
+    "apps/api/automl_api/storage/contracts.py": "2c8e2ded613ecd15d13fa2d0fc2378fa5613f91a62e09b9a47b81d660e25f16c",
+    "apps/api/automl_api/services/reconciler.py": "7cd1a5296eb809c2e5e5ceb9ab4ef240ec449483cc8e0fc253440eb16abe0f90",
+    "apps/api/automl_api/services/uploads.py": "cf0f61cae56352afd8c59ff039b757e6cb6c8accd0c0ea8e7967453b58d57cc7",
+    "tests/test_gcs_deletion.py": "a3d0e037e8bedafe23e35137db500ff063a44de5378c4b2f4af719828a6b564e",
+    "tests/test_project_management_integration.py": "d82f2dcad4e3a874850bdf3ee997fc69b598c92185b0ff567170e95de2211f6a",
+    "tests/test_phase2_upload_drivers.py": "38fb2eb156b9076efb1cd2b8877951e5cb1bf796cb1cfa942fe95e6ba90d610a",
+    "tests/test_phase2_upload_services.py": "2131ee38da5f1f56712105c4d139ae8e155a94a8ac358ac092da1dd40b8732b9"
+  }
+}

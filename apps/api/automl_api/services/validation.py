@@ -8,9 +8,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from automl_api.models.datasets import DatasetVersion
-from automl_api.models.enums import ProjectRole, RunKind, RunStatus
+from automl_api.models.enums import ProjectRole, RunKind, RunStatus, WorkflowStage
 from automl_api.models.iam import User
 from automl_api.models.runs import ModelRun, RunArtifact
+from automl_api.models.workflows import WorkflowAttempt
 from automl_api.schemas.training import (
     ModelRunRead,
     TrainingEstimateRequest,
@@ -271,10 +272,23 @@ def _launch_analysis_run(
     )
     db.add(run)
     db.flush()
+    attempt = WorkflowAttempt(
+        project_id=run.project_id,
+        model_run_id=run.id,
+        stage=WorkflowStage.TRAINING_RUN,
+        logical_key=f"analysis-run:{run.id}",
+        workload_identity=f"project-{run.project_id}-analysis",
+        generation=1,
+        fencing_token=uuid.uuid4().hex,
+    )
+    db.add(attempt)
+    db.flush()
+    run.tags = {**run.tags, "workflow_attempt_id": str(attempt.id)}
     manifest = k8s.build_job_manifest(
         run_id=run.id,
         project_id=run.project_id,
         estimate=estimate,
+        attempt=attempt,
     )
     run.k8s_job_name = manifest["metadata"]["name"]
     run.status = RunStatus.QUEUED

@@ -1,0 +1,32 @@
+{
+  "verified_at": "2026-10-09T19:35:04.482447+00:00",
+  "phase_complete": false,
+  "scope": "HTTP idempotency-key validation for all 21 documented header-bearing routes",
+  "change": "Require 1\u2013255 characters with at least one non-whitespace character; preserve valid key contents and optional omission on training estimates.",
+  "verification": {
+    "tests": 41,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "coverage": [
+    "Tests use each actual endpoint annotation in FastAPI probes, asserting rejected keys never reach the handler.",
+    "Empty, space-only, tab-only and 256-character values rejected; 1-character, 255-character and space-containing valid values preserved.",
+    "Required headers reject omission; optional training-estimate header accepts omission.",
+    "Route inventory is matched exactly to the application OpenAPI header inventory."
+  ],
+  "baseline": "All 21 route annotations failed the new validation cases before the fix.",
+  "source_sha256": {
+    "apps/api/automl_api/api/routes/contracts.py": "6dc889e9af4462e2d6bdefbabedab5bafde60080da404892cea945fea4c0535b",
+    "apps/api/automl_api/api/routes/datasets.py": "d5e2d62f7d9d3bf1dbf570357707aa57de27cbb232ad4aeac268596136f21b45",
+    "apps/api/automl_api/api/routes/monitoring.py": "8c70a23158ee5357c6aa5439a20e1f753fb14ed337c5b945dad3fd7796d6fc9d",
+    "apps/api/automl_api/api/routes/operations.py": "f1e963eef98957bd5abdab863650fc61fff6af171e95711c1dce5a13df945c19",
+    "apps/api/automl_api/api/routes/training.py": "24651df6458dd33eb9388a385fb8bf958aba31f501ab6d44f5d008bda543e79c",
+    "apps/api/automl_api/api/routes/validation.py": "fea3ca2490a199c316254d59a3d92637003257f321c3d10327a64d40369af8e5"
+  },
+  "limits": [
+    "These are FastAPI boundary and route regressions, not database or native k3d workflow qualification.",
+    "19 regression cases overlap the replay-authorization suite.",
+    "Changes remain undeployed; broader Phase 1 requirements remain open."
+  ]
+}

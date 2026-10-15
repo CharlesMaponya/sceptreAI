@@ -9,9 +9,10 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from automl_api.models.enums import CommandStatus
+from automl_api.models.enums import CommandStatus, ProjectRole
 from automl_api.models.iam import User
 from automl_api.models.projects import Project
+from automl_api.services.projects import require_project_role
 from automl_api.services.workflow_state import (
     IdempotencyConflict,
     begin_command,
@@ -36,8 +37,10 @@ def durable_mutation[ResponseModel: BaseModel](
     aggregate_type: str | None = None,
     resource_id: uuid.UUID | Callable[[ResponseModel], uuid.UUID] | None = None,
     serialize_project: bool = False,
+    minimum_role: ProjectRole = ProjectRole.EDITOR,
 ) -> ResponseModel:
     """Execute one mutation and persist a replayable typed response atomically."""
+    require_project_role(db, user, project_id, minimum_role)
     if serialize_project:
         # Upload admission must atomically reserve project quota.  Acquire the
         # project row before inserting the command: PostgreSQL foreign-key

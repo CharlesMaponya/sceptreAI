@@ -6,6 +6,11 @@ from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 SENSITIVE_KEYS = {
+    "password",
+    "passwd",
+    "api_key",
+    "api-key",
+    "x-api-key",
     "authorization",
     "cookie",
     "set-cookie",
@@ -24,23 +29,34 @@ SENSITIVE_KEYS = {
     "provider_id",
     "upload_id",
 }
-SIGNED_URL = re.compile(r"https?://[^\s'\"]+", re.IGNORECASE)
+SIGNED_URL = re.compile(r"[a-z][a-z0-9+.-]*://[^\s'\"]+", re.IGNORECASE)
 KEY_VALUE_SECRET = re.compile(
-    r"(?i)(authorization|signature|credential|token|upload[_-]?id|session[_-]?uri)"
-    r"\s*[=:]\s*([^\s,;}]+)"
+    r"(?i)(authorization|password|passwd|api[_-]?key|access[_-]?key(?:[_-]?id)?|private[_-]?key|signature|credential|token|upload[_-]?id|session[_-]?uri)"
+    r"([\"']?\s*[=:]\s*)"
+    r"(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|(?:Bearer|Basic)\s+[^\s,;}]+|[^\s,;}]+)"
 )
 
 
+def _redact_assignment(match):
+    value = match.group(3)
+    quote = value[0] if len(value) > 1 and value[0] in {"'", '"'} and value[-1] == value[0] else ""
+    return f"{match.group(1)}{match.group(2)}{quote}<redacted>{quote}"
+
+
 def redact_url(value: str) -> str:
-    parsed = urlsplit(value)
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return "<redacted-url>"
     if not parsed.scheme or not parsed.netloc:
         return value
-    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "<redacted>", ""))
+    host = parsed.netloc.rsplit("@", 1)[-1]
+    return urlunsplit((parsed.scheme, host, parsed.path, "<redacted>", ""))
 
 
 def redact_text(value: str) -> str:
     redacted = SIGNED_URL.sub(lambda match: redact_url(match.group(0)), value)
-    return KEY_VALUE_SECRET.sub(lambda match: f"{match.group(1)}=<redacted>", redacted)
+    return KEY_VALUE_SECRET.sub(_redact_assignment, redacted)
 
 
 def redact_mapping(value: Mapping[str, Any]) -> dict[str, Any]:
@@ -48,22 +64,33 @@ def redact_mapping(value: Mapping[str, Any]) -> dict[str, Any]:
     for key, item in value.items():
         normalized = str(key).lower()
         if normalized in SENSITIVE_KEYS or any(
-            token in normalized for token in ("signature", "credential", "secret", "token")
+            token in normalized
+            for token in (
+                "signature",
+                "credential",
+                "secret",
+                "token",
+                "password",
+                "passwd",
+                "api_key",
+                "api-key",
+                "access_key",
+                "access-key",
+                "accesskey",
+                "private_key",
+                "private-key",
+                "privatekey",
+            )
         ):
             result[str(key)] = "<redacted>"
-        elif isinstance(item, Mapping):
-            result[str(key)] = redact_mapping(item)
-        elif isinstance(item, list):
-            result[str(key)] = [
-                redact_mapping(entry)
-                if isinstance(entry, Mapping)
-                else redact_text(entry)
-                if isinstance(entry, str)
-                else entry
-                for entry in item
-            ]
-        elif isinstance(item, str):
-            result[str(key)] = redact_text(item)
         else:
-            result[str(key)] = item
+            result[str(key)] = _redact_value(item)
     return result
+
+
+def _redact_value(value):
+    if isinstance(value, Mapping):
+        return redact_mapping(value)
+    if isinstance(value, list):
+        return [_redact_value(item) for item in value]
+    return redact_text(value) if isinstance(value, str) else value

@@ -1,0 +1,102 @@
+{
+  "verified_at": "2026-10-15T06:26:21.491152+00:00",
+  "phase_complete": false,
+  "scope": "First-delivery legacy analysis migration and worker protocol compatibility guard",
+  "changes": [
+    "Only a first claimed, never-operator-replayed delivery can upgrade an unmoved CPU analysis run still pending submission with no report/receipt evidence. Project/run/namespace/manifest identity and absence of the old Job and all run-labeled Pods are mandatory.",
+    "Create the ModelRun-bound attempt, rebind the manifest, select the configured current CPU worker image/pull policy/registry references, and record legacy/new manifest digests in an attempt event. Return through deferred delivery so this intent commits before any Job creation; the next delivery follows normal typed submission. Replay retains one attempt/Job.",
+    "Read-only preflight API/transport failures defer without spending the first delivery and retain a redacted diagnostic. Flush that diagnostic before deferred delivery refreshes the row.",
+    "Bound analysis commands declare --attempt-protocol analysis-v1. Current workers reject missing/unknown protocol context before admission or run status writes. Unsupported entrypoints fail closed; the known predecessor parser rejects the new flag."
+  ],
+  "verification": {
+    "regressions": {
+      "tests": 961,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "native_control_plane": {
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "focused_cases": 57,
+  "predecessor_parser_probe": {
+    "worker_source_sha256": "d1bde2088a3e9ca799b13b1c74b18f291c242e34df075e693f94b76bc9b99c0f",
+    "run_id_supported": true,
+    "protocol_denied": true,
+    "namespace": "qa-refit",
+    "pod": "refit-api-84b7765d66-jsqmg",
+    "pod_uid": "a36e9bbe-b409-4885-adb9-aaef1b388f46",
+    "mode": "read-only source/parser inspection; worker main not executed",
+    "image": "k3d-sceptre-registry.localhost:5111/sceptreai@sha256:c0ae5a3ba688eda3c6be07ae2fad5e3740cc8dd5b059358e850964fdc30891cc"
+  },
+  "native_probes": [
+    {
+      "namespace": "analysis-migrate-3eeeeb859c",
+      "cleanup": true,
+      "kind": "validation",
+      "job_denied": true,
+      "pod_denied": true,
+      "deferred_tracking": true,
+      "single_job": true,
+      "pods_started": 0,
+      "job_uid": "f44e2827-e6c8-4c13-995a-f0c2f6f27069",
+      "attempt_id": "8e6418a2-5ba4-4d34-8810-df85b0507aec"
+    },
+    {
+      "namespace": "analysis-migrate-a39fc37220",
+      "cleanup": true,
+      "kind": "explainability",
+      "job_denied": true,
+      "pod_denied": true,
+      "deferred_tracking": true,
+      "single_job": true,
+      "pods_started": 0,
+      "job_uid": "c5bf9000-68b1-47d7-904f-eba27844f744",
+      "attempt_id": "045af702-d12f-46a7-8c0e-5706a3ec2d20"
+    },
+    {
+      "namespace": "analysis-migrate-14b64274cf",
+      "cleanup": true,
+      "kind": "drift",
+      "job_denied": true,
+      "pod_denied": true,
+      "deferred_tracking": true,
+      "single_job": true,
+      "pods_started": 0,
+      "job_uid": "eb34eaf9-5c9d-4e48-ab8e-913572326096",
+      "attempt_id": "361640fc-3814-4396-b7b5-870d2b450b2c"
+    }
+  ],
+  "source_sha256": {
+    "apps/api/automl_api/services/reconciler.py": "4315c22994f7c608781919a8b857b8939416b1466fdfc8558d0dba2df6b7dd95",
+    "apps/api/automl_api/services/kubernetes_training.py": "35c357c6b4cc79aa04de684ad71cca0330c3da45521651ed7761c1d78732d557",
+    "apps/api/automl_api/training/worker.py": "666104f1d60504c481c1b08896c7ef10ffffddd8c874c76609d48c1ae30d470a",
+    "apps/api/automl_api/training/attempt_admission.py": "206ebb5f822a074cc40001588f8cd0db3a946caeb2b6104df60917e53049d92c",
+    "apps/api/automl_api/services/workflow_state.py": "fc0f1b26ba527ddcc31fd1a8278a68b7254409bbd8735b4278b8eca27aad79d9",
+    "tests/test_analysis_migration.py": "80d5509985954a8ce2ab5141c18ff9e3e132a93d7082d563d0b7ce2d13b6be7c",
+    "tests/test_analysis_admission.py": "48e91d6548a0a0ade0cf85e765f849d79929059c38bbaae58f5d30ee5cb49cd5"
+  },
+  "verification_script_sha256": {
+    "check.py": "555bfed697fd7ac0217990e955472a32f70b5091208d549a4cc24aec8336ee52",
+    "native_check.py": "4d3faa51e7c0f27510ba542aeedd555de4ec8ff99c673851667f68a3a02f8c81",
+    "native_test.py": "47cb86eaef558969fd6122439f01f3b5f57c29b4e9aa04cbe4bcb72c9344db6f",
+    "previous_worker_probe.py": "424e9c2e569cd5763c575a9705d41b3716515f3e98356b832759a9de29ae57a3"
+  },
+  "initial_verification": {
+    "tests": 955,
+    "failures": 9,
+    "cause": "Unflushed readonly-preflight diagnostics were discarded by deferred-delivery refresh. Both error paths now flush before deferral; final full rerun supersedes the failed run."
+  },
+  "environment": "Real PostgreSQL plus actual handoff/manifest/submission/outbox and shared worker paths. Native uses fresh k3d namespaces, suspended Jobs and deliberately unschedulable old Pods; capacity response is mocked. Existing owned Job/Pod blocks handoff; after their controlled removal, one deferred intent and one new suspended Job are verified. All owned namespaces removed. Predecessor compatibility is a read-only parser-definition inspection in the existing QA API image, not execution of worker main or workload imports.",
+  "limits": [
+    "This is not automatic migration of previously claimed/retried, operator-replayed, running/submitted, GPU, moved or report-bearing legacy scopes. They require controlled drain/replay; legacy typed rows lacking submission evidence remain an inventory gap.",
+    "Claim loss before migration intent commits remains ambiguous under legacy delivery semantics and requires controlled replay. This does not qualify the whole legacy upgrade/rollback or previous-release reader contract.",
+    "Protocol checks cover current workers and the known predecessor parser; arbitrary custom images and full deployed worker/image/process-loss/TLS/rotation behavior are not qualified. A mismatched configured image fails closed and needs an operator-selected compatible release.",
+    "Provider/database credentials remain broad; exact object/version/method/byte grants, separate child grants and predecessor object grants remain open.",
+    "All 36 broad Phase 1 requirements remain Open. The 45 GB migration rehearsal lacks storage; seven historical QA objects remain missing and the original preservation gate remains abandoned."
+  ]
+}

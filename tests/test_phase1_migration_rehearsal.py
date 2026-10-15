@@ -267,3 +267,88 @@ def test_storage_values_remain_readable_after_actual_migration(migrated_template
     finally:
         engine.dispose()
         drop_database(admin, name)
+
+
+def test_deletion_evidence_upgrade_and_guarded_downgrade(migrated_case):
+    from automl_api.models.projects import Project
+    from automl_api.models.workflows import DeletionStage, DeletionTombstone
+    from sqlalchemy import delete, select
+    from sqlalchemy.exc import IntegrityError
+
+    target, _ = migrated_case
+    previous = "0010_phase3_contract_target"
+    rehearsal._run(target, rehearsal.sys.executable, "-m", "alembic", "downgrade", previous)
+    engine = create_engine(target)
+    try:
+        with Session(engine) as db, db.begin():
+            owner = db.scalar(text("SELECT id FROM users LIMIT 1"))
+            project = Project(name="Retired", owner_id=owner, created_by_id=owner)
+            db.add(project)
+            db.flush()
+            project_id = project.id
+            tombstone = DeletionTombstone(
+                project_id=project_id,
+                requested_by_id=owner,
+                resource_type="project",
+                resource_id=project_id,
+                reason="Migration retention check",
+                status="complete",
+            )
+            db.add(tombstone)
+            db.flush()
+            tombstone_id = tombstone.id
+            db.add(
+                DeletionStage(
+                    project_id=project_id,
+                    tombstone_id=tombstone_id,
+                    resource_class="object_store",
+                    status="completed",
+                    retry_count=2,
+                )
+            )
+        tables = (DeletionTombstone.__table__, DeletionStage.__table__)
+        with engine.connect() as connection:
+            before = [
+                connection.execute(select(t).where(t.c.project_id == project_id)).all()
+                for t in tables
+            ]
+        rehearsal._run(target, rehearsal.sys.executable, "-m", "alembic", "upgrade", "head")
+        # Round-trip remains possible while every historical project is still live.
+        rehearsal._run(target, rehearsal.sys.executable, "-m", "alembic", "downgrade", previous)
+        rehearsal._run(target, rehearsal.sys.executable, "-m", "alembic", "upgrade", "head")
+        with engine.begin() as connection:
+            with pytest.raises(IntegrityError), connection.begin_nested():
+                connection.execute(
+                    DeletionStage.__table__.insert().values(
+                        project_id=uuid.uuid4(),
+                        tombstone_id=tombstone_id,
+                        resource_class="cross-tenant",
+                        status="pending",
+                    )
+                )
+            connection.execute(delete(Project).where(Project.id == project_id))
+            assert [
+                connection.execute(select(t).where(t.c.project_id == project_id)).all()
+                for t in tables
+            ] == before
+        failed = rehearsal.subprocess.run(
+            [rehearsal.sys.executable, "-m", "alembic", "downgrade", previous],
+            env={**os.environ, "DATABASE_URL": target},
+            capture_output=True,
+            text=True,
+        )
+        assert failed.returncode != 0
+        assert (
+            "Cannot downgrade while deletion evidence references removed projects" in failed.stderr
+        )
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+                "0011_preserve_deletion_evidence"
+            )
+            assert [
+                connection.execute(select(t).where(t.c.project_id == project_id)).all()
+                for t in tables
+            ] == before
+        rehearsal._run(target, rehearsal.sys.executable, "scripts/verify_database_schema.py")
+    finally:
+        engine.dispose()

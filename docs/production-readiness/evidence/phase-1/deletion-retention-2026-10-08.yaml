@@ -1,0 +1,799 @@
+{
+  "date": "2026-10-08",
+  "status": "retention_fix_verified_phase_incomplete",
+  "baseline": {
+    "project_deletion_lost_tombstone": true,
+    "tests_failed": 1,
+    "tests_passed": 1
+  },
+  "checks": {
+    "integration": {
+      "tests": 14,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "migration": {
+      "tests": 23,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "regression": {
+      "tests": 267,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "migration": {
+    "head": "0011_preserve_deletion_evidence",
+    "paths": [
+      {
+        "preserved": {
+          "projects": {
+            "columns": [
+              "created_at",
+              "created_by_id",
+              "description",
+              "id",
+              "name",
+              "object_prefix",
+              "owner_id",
+              "settings",
+              "status",
+              "updated_at"
+            ],
+            "rows": 1,
+            "sha256": "c7faecc348b65050d91f3ba98152ffc36d59041136a1b55fb0523f2d36ea9b57"
+          },
+          "users": {
+            "columns": [
+              "auth_provider",
+              "created_at",
+              "email",
+              "full_name",
+              "global_role",
+              "id",
+              "is_active",
+              "is_verified",
+              "last_login_at",
+              "password_hash",
+              "preferences",
+              "token_version",
+              "updated_at"
+            ],
+            "rows": 1,
+            "sha256": "db772ed47845c3dcae51eee769a55ee4e2b7533bba69f7fe188a4b9ccc23502a"
+          }
+        },
+        "start": "0001_initial"
+      },
+      {
+        "preserved": {
+          "projects": {
+            "columns": [
+              "created_at",
+              "created_by_id",
+              "description",
+              "id",
+              "name",
+              "object_prefix",
+              "owner_id",
+              "settings",
+              "status",
+              "updated_at"
+            ],
+            "rows": 1,
+            "sha256": "d58969a4e24f72f7a2890872f6e58737f80ddecdebfb1da2a696c4814141f589"
+          },
+          "users": {
+            "columns": [
+              "auth_provider",
+              "created_at",
+              "email",
+              "full_name",
+              "global_role",
+              "id",
+              "is_active",
+              "is_verified",
+              "last_login_at",
+              "password_hash",
+              "preferences",
+              "token_version",
+              "updated_at"
+            ],
+            "rows": 1,
+            "sha256": "80b5cc7f7988623c0f13f2cd544686c2c67278866975eeaa75c97c40a5bfc90d"
+          }
+        },
+        "start": "0002_expand_artifact_kind"
+      },
+      {
+        "preserved": {
+          "projects": {
+            "columns": [
+              "created_at",
+              "created_by_id",
+              "description",
+              "id",
+              "name",
+              "object_prefix",
+              "owner_id",
+              "settings",
+              "status",
+              "updated_at"
+            ],
+            "rows": 1,
+            "sha256": "db6d6fe1e2cdaa51dc8853c69108360bc693dc107a4db4e6b6d7105c670d52a3"
+          },
+          "users": {
+            "columns": [
+              "auth_provider",
+              "created_at",
+              "email",
+              "full_name",
+              "global_role",
+              "id",
+              "is_active",
+              "is_verified",
+              "last_login_at",
+              "password_hash",
+              "preferences",
+              "sso_issuer",
+              "sso_subject",
+              "token_version",
+              "updated_at"
+            ],
+            "rows": 1,
+            "sha256": "7d97d94c04559482be2707e4493a18e91d4d3d235e66fa613a89a1f69c639167"
+          }
+        },
+        "start": "0003_security_controls"
+      },
+      {
+        "preserved": {
+          "dataset_upload_sessions": {
+            "columns": [
+              "byte_size",
+              "completed_at",
+              "created_at",
+              "created_by_id",
+              "dataset_id",
+              "dataset_name",
+              "dataset_version_id",
+              "description",
+              "expires_at",
+              "id",
+              "multipart_upload_id",
+              "object_key",
+              "original_filename",
+              "part_size",
+              "project_id",
+              "resume_key",
+              "status",
+              "tags",
+              "total_parts",
+              "updated_at"
+            ],
+            "rows": 10000,
+            "sha256": "836cd83d2a1254b0a7ca979b4f16220096e241197f6e8fdbd22b1d93e0f9b4ec"
+          },
+          "projects": {
+            "columns": [
+              "created_at",
+              "created_by_id",
+              "description",
+              "id",
+              "name",
+              "object_prefix",
+              "owner_id",
+              "settings",
+              "status",
+              "updated_at"
+            ],
+            "rows": 1,
+            "sha256": "c45fd1be2a98c8783860300eff3a5d3604231cb9a6d5092311ef42e04f1c51e8"
+          },
+          "users": {
+            "columns": [
+              "auth_provider",
+              "created_at",
+              "email",
+              "full_name",
+              "global_role",
+              "id",
+              "is_active",
+              "is_verified",
+              "last_login_at",
+              "password_hash",
+              "preferences",
+              "sso_issuer",
+              "sso_subject",
+              "token_version",
+              "updated_at"
+            ],
+            "rows": 1,
+            "sha256": "18637f8afb2d9605b779060c927dd766e3ec79f1e0a40383f76977b0851c27b7"
+          }
+        },
+        "start": "0004_resumable_dataset_uploads"
+      },
+      {
+        "preserved": {
+          "dataset_upload_sessions": {
+            "columns": [
+              "byte_size",
+              "completed_at",
+              "created_at",
+              "created_by_id",
+              "dataset_id",
+              "dataset_name",
+              "dataset_version_id",
+              "description",
+              "digest_algorithm",
+              "digest_scope",
+              "expected_object_digest",
+              "expires_at",
+              "heartbeat_at",
+              "id",
+              "lease_expires_at",
+              "lease_owner",
+              "multipart_upload_id",
+              "object_key",
+              "observed_object_digest",
+              "original_filename",
+              "part_size",
+              "project_id",
+              "quarantine_reason",
+              "replayed_by",
+              "resume_key",
+              "retry_budget",
+              "retry_count",
+              "status",
+              "tags",
+              "terminal_reason",
+              "total_parts",
+              "updated_at"
+            ],
+            "rows": 10000,
+            "sha256": "8fd916c730ee98adf2e5bf6ee967a993740277c663d8bdfe8fc23e49df293ce4"
+          },
+          "projects": {
+            "columns": [
+              "created_at",
+              "created_by_id",
+              "description",
+              "id",
+              "name",
+              "object_prefix",
+              "owner_id",
+              "settings",
+              "status",
+              "updated_at"
+            ],
+            "rows": 1,
+            "sha256": "e4583f81f1c385212249f2d652c081cdbd47855d59e8bfe8e83566b91683185c"
+          },
+          "users": {
+            "columns": [
+              "auth_provider",
+              "created_at",
+              "email",
+              "full_name",
+              "global_role",
+              "id",
+              "is_active",
+              "is_verified",
+              "last_login_at",
+              "password_hash",
+              "preferences",
+              "sso_issuer",
+              "sso_subject",
+              "token_version",
+              "updated_at"
+            ],
+            "rows": 1,
+            "sha256": "0d475df8953c71c5c661f8cf44832bba4dcc509b286ef43ddeecceae4274c48a"
+          }
+        },
+        "start": "0005_phase1_durable_workflows"
+      },
+      {
+        "preserved": {
+          "dataset_upload_sessions": {
+            "columns": [
+              "byte_size",
+              "completed_at",
+              "created_at",
+              "created_by_id",
+              "dataset_id",
+              "dataset_name",
+              "dataset_version_id",
+              "description",
+              "digest_algorithm",
+              "digest_scope",
+              "expected_object_digest",
+              "expires_at",
+              "heartbeat_at",
+              "id",
+              "lease_expires_at",
+              "lease_owner",
+              "multipart_upload_id",
+              "object_key",
+              "observed_object_digest",
+              "original_filename",
+              "part_size",
+              "project_id",
+              "quarantine_reason",
+              "replayed_by",
+              "resume_key",
+              "retry_budget",
+              "retry_count",
+              "status",
+              "tags",
+              "terminal_reason",
+              "total_parts",
+              "updated_at"
+            ],
+            "rows": 10000,
+            "sha256": "c95490a2a6cc2d4e72f1dae3c34001b430a74116f80a3bb7a26709942f70b20e"
+          },
+          "projects": {
+            "columns": [
+              "created_at",
+              "created_by_id",
+              "description",
+              "id",
+              "name",
+              "object_prefix",
+              "owner_id",
+              "settings",
+              "status",
+              "updated_at"
+            ],
+            "rows": 1,
+            "sha256": "3becd4f4480cf87a5f257eb7dbe4c123fec5b23eeaaab326b8f90c70c04de43c"
+          },
+          "users": {
+            "columns": [
+              "auth_provider",
+              "created_at",
+              "email",
+              "full_name",
+              "global_role",
+              "id",
+              "is_active",
+              "is_verified",
+              "last_login_at",
+              "password_hash",
+              "preferences",
+              "sso_issuer",
+              "sso_subject",
+              "token_version",
+              "updated_at"
+            ],
+            "rows": 1,
+            "sha256": "cd90f66af87f03dd999718750cb2b1213d8ddfa7e9632a6168c01829f0b84ad9"
+          }
+        },
+        "start": "0006_phase1_public_contracts"
+      },
+      {
+        "preserved": {
+          "dataset_upload_sessions": {
+            "columns": [
+              "byte_size",
+              "completed_at",
+              "created_at",
+              "created_by_id",
+              "dataset_id",
+              "dataset_name",
+              "dataset_version_id",
+              "description",
+              "digest_algorithm",
+              "digest_scope",
+              "expected_object_digest",
+              "expires_at",
+              "heartbeat_at",
+              "id",
+              "lease_expires_at",
+              "lease_owner",
+              "multipart_upload_id",
+              "object_key",
+              "observed_object_digest",
+              "original_filename",
+              "part_size",
+              "project_id",
+              "quarantine_reason",
+              "replayed_by",
+              "resume_key",
+              "retry_budget",
+              "retry_count",
+              "status",
+              "tags",
+              "terminal_reason",
+              "total_parts",
+              "updated_at"
+            ],
+            "rows": 10000,
+            "sha256": "3edc61cb79df8d95887ab3ae288659340c65e1830e0679254312123a40518dd8"
+          },
+          "projects": {
+            "columns": [
+              "created_at",
+              "created_by_id",
+              "description",
+              "id",
+              "name",
+              "object_prefix",
+              "owner_id",
+              "settings",
+              "status",
+              "updated_at"
+            ],
+            "rows": 1,
+            "sha256": "c978859d7ea0648bfed62244199f06a280f822bb6204c7b3829005a8f2c5f574"
+          },
+          "users": {
+            "columns": [
+              "auth_provider",
+              "created_at",
+              "email",
+              "full_name",
+              "global_role",
+              "id",
+              "is_active",
+              "is_verified",
+              "last_login_at",
+              "password_hash",
+              "preferences",
+              "sso_issuer",
+              "sso_subject",
+              "token_version",
+              "updated_at"
+            ],
+            "rows": 1,
+            "sha256": "bbc0a19fe058aacd54a0ff33e61e2eb4f3a8fe5d8ec5d9b6bfafae240f244432"
+          }
+        },
+        "start": "0007_phase1_attempt_lineage"
+      },
+      {
+        "preserved": {
+          "dataset_upload_sessions": {
+            "columns": [
+              "aborted_at",
+              "byte_size",
+              "checksum_verified_at",
+              "completed_at",
+              "completed_object_uri",
+              "confirmed_bytes",
+              "content_policy_revision",
+              "content_type",
+              "created_at",
+              "created_by_id",
+              "data_region",
+              "dataset_id",
+              "dataset_name",
+              "dataset_version_id",
+              "description",
+              "digest_algorithm",
+              "digest_scope",
+              "expected_object_digest",
+              "expires_at",
+              "heartbeat_at",
+              "id",
+              "instruction_state",
+              "last_progress_at",
+              "lease_expires_at",
+              "lease_owner",
+              "legal_hold",
+              "multipart_upload_id",
+              "object_key",
+              "observed_object_digest",
+              "original_filename",
+              "part_size",
+              "project_id",
+              "protocol",
+              "provider_checksum",
+              "provider_driver",
+              "provider_state",
+              "quarantine_delete_after",
+              "quarantine_reason",
+              "replayed_by",
+              "resume_key",
+              "retention_until",
+              "retry_budget",
+              "retry_count",
+              "scanner_evidence",
+              "scanner_name",
+              "scanner_signature_version",
+              "scanner_status",
+              "scanner_version",
+              "sensitivity",
+              "status",
+              "tags",
+              "target_metadata",
+              "terminal_reason",
+              "total_parts",
+              "transfer_receipts",
+              "updated_at",
+              "upload_kind"
+            ],
+            "rows": 10000,
+            "sha256": "f5ef17dc8c811a45c4ed0e99b953096bc7068dbde266124c5d752e0e75363340"
+          },
+          "projects": {
+            "columns": [
+              "created_at",
+              "created_by_id",
+              "description",
+              "id",
+              "name",
+              "object_prefix",
+              "owner_id",
+              "settings",
+              "status",
+              "updated_at"
+            ],
+            "rows": 1,
+            "sha256": "1d9bfcb6dd1562e01289a6a054c25aef44acdaaf94c6c6c4403ded24b5976c09"
+          },
+          "users": {
+            "columns": [
+              "auth_provider",
+              "created_at",
+              "email",
+              "full_name",
+              "global_role",
+              "id",
+              "is_active",
+              "is_verified",
+              "last_login_at",
+              "password_hash",
+              "preferences",
+              "sso_issuer",
+              "sso_subject",
+              "token_version",
+              "updated_at"
+            ],
+            "rows": 1,
+            "sha256": "f2f5f5e1723f1efe1029e307188d63cca129aa89d695d5442534738c743a043a"
+          }
+        },
+        "start": "0008_phase2_cloud_ingestion"
+      },
+      {
+        "preserved": {
+          "dataset_upload_sessions": {
+            "columns": [
+              "aborted_at",
+              "byte_size",
+              "checksum_verified_at",
+              "completed_at",
+              "completed_object_uri",
+              "confirmed_bytes",
+              "content_policy_revision",
+              "content_type",
+              "created_at",
+              "created_by_id",
+              "data_region",
+              "dataset_id",
+              "dataset_name",
+              "dataset_version_id",
+              "description",
+              "digest_algorithm",
+              "digest_scope",
+              "expected_object_digest",
+              "expires_at",
+              "heartbeat_at",
+              "id",
+              "instruction_state",
+              "last_progress_at",
+              "lease_expires_at",
+              "lease_owner",
+              "legal_hold",
+              "multipart_upload_id",
+              "object_key",
+              "observed_object_digest",
+              "original_filename",
+              "part_size",
+              "project_id",
+              "protocol",
+              "provider_checksum",
+              "provider_driver",
+              "provider_state",
+              "quarantine_delete_after",
+              "quarantine_reason",
+              "replayed_by",
+              "resume_key",
+              "retention_until",
+              "retry_budget",
+              "retry_count",
+              "scanner_evidence",
+              "scanner_name",
+              "scanner_signature_version",
+              "scanner_status",
+              "scanner_version",
+              "sensitivity",
+              "status",
+              "tags",
+              "target_metadata",
+              "terminal_reason",
+              "total_parts",
+              "transfer_receipts",
+              "updated_at",
+              "upload_kind"
+            ],
+            "rows": 10000,
+            "sha256": "acf18e6c8a3267c6a30fadbcd6e269a733f14a94d29953ea212890bcd4a91fac"
+          },
+          "projects": {
+            "columns": [
+              "created_at",
+              "created_by_id",
+              "description",
+              "id",
+              "name",
+              "object_prefix",
+              "owner_id",
+              "settings",
+              "status",
+              "updated_at"
+            ],
+            "rows": 1,
+            "sha256": "0197a9dba3cdc46144a13214012290dd48f5812ef2ae9f2b05e81152c558fd0c"
+          },
+          "users": {
+            "columns": [
+              "auth_provider",
+              "created_at",
+              "email",
+              "full_name",
+              "global_role",
+              "id",
+              "is_active",
+              "is_verified",
+              "last_login_at",
+              "password_hash",
+              "preferences",
+              "sso_issuer",
+              "sso_subject",
+              "token_version",
+              "updated_at"
+            ],
+            "rows": 1,
+            "sha256": "460751a552a2723dc04c8ca9b08a8214be2d2013f84bce464acd3183a779fc00"
+          }
+        },
+        "start": "0009_phase2_storage_default"
+      },
+      {
+        "preserved": {
+          "dataset_upload_sessions": {
+            "columns": [
+              "aborted_at",
+              "byte_size",
+              "checksum_verified_at",
+              "completed_at",
+              "completed_object_uri",
+              "confirmed_bytes",
+              "content_policy_revision",
+              "content_type",
+              "created_at",
+              "created_by_id",
+              "data_region",
+              "dataset_id",
+              "dataset_name",
+              "dataset_version_id",
+              "description",
+              "digest_algorithm",
+              "digest_scope",
+              "expected_object_digest",
+              "expires_at",
+              "heartbeat_at",
+              "id",
+              "instruction_state",
+              "last_progress_at",
+              "lease_expires_at",
+              "lease_owner",
+              "legal_hold",
+              "multipart_upload_id",
+              "object_key",
+              "observed_object_digest",
+              "original_filename",
+              "part_size",
+              "project_id",
+              "protocol",
+              "provider_checksum",
+              "provider_driver",
+              "provider_state",
+              "quarantine_delete_after",
+              "quarantine_reason",
+              "replayed_by",
+              "resume_key",
+              "retention_until",
+              "retry_budget",
+              "retry_count",
+              "scanner_evidence",
+              "scanner_name",
+              "scanner_signature_version",
+              "scanner_status",
+              "scanner_version",
+              "sensitivity",
+              "status",
+              "tags",
+              "target_metadata",
+              "terminal_reason",
+              "total_parts",
+              "transfer_receipts",
+              "updated_at",
+              "upload_kind"
+            ],
+            "rows": 10000,
+            "sha256": "abcbc5ee00a79a501dab8b9b72b1e505094cd0df030eb8070ced725cdae5ee8d"
+          },
+          "projects": {
+            "columns": [
+              "created_at",
+              "created_by_id",
+              "description",
+              "id",
+              "name",
+              "object_prefix",
+              "owner_id",
+              "settings",
+              "status",
+              "updated_at"
+            ],
+            "rows": 1,
+            "sha256": "3bde7b10b67b3a0a6b0c1819f688a373959a1692f318275d9fe357a7b67947e2"
+          },
+          "users": {
+            "columns": [
+              "auth_provider",
+              "created_at",
+              "email",
+              "full_name",
+              "global_role",
+              "id",
+              "is_active",
+              "is_verified",
+              "last_login_at",
+              "password_hash",
+              "preferences",
+              "sso_issuer",
+              "sso_subject",
+              "token_version",
+              "updated_at"
+            ],
+            "rows": 1,
+            "sha256": "54ec8ca4010e31cf42386e4f82e900b44d5a8ff23882eab03f86dcfc99ec118d"
+          }
+        },
+        "start": "0010_phase3_contract_target"
+      }
+    ],
+    "schema_tables": 42,
+    "alembic_drift": "none",
+    "upgrade_preserves_existing_deletion_rows": true,
+    "cross_project_stage_rejected": true,
+    "downgrade_with_live_projects": "passed",
+    "downgrade_with_retired_project": "rejected_without_data_or_revision_change"
+  },
+  "limits": [
+    "Tests counts overlap",
+    "Not deployed to k3d",
+    "Project/run resource-class stages and cross-store/backup deletion remain incomplete",
+    "45 GB qualification not executed; historical rows already deleted cannot be restored by this migration"
+  ],
+  "source_sha256": {
+    "apps/api/automl_api/models/workflows.py": "ce9a3ca3608a722dc13e7ccee57f30d80f43343aea475bfc1dafdc67a2f914ea",
+    "apps/api/automl_api/services/deletion.py": "e6d0c8209b38083f3b02df5397e2282792026173413892e928b599cba678d1fb",
+    "alembic/versions/0011_preserve_deletion_evidence.py": "893607c0feee2b4e1fc4eb06eacb67b4859f57d322f92aea87cfcd9b43cfbc8d",
+    "scripts/rehearse_phase1_migrations.py": "72067ccf1a2aafde5fdc47c47de88ec29aa92cb3ffb5314881e658ae86c6993d",
+    "tests/test_project_management_integration.py": "7675fbdeca609bf0b1dd5498f04165d9f1e5cdbbced14ccb9b5a6978c1e16f66",
+    "tests/test_phase1_migration_rehearsal.py": "c0c74b961359fdbee54a63a312af9978a0054be27154a0d9ddeafdcde212729e"
+  }
+}

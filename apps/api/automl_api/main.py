@@ -11,6 +11,7 @@ from sqlalchemy import text
 
 from automl_api import __version__
 from automl_api.api.routes import (
+    attempt_control,
     auth,
     contracts,
     datasets,
@@ -155,6 +156,7 @@ def create_app() -> FastAPI:
     app.include_router(serving_artifacts.router, prefix="/api/v1")
     app.include_router(refit_control.router, prefix="/api/v1")
     app.include_router(evaluation_control.router, prefix="/api/v1")
+    app.include_router(attempt_control.router, prefix="/api/v1")
     app.include_router(contracts.router, prefix="/api/v1")
     app.include_router(projects.router, prefix="/api/v1")
     app.include_router(datasets.router, prefix="/api/v1")

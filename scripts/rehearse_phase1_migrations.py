@@ -24,6 +24,7 @@ SUPPORTED_STARTS = (
     "0007_phase1_attempt_lineage",
     "0008_phase2_cloud_ingestion",
     "0009_phase2_storage_default",
+    "0010_phase3_contract_target",
 )
 UPLOAD_SEED_ROWS = int(os.environ.get("PHASE1_REHEARSAL_UPLOAD_ROWS", "10000"))
 

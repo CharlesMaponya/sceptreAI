@@ -12,6 +12,11 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 
 
+@pytest.fixture(autouse=True)
+def authorized_test_member(monkeypatch):
+    monkeypatch.setattr(idempotency, "require_project_role", lambda *_args: None)
+
+
 class _Result(BaseModel):
     id: uuid.UUID
     value: str

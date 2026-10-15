@@ -49,6 +49,9 @@ class _Session(AbstractContextManager):
             )
         return self.run
 
+    def scalars(self, _statement):
+        return []
+
     def get(self, model: object, _identifier: object) -> object | None:
         if model is DatasetVersion:
             return self.version
@@ -145,7 +148,7 @@ def test_execute_training_run_persists_mlflow_and_database_results(monkeypatch) 
     )
     monkeypatch.setattr(pipeline, "_log_metrics_synchronously", MagicMock())
     monkeypatch.setattr(pipeline, "_log_sklearn_model", MagicMock())
-    monkeypatch.setattr(pipeline.mlflow, "start_run", lambda **_kwargs: _MlflowRun())
+    monkeypatch.setattr(pipeline, "_tracked_mlflow_run", lambda *_args, **_kwargs: _MlflowRun())
     monkeypatch.setattr(pipeline.mlflow, "set_tracking_uri", MagicMock())
     monkeypatch.setattr(pipeline.mlflow, "set_experiment", MagicMock())
     monkeypatch.setattr(pipeline.mlflow, "set_tags", MagicMock())
@@ -191,6 +194,8 @@ def test_execute_training_run_handles_terminal_missing_and_failed_runs(monkeypat
     failed.assert_called_once()
 
     monkeypatch.setenv("AUTOML_ATTEMPT_ID", str(uuid.uuid4()))
+    # Catalog admission is covered separately; this case tests fenced failure reporting.
+    monkeypatch.setattr(pipeline, "_validate_bound_catalog", MagicMock())
     failed.reset_mock()
     with pytest.raises(RuntimeError, match="corrupt object"):
         pipeline.execute_training_run(active.id)
@@ -482,7 +487,9 @@ def _mock_candidate_side_effects(monkeypatch) -> tuple[MagicMock, MagicMock]:
         lambda *_args, **_kwargs: {"scoring": "fixture", "points": []},
     )
     monkeypatch.setattr(pipeline.mlflow, "active_run", lambda: _MlflowRun("parent-run"))
-    monkeypatch.setattr(pipeline.mlflow, "start_run", lambda **_kwargs: _MlflowRun("candidate"))
+    monkeypatch.setattr(
+        pipeline, "_tracked_mlflow_run", lambda *_args, **_kwargs: _MlflowRun("candidate")
+    )
     for name in ("set_tags", "log_params", "log_dict"):
         monkeypatch.setattr(pipeline.mlflow, name, MagicMock())
     monkeypatch.setattr(pipeline, "_log_metrics_synchronously", MagicMock())
@@ -717,3 +724,62 @@ def test_sample_rows_do_not_depend_on_batch_boundaries_or_input_order():
 
     assert selected([rows]) == selected([rows[::2][::-1], rows[1::2]])
     assert len(selected([rows])) == 100
+
+
+@pytest.mark.parametrize("accelerator", ["cpu", "cuda"])
+@pytest.mark.parametrize("unresolved_tracking", [False, True])
+def test_superseded_candidate_stops_without_retry_or_failure_logging(
+    monkeypatch, accelerator, unresolved_tracking
+):
+    from automl_api.services.workflow_state import StaleFence
+
+    error = pipeline.TrackingCreationUnresolved if unresolved_tracking else StaleFence
+    _mock_candidate_side_effects(monkeypatch)
+    configured = MagicMock(return_value=(MagicMock(), accelerator))
+    monkeypatch.setattr(pipeline, "configure_estimator_for_training", configured)
+    monkeypatch.setattr(
+        pipeline, "_persist_candidate_phase", MagicMock(side_effect=error("replaced"))
+    )
+    failure = MagicMock()
+    monkeypatch.setattr(pipeline, "_failed_candidate", failure)
+    candidate = CandidateSpec("Fixture", MagicMock(), {}, "low", True)
+    frame = pd.DataFrame({"value": range(8)})
+    with pytest.raises(error, match="replaced"):
+        pipeline._fit_candidate(
+            candidate,
+            frame,
+            pd.Series(range(8)),
+            frame,
+            pd.Series(range(8)),
+            TaskType.REGRESSION,
+            5,
+            2,
+            "neg_root_mean_squared_error",
+            _run(),
+        )
+    assert configured.call_count == 1
+    failure.assert_not_called()
+
+
+@pytest.mark.parametrize("unresolved_tracking", [False, True])
+def test_superseded_clustering_stops_without_failure_logging(monkeypatch, unresolved_tracking):
+    from automl_api.services.workflow_state import StaleFence
+    from sklearn.model_selection import KFold
+
+    error = pipeline.TrackingCreationUnresolved if unresolved_tracking else StaleFence
+    _mock_candidate_side_effects(monkeypatch)
+    monkeypatch.setattr(
+        pipeline, "_persist_candidate_phase", MagicMock(side_effect=error("replaced"))
+    )
+    failure = MagicMock()
+    monkeypatch.setattr(pipeline, "_failed_candidate", failure)
+    candidate = CandidateSpec("Fixture", MagicMock(), {}, "low", True)
+    with pytest.raises(error, match="replaced"):
+        pipeline._fit_clustering_candidate(
+            candidate,
+            pd.DataFrame({"value": range(8)}),
+            None,
+            KFold(2),
+            _run(),
+        )
+    failure.assert_not_called()

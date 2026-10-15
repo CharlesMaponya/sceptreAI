@@ -1,0 +1,100 @@
+{
+  "verified_at": "2026-10-15T08:49:21.361966+00:00",
+  "scope": "Candidate detail projection and fenced candidate status persistence",
+  "phase_complete": false,
+  "related_requirements": [
+    "P1-W13",
+    "P1-W18",
+    "P1-G06"
+  ],
+  "changes": [
+    "Add an explicit CandidateDetailRead response that retains original candidate fields and the parameters alias while adding recorded lineage, scoped sealed split digests, run resource limits, sample-tier metadata, parent/trial attempts, Ray job/cluster/submission IDs, verified dispatch IDs, checkpoint digests, finite recorded metrics, model SHA256, terminal reasons and current parent-run status.",
+    "Read trial/attempt/event/checkpoint history in scoped batches. Trial receipts require matching project/run/parent identity, trial parameters, typed terminal event/payload, terminal CAS and canonical result digest. Missing or inconsistent proof is labelled and its result is withheld; reads never repair records.",
+    "Exclude another candidate/run/project and extension-run leaderboard results. Ambiguous duplicate candidate/leaderboard rows do not acquire metrics or artifact ownership. Do not expose fencing tokens, workload identities, checkpoint URIs or credential-bearing object references.",
+    "Synchronize durable candidate status in the same fenced transactions as phase, partial leaderboard and final training publication. Preserve recorded terminal evidence on nonterminal hints; reject contradictory terminal outcomes or duplicate durable candidate identities. Re-rank normalized partial evidence; stale fences change neither candidate rows nor run evidence.",
+    "Redact candidate list/detail metadata and nested trial results. Extend shared recursive redaction through arbitrarily nested JSON arrays, password/API/provider-access/private-key fields and labelled quoted JSON/Bearer/Basic credentials, retaining ordinary diagnostic text."
+  ],
+  "verification": {
+    "focused": {
+      "tests": 37,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "regressions": {
+      "tests": 508,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "regression_cases_by_module": {
+    "tests.test_candidate_details": 37,
+    "tests.test_training_pipeline_runtime": 29,
+    "tests.test_training_pipeline_edge_contracts": 10,
+    "tests.test_training_publication_postgres": 18,
+    "tests.test_phase1_public_contracts": 28,
+    "tests.test_phase1_postgres_contracts": 38,
+    "tests.test_phase2_upload_policy": 32,
+    "tests.test_replay_authorization": 24,
+    "tests.test_training_trial_runtime": 15,
+    "tests.test_trial_result_adoption": 31,
+    "tests.test_candidate_partitions": 21,
+    "tests.test_candidate_recovery": 7,
+    "tests.test_catalog_binding": 37,
+    "tests.test_training_service_runtime": 86,
+    "tests.test_phase1_reconciler": 75,
+    "tests.test_training_parent_lease": 20
+  },
+  "initial_verification": {
+    "tests": 124,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "credential_negative_controls": {
+    "focused": {
+      "tests": 37,
+      "failures": 3,
+      "errors": 0,
+      "skipped": 0
+    },
+    "regressions": {
+      "tests": 508,
+      "failures": 3,
+      "errors": 0,
+      "skipped": 0
+    },
+    "meaning": "Three provider/private key cases exposed a mismatch between text and structured-key redaction. Final source handles both; both final gates reran after the correction."
+  },
+  "performance_checks": [
+    "A PostgreSQL observer measures equal SELECT counts for the complete read with one and 21 trials; the measured count is below 20, rather than increasing once per trial.",
+    "With 100 unrelated parent progress events seeded, the event query returns only the two relevant terminal/dispatch rows. No irrelevant progress payload is projected."
+  ],
+  "source_sha256": {
+    "apps/api/automl_api/schemas/candidates.py": "be156fae69b40c8e8a4fbc6bda0ee112ef78152b18c8308b54e52109058b6765",
+    "apps/api/automl_api/services/candidate_details.py": "9576ff8eb3d60abefcfc11578cfd7a2ada56f692a9423b000cfb58a9feb46b4c",
+    "apps/api/automl_api/api/routes/contracts.py": "663f3ce2385c0a8dc774d215ee5a311211245a6dcb218c33c9733fe4b4f73f86",
+    "apps/api/automl_api/core/redaction.py": "450682ab8cb646ac5764c3e2e8d8160381e23b12f25ada79ff072fd6ae2374a6",
+    "apps/api/automl_api/training/pipeline.py": "348ef78030ecfbe6f1fb97f384bb068b3a8dd9950a546726f257d9ff4b9bc55d",
+    "tests/test_candidate_details.py": "bfe2495d3dd573be6a97c02c1d083140fa6e6b4f9190a338908014689c6d00e9",
+    "tests/test_training_pipeline_runtime.py": "ea3fc4ac087f5981c76a681dc93c4fb7cfb418ae5fdd38d3338f0519fa66d362",
+    "tests/test_candidate_recovery.py": "a28ddc4a9c629c2db4b9a4e0c1ab2e3d9e93632799f11fa700b233faf3196be8"
+  },
+  "verification_artifact_sha256": {
+    ".unlazy/phase1-candidate-detail/check.py": "849077ff12451e33d6d562e305ae0769b0d83eb363a3171e02195d54bdef03fa",
+    ".unlazy/phase1-candidate-detail/focused.xml": "9c1eae11aea3a0e0d914ccacc87c56f5c89d112337d2c5ad9132825f696888a8",
+    ".unlazy/phase1-candidate-detail/regressions.xml": "bf6a9c9a315031963c06a91fc07ad624f0f7aec66cdc86f2a0506def7c3147a8",
+    ".unlazy/phase1-candidate-detail/credential-negative-focused.xml": "1d225284e33a69d899981e005529ed93d4b725d0c1c73c0bd7da6d2f4a9ed2c6",
+    ".unlazy/phase1-candidate-detail/credential-negative-regressions.xml": "c7dea861d1d786b36b60eb4f96247e1f9e5728089cc3b72f8846232ad7fd0dd1"
+  },
+  "environment": "Real dedicated PostgreSQL with actual enrollment/start/finish receipt producers, current fenced phase/leaderboard/final writers and actual FastAPI route/schema execution. HTTP probes inject an authenticated identity and session but exercise real project-role checks. SQL observers verify reads perform no INSERT/UPDATE/DELETE, count read queries and measure filtered event rows. No k3d or QA data/storage mutation occurred.",
+  "limits": [
+    "This is recorded database evidence, not object-byte or signed provider-grant qualification. Receipt state verifies stored proof before redaction; the sanitized response is not the original canonical payload and cannot be used to recompute the original result digest.",
+    "Lineage reports recorded immutable references; the split digest lookup additionally checks project, dataset and seal. Incomplete/invalid old references are not invented. Legacy duplicate/contradictory records require controlled migration; reads do not backfill statuses.",
+    "New status synchronization covers current fenced phase/partial/final training writes. Historical rows, cancellation/deletion migration, the complete state-machine inventory and full deployed/native failure qualification remain open.",
+    "Full selected-mode legacy immutable experiment-spec resolution, signed catalog/runtime variants and typed feature/search/estimator override contracts remain required. W13/W18 remain Open; Phase 1 stays one Verified and 35 Open.",
+    "Provider exact object/child/predecessor grants, production Train, current-image process-loss/TLS/rotation, prior-release binaries and 45 GB migration remain unqualified. Seven historical QA objects remain missing; original preservation gate remains abandoned.",
+    "No image build/deployment, real GPU, 45 GB rehearsal, commit or push occurred. coverage.json is untouched."
+  ]
+}

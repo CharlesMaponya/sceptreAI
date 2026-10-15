@@ -4,8 +4,10 @@ import ast
 import logging
 import math
 import uuid
+from copy import deepcopy
 from dataclasses import dataclass, replace
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 from kubernetes import client, config
@@ -13,7 +15,8 @@ from kubernetes.client import ApiException
 from kubernetes.utils.quantity import parse_quantity
 
 from automl_api.core.config import Settings, get_settings
-from automl_api.models.enums import TaskType
+from automl_api.models.enums import TaskType, WorkflowStage
+from automl_api.models.workflows import WorkflowAttempt
 from automl_api.schemas.training import ClusterCapacityRead, TrainingEstimateRead
 from automl_api.security.deployments import deployment_token
 
@@ -308,7 +311,9 @@ class KubernetesTrainingClient:
             name=name,
         )
 
-    def delete_ray_job(self, name: str, namespace: str | None = None) -> None:
+    def delete_ray_job(
+        self, name: str, namespace: str | None = None, *, uid: str | None = None
+    ) -> None:
         if not self._configured:
             raise RuntimeError(self._configuration_error or "Kubernetes client is not configured.")
         try:
@@ -318,7 +323,10 @@ class KubernetesTrainingClient:
                 namespace=namespace or self.settings.training_namespace,
                 plural="rayjobs",
                 name=name,
-                body=client.V1DeleteOptions(propagation_policy="Foreground"),
+                body=client.V1DeleteOptions(
+                    propagation_policy="Foreground",
+                    preconditions=client.V1Preconditions(uid=uid) if uid is not None else None,
+                ),
             )
         except ApiException as exc:
             if exc.status != 404:
@@ -552,6 +560,7 @@ class KubernetesTrainingClient:
         run_id: uuid.UUID,
         project_id: uuid.UUID,
         estimate: TrainingEstimateRead,
+        attempt: WorkflowAttempt | None = None,
     ) -> dict[str, Any]:
         name = f"automl-train-{str(run_id)[:8]}"
         settings = self.settings
@@ -692,29 +701,143 @@ class KubernetesTrainingClient:
             },
             "spec": job_spec,
         }
+        if attempt is not None:
+            if attempt.model_run_id != run_id or attempt.project_id != project_id:
+                raise ValueError("The analysis manifest attempt scope is invalid.")
+            manifest = self.bind_analysis_attempt_manifest(manifest, attempt)
         return manifest
 
-    def create_job(self, manifest: dict[str, Any]) -> None:
+    def bind_analysis_attempt_manifest(self, manifest, attempt):
+        manifest = deepcopy(manifest)
+        run_id, project_id = attempt.model_run_id, attempt.project_id
+        if (
+            attempt.stage != WorkflowStage.TRAINING_RUN
+            or attempt.logical_key != f"analysis-run:{run_id}"
+            or manifest["metadata"]["labels"].get("automl.platform/run-id") != str(run_id)
+            or manifest["metadata"]["labels"].get("automl.platform/project-id") != str(project_id)
+        ):
+            raise ValueError("The analysis manifest attempt scope is invalid.")
+        settings = self.settings
+        job_spec = manifest["spec"]
+        pod_spec = job_spec["template"]["spec"]
+        container = pod_spec["containers"][0]
+        from automl_api.services.attempt_identity import attempt_audience
+        from automl_api.training.attempt_admission import (
+            ANALYSIS_PROTOCOL,
+            TOKEN_PATH,
+            control_base_url,
+        )
+
+        command = ["python", "-m", "automl_api.training.worker", "--run-id", str(run_id)]
+        if container.get("command") not in (
+            command,
+            command + ["--attempt-protocol", ANALYSIS_PROTOCOL],
+        ):
+            raise ValueError("The analysis entrypoint is not a supported worker command.")
+        container["command"] = command + ["--attempt-protocol", ANALYSIS_PROTOCOL]
+        url = settings.attempt_control_base_url
+        if url:
+            url = control_base_url(url)
+        elif settings.environment in {"production", "staging"}:
+            raise ValueError("Production analysis requires an HTTPS attempt admission URL.")
+        name = f"automl-analysis-{run_id.hex}-g{attempt.generation}"
+        manifest["metadata"]["name"] = name
+        labels = {
+            "automl.platform/project-id": str(project_id),
+            "automl.platform/attempt-id": str(attempt.id),
+            "automl.platform/generation": str(attempt.generation),
+            "automl.platform/workflow-stage": attempt.stage.value,
+        }
+        manifest["metadata"]["labels"].update(labels)
+        job_spec["template"]["metadata"]["labels"].update(labels)
+        pod_spec["serviceAccountName"] = attempt.workload_identity
+        bindings = {
+            "ENVIRONMENT",
+            "ATTEMPT_CONTROL_BASE_URL",
+            "AUTOML_ATTEMPT_ID",
+            "AUTOML_FENCING_TOKEN",
+            "AUTOML_IDENTITY_TOKEN_FILE",
+        }
+        container["env"] = [e for e in container["env"] if e["name"] not in bindings]
+        container["env"].extend(
+            [
+                {"name": "ENVIRONMENT", "value": settings.environment},
+                {"name": "ATTEMPT_CONTROL_BASE_URL", "value": url or ""},
+                {"name": "AUTOML_ATTEMPT_ID", "value": str(attempt.id)},
+                {"name": "AUTOML_FENCING_TOKEN", "value": attempt.fencing_token},
+                {"name": "AUTOML_IDENTITY_TOKEN_FILE", "value": TOKEN_PATH},
+            ]
+        )
+        pod_spec["volumes"] = [v for v in pod_spec["volumes"] if v["name"] != "attempt-identity"]
+        container["volumeMounts"] = [
+            v for v in container["volumeMounts"] if v["name"] != "attempt-identity"
+        ]
+        pod_spec["volumes"].append(
+            {
+                "name": "attempt-identity",
+                "projected": {
+                    "defaultMode": 0o444,
+                    "sources": [
+                        {
+                            "serviceAccountToken": {
+                                "path": "token",
+                                "audience": attempt_audience(attempt.id, attempt.fencing_token),
+                                "expirationSeconds": 600,
+                            }
+                        }
+                    ],
+                },
+            }
+        )
+        container["volumeMounts"].append(
+            {
+                "name": "attempt-identity",
+                "mountPath": str(Path(TOKEN_PATH).parent),
+                "readOnly": True,
+            }
+        )
+        return manifest
+
+    def create_job(self, manifest: dict[str, Any]):
+        namespace = (
+            manifest.get("metadata", {}).get("namespace") or self.settings.training_namespace
+        )
         try:
-            self.batch.create_namespaced_job(
-                namespace=self.settings.training_namespace,
-                body=manifest,
+            return self.batch.create_namespaced_job(
+                namespace=namespace, body=manifest, _request_timeout=5
             )
         except ApiException as exc:
             if exc.status != 409:
                 raise
+            if not manifest.get("metadata", {}).get("labels", {}).get("automl.platform/attempt-id"):
+                return None
+            from automl_api.services.workflow_state import StaleFence
 
-    def ensure_service_account(self, name: str) -> None:
+            existing = self.batch.read_namespaced_job(
+                name=manifest["metadata"]["name"],
+                namespace=namespace,
+            )
+            labels = existing.metadata.labels or {}
+            required = ("project-id", "run-id", "attempt-id", "generation", "workflow-stage")
+            if any(
+                labels.get(f"automl.platform/{key}")
+                != manifest["metadata"]["labels"].get(f"automl.platform/{key}")
+                for key in required
+            ):
+                raise StaleFence("The existing analysis Job belongs to another scope.") from exc
+            return existing
+
+    def ensure_service_account(self, name: str, namespace: str | None = None) -> None:
+        namespace = namespace or self.settings.training_namespace
         body = {
             "apiVersion": "v1",
             "kind": "ServiceAccount",
-            "metadata": {"name": name, "namespace": self.settings.training_namespace},
+            "metadata": {"name": name, "namespace": namespace},
             "automountServiceAccountToken": False,
         }
         try:
             self.core.create_namespaced_service_account(
-                namespace=self.settings.training_namespace,
-                body=body,
+                namespace=namespace, body=body, _request_timeout=5
             )
         except ApiException as exc:
             if exc.status != 409:
@@ -1110,11 +1233,17 @@ class KubernetesTrainingClient:
             deleted.append(name)
         return deleted
 
-    def delete_job(self, job_name: str) -> None:
+    def delete_job(
+        self, job_name: str, namespace: str | None = None, *, uid: str | None = None
+    ) -> None:
         self.batch.delete_namespaced_job(
+            _request_timeout=5,
             name=job_name,
-            namespace=self.settings.training_namespace,
-            propagation_policy="Foreground",
+            namespace=namespace or self.settings.training_namespace,
+            body=client.V1DeleteOptions(
+                propagation_policy="Foreground",
+                preconditions=client.V1Preconditions(uid=uid) if uid is not None else None,
+            ),
         )
 
     def job_state(self, job_name: str) -> str:

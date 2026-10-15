@@ -99,7 +99,7 @@ def _mock_cluster_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr(pipeline, "_persist_candidate_phase", lambda *_args: None)
     monkeypatch.setattr(pipeline.mlflow, "active_run", lambda: _MlflowRun("parent"))
-    monkeypatch.setattr(pipeline.mlflow, "start_run", lambda **_kwargs: _MlflowRun())
+    monkeypatch.setattr(pipeline, "_tracked_mlflow_run", lambda *_args, **_kwargs: _MlflowRun())
     for name in ("set_tags", "log_params", "log_dict"):
         monkeypatch.setattr(pipeline.mlflow, name, lambda *_args, **_kwargs: None)
     monkeypatch.setattr(pipeline, "_log_metrics_synchronously", lambda *_args: None)

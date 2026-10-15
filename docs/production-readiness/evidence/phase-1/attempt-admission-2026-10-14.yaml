@@ -1,0 +1,56 @@
+{
+  "verified_at": "2026-10-14T18:07:57.487628+00:00",
+  "phase_complete": false,
+  "scope": "Server-side pod-bound attempt admission boundary",
+  "changes": [
+    "Add hidden POST admission route. Verify Kubernetes TokenReview against exact attempt/fence audience, current active attempt and training run/namespace, pod-bound user extras, physical UID/deletion state, namespace, scope labels and service-account subject.",
+    "Authorize a cluster-specific Ray head only through the Pod/RayCluster/recorded RayJob controller UID chain and matching scope labels; reject deleting controllers.",
+    "Cap accepted proof expiry to fifteen minutes and persist token digest/expiry/scoped metadata, never token material. Replayed evidence must keep its type and digest. Invalid proofs fail closed; unavailable cluster configuration/API returns unavailable.",
+    "Helm grants TokenReview create and controller metadata read to API identity, not training workers. Add complete producer/consumer/provider/native contract to preserve remaining scope."
+  ],
+  "verification": {
+    "regressions": {
+      "tests": 364,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "native_admission": {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "focused_cases": 29,
+  "native_probe": {
+    "context": "k3d-sceptre",
+    "namespace": "identity-proof-29e4f31c269f",
+    "cleanup": true,
+    "pod_uid": "a35ef9cb-afaa-4772-9aaf-8cb0e265adfc",
+    "valid": true,
+    "invalid_cases": 5,
+    "pod_scheduled": false
+  },
+  "environment": "Real PostgreSQL regression cases with mocked TokenReview/controller metadata and actual Helm rendering. Separate native k3d proof manually requests a real 600-second token bound to a deliberately unscheduled pod, then calls the current local admission route through TestClient with real TokenReview/pod reads. Wrong audience, project, parent status, fence and deleted pod are rejected; isolated namespace removed.",
+  "source_sha256": {
+    "apps/api/automl_api/services/attempt_identity.py": "be32cd36a95f6b0fe33c66c5430c2f76c377a09d0ad698ecd967a3e51e87ee82",
+    "apps/api/automl_api/api/routes/attempt_control.py": "265f9da49fd1166306e637a2596cc06e7d99ef74400d7216d8846474399bd368",
+    "apps/api/automl_api/main.py": "ddd33a4cbd99f68c2b4363dd6b6f66fb9c9b6d9727c948d1f8d4df762f7d52c2",
+    "infra/helm/sceptre/templates/rbac.yaml": "4c9eb673b25f4be388dd561d7a260687f198e232046acf83638a2df2bad8662a",
+    "tests/test_attempt_identity.py": "adf4a29ad1e2ceed223c00d56e31faf5d73354b9ca2d084a649dd13c94b6110d"
+  },
+  "native_script_sha256": "7e7c233ecafcf0af97210fbb69f00bf14e5332528a89aa17568ca1acc044b251",
+  "limits": [
+    "Token projection and production worker admission/renewal/publication enforcement are not integrated. Existing workers do not call this endpoint yet; no lease-expiry clamping to proof expiry is implemented.",
+    "This is not a complete AttemptCredentialBroker: delegated provider credentials, exact object/version/method/byte limits and credential expiry/revocation remain pending. Existing worker database/object credentials remain broad.",
+    "Ray head controller checks have mocked coverage and upstream v1.6.2 source confirmation, not actual native head admission. Helm RBAC is rendered, not applied to production.",
+    "Native probe uses current local Python code and an unscheduled pod; no immutable-image rollout, worker execution, token rotation, TLS/egress or full process-loss qualification.",
+    "All four full credential-boundary gates, four broad trial gates and all 36 Phase 1 requirements remain open. Adequate storage for the 45 GB rehearsal and seven missing historical QA objects remain unresolved."
+  ],
+  "references": [
+    "https://kubernetes.io/docs/concepts/security/service-accounts/",
+    "https://kubernetes.io/docs/concepts/storage/projected-volumes/",
+    "https://github.com/ray-project/kuberay/blob/v1.6.2/ray-operator/controllers/ray/utils/util.go"
+  ]
+}

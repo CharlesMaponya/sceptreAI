@@ -1,0 +1,35 @@
+{
+  "verification": {
+    "tests": 14,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "direct_training_trial_constructors": {},
+  "source_sha256": {
+    "apps/api/automl_api/services/reconciler.py": "ac305706391ecf999a5b743d16f57c80e2ef8081f6396cdc3425f69118a724d1",
+    "apps/api/automl_api/training/candidate_runtime.py": "f6a065bfd04eeb402cc1a3f6bbba177e93fcf82145626de48c9a31351fe821ae",
+    "apps/api/automl_api/training/pipeline.py": "ad66f1d981cdec96ba4f2c7699a108836747b807c326e6ba3797e7d896d2f08d",
+    "apps/api/automl_api/training/tune_runtime.py": "cff373ec52cb0dfb144f5eec533e13205ee28a0ca702120c04d099e1f0791191",
+    "apps/api/automl_api/models/workflows.py": "ce9a3ca3608a722dc13e7ccee57f30d80f43343aea475bfc1dafdc67a2f914ea",
+    "apps/api/automl_api/services/training.py": "371506228acffaebc715b0dc49274f7cd8f5645383e50b599774790c7ac69d7f",
+    "docs/production-readiness/phase-1-trial-ownership.md": "ee99045cec8f2acb969b7e63049c88ae2965d43116cc557a87275207d9ff5627"
+  },
+  "verified_at": "2026-10-12T06:54:07.245869+00:00",
+  "phase_complete": false,
+  "scope": "Audit of actual trial execution paths; no durable trial implementation claimed",
+  "passing_runs": 2,
+  "findings": [
+    "Production manifest enables AUTOML_MODEL_PODS=1 alongside TRAINING_EXECUTION_MODE=ray.",
+    "Whole-candidate task changes mode to candidate, so CPU search takes BayesSearchCV rather than the branch requiring mode ray. GPU search also takes the local branch.",
+    "Fixed-parameter supervised CV and clustering parameter sweeps are additional trial execution paths needing enrollment.",
+    "Application source scan found no direct TrainingTrial(...) construction sites; manual inspection confirms the Tune helper does not create workflow trial/attempt rows.",
+    "Existing child-trial supersession code cannot fence work not enrolled into child attempts.",
+    "Merely enabling Tune inside a task reserving all worker CPUs would risk nested resource deadlock."
+  ],
+  "evidence_scope": "Manifest builder and candidate tests use mocks. Separate real local Ray two-CPU smoke executes two Tune trials and persists CV evidence; no native k3d process-loss campaign.",
+  "constructor_scan_limits": "AST direct-name/attribute construction scan, not proof against arbitrary reflection or external writers; positive synthetic name and attribute controls passed.",
+  "implementation_contract": "docs/production-readiness/phase-1-trial-ownership.md",
+  "prior_evidence_correction": "ray-tracking-errors-2026-10-12.yaml and remediation progress corrected: the earlier suite did run local Ray for Tune smoke; only focused error dispatch was mocked.",
+  "remaining": "Implementation and all ownership/replay/fence/lease/checkpoint/native gates in the contract remain required. All 36 broad Phase 1 requirements remain open."
+}

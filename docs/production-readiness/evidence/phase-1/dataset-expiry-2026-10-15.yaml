@@ -1,0 +1,79 @@
+{
+  "verified_at": "2026-10-15T05:05:08.332546+00:00",
+  "phase_complete": false,
+  "scope": "Dataset lease expiry, durable cancellation/replacement and retired submission replay",
+  "changes": [
+    "Dataset observer refreshes locked attempts/profile, respects active scope and recorded namespace, queues cancellation of an expired generation plus bounded replacement in one transaction before any Kubernetes call. Exhausted retry budget still queues cleanup.",
+    "Dedicated ray.dataset.cancel outbox handler validates project/profile/typed stage/fence/retired status before external reads, checks physical RayJob scope labels and namespace, and deletes with a UID precondition. 404 replay completes cleanup without changing terminal CAS.",
+    "Submission validates full command scope and current locked profile before creation. Retired generations return without recreating RayJobs even from stale identity maps.",
+    "New dataset submissions record namespace in profile overview; cancellation intents retain that namespace across replacement. Legacy submissions without it use the configured namespace explicitly."
+  ],
+  "verification": {
+    "regressions": {
+      "tests": 589,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "native_control_plane": {
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "focused_cases": 55,
+  "native_probes": [
+    {
+      "stage": "splitter",
+      "namespaces": [
+        "dataset-expiry-56b5e31692",
+        "dataset-neighbor-56b5e31692"
+      ],
+      "cleanup": true,
+      "dataset-expiry-56b5e31692": "7f4ea994-1911-49d7-9be5-e4b8530a8145",
+      "dataset-neighbor-56b5e31692": "ec2c8b20-d50d-466e-9912-dee38bb1d94d",
+      "uid_conflict_denied": true,
+      "neighbor_preserved": true,
+      "stale_fence_denied": true,
+      "cancel_delivered": true,
+      "replay": true,
+      "pods_started": 0
+    },
+    {
+      "stage": "preparation",
+      "namespaces": [
+        "dataset-expiry-8cdffea027",
+        "dataset-neighbor-8cdffea027"
+      ],
+      "cleanup": true,
+      "dataset-expiry-8cdffea027": "e27d5c6a-1453-4ae5-ab54-44ebd7c9f5b1",
+      "dataset-neighbor-8cdffea027": "5c4e84f6-b382-41ad-a700-59cf00cad472",
+      "uid_conflict_denied": true,
+      "neighbor_preserved": true,
+      "stale_fence_denied": true,
+      "cancel_delivered": true,
+      "replay": true,
+      "pods_started": 0
+    }
+  ],
+  "environment": "Real PostgreSQL tests include concurrency, identity-map refresh, transaction rollback and lost-delete acknowledgement replay. Existing Ray splitting and training expiry regressions included. Native k3d tests create suspended RayJobs in isolated namespaces; actual outbox delivery deletes the scoped old job, 404 replay succeeds, a wrong UID gets 409 and a same-name neighboring job retains its UID. No pods started.",
+  "source_sha256": {
+    "apps/api/automl_api/services/reconciler.py": "8187888543bcc5e0a90c4089845a043de002e50440469904110eddd08ab14024",
+    "apps/api/automl_api/services/kubernetes_training.py": "e3f793de0b19ad981f50dd20071f05c438e192cc697c3f571b6f5989b32780c6",
+    "tests/test_dataset_expiry.py": "1ca630c0b1253e2dbacc0978e08d4d1e15a5d54e97b708746cd4a78b9a05e34a",
+    "tests/test_phase3_preparation.py": "45f0c4ed09015f30ba44e07c21576c090a81231c8eb3131e3e1216f4392a94f3"
+  },
+  "verification_script_sha256": {
+    "check.py": "ad9b56488f4ca512069a1594df7ad48a859512ddbd218a10eb0f08d7912e9801",
+    "native_check.py": "d02e7df8cd8d71a0e5f7466f1df53cc9c9e116d662dbd82767d07454603274dd",
+    "native_test.py": "a47e61d5c6fc436da871d968139fc9e2e13867cca48e2179bc09105c8faf105a"
+  },
+  "limits": [
+    "Native control-plane checks use current local code with local kubeconfig, not deployed immutable API/worker images, running workers, actual process death, deployed RBAC/TLS/egress or kubelet rotation.",
+    "Inactive or moved profiles are preserved and skipped by this observer; cleanup of already inconsistent/orphaned legacy profile attempts remains an inventory/reconciliation gap. Legacy namespace fallback cannot recover jobs moved to an unknown namespace.",
+    "Provider credentials remain broad; exact object/version/method/byte restrictions, separate child grants, predecessor object authorization and non-Ray analysis remain open.",
+    "The 45 GB migration qualification still lacks fixture plus overhead space. Seven historical QA objects remain missing, and original preservation gate remains abandoned.",
+    "All 36 broad Phase 1 requirements and four full credential gates remain Open."
+  ]
+}

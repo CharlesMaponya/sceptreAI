@@ -7,21 +7,76 @@ from datetime import UTC, datetime
 
 from fastapi import HTTPException
 from kubernetes.client.exceptions import ApiException
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from automl_api.db.base import Base
 from automl_api.models.datasets import DatasetUploadSession, ProfilingJob
-from automl_api.models.enums import CommandStatus, OutboxStatus, ProjectRole, RunKind, RunStatus
+from automl_api.models.enums import (
+    AttemptStatus,
+    CommandStatus,
+    OutboxStatus,
+    ProjectRole,
+    RunKind,
+    RunStatus,
+    ScopeStatus,
+)
 from automl_api.models.iam import User
 from automl_api.models.projects import Project
 from automl_api.models.runs import ModelRegistryEntry, ModelRun
-from automl_api.models.workflows import DeletionTombstone, OutboxEntry, WorkflowAttempt
+from automl_api.models.workflows import (
+    DeletionStage,
+    DeletionTombstone,
+    OutboxEntry,
+    PromotionalScope,
+    PromotionalScopeMember,
+    WorkflowAttempt,
+)
 from automl_api.services.projects import user_has_project_role
 from automl_api.services.workflow_state import begin_command, enqueue_outbox, replay_dead_outbox
 from automl_api.storage.object_store import get_object_store
 
+STAGES = {
+    "project": ("runtime", "object_store", "prepared_store", "metadata"),
+    "run": ("runtime", "object_store", "metadata"),
+}
+
+
 TERMINAL_RUNS = {RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.CANCELLED, RunStatus.PREEMPTED}
+
+
+def _require_stopped_workflows(db, project_id, run_ids=None):
+    scopes = select(PromotionalScope.id).where(PromotionalScope.project_id == project_id)
+    attempts = select(WorkflowAttempt.id).where(
+        WorkflowAttempt.project_id == project_id,
+        WorkflowAttempt.status.in_(
+            {
+                AttemptStatus.PENDING,
+                AttemptStatus.CLAIMED,
+                AttemptStatus.SUBMITTED,
+                AttemptStatus.RUNNING,
+            }
+        ),
+    )
+    if run_ids is not None:
+        membership = select(PromotionalScopeMember.scope_id).where(
+            PromotionalScopeMember.project_id == project_id,
+            PromotionalScopeMember.model_run_id.in_(run_ids),
+        )
+        scopes = scopes.where(PromotionalScope.id.in_(membership))
+        attempts = attempts.where(
+            or_(WorkflowAttempt.model_run_id.in_(run_ids), WorkflowAttempt.scope_id.in_(membership))
+        )
+    scopes = scopes.where(
+        PromotionalScope.status.not_in(
+            {ScopeStatus.SUCCEEDED, ScopeStatus.FAILED, ScopeStatus.CANCELLED}
+        )
+    )
+    if db.scalar(scopes.limit(1)) or db.scalar(attempts.limit(1)):
+        raise HTTPException(
+            status_code=409,
+            detail="Cancel active scopes and wait for workflows to stop before deletion.",
+        )
 
 
 def request_deletion(
@@ -162,6 +217,7 @@ def request_deletion(
         raise HTTPException(
             status_code=409, detail="Wait for pending project operations to settle before deletion."
         )
+    _require_stopped_workflows(db, project_id, [run.id for run in selected] if run_id else None)
     tombstone = DeletionTombstone(
         project_id=project_id,
         requested_by_id=user.id,
@@ -171,6 +227,13 @@ def request_deletion(
         status="pending",
     )
     db.add(tombstone)
+    db.flush()
+    db.add_all(
+        [
+            DeletionStage(project_id=project_id, tombstone_id=tombstone.id, resource_class=stage)
+            for stage in STAGES[kind]
+        ]
+    )
     if run_id is None:
         project.settings = {**project.settings, "deletion_requested": True}
     project.settings = {**project.settings, "deletion_in_progress": True}
@@ -198,11 +261,12 @@ def request_deletion(
     return {"status": "pending", "id": str(tombstone.id)}
 
 
-def reconcile_deletion(db: Session, entry: OutboxEntry, k8s) -> None:
+def reconcile_deletion(db: Session, entry: OutboxEntry, k8s) -> bool:
+    """Checkpoint one stage; the outbox remains the sole lease and retry owner."""
     project_id = entry.project_id
     project = db.scalar(select(Project).where(Project.id == project_id).with_for_update())
     if project is None:
-        return
+        return True
     run_ids = [uuid.UUID(value) for value in entry.payload["run_ids"]]
     all_runs = list(
         db.scalars(
@@ -219,9 +283,59 @@ def reconcile_deletion(db: Session, entry: OutboxEntry, k8s) -> None:
         for run in runs
     ):
         raise RuntimeError("Deployments must be shut down and cleaned up before deletion.")
+    if any(run.status not in TERMINAL_RUNS for run in runs):
+        raise RuntimeError("An active run still needs to stop before deletion.")
+    _require_stopped_workflows(db, project_id, run_ids if entry.topic == "run.delete" else None)
+    tombstone = db.get(DeletionTombstone, uuid.UUID(entry.payload["tombstone_id"]))
+    if tombstone is None or tombstone.project_id != project_id:
+        raise LookupError("The project-scoped deletion tombstone is missing.")
+    if tombstone.legal_hold:
+        raise ValueError("A legal hold prevents deletion.")
+    names = STAGES[tombstone.resource_type]
+    stages = {
+        stage.resource_class: stage
+        for stage in db.scalars(
+            select(DeletionStage).where(DeletionStage.tombstone_id == tombstone.id)
+        )
+    }
+    missing = [name for name in names if name not in stages]
+    if missing:
+        # Old queued requests must commit their plan before the first side effect.
+        db.add_all(
+            [
+                DeletionStage(project_id=project_id, tombstone_id=tombstone.id, resource_class=name)
+                for name in missing
+            ]
+        )
+        db.flush()
+        return False
+    stage = next((stages[name] for name in names if stages[name].status != "completed"), None)
+    if stage is None:
+        return True
+    if stage.resource_class == "runtime":
+        _delete_runtime(db, project_id, runs, k8s)
+    elif stage.resource_class == "object_store":
+        store = get_object_store()
+        if entry.topic == "project.delete":
+            store.delete_prefix(f"projects/{project_id}")
+        else:
+            for run_id in run_ids:
+                store.delete_prefix(f"projects/{project_id}/runs/{run_id}")
+    elif stage.resource_class == "prepared_store":
+        get_object_store().delete_prefix(f"automl/projects/{project_id}")
+    else:
+        _delete_metadata(db, entry, project, run_ids)
+        tombstone.status = "complete"
+        if tombstone.completed_at is None:
+            tombstone.completed_at = datetime.now(UTC)
+    stage.status = "completed"
+    stage.heartbeat_at = datetime.now(UTC)
+    db.flush()
+    return stage.resource_class == "metadata"
+
+
+def _delete_runtime(db, project_id, runs, k8s):
     for run in runs:
-        if run.status not in TERMINAL_RUNS:
-            raise RuntimeError("An active run still needs to stop before deletion.")
         names = {
             (attempt.ray_job_name, "RayJob")
             for attempt in db.scalars(
@@ -248,18 +362,20 @@ def reconcile_deletion(db: Session, entry: OutboxEntry, k8s) -> None:
             except ApiException as exc:
                 if exc.status != 404:
                     raise
-    store = get_object_store()
+
+
+def _delete_metadata(db, entry, project, run_ids):
+    project_id = project.id
     if entry.topic == "project.delete":
-        store.delete_prefix(f"projects/{project_id}")
-        store.delete_prefix(f"automl/projects/{project_id}")
         # Explicit reverse FK order also handles restrictive composite project FKs.
         for table in reversed(Base.metadata.sorted_tables):
-            if "project_id" in table.c:
+            if "project_id" in table.c and table not in {
+                DeletionTombstone.__table__,
+                DeletionStage.__table__,
+            }:
                 db.execute(delete(table).where(table.c.project_id == project_id))
         db.execute(delete(Project).where(Project.id == project_id))
     else:
-        for run_id in run_ids:
-            store.delete_prefix(f"projects/{project_id}/runs/{run_id}")
         db.execute(
             delete(ModelRegistryEntry).where(
                 ModelRegistryEntry.project_id == project_id,
@@ -269,10 +385,7 @@ def reconcile_deletion(db: Session, entry: OutboxEntry, k8s) -> None:
         db.execute(
             delete(ModelRun).where(ModelRun.project_id == project_id, ModelRun.id.in_(run_ids))
         )
-        tombstone = db.get(DeletionTombstone, uuid.UUID(entry.payload["tombstone_id"]))
         project.settings = {
             key: value for key, value in project.settings.items() if key != "deletion_in_progress"
         }
-        tombstone.status = "complete"
-        tombstone.completed_at = datetime.now(UTC)
     db.flush()

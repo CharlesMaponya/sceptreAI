@@ -26,8 +26,21 @@ from sqlalchemy.types import TypeDecorator
 from sqlglot import exp, parse
 
 
+def _normalized_type_name(rendered: str) -> str:
+    # Quoted type/collation names are case-sensitive PostgreSQL identifiers.
+    return re.sub(
+        r'"(?:[^"]|"")*"|[^"]+',
+        lambda token: (
+            token.group(0)
+            if token.group(0).startswith('"')
+            else re.sub(r"\s+", " ", token.group(0).lower()).replace("character varying", "varchar")
+        ),
+        rendered,
+    ).strip()
+
+
 def _normalized_type(value: object, dialect) -> str:
-    rendered = str(value.compile(dialect=dialect)).lower().replace("character varying", "varchar")
+    rendered = _normalized_type_name(str(value.compile(dialect=dialect)))
     if dialect.name == "postgresql" and rendered == "float":
         return "double precision"
     return rendered
@@ -61,7 +74,7 @@ def _default_signature(value, column, dialect) -> str | None:
         if isinstance(storage_type, String):
             # Reflection omits the length on an implicit varchar literal cast.
             compatible_types.add("varchar")
-        normalized_cast = " ".join(cast.lower().split()).replace("character varying", "varchar")
+        normalized_cast = _normalized_type_name(cast)
         if normalized_cast not in compatible_types:
             return rendered
     if isinstance(storage_type, (Integer, Numeric)) and re.fullmatch(

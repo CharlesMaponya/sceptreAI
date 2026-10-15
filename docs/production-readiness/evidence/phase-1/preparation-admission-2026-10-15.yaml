@@ -1,0 +1,71 @@
+{
+  "verified_at": "2026-10-15T04:52:38.409078+00:00",
+  "phase_complete": false,
+  "scope": "Splitter and preparation admission, owned renewable leases and stale-write protection",
+  "changes": [
+    "Both stage entrypoints request admission before SQL locks, claim one worker owner and renew every 15 seconds; 90-second leases are capped to verified proof expiry.",
+    "Progress and publication request admission and reject expired/superseded scope before metadata or terminal CAS. Output project is checked before storage; failure writes preserve replacement and inactive profile evidence.",
+    "Dataset admission verifies exact stage/profile logical key, project/version, active profile status and current attempt pointer before TokenReview.",
+    "Heartbeat uncertainty prevents publication; shutdown is requested in finally. No provider credential restriction is implied."
+  ],
+  "verification": {
+    "regressions": {
+      "tests": 509,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "native_local_workers": {
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "focused_cases": 34,
+  "native_probes": [
+    {
+      "stage": "splitter",
+      "namespace": "dataset-admission-1e67ab5e9d",
+      "cleanup": true,
+      "inactive_profile_denied": true,
+      "pod_uid": "a8855ef6-7196-4331-bf08-8b50c2167e07",
+      "admitted": true,
+      "wrong_token_denied": true,
+      "expired_upload_denied": true,
+      "pod_scheduled": false
+    },
+    {
+      "stage": "preparation",
+      "namespace": "dataset-admission-3f244f53bc",
+      "cleanup": true,
+      "inactive_profile_denied": true,
+      "pod_uid": "11b364f0-c9b2-43c0-84fc-c3e9b08e1c04",
+      "admitted": true,
+      "wrong_token_denied": true,
+      "expired_upload_denied": true,
+      "pod_scheduled": false
+    }
+  ],
+  "environment": "Real PostgreSQL plus existing real local Ray Data splitting tests. Focused lifecycle tests mock computation/admission. Native checks use actual k3d pod-bound TokenRequest/TokenReview with current local worker startup/renewal, relayed via in-process TestClient. Both pods deliberately unscheduled; token files and UID-owned namespaces removed.",
+  "source_sha256": {
+    "apps/api/automl_api/preparation_worker.py": "533c3d7d5992e84202b2f86037da034c606666bf49a5e8c8a2bc07abb9250d7e",
+    "apps/api/automl_api/services/attempt_identity.py": "97fa1be0cef0d25c7daf7a39a61af7cf54d1e29fe2c4dfd5da25d3f56c435318",
+    "apps/api/automl_api/training/attempt_admission.py": "ff075ffc79572df0b8cc4fdab5d11f2d71fc2c5d8c03f1a4002aa9b203054535",
+    "tests/test_preparation_admission.py": "3208ad2dcea8315704084e9e2230efddf96a24bf9f1a159204191803265c5fd6",
+    "tests/test_phase3_preparation.py": "757a3557c52287f48bf9d417818fb620bf2973bcfc029ccc9a24e3d2c1cd2022",
+    "tests/test_local_profiling_delivery.py": "d204e34f1e00ff69d83b747af516a6af518134b2f3f6b5657495fed317162973"
+  },
+  "verification_script_sha256": {
+    "check.py": "e86e17fc930e6bd429ec7cf4a27796bccd671976afbbb086f51fcfa48d44a558",
+    "native_check.py": "911a9c6652ce24b486c7c5017c52465dfddf711087fd5b842cfb43dc92516c10",
+    "native_test.py": "3104bc4bf4c0510670d454f95f0a9aa023711a164320ae5f8a54ea24ec23a21e"
+  },
+  "limits": [
+    "Dataset lease-expiry cancellation/replacement remains absent; non-Ray analysis is not integrated. Separate signed child grants and the full workflow inventory remain open.",
+    "Broad database/object credentials remain. Admission does not enforce provider object/version/method/byte limits or predecessor object grants. An upload racing expiry can leave an own-attempt orphan before SQL rejects publication.",
+    "Native checks do not qualify deployed TLS/egress, API service-account RBAC, kubelet rotation, running Ray heads, immutable worker images or actual worker process death.",
+    "Heartbeat shutdown requests stop and joins for one second; an already in-flight external request can outlast that join. Database lineage/lease guards still govern its writes.",
+    "All 36 broad Phase 1 requirements and all four full credential gates remain open. 45 GB migration qualification lacks space (42.8 GB free before overhead); seven historical QA objects remain missing and original preservation gate remains abandoned."
+  ]
+}

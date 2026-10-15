@@ -1,0 +1,111 @@
+{
+  "verified_at": "2026-10-09T19:36:07.016206+00:00",
+  "phase_complete": false,
+  "finding": "Cached durable and contract command responses bypassed project authorization because the permission check lived in the execute callback.",
+  "fix": "Check current project permission before lookup or insertion in both command helpers; deployment, cleanup and metric ingestion require ADMIN.",
+  "verification": {
+    "authorization": {
+      "tests": 24,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "regression": {
+      "tests": 250,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "durable_callers": [
+    {
+      "file": "apps/api/automl_api/services/training.py",
+      "operation": "training.restart",
+      "minimum_role": "ProjectRole.EDITOR (default)"
+    },
+    {
+      "file": "apps/api/automl_api/services/training.py",
+      "operation": "training.add_models",
+      "minimum_role": "ProjectRole.EDITOR (default)"
+    },
+    {
+      "file": "apps/api/automl_api/api/routes/operations.py",
+      "operation": "drift.launch",
+      "minimum_role": "ProjectRole.EDITOR (default)"
+    },
+    {
+      "file": "apps/api/automl_api/api/routes/operations.py",
+      "operation": "deployment.launch",
+      "minimum_role": "ProjectRole.ADMIN"
+    },
+    {
+      "file": "apps/api/automl_api/api/routes/operations.py",
+      "operation": "cleanup.execute",
+      "minimum_role": "ProjectRole.ADMIN"
+    },
+    {
+      "file": "apps/api/automl_api/api/routes/validation.py",
+      "operation": "validation.launch",
+      "minimum_role": "ProjectRole.EDITOR (default)"
+    },
+    {
+      "file": "apps/api/automl_api/api/routes/validation.py",
+      "operation": "explainability.launch",
+      "minimum_role": "ProjectRole.EDITOR (default)"
+    },
+    {
+      "file": "apps/api/automl_api/api/routes/datasets.py",
+      "operation": "dataset.upload.begin",
+      "minimum_role": "ProjectRole.EDITOR (default)"
+    },
+    {
+      "file": "apps/api/automl_api/api/routes/datasets.py",
+      "operation": "dataset.upload.instruction",
+      "minimum_role": "ProjectRole.EDITOR (default)"
+    },
+    {
+      "file": "apps/api/automl_api/api/routes/datasets.py",
+      "operation": "dataset.upload.complete.direct",
+      "minimum_role": "ProjectRole.EDITOR (default)"
+    },
+    {
+      "file": "apps/api/automl_api/api/routes/datasets.py",
+      "operation": "dataset.upload.abort",
+      "minimum_role": "ProjectRole.EDITOR (default)"
+    },
+    {
+      "file": "apps/api/automl_api/api/routes/datasets.py",
+      "operation": "dataset.upload.complete",
+      "minimum_role": "ProjectRole.EDITOR (default)"
+    },
+    {
+      "file": "apps/api/automl_api/api/routes/monitoring.py",
+      "operation": "monitoring.metric.ingest",
+      "minimum_role": "ProjectRole.ADMIN"
+    },
+    {
+      "file": "apps/api/automl_api/api/routes/monitoring.py",
+      "operation": "governance.report.generate",
+      "minimum_role": "ProjectRole.EDITOR (default)"
+    }
+  ],
+  "source_sha256": {
+    "apps/api/automl_api/services/idempotency.py": "504a522f23fe9c6647be0f1889e6868966798a597edcca0c687f7abeef0026a2",
+    "apps/api/automl_api/services/contracts.py": "d69c0e893f2fd857090179cfb64b6abc0b39add426b7196e3ffd31bbfd34313d",
+    "apps/api/automl_api/api/routes/operations.py": "f1e963eef98957bd5abdab863650fc61fff6af171e95711c1dce5a13df945c19",
+    "apps/api/automl_api/api/routes/monitoring.py": "8c70a23158ee5357c6aa5439a20e1f753fb14ed337c5b945dad3fd7796d6fc9d"
+  },
+  "other_command_paths_reviewed": [
+    "Contract create and scope-member routes both call the protected begin_contract_mutation helper.",
+    "Training launch, estimate reservation and cancellation check role before begin_command.",
+    "Deletion checks owner/admin before begin_command.",
+    "Distributed profiling enqueue is reached after the existing profiling permission check."
+  ],
+  "limits": [
+    "Local PostgreSQL and HTTP TestClient evidence; not deployed to k3d.",
+    "Fixture membership was corrected to include an accepted owner; isolated helper unit tests stub permission checks, while new PostgreSQL tests use actual membership.",
+    "No complete production authentication, identity-provider or multi-provider qualification claim.",
+    "All broader Phase 1 requirements remain open, including 45 GB migration and seven missing historical QA objects."
+  ],
+  "next_gap": "Native deployment qualification and full Phase 1 requirement audit remain; header limits are now covered by idempotency-headers-2026-10-09.yaml."
+}

@@ -1,0 +1,46 @@
+{
+  "verified_at": "2026-10-13T05:01:07.543853+00:00",
+  "phase_complete": false,
+  "scope": "Database trial worker lifecycle primitives and credential-safe failure evidence; production integration pending",
+  "changes": [
+    "Share refreshed parent-attempt/run ownership checks between enrollment and worker lifecycle. Lock parent then run, logical trial and child attempt.",
+    "start_trial acquires an exclusive 90-second child lease, consumes one claim-budget use and returns verified terminal evidence on replay. Same-owner start acknowledgement replay does not consume another claim.",
+    "heartbeat_trial renews only a live matching owner/fence; expired leases cannot resurrect.",
+    "finish_trial atomically persists status, canonical logical result digest, one immutable terminal WorkflowEvent and terminal CAS increment. Identical replay is a no-op; different terminal payload is rejected.",
+    "Refresh terminal-event state before replay and verify event payload/digest against trial status/digest; reject corrupted evidence or active attempts with an existing result.",
+    "Validate finite object-shaped results and nonempty bounded/redacted failure reasons.",
+    "Shared redactor now strips URL userinfo across backend schemes and safely replaces malformed URLs, preserving failure recording."
+  ],
+  "verification": {
+    "tests": 120,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "lifecycle_cases": 38,
+  "other_checks": {
+    "enrollment": 20,
+    "phase1_postgres_contracts": 30,
+    "upload_policy_and_redaction": 32
+  },
+  "negative_controls": [
+    "New failure-evidence test reproduced a PostgreSQL URL password persisting through the old redactor.",
+    "Malformed PostgreSQL URL negative control raised ValueError in the old redactor before safe replacement was added."
+  ],
+  "environment": "Real local PostgreSQL with independent sessions, actual commits and injected lost commit acknowledgements; upload/redaction regression tests. No production trial worker integration or native loss qualification.",
+  "source_sha256": {
+    "apps/api/automl_api/services/training_trials.py": "c856e2a248c53a8654bf144f12c993a26134e7617f619b2868cffc530d26ca0a",
+    "apps/api/automl_api/core/redaction.py": "3f79f487a656d6dff8ee6a4317bc13635e470e625b28106365f1fca4eb74ec84",
+    "tests/test_training_trial_lifecycle.py": "438d9061224328a63f0dcfd82a2089473e39b4215b7e7c2269b45b4e31220cd4",
+    "tests/test_training_trial_enrollment.py": "ccd388ae7340974398dbd24f8f6cfda5306cad9349c6cf6584733ce95431850e",
+    "tests/test_phase2_upload_policy.py": "f53c4b98fd6e3adbeae17f6ca6ea4e6b43f6c4aee595e84062e48ca5e8037c8e"
+  },
+  "limits": [
+    "Production executors still do not call these primitives. Transaction callers must commit enrollment/lease before computation and commit terminal evidence before acknowledgement.",
+    "Worker identities must identify a unique execution owner; same-owner start replay is intentionally idempotent. Native duplicate-delivery/cancellation behavior remains unqualified.",
+    "Signed attempt grants, predecessor checkpoint/result adoption, fallback generations and durable trial recovery remain unimplemented.",
+    "Parents without leases remain compatible with current run workers; this is not full parent lease qualification.",
+    "Local search, fixed CV, clustering, Tune and production Train integration remain required. Four broader trial-ownership gates and all 36 Phase 1 requirements remain open.",
+    "Current-image deployment, 45 GB migration storage and seven missing historical QA objects remain unresolved."
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "schema_revision": "sceptre-local-remediation-v1",
+  "observed_at": "2026-10-07T03:44:39.456967+00:00",
+  "phase": "1",
+  "phase_complete": false,
+  "production_qualified": false,
+  "review_status": "unsigned_local_evidence",
+  "scope": "Recover a preexisting signed operator abort during evaluator handoff reconciliation",
+  "focused_tests": {
+    "tests": 35,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "regression_tests": {
+    "tests": 650,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "sha256": {
+    "apps/api/automl_api/services/evaluation_reconciler.py": "543b1d6593d34f894f903fd98c4f2a368f1e7e783ac5c9176e70f3c73972933c",
+    "tests/test_champion_registration_abort.py": "f2508dc1c9d0f5edc3f9b9d734b3e4f9acd37ff5cbaf3e2c2e21bba31718de6b",
+    ".unlazy/phase1-champion/prior-abort-before.log": "7c9e6c62114028f2d6170e350a4273bdad387289d81de2a50e4a75962d266ea9",
+    ".unlazy/phase1-champion/prior-abort-tests.xml": "0ac8a966d3eab2b38df9d789c0c35651f5d31bb4b2e6e7982f2bc20850d1f2e5",
+    ".unlazy/phase1-champion/prior-abort-final.xml": "7a1f5f135a928e6fa4a7456b46d3cf841a5c4d93a658aa7d4b64ff15a1b64a0b",
+    ".unlazy/phase1-champion/prior-abort-regression.xml": "ab8279ea5ddb6a027af84f0730a8ed0d00d7fc5cd4f029c5a46d87eaf39e027b",
+    ".unlazy/phase1-champion/prior-abort-gates.log": "36901aae8c344c5fc1858493217ab13de498f840016d1d23b95bae58ea75922d"
+  },
+  "negative_control": "Six expired/cancelled handoff cases at allocation/refit/registration crash boundaries failed before the fix; six without operator abort passed",
+  "verified": [
+    "Conflict recovery reads authority state and preserves the original signed abort receipt and reason",
+    "Allocation, scope, manifest, failed status, CAS 1, request digest, signature and unique receipt checked",
+    "Six full-controller operator-abort cases finish while retaining cancellation and without evaluator registration or Kubernetes workloads",
+    "Two terminal replays preserve one authority abort receipt",
+    "Seven negative evidence cases reject wrong signature, scope, manifest, digest, CAS, missing or duplicate abort receipt"
+  ],
+  "interim_failure": "Four assertions expected a handoff-close event even when a local evaluator plan existed; corrected to require the actual evaluation-failed event with the exact same receipt. No source change needed for these assertion fixes.",
+  "remaining": [
+    "Live k3d operator-abort scenario and full failure/network matrix",
+    "Unqualified broader integration gates and all retained Phase 1 requirements",
+    "Runtime source changes not yet deployed to k3d"
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "date": "2026-10-08",
+  "status": "exact_object_cleanup_locally_verified_phase_incomplete",
+  "changes": [
+    "Reuse S3 version/multipart cleanup for prefixes and exact keys",
+    "Filter SDK pages by exact key and preserve neighboring suffix/child keys",
+    "Upload cleanup no longer skips deletion when the current object is absent",
+    "Azure/GCS missing-object deletion is idempotent; other errors propagate"
+  ],
+  "checks": {
+    "tests": 40,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "native": [
+    {
+      "prefix": "projects/qa-deletion-ef3f623bf5224145bab2a86a7253207e",
+      "seeded_target_versions": 2,
+      "seeded_neighbor_objects": 2,
+      "seeded_delete_markers": 1,
+      "seeded_multipart_uploads": 1
+    },
+    {
+      "status": "passed",
+      "prefix": "projects/qa-deletion-ef3f623bf5224145bab2a86a7253207e",
+      "verified_tls": true,
+      "replays": 2,
+      "adjacent_prefix_preserved": true,
+      "exact_key_neighbors_preserved": true,
+      "test_data_cleaned": true,
+      "source_sha256": "b1cc760b2f6825ec88c9166e11d7041f5e79fcaac74d24c16d55afaa5439f600"
+    }
+  ],
+  "limits": [
+    "Current S3 driver source injected into QA process; not a rebuilt/deployed application image",
+    "Azure/GCS historical versions and soft-delete retention remain open",
+    "Actual cloud IAM/retention/replication/backups and 45 GB migration qualification remain open"
+  ],
+  "source_sha256": {
+    "apps/api/automl_api/storage/s3.py": "b1cc760b2f6825ec88c9166e11d7041f5e79fcaac74d24c16d55afaa5439f600",
+    "apps/api/automl_api/storage/azure.py": "334f512b7388b3ed9f5301c22348d9e55bda0dd20ca745e28faa642933767e93",
+    "apps/api/automl_api/storage/gcs.py": "9edd57d7c31b4350b3fdea7b0fe742c9b5335e7baa7a52b827e1a68659670731",
+    "apps/api/automl_api/services/uploads.py": "3998f4b644cb657f234d2a3bcf016db08b8eb90bd3eff79403ce407f23a38fec",
+    "tests/test_object_store.py": "40d505db35b8f4182eab28063fceb53b562f68f012bec78ffa6f6935fb67ccbd",
+    "tests/test_phase2_upload_drivers.py": "c1442471bcebdd98b6429f55a891e8683a8b832d57c014e59df48483fd62ac12",
+    "tests/test_phase2_upload_services.py": "944d855491907e39eca9825f94426bb2eeb5a111d988c5adf54372b38eadec48"
+  },
+  "combined_regression": {
+    "tests": 254,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  }
+}

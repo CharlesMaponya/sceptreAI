@@ -1,0 +1,33 @@
+{
+  "verified_at": "2026-10-14T17:18:50.377258+00:00",
+  "phase_complete": false,
+  "scope": "Durable standalone Tune suggestion dispatch and worker evaluation",
+  "changes": [
+    "Factor enrollment from worker start so the Tune searcher commits a pending trial attempt and digest-bound physical Ray trial-ID event before returning a configuration for scheduling.",
+    "Pass a minimal run identity and explicit parent context through Ray parameter handoff; do not put fence tokens into suggestion configurations or the JSON search checkpoint. Preserve current execution context on algorithm checkpoint restore.",
+    "Tune workers use the existing leased evaluation and immutable terminal receipt. Same-parent fresh Tune invocations can read cached CV results. Ray-wrapped stale ownership errors propagate instead of being ranked as model failures.",
+    "Production pipeline supplies run/candidate/base estimator contract; fenced dispatch without that context fails before Tuner construction. Legacy smoke test explicitly selects local execution mode."
+  ],
+  "verification": {
+    "tests": 103,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "focused_cases": 10,
+  "environment": "Real PostgreSQL and real local two-CPU Ray. Two production-contract Tune trials run Ridge CV; a fresh Tune invocation redispatches them with new physical IDs and retains two terminal receipts/CAS operations. A direct worker replay forbids scoring. Legacy standalone two-trial Tune smoke also executes. Fault injection, changed contracts, corrupted evidence and error transport include mocks. GPU selection remains simulated; no current-image k3d qualification.",
+  "source_sha256": {
+    "apps/api/automl_api/training/trial_runtime.py": "0d4ff107b7595428f1caed464e59387c681b6f9b7b6cf7845f312bde1975ded1",
+    "apps/api/automl_api/training/tune_runtime.py": "fe2b4a9308b8c89379edd72a4d15a9eb550ae9a56d3bca7a51da07efb8b81fff",
+    "apps/api/automl_api/training/pipeline.py": "fe9e89c04bd448fb6ece6924d96508379c5d6c062ac174de2ea444569e3c8be5",
+    "tests/test_tune_trial_ownership.py": "e0c5c6f5087e35e7fb3d34b1363bc4e6fb94681aa02f8cdae9460ae82b222628",
+    "tests/test_tune_runtime.py": "8b7efcb350053ef17bb907fa5d45522e32c46450d332578e420d3d25a49ad228"
+  },
+  "limits": [
+    "Same-parent receipt replay does not implement durable reconciler recovery, signed grants, predecessor result/checkpoint adoption or bounded replacement generations.",
+    "Algorithm JSON restore retains current execution context; this is not qualification of native process-loss recovery or predecessor checkpoint authorization.",
+    "Production Tune ownership replay is tested at concurrency one; broader concurrent scheduling and native fault campaigns remain required.",
+    "Final full-data model fitting and external candidate effects remain outside CV receipts; production Train is not integrated.",
+    "All four broad trial gates and all 36 Phase 1 requirements remain open. Adequate storage for the 45 GB rehearsal and seven missing historical QA objects remain unresolved."
+  ]
+}

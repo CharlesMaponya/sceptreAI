@@ -1,0 +1,30 @@
+{
+  "verified_at": "2026-10-14T17:08:10.535253+00:00",
+  "phase_complete": false,
+  "scope": "Supervised accelerator-selected CV/search and distinct CPU-fallback CV ownership",
+  "changes": [
+    "Route GPU-selected fixed CV through evaluate_trial and fenced GPU-selected parameter search through the existing deterministic local loop.",
+    "Use accelerator-prefixed suggestion identities and separate cpu-fallback identities bound to the source accelerator. Preserve failed GPU receipts and cache fallback CV results.",
+    "CPU fallback from Ray mode uses local owned search instead of switching to unenrolled standalone Tune. Stale/uncertain ownership errors still stop fallback."
+  ],
+  "verification": {
+    "tests": 86,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "focused_cases": 12,
+  "environment": "Real PostgreSQL and real Ridge CV/preprocessing; NVIDIA selection and kernel failure are simulated. Both candidate and ray mode covered, with fixed and searched models, success, ordinary failure and stale ownership. External tracking/artifacts mocked.",
+  "source_sha256": {
+    "apps/api/automl_api/training/pipeline.py": "7cbc2064bbbd098deda0d2a1e637bfde198c25d6dcb9c97e40589f8f94f53e9f",
+    "apps/api/automl_api/training/tune_runtime.py": "0bf10d1665e464de4ed55538814bb9ebdc4750517d2963eef82be96fef75935d",
+    "tests/test_training_gpu_trials.py": "37ea0388a792c1da2dc2ac6a096073f1ea6ac6a24571371aa5abf06ee6abd67d"
+  },
+  "limits": [
+    "No real GPU hardware, GPU library, Ray scheduling or current-image k3d qualification.",
+    "Distinct GPU and CPU measurements are separate logical trials under the same candidate/parent; this does not implement predecessor adoption or fallback generations within a logical trial.",
+    "Final model fitting and external effects remain outside CV receipts, so a final-fit failure may repeat on candidate replay.",
+    "Standalone Tune, production Train, signed grants, checkpoint/result adoption, durable recovery and native failure campaigns remain incomplete.",
+    "All four broad trial gates and all 36 Phase 1 requirements remain open. 45 GB rehearsal needs adequate storage; seven historical QA objects remain missing."
+  ]
+}

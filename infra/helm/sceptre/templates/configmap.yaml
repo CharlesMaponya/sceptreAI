@@ -35,6 +35,7 @@ data:
   REFIT_CPU_CORES: {{ .Values.championRefit.cpuCores | quote }}
   REFIT_MEMORY_MIB: {{ .Values.championRefit.memoryMiB | quote }}
   REFIT_EGRESS_RULES: {{ .Values.championRefit.egressRules | toJson | quote }}
+  ATTEMPT_CONTROL_BASE_URL: {{ .Values.attemptIdentity.controlBaseUrl | quote }}
   INTERNAL_API_URL: {{ printf "http://%s-api:8000" (include "sceptre.fullname" .) | quote }}
   ENVIRONMENT: {{ .Values.environment | quote }}
   PUBLIC_APP_URL: {{ .Values.auth.publicAppUrl | quote }}

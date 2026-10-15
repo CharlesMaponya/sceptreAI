@@ -1,0 +1,43 @@
+{
+  "date": "2026-10-09",
+  "scope": "Training restart and add-model command replay",
+  "phase_complete": false,
+  "source_sha256": "371506228acffaebc715b0dc49274f7cd8f5645383e50b599774790c7ac69d7f",
+  "changes": [
+    "Persist the complete action response using the existing durable_mutation helper, including lineage tags.",
+    "Replay before mutable storage, catalog and completed-model checks; preserve project authorization.",
+    "Recover older launch-only responses only when stored run lineage and submitted tuning fields match.",
+    "Refresh and lock parent/source rows before merging tags; do not append duplicate extension IDs.",
+    "Hash overlong generated model-selection keys while preserving existing keys of at most 255 characters."
+  ],
+  "verification": {
+    "replay": {
+      "tests": 14,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "regression": {
+      "tests": 87,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "coverage": [
+    "Two replays after prerequisites change, with no second launch.",
+    "Changed tuning returns 409 before catalog validation.",
+    "Older launch-only response compatibility and rejection of key/lineage collisions.",
+    "Tag write failure rolls back both action and child run.",
+    "Stale parent tags are refreshed before merge.",
+    "Two independent PostgreSQL connections: identical keys create one child; conflicting payloads return one 409; different models retain both parent links.",
+    "The complete regression estimator catalog exceeds the old key limit and now launches once and replays."
+  ],
+  "limits": [
+    "Training launch is stubbed in the new PostgreSQL tests; this is not complete Kubernetes submission or process-death qualification.",
+    "Changes are not yet built or deployed to k3d.",
+    "Other command families and the full Phase 1 failure matrix remain open.",
+    "45 GB migration qualification remains unrun; observed free host storage is about 40.75 GB before database overhead and cluster reserve.",
+    "QA recovery remains partial: two original fitted model objects and five signed result files are missing."
+  ]
+}

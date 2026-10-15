@@ -1,0 +1,49 @@
+{
+  "date": "2026-10-09",
+  "status": "azure_history_cleanup_locally_verified_phase_incomplete",
+  "changes": [
+    "Exact and prefix deletion enumerate versions, snapshots, deleted data and uncommitted blobs",
+    "Bounded batches delete base blobs, revisit demoted current versions, and target snapshot/version identities individually",
+    "Deleted entries keep deletion pending through the existing one-hour retention retry path",
+    "Missing-resource races are replayable; provider errors and no-progress listings fail closed"
+  ],
+  "checks": {
+    "tests": 63,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "combined_regression": {
+    "tests": 278,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "controls": [
+    "More than 1000 versions, snapshots and an uncommitted blob",
+    "Current version demotion requires a later version-specific deletion",
+    "Retained history then expiry, replay and preservation of suffix/child/adjacent project keys",
+    "Neighbor entries before exact matches, permission errors, no progress and disappearance races",
+    "Existing PostgreSQL retention-wait and upload-fairness checks included"
+  ],
+  "sources": [
+    "https://learn.microsoft.com/en-us/rest/api/storageservices/list-blobs",
+    "https://learn.microsoft.com/en-us/rest/api/storageservices/delete-blob",
+    "https://learn.microsoft.com/en-us/azure/storage/blobs/storage-blob-delete-python"
+  ],
+  "limits": [
+    "Stateful SDK contract doubles using real BlobProperties; no native Azure account qualification",
+    "No image rebuild or k3d deployment",
+    "Actual cloud permissions/retention/replication and full external resource-class cleanup remain open",
+    "GCS disabled-policy history-query behavior remains unqualified",
+    "45 GB migration and whole Phase 1 remain open"
+  ],
+  "source_sha256": {
+    "apps/api/automl_api/storage/azure.py": "fcdf59099ed56d81176b99acc8f669ecd9156a8ede38f60c8febcfba2063b5e3",
+    "apps/api/automl_api/storage/contracts.py": "2c8e2ded613ecd15d13fa2d0fc2378fa5613f91a62e09b9a47b81d660e25f16c",
+    "apps/api/automl_api/services/reconciler.py": "7cd1a5296eb809c2e5e5ceb9ab4ef240ec449483cc8e0fc253440eb16abe0f90",
+    "apps/api/automl_api/services/uploads.py": "cf0f61cae56352afd8c59ff039b757e6cb6c8accd0c0ea8e7967453b58d57cc7",
+    "tests/test_azure_deletion.py": "73e3e398411f2e4e650274b93d6f9dbd6bb1836e113f6c97fb038e4c748493f1",
+    "tests/test_phase2_upload_drivers.py": "6bd6dd75f854681a542ca9cc6cf7c11ba7330aa4d636accd812f6a3157bb112d"
+  }
+}

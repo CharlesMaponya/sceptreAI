@@ -86,7 +86,10 @@ def estimate(
     payload: TrainingEstimateRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    idempotency_key: Annotated[
+        str | None,
+        Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S"),
+    ] = None,
 ) -> TrainingEstimateRead:
     result = estimate_training_run(
         db,
@@ -105,7 +108,10 @@ def launch(
     payload: TrainingLaunchRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
+    idempotency_key: Annotated[
+        str,
+        Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S"),
+    ],
 ) -> TrainingLaunchRead:
     result = launch_training_run(
         db,

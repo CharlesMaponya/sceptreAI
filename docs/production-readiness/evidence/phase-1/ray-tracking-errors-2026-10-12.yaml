@@ -1,0 +1,42 @@
+{
+  "verified_at": "2026-10-12T06:47:52.780033+00:00",
+  "phase_complete": false,
+  "scope": "Preserve uncertain tracking failure across Ray candidate collection",
+  "changes": [
+    "Propagate TrackingCreationUnresolved alongside StaleFence through RayTaskError cause inspection. Existing finally cancels pending tasks instead of yielding an ordinary failed-candidate record."
+  ],
+  "verification": {
+    "tests": 70,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "passing_runs": 2,
+  "negative_controls": "Both supervised and clustering tracking-error cases failed before the fix: collection did not raise TrackingCreationUnresolved.",
+  "focused_cases": 6,
+  "environment": "Focused error-propagation cases use actual RayTaskError and cloudpickle serialization with mocked scheduling/get/wait/cancel. The 70-check suite also runs test_real_tune_executes_requested_trials_and_persists_cv_evidence, which starts a real local two-CPU Ray runtime and executes two Tune trials. No k3d Ray qualification.",
+  "observed_retry_configuration": {
+    "services/reconciler.py RayJob": "backoffLimit=0; submitterConfig.backoffLimit=0; submitter restartPolicy=Never; jobId derives from attempt fencing token.",
+    "services/kubernetes_training.py legacy Job": "backoffLimit=0; pod restartPolicy=Never.",
+    "training/candidate_runtime.py": "Ray task max_retries=0, max_calls=1; candidate metadata errors now preserve ownership/uncertain-tracking abort semantics.",
+    "training/tune_runtime.py": "FailureConfig(max_failures=0). This source does not create or bind durable WorkflowAttempt/TrainingTrial records.",
+    "production Ray Train": "Search of apps/packages/scripts found Train trainers in scripts/validate_estimator_matrix_runtime.py, not a qualified production attempt binding. No completion claim.",
+    "infra/k3d/rayjob-node-loss-smoke.yaml": "Explicit max_retries=3 in a diagnostic node-loss fixture, not the production candidate execution path; retained unchanged."
+  },
+  "source_sha256": {
+    "apps/api/automl_api/training/candidate_runtime.py": "f6a065bfd04eeb402cc1a3f6bbba177e93fcf82145626de48c9a31351fe821ae",
+    "apps/api/automl_api/training/pipeline.py": "ad66f1d981cdec96ba4f2c7699a108836747b807c326e6ba3797e7d896d2f08d",
+    "apps/api/automl_api/training/tune_runtime.py": "cff373ec52cb0dfb144f5eec533e13205ee28a0ca702120c04d099e1f0791191",
+    "apps/api/automl_api/services/reconciler.py": "ac305706391ecf999a5b743d16f57c80e2ef8081f6396cdc3425f69118a724d1",
+    "apps/api/automl_api/services/kubernetes_training.py": "fd933f4a532a2f41415a0acacd8e3f3a523f919e0484ffae8a4dc0124051a890",
+    "tests/test_candidate_runtime.py": "00a7bec09fa91f9b57dd60b44fbd54d0e5ae7dc852570fac06ae29e7529ab068"
+  },
+  "limits": [
+    "Error-propagation task dispatch is mocked; the separate local Tune smoke test does not qualify native worker loss, cancellation completion or deployed current-image behavior.",
+    "Zero-retry configuration does not establish full durable Tune/Train attempt identity or complete retry-owner coverage.",
+    "Uncertain tracking metadata resolution does not by itself restart a failed training attempt.",
+    "45 GB migration needs additional storage. Seven historical QA objects remain missing and the original preservation gate remains abandoned.",
+    "All 36 broad Phase 1 requirements remain open."
+  ],
+  "evidence_correction": "Corrected on 2026-10-12 after inspecting tests/test_tune_runtime.py: the prior statement that no Ray cluster started was too broad. Product source hashes and passing counts are unchanged."
+}

@@ -1,0 +1,33 @@
+{
+  "verified_at": "2026-10-13T05:26:16.374255+00:00",
+  "phase_complete": false,
+  "scope": "Durable default whole-candidate CPU parameter search",
+  "changes": [
+    "Run an explicit local suggestion/evaluation loop using the existing DeterministicSkoptSearch, seed 42, one concurrent suggestion and the requested iteration count.",
+    "Before each CV evaluation, bind search revision/seed/dimensions/iteration count/scoring/CV/base parameters and suggestion metadata through evaluate_trial. Reconstruct the same optimizer history from committed results without CV rescoring.",
+    "Share CV calculation with standalone Tune and normalize NumPy categorical scalars for canonical JSON identity.",
+    "Route the default fenced CPU candidate-worker search to the durable local engine; preserve unfenced local BayesSearchCV and standalone Tune behavior. Record local_durable rather than incorrectly labeling the local engine ray_tune.",
+    "Stop on ordinary estimator failure as the previous local error_score=raise path did; replay its durable failure without computing again. Stale ownership and conflicting contracts propagate without fallback."
+  ],
+  "verification": {
+    "tests": 70,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "focused_cases": 7,
+  "environment": "Real PostgreSQL and actual Ridge CV/search/preprocessing. Pipeline external tracking/artifacts are mocked. The suite also runs a real local two-CPU, two-trial Tune smoke test. No current-image k3d qualification.",
+  "source_sha256": {
+    "apps/api/automl_api/training/tune_runtime.py": "75d8eb64919ac0a95049258f81718244e9f75038d5195efeeaad888ec083b346",
+    "apps/api/automl_api/training/trial_runtime.py": "12e721adebfda6bfad13b751460e020d4d5f12e1395967b2bd31088cacb7268e",
+    "apps/api/automl_api/training/pipeline.py": "fccce2623d37d0703d04e70f4909fa3643af99a1944fc0aea2d19ba593f1a29d",
+    "tests/test_training_local_search.py": "645c35eeb402a6b55029947955ff22dba3aa22efd387941e7edb8b06498f5b0d"
+  },
+  "limits": [
+    "Production default local CPU search now uses the shared versioned deterministic search policy; it does not promise the same suggestion sequence as legacy BayesSearchCV.",
+    "GPU CV/search, clustering and standalone Tune trial enrollment remain pending; production Train ownership is not implemented.",
+    "Replay here is within the same parent attempt. New-parent result/checkpoint adoption, signed grants and durable recovery remain required.",
+    "Final model fitting, learning-curve diagnostics and external candidate side effects remain outside these CV trial receipts.",
+    "Four broader trial-ownership gates and all 36 Phase 1 requirements remain open. Current-image deployment, 45 GB migration storage and seven missing historical QA objects remain unresolved."
+  ]
+}

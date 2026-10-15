@@ -1,0 +1,35 @@
+{
+  "verified_at": "2026-10-11T16:37:40.944165+00:00",
+  "phase_complete": false,
+  "scope": "Read-only MLflow outcome lookup and durable command binding",
+  "changes": [
+    "Share tracking identity and remote-record validation between worker creation and reconciliation.",
+    "Worker loop scans due creation-started commands, skips rows held by active writers, and validates one visible remote run before caching its ID.",
+    "Use run-before-command lock ordering and refresh command state after locking. Competing reconcilers bind a result once.",
+    "Never create an experiment/run or resume remote logging in the reconciliation pass.",
+    "Delay unresolved lookups by 60 seconds and stop at the existing command retry budget, retaining the creation-start marker and redacted reason.",
+    "An explicit later worker replay can adopt a newly visible record after lookup exhaustion without creating another run."
+  ],
+  "verification": {
+    "tests": 78,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "tracking_cases": 20,
+  "environment": "Real PostgreSQL state, isolated local MLflow SQLite stores and worker-loop unit tests.",
+  "source_sha256": {
+    "apps/api/automl_api/services/tracking_reconciliation.py": "ed25e32a97e31245140826075d7ec009f64a25d6a9aff837f2414c5672d561e7",
+    "apps/api/automl_api/training/pipeline.py": "6ccac5be2cbc0703e48f37021699a5e6c7f8a0546ccb20d612869e710a178e06",
+    "apps/api/automl_api/workflow_reconciler.py": "528a859e96889f646e4def3443ef19cfb10930c9887ab8d24108ea7e66848baf",
+    "tests/test_training_tracking.py": "c74b7b35c3bc2054e347738fbbd40a50054770d4ae131097d2a3db8785e52aea",
+    "tests/test_phase1_reconciler_worker.py": "dc7679ea55bc12e4680f7c02ebd81f349a3590ff3720ee0722325566abd22242"
+  },
+  "limits": [
+    "Not deployed or qualified against live MLflow HTTP/k3d.",
+    "The pass recovers tracking metadata, not a failed training job. It does not restart training or mutate a newer ModelRun tracking pointer.",
+    "Permanently unknown outcomes stop after bounded lookups; an operator resolution workflow that can establish remote non-creation remains open.",
+    "Legacy untagged runs, records whose application run was deleted, backend relocation and complete external deletion remain open.",
+    "45 GB migration storage and seven missing historical QA objects remain unresolved."
+  ]
+}

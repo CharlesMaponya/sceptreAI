@@ -41,7 +41,10 @@ def validate_model(
     payload: ValidationLaunchRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
+    idempotency_key: Annotated[
+        str,
+        Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S"),
+    ],
 ) -> AnalysisLaunchRead:
     result = durable_mutation(
         db,
@@ -76,7 +79,10 @@ def explain_model(
     payload: ExplainabilityLaunchRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
+    idempotency_key: Annotated[
+        str,
+        Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S"),
+    ],
 ) -> AnalysisLaunchRead:
     result = durable_mutation(
         db,

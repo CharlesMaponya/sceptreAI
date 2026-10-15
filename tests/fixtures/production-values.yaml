@@ -71,3 +71,6 @@ championEvaluation:
         - namespaceSelector:
             matchLabels: {kubernetes.io/metadata.name: qualification}
       ports: [{port: 443, protocol: TCP}]
+
+attemptIdentity:
+  controlBaseUrl: "https://control.example.test/api/v1/internal/attempts"

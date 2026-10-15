@@ -28,6 +28,7 @@ SCHEMA_PATH = CHART_DIR / "values.schema.json"
         ("gateway.tls.enabled=false", "TLS Gateway"),
         ("inference.ingress.enabled=true", "direct inference"),
         ("api.image.digest=", "pinned by sha256"),
+        ("attemptIdentity.controlBaseUrl=", "attempt admission"),
         ("kuberay-operator.enabled=true", "platform-managed"),
     ],
 )

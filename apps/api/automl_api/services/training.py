@@ -28,7 +28,6 @@ from automl_api.models.workflows import (
     CapacityReservation,
     DatasetSplitRevision,
     EstimatorCatalogRevision,
-    ExperimentSpecRevision,
     FeatureContractRevision,
     FeatureRecipeRevision,
     FeatureRegistryRevision,
@@ -51,6 +50,9 @@ from automl_api.schemas.training import (
     TrainingLogsRead,
     TrainingResourceUsageRead,
 )
+from automl_api.services.contracts import resolve_catalog_revision
+from automl_api.services.experiment_identity import resolve_training_identity
+from automl_api.services.idempotency import durable_mutation
 from automl_api.services.kubernetes_training import KubernetesTrainingClient
 from automl_api.services.model_evidence import build_model_pipeline
 from automl_api.services.projects import require_project_role
@@ -69,6 +71,7 @@ from automl_api.services.workflow_state import (
     transition_command,
 )
 from automl_api.storage.object_store import get_object_store
+from automl_api.training.catalog_contract import validate_catalog_revision
 from automl_api.training.evaluation import (
     metric_direction,
     resolve_primary_metric,
@@ -196,6 +199,26 @@ def estimate_training_run(
     idempotency_key: str | None = None,
 ) -> TrainingEstimateRead:
     require_project_role(db, user, project_id, ProjectRole.EDITOR)
+    command = None
+    if payload.reserve_capacity:
+        if not idempotency_key:
+            raise HTTPException(status_code=422, detail={"code": "idempotency_key_required"})
+        try:
+            command, replayed = begin_command(
+                db,
+                project_id=project_id,
+                actor_id=user.id,
+                operation="training.estimate.reserve",
+                idempotency_key=idempotency_key,
+                payload={
+                    "request": payload.model_dump(mode="json"),
+                    "protocol": "estimate-identity-v1",
+                },
+            )
+        except IdempotencyConflict as exc:
+            raise HTTPException(status_code=409, detail={"code": "idempotency_key_reused"}) from exc
+        if replayed and command.response_payload:
+            return TrainingEstimateRead.model_validate(command.response_payload)
     payload = _resolve_estimate_identity(db, project_id, payload)
     _validate_catalog_selection(payload)
     if payload.dataset_version_id is None or payload.task_type is None:
@@ -240,6 +263,9 @@ def estimate_training_run(
             )
         )
     ][:selected_candidate_count]
+    selected_candidate_count = len(selected_specs)
+    if not selected_candidate_count:
+        raise HTTPException(status_code=422, detail={"code": "invalid_catalog_selection"})
     compatible_gpu_vendors = {
         vendor for candidate in selected_specs for vendor in supported_gpu_vendors(candidate.name)
     }
@@ -416,6 +442,11 @@ def estimate_training_run(
             {
                 "split_counts": split_counts,
                 "source_row_count": source_rows,
+                "experiment_spec_revision_id": str(payload.experiment_spec_revision_id),
+                "search_objective_revision_id": str(payload.search_objective_revision_id),
+                "entity_column": payload.entity_column,
+                "event_time_column": payload.event_time_column,
+                "prediction_time_column": payload.prediction_time_column,
                 "split_revision_id": str(payload.split_revision_id),
             }
         )
@@ -453,33 +484,33 @@ def estimate_training_run(
     estimate.deadline_seconds = payload.deadline_seconds
     estimate.active_deadline_seconds = payload.deadline_seconds
     estimate.environment_qualified = not estimate.blockers
+    estimate_request = payload.model_dump(
+        mode="json", exclude={"reserve_capacity", "execution_mode"}
+    )
+    estimate_request["candidate_limit"] = selected_candidate_count
     digest_payload = {
-        "request": payload.model_dump(mode="json"),
+        "request": estimate_request,
         "catalog_revision": estimate.catalog_revision,
         "capacity_profile_revision": estimate.capacity_profile_revision,
         "candidate_count": selected_candidate_count,
         "required_node_quotas": estimate.required_node_quotas,
     }
     estimate.estimate_digest = canonical_request_hash(digest_payload)
-    if payload.reserve_capacity:
-        if not idempotency_key:
-            raise HTTPException(
-                status_code=422,
-                detail={"code": "idempotency_key_required"},
-            )
-        try:
-            command, replayed = begin_command(
-                db,
-                project_id=project_id,
-                actor_id=user.id,
-                operation="training.estimate.reserve",
-                idempotency_key=idempotency_key,
-                payload=digest_payload,
-            )
-        except IdempotencyConflict as exc:
-            raise HTTPException(status_code=409, detail={"code": "idempotency_key_reused"}) from exc
-        if replayed and command.response_payload:
-            return TrainingEstimateRead.model_validate(command.response_payload)
+    estimate.experiment_spec_revision_id = payload.experiment_spec_revision_id
+    estimate.resolved_launch_bindings = {
+        key: getattr(payload, key)
+        for key in (
+            "split_revision_id",
+            "feature_contract_revision_id",
+            "feature_registry_revision_id",
+            "feature_recipe_revision_id",
+            "feature_search_space_revision_id",
+            "search_objective_revision_id",
+            "catalog_revision_id",
+        )
+        if getattr(payload, key) is not None
+    }
+    if command is not None:
         reservation = CapacityReservation(
             project_id=project_id,
             command_id=command.id,
@@ -529,6 +560,8 @@ def launch_training_run(
     if replayed and command.response_payload:
         return TrainingLaunchRead.model_validate(command.response_payload)
     payload = _resolve_estimate_identity(db, project_id, payload)
+    if payload.catalog_revision_id not in {None, payload.estimator_catalog_revision_id}:
+        raise HTTPException(status_code=409, detail={"code": "catalog_revision_changed"})
     k8s = client or KubernetesTrainingClient()
     estimate_payload = TrainingEstimateRequest.model_validate(
         payload.model_dump(
@@ -556,6 +589,10 @@ def launch_training_run(
         )
 
     revisions = _resolve_launch_revisions(db, project_id, payload)
+    try:
+        catalog_specification = validate_catalog_revision(revisions["catalog"], payload.task_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail={"code": "catalog_revision_changed"}) from exc
     supplied_reservation = _validate_launch_reservation(db, project_id, payload, estimate)
 
     now = datetime.now(UTC)
@@ -570,14 +607,27 @@ def launch_training_run(
         else select_candidates(
             payload.task_type,
             payload.candidate_models or None,
-            len(payload.candidate_models) if payload.candidate_models else payload.candidate_limit,
+            len(payload.candidate_models)
+            if payload.candidate_models
+            else payload.candidate_limit or 5,
         )
     )
+    override_names = [item.estimator for item in payload.estimator_overrides]
+    if len(override_names) != len(set(override_names)) or set(override_names) - {
+        item.name for item in selected_candidates
+    }:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "invalid_estimator_override",
+                "message": "Overrides require unique selected estimator names.",
+            },
+        )
     disabled = {item.estimator for item in payload.estimator_overrides if not item.enabled}
     selected_candidates = [item for item in selected_candidates if item.name not in disabled]
     if not selected_candidates:
         raise HTTPException(status_code=422, detail="At least one estimator must be enabled.")
-    if any(item.enabled and item.resource_class for item in payload.estimator_overrides):
+    if any(item.resource_class is not None for item in payload.estimator_overrides):
         raise HTTPException(
             status_code=422,
             detail="Per-estimator resource classes are not supported by this runtime yet.",
@@ -663,6 +713,8 @@ def launch_training_run(
             "feature_recipe_revision_id": str(payload.feature_recipe_revision_id),
             "feature_search_space_revision_id": str(payload.feature_search_space_revision_id),
             "estimator_catalog_revision_id": str(payload.estimator_catalog_revision_id),
+            "catalog_runtime_digest": catalog_specification["runtime_lock_digest"],
+            "catalog_content_digest": revisions["catalog"].content_digest,
             "estimator_overrides": [
                 override.model_dump(mode="json") for override in payload.estimator_overrides
             ],
@@ -697,12 +749,6 @@ def launch_training_run(
     db.add(attempt)
     db.flush()
     for ordinal, candidate in enumerate(selected_candidates):
-        override = next(
-            (item for item in payload.estimator_overrides if item.estimator == candidate.name),
-            None,
-        )
-        if override is not None and not override.enabled:
-            continue
         db.add(
             TrainingCandidate(
                 project_id=project_id,
@@ -712,7 +758,7 @@ def launch_training_run(
                 catalog_revision_id=revisions["catalog"].id,
                 feature_recipe_revision_id=revisions["recipe"].id,
                 params={
-                    "resource_class": override.resource_class if override else None,
+                    "resource_class": candidate.cost_tier,
                     "tunable": candidate.tunable,
                 },
             )
@@ -973,6 +1019,38 @@ def _cancelled_training_tags(
     }
 
 
+def _replay_derived_training_launch(
+    db: Session,
+    project_id: uuid.UUID,
+    key: str,
+    expected: dict[str, Any],
+    tags: dict[str, Any],
+) -> TrainingLaunchRead | None:
+    # Older releases saved only the nested launch response, before adding lineage tags.
+    command = db.scalar(
+        select(WorkflowCommand).where(
+            WorkflowCommand.project_id == project_id,
+            WorkflowCommand.operation == "training.launch",
+            WorkflowCommand.idempotency_key == key,
+        )
+    )
+    if command is None or not command.response_payload:
+        return None
+    if any(command.request_payload.get(name) != value for name, value in expected.items()):
+        raise HTTPException(status_code=409, detail={"code": "idempotency_key_reused"})
+    result = TrainingLaunchRead.model_validate(command.response_payload)
+    run = db.get(ModelRun, result.run.id)
+    if (
+        run is None
+        or run.project_id != project_id
+        or any(run.tags.get(name) != value for name, value in tags.items())
+    ):
+        raise HTTPException(status_code=409, detail={"code": "idempotency_key_reused"})
+    return result.model_copy(
+        update={"run": result.run.model_copy(update={"tags": {**result.run.tags, **tags}})}
+    )
+
+
 def restart_training_run(
     db: Session,
     user: User,
@@ -981,7 +1059,38 @@ def restart_training_run(
     client: KubernetesTrainingClient | None = None,
 ) -> TrainingLaunchRead:
     require_project_role(db, user, project_id, ProjectRole.EDITOR)
+    _lock_training_admission(db)
+    return durable_mutation(
+        db,
+        user,
+        project_id,
+        operation="training.restart",
+        idempotency_key=f"restart:{run_id}",
+        payload={"run_id": str(run_id)},
+        execute=lambda: _restart_training_run(db, user, project_id, run_id, client),
+        response_model=TrainingLaunchRead,
+        response_status=status.HTTP_202_ACCEPTED,
+    )
+
+
+def _restart_training_run(
+    db: Session,
+    user: User,
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    client: KubernetesTrainingClient | None = None,
+) -> TrainingLaunchRead:
+    require_project_role(db, user, project_id, ProjectRole.EDITOR)
     source = get_training_run(db, user, project_id, run_id, sync=False)
+    replay = _replay_derived_training_launch(
+        db,
+        project_id,
+        f"restart:{source.id}",
+        {},
+        {"restarted_from_run_id": str(source.id)},
+    )
+    if replay is not None:
+        return replay
     if source.status not in {
         RunStatus.FAILED,
         RunStatus.CANCELLED,
@@ -1004,6 +1113,11 @@ def restart_training_run(
 
     source_params = dict(source.params or {})
     payload = TrainingLaunchRequest(
+        experiment_spec_revision_id=source_params.get("experiment_spec_revision_id"),
+        entity_column=source_params.get("entity_column"),
+        event_time_column=source_params.get("event_time_column"),
+        prediction_time_column=source_params.get("prediction_time_column"),
+        search_objective_revision_id=source_params.get("search_objective_revision_id"),
         dataset_version_id=source.dataset_version_id,
         target_column=source.target_column,
         excluded_columns=list(source_params.get("excluded_columns") or []),
@@ -1052,6 +1166,7 @@ def restart_training_run(
     restarted = db.get(ModelRun, result.run.id)
     if restarted is None:
         raise LookupError("The restarted run disappeared before tagging.")
+    db.refresh(source, with_for_update=True)
     restarted.tags = {
         **restarted.tags,
         "restarted_from_run_id": str(source.id),
@@ -1064,6 +1179,11 @@ def restart_training_run(
     return result.model_copy(update={"run": ModelRunRead.model_validate(restarted)})
 
 
+def _add_models_key(parent_id: uuid.UUID, models: list[str]) -> str:
+    key = f"add-models:{parent_id}:{','.join(models)}"
+    return key if len(key) <= 255 else f"add-models:{parent_id}:{canonical_request_hash(models)}"
+
+
 def add_models_to_training_run(
     db: Session,
     user: User,
@@ -1073,13 +1193,50 @@ def add_models_to_training_run(
     client: KubernetesTrainingClient | None = None,
 ) -> TrainingLaunchRead:
     require_project_role(db, user, project_id, ProjectRole.EDITOR)
+    _lock_training_admission(db)
+    selected = get_training_run(db, user, project_id, run_id, sync=False)
+    parent = _leaderboard_parent(db, selected)
+    return durable_mutation(
+        db,
+        user,
+        project_id,
+        operation="training.add_models",
+        idempotency_key=_add_models_key(parent.id, request.candidate_models),
+        payload={"parent_run_id": str(parent.id), **request.model_dump(mode="json")},
+        execute=lambda: _add_models_to_training_run(db, user, project_id, run_id, request, client),
+        response_model=TrainingLaunchRead,
+        response_status=status.HTTP_202_ACCEPTED,
+    )
+
+
+def _add_models_to_training_run(
+    db: Session,
+    user: User,
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    request: TrainingAddModelsRequest,
+    client: KubernetesTrainingClient | None = None,
+) -> TrainingLaunchRead:
+    require_project_role(db, user, project_id, ProjectRole.EDITOR)
     selected_run = get_training_run(db, user, project_id, run_id, sync=False)
+    parent = _leaderboard_parent(db, selected_run)
+    replay = _replay_derived_training_launch(
+        db,
+        project_id,
+        _add_models_key(parent.id, request.candidate_models),
+        request.model_dump(mode="json"),
+        {
+            "leaderboard_parent_run_id": str(parent.id),
+            "incremental_models": request.candidate_models,
+        },
+    )
+    if replay is not None:
+        return replay
     if selected_run.status != RunStatus.SUCCEEDED:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Models can only be added after the selected training run succeeds.",
         )
-    parent = _leaderboard_parent(db, selected_run)
     if parent.status != RunStatus.SUCCEEDED:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -1152,7 +1309,7 @@ def add_models_to_training_run(
         project_id,
         payload,
         client,
-        idempotency_key=f"add-models:{parent.id}:{','.join(requested_models)}",
+        idempotency_key=_add_models_key(parent.id, requested_models),
     )
     extension = db.get(ModelRun, result.run.id)
     if extension is None:
@@ -1162,8 +1319,10 @@ def add_models_to_training_run(
         "leaderboard_parent_run_id": str(parent.id),
         "incremental_models": requested_models,
     }
+    db.refresh(parent, with_for_update=True)
     extension_run_ids = list(parent.tags.get("extension_run_ids", []))
-    extension_run_ids.append(str(extension.id))
+    if str(extension.id) not in extension_run_ids:
+        extension_run_ids.append(str(extension.id))
     parent.tags = {
         **parent.tags,
         "extension_run_ids": extension_run_ids,
@@ -1351,7 +1510,8 @@ def training_leaderboard(
                 entry["status"] = "failed" if started else "skipped"
                 entry["error"] = entry.get("error") or (
                     "Training stopped before this candidate completed."
-                    if started else "Training stopped before this candidate started."
+                    if started
+                    else "Training stopped before this candidate started."
                 )
     if primary_metric:
         entries = _rank_combined_leaderboard(entries, primary_metric)
@@ -1377,7 +1537,8 @@ def training_leaderboard(
                 if entry.get("status") in {"running", "pending"} and entry.get("phase")
                 else str(active_phase)
                 if entry.get("status") == "running"
-                and entry.get("model") == active_candidate and active_phase
+                and entry.get("model") == active_candidate
+                and active_phase
                 else None
             ),
         )
@@ -1386,12 +1547,14 @@ def training_leaderboard(
     split_counts = None
     split_id = leaderboard_run.params.get("split_revision_id")
     if split_id:
-        split = db.scalar(select(DatasetSplitRevision).where(
-            DatasetSplitRevision.id == split_id,
-            DatasetSplitRevision.project_id == project_id,
-            DatasetSplitRevision.dataset_version_id == leaderboard_run.dataset_version_id,
-            DatasetSplitRevision.sealed_at.is_not(None),
-        ))
+        split = db.scalar(
+            select(DatasetSplitRevision).where(
+                DatasetSplitRevision.id == split_id,
+                DatasetSplitRevision.project_id == project_id,
+                DatasetSplitRevision.dataset_version_id == leaderboard_run.dataset_version_id,
+                DatasetSplitRevision.sealed_at.is_not(None),
+            )
+        )
         if split is not None:
             counts = split.specification.get("split_counts") or (
                 split.specification.get("identity") or {}
@@ -1750,38 +1913,7 @@ def _resolve_estimate_identity(
     project_id: uuid.UUID,
     payload: TrainingEstimateRequest,
 ) -> TrainingEstimateRequest:
-    if payload.experiment_spec_revision_id is None:
-        if payload.catalog_mode == "all" and (
-            payload.dataset_version_id is None or payload.task_type is None
-        ):
-            raise HTTPException(
-                status_code=422,
-                detail={"code": "experiment_spec_required"},
-            )
-        return payload
-    spec = db.scalar(
-        select(ExperimentSpecRevision).where(
-            ExperimentSpecRevision.project_id == project_id,
-            ExperimentSpecRevision.id == payload.experiment_spec_revision_id,
-        )
-    )
-    if spec is None:
-        raise HTTPException(status_code=409, detail={"code": "experiment_spec_changed"})
-    assertions = {
-        "dataset_version_id": spec.dataset_version_id,
-        "task_type": TaskType(spec.task_type),
-        "target_column": spec.target_column,
-        "primary_metric": spec.primary_metric,
-        "catalog_revision_id": spec.catalog_revision_id,
-    }
-    for name, expected in assertions.items():
-        supplied = getattr(payload, name)
-        if supplied is not None and supplied != expected:
-            raise HTTPException(
-                status_code=422,
-                detail={"code": "experiment_spec_mismatch", "field": name},
-            )
-    return payload.model_copy(update=assertions)
+    return resolve_training_identity(db, project_id, payload)
 
 
 def _validate_catalog_selection(payload: TrainingEstimateRequest) -> None:
@@ -1811,32 +1943,8 @@ def _resolved_catalog_revision(
     revision_id = payload.catalog_revision_id
     if revision_id is None and isinstance(payload, TrainingLaunchRequest):
         revision_id = payload.estimator_catalog_revision_id
-    if revision_id:
-        revision = db.scalar(
-            select(EstimatorCatalogRevision).where(
-                EstimatorCatalogRevision.project_id == project_id,
-                EstimatorCatalogRevision.id == revision_id,
-            )
-        )
-        if revision is None:
-            current = db.scalar(
-                select(EstimatorCatalogRevision)
-                .where(EstimatorCatalogRevision.project_id == project_id)
-                .order_by(EstimatorCatalogRevision.revision.desc())
-            )
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "catalog_revision_changed",
-                    "requested_revision": str(revision_id),
-                    "current_revision": str(current.id) if current else None,
-                },
-            )
-        return revision
-    return db.scalar(
-        select(EstimatorCatalogRevision)
-        .where(EstimatorCatalogRevision.project_id == project_id)
-        .order_by(EstimatorCatalogRevision.revision.desc())
+    return resolve_catalog_revision(
+        db, project_id, payload.task_type, revision_id, require_current=True
     )
 
 
@@ -1943,6 +2051,8 @@ def _validate_evaluation_column(
 def _validate_candidate_models(payload: TrainingEstimateRequest) -> None:
     if not payload.candidate_models:
         return
+    if len(payload.candidate_models) != len(set(payload.candidate_models)):
+        raise HTTPException(status_code=422, detail={"code": "invalid_catalog_selection"})
     available = {item["name"] for item in estimator_catalog_payload(payload.task_type)}
     unknown = [name for name in payload.candidate_models if name not in available]
     if unknown:

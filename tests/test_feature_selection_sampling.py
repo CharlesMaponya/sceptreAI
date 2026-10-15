@@ -3,6 +3,7 @@ import io
 import joblib
 import numpy as np
 import pandas as pd
+import pytest
 from automl_api.training.correlation import CorrelatedFeatureFilter
 from automl_api.training.feature_selection import BoundedFeatureSelector, sample_training_rows
 from sklearn.base import clone
@@ -55,3 +56,24 @@ def test_correlation_evidence_reports_its_bounded_fit_sample():
     assert fitted.evidence_["statistics_rows"] == 100
     assert fitted.evidence_["statistics_policy"] == "seeded_training_fold_sample"
     assert fitted.transform(features).shape == (2000, 2)
+
+
+@pytest.mark.parametrize("percentile", [1, 80, 100])
+def test_positive_percentile_keeps_a_single_predictor(percentile):
+    features = np.arange(30, dtype=float).reshape(-1, 1)
+    target = features[:, 0] * 2 + 1
+    model = Pipeline(
+        [
+            ("select", BoundedFeatureSelector(percentile=percentile)),
+            ("model", Ridge()),
+        ]
+    )
+    fitted = clone(model).fit(features, target)
+    assert fitted.named_steps["select"].get_support().tolist() == [True]
+    assert np.isfinite(fitted.predict(features)).all()
+
+
+def test_explicit_zero_percentile_still_selects_no_features():
+    features = np.arange(30, dtype=float).reshape(-1, 1)
+    selector = BoundedFeatureSelector(percentile=0).fit(features, features[:, 0])
+    assert selector.get_support().tolist() == [False]

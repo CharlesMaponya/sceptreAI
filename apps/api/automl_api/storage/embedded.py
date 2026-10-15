@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import io
+import os
+import tempfile
 import uuid
 from pathlib import Path
 
@@ -98,16 +100,24 @@ class EmbeddedObjectStoreDriver:
     def put_stream(self, uri: str, source) -> ObjectMetadata:
         path = self._path_from_uri(uri)
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("wb") as destination:
-            while chunk := source.read(1024 * 1024):
-                destination.write(chunk)
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                dir=path.parent, prefix=".upload-", delete=False
+            ) as destination:
+                temporary = Path(destination.name)
+                while chunk := source.read(1024 * 1024):
+                    destination.write(chunk)
+                destination.flush()
+                os.fsync(destination.fileno())
+            os.replace(temporary, path)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
         return self.stat(uri)
 
     def put_bytes(self, key: str, value: bytes) -> ObjectMetadata:
-        path = self._path(self._key(key))
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(value)
-        return self.stat(self._uri(key))
+        return self.put_stream(self._uri(key), io.BytesIO(value))
 
     def read_bytes(self, uri: str) -> bytes:
         return self._path_from_uri(uri).read_bytes()

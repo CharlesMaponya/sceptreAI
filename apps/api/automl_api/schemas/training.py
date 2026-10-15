@@ -17,10 +17,18 @@ class TrainingEstimateRequest(BaseModel):
     evaluation_scope_id: uuid.UUID | None = None
     dataset_version_id: uuid.UUID | None = None
     split_revision_id: uuid.UUID | None = None
+    feature_contract_revision_id: uuid.UUID | None = None
+    feature_registry_revision_id: uuid.UUID | None = None
+    feature_recipe_revision_id: uuid.UUID | None = None
+    feature_search_space_revision_id: uuid.UUID | None = None
+    search_objective_revision_id: uuid.UUID | None = None
     target_column: str | None = Field(default=None, max_length=255)
     excluded_columns: list[str] = Field(default_factory=list, max_length=1000)
     positive_label: str | None = Field(default=None, max_length=255)
     evaluation_column: str | None = Field(default=None, max_length=255)
+    entity_column: str | None = Field(default=None, max_length=255)
+    event_time_column: str | None = Field(default=None, max_length=255)
+    prediction_time_column: str | None = Field(default=None, max_length=255)
     task_type: TaskType | None = None
     primary_metric: str | None = Field(default=None, max_length=64)
     prefer_gpu: bool = True
@@ -32,6 +40,7 @@ class TrainingEstimateRequest(BaseModel):
     optimization_iterations: int = Field(default=5, ge=1, le=100)
     cv_folds: int = Field(default=3, ge=2, le=20)
     execution_mode_hint: Literal["auto", "in_memory", "incremental"] = "auto"
+    execution_mode: Literal["auto", "in_memory", "incremental"] | None = None
     deadline_seconds: int | None = Field(default=7200, ge=60, le=604800)
     reserve_capacity: bool = False
 
@@ -48,12 +57,7 @@ class TrainingLaunchRequest(TrainingEstimateRequest):
     model_config = ConfigDict(extra="forbid")
 
     run_name: str | None = Field(default=None, max_length=255)
-    split_revision_id: uuid.UUID
-    feature_contract_revision_id: uuid.UUID
-    feature_registry_revision_id: uuid.UUID
-    feature_recipe_revision_id: uuid.UUID
-    feature_search_space_revision_id: uuid.UUID
-    estimator_catalog_revision_id: uuid.UUID
+    estimator_catalog_revision_id: uuid.UUID | None = None
     promotional_scope_id: uuid.UUID | None = None
     estimator_overrides: list[EstimatorOverride] = Field(default_factory=list, max_length=100)
     estimate_digest: str | None = Field(default=None, min_length=64, max_length=128)
@@ -105,6 +109,8 @@ class TrainingEstimateRead(BaseModel):
     can_launch: bool
     blockers: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    experiment_spec_revision_id: uuid.UUID | None = None
+    resolved_launch_bindings: dict[str, uuid.UUID] = Field(default_factory=dict)
     estimate_digest: str | None = None
     catalog_revision: str | None = None
     capacity_profile_revision: str | None = None

@@ -315,12 +315,14 @@ def test_worker_dispatches_by_durable_run_kind(
         "tabular_automl_pipeline",
         lambda **_kwargs: calls.append("zenml"),
     )
+    monkeypatch.setenv("MLFLOW_HTTP_REQUEST_MAX_RETRIES", "7")
     monkeypatch.setenv("TRAINING_EXECUTION_MODE", mode)
     monkeypatch.setattr(sys, "argv", ["worker", "--run-id", str(run_id)])
 
     worker.main()
 
     assert calls == [expected]
+    assert worker.os.environ["MLFLOW_HTTP_REQUEST_MAX_RETRIES"] == "0"
 
 
 def test_worker_rejects_unknown_run(monkeypatch) -> None:

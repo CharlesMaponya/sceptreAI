@@ -1,0 +1,37 @@
+{
+  "verified_at": "2026-10-11T11:24:39.460160+00:00",
+  "phase_complete": false,
+  "scope": "Candidate model content isolation and embedded atomic replacement",
+  "negative_controls": "Before the fix, a different candidate model overwrote the same URI and both streaming tests observed an empty destination before publication.",
+  "changes": [
+    "Model object keys include the SHA-256 digest of the serialized payload within the existing project/run/attempt namespace.",
+    "Identical bytes retain the same URI; different bytes cannot replace an earlier result at that URI.",
+    "Embedded writes stream to a temporary sibling file, flush and fsync it, then atomically replace the destination; failed input removes its temporary file and preserves the prior object.",
+    "put_bytes delegates to the same publication path. Existing checkpoint URIs remain readable."
+  ],
+  "verification": {
+    "tests": 65,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "tests": [
+    "A fitted Ridge model survives a different model publication, retains original bytes, passes digest verification and recovers its original predictions.",
+    "Identical model retry returns the same URI and digest.",
+    "Readers observe the original complete object throughout replacement input; an input exception leaves it unchanged and removes temporary output.",
+    "Existing object-store, candidate recovery, PostgreSQL training publication, local profiling and upload-driver regressions pass."
+  ],
+  "source_sha256": {
+    "apps/api/automl_api/training/pipeline.py": "2970b51c95680f2e66c03fde4d01bb79cd89f77f9066c1a86894eed4a16ba006",
+    "apps/api/automl_api/storage/embedded.py": "e95bd79448118ff4de59f7ab8be3986333d4e1047cd84a596261d34eff54753e",
+    "tests/test_candidate_recovery.py": "0be9b3604d08bc26e52920a7e1af9416dc4bef6c1e75187ee227ebac0da8bb24",
+    "tests/test_object_store.py": "e1d5e2e40c43f995a91cc70b371fe5d443a47d66592434a60a88463146b77842"
+  },
+  "limits": [
+    "Model-byte checks use the local embedded driver; no remote provider or k3d process-loss qualification.",
+    "No host power-loss durability claim; a process killed before replacement may leave an unreferenced temporary file.",
+    "Existing model objects are not migrated or recovered by this change.",
+    "Current source hashes supersede historical pipeline hash evidence; the included PostgreSQL publication suite passes against this source.",
+    "Full Phase 1, the 45 GB migration and seven missing historical QA objects remain open."
+  ]
+}

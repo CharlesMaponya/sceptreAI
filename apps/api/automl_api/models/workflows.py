@@ -735,9 +735,8 @@ class DeletionTombstone(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_tombstone_status", "project_id", "status", "requested_at"),
     )
 
-    project_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
-    )
+    # Historical tenant identity must survive deletion of the live project.
+    project_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
     requested_by_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
@@ -765,9 +764,8 @@ class DeletionStage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_deletion_stage_claim", "status", "lease_expires_at"),
     )
 
-    project_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
-    )
+    # Historical tenant identity must survive deletion of the live project.
+    project_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
     tombstone_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
     resource_class: Mapped[str] = mapped_column(String(80), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")

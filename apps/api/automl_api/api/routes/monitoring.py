@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from automl_api.api.deps import get_current_user
 from automl_api.db.session import get_db
+from automl_api.models.enums import ProjectRole
 from automl_api.models.iam import User
 from automl_api.schemas.monitoring import (
     GovernanceReportRead,
@@ -124,13 +125,17 @@ def create_deployment_metric(
     payload: MonitoringMetricPointCreate,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
+    idempotency_key: Annotated[
+        str,
+        Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S"),
+    ],
 ) -> MonitoringMetricPointRead:
     result = durable_mutation(
         db,
         current_user,
         project_id,
         operation="monitoring.metric.ingest",
+        minimum_role=ProjectRole.ADMIN,
         idempotency_key=idempotency_key,
         payload={"deployment_run_id": str(deployment_run_id), **payload.model_dump(mode="json")},
         execute=lambda: record_monitoring_metric(
@@ -171,7 +176,10 @@ def create_governance_report(
     deployment_run_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
+    idempotency_key: Annotated[
+        str,
+        Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S"),
+    ],
 ) -> GovernanceReportRead:
     result = durable_mutation(
         db,

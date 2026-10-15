@@ -1,0 +1,36 @@
+{
+  "verified_at": "2026-10-13T05:15:35.738942+00:00",
+  "phase_complete": false,
+  "scope": "Production fixed-parameter CPU CV uses durable trial lifecycle; other search paths pending",
+  "changes": [
+    "Add evaluate_trial adapter: require complete production parent context and one durable candidate; commit enrollment and lease before computation, heartbeat every 15 seconds and commit terminal evidence afterward.",
+    "Replay committed success/failure without recomputing. Persist ordinary model failures and invalid numerical results; treat ambiguous database commits/identity conflicts as TrialExecutionUnresolved, a StaleFence subtype that aborts candidate/Ray fallback.",
+    "Route fixed CPU CV through the adapter with estimator parameters, CV specification, scoring and accelerator in its identity. Preserve explicit local unfenced legacy execution; production/Ray/candidate contexts cannot silently bypass missing fences.",
+    "Preserve current GPU CV path pending owned fallback integration, rather than claiming it is enrolled.",
+    "Fix BoundedFeatureSelector positive-percentile rounding that removed a sole feature; explicit percentile zero remains unchanged."
+  ],
+  "verification": {
+    "tests": 122,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "runtime_cases": 15,
+  "environment": "Real PostgreSQL and actual Ridge CV; pipeline integration uses real preprocessing/selection/Ridge with external MLflow/artifact effects mocked. Ray exception transport tests use actual serialization with scheduling mocked; no current-image native qualification.",
+  "negative_control": "Pipeline integration initially failed with zero selected features for a one-column input. The shared selector fix makes that same real pipeline succeed; focused positive-percentile and explicit-zero cases pass.",
+  "source_sha256": {
+    "apps/api/automl_api/training/trial_runtime.py": "56f10033ff1fe1cadc6083266943eb75413a3dc2c7a5f0aed31620c33bd04503",
+    "apps/api/automl_api/training/pipeline.py": "4b270c1c409679934c729f6129bebebb6c9ccc0d87a1b23c1323c9b6c9668c87",
+    "apps/api/automl_api/training/feature_selection.py": "053bd4bc2c5a7e212c63dcd7939f4a4367cd04c7ee962bdd472174405499dd62",
+    "tests/test_training_trial_runtime.py": "8de74ad61f78c4bd810e53f80b547be9f3abba4a720c7998c7b174ab8d788c3d",
+    "tests/test_candidate_runtime.py": "e059c9062b59c1deda59997d1e6dd346560de036e3a6b668bc144c4bf20d60ea",
+    "tests/test_feature_selection_sampling.py": "7458e69fbc3a7e603df526b7d409419e0ae2f6ce2906a7aaa5d24cff8bacbe55"
+  },
+  "limits": [
+    "This enrolls fixed-parameter CPU CV only. Local parameter search, GPU CV, clustering, Tune and production Train remain pending under the full trial contract.",
+    "Final full-data model fitting, learning-curve diagnostics, MLflow logging and artifact publication remain outside this CV trial; CV replay is not proof that every candidate side effect is replay-free.",
+    "A lost start acknowledgement leaves a live owner and a new invocation fails closed; automatic ownership recovery is not implemented. Lost enrollment/terminal acknowledgements are replayed safely in tests.",
+    "Signed grants, predecessor result/checkpoint adoption and owned fallback/replacement remain required.",
+    "Four broader trial-ownership gates and all 36 Phase 1 requirements remain open. Current-image deployment, 45 GB migration storage and seven missing historical QA objects remain unresolved."
+  ]
+}

@@ -50,7 +50,12 @@ def build_dataset_profile(
 ) -> DatasetProfileRead:
     require_project_role(db, user, project_id, ProjectRole.VIEWER)
     version = _get_project_dataset_version(db, project_id, dataset_id, dataset_version_id)
+    return profile_dataset_version(version, payload)
+
+
+def profile_dataset_version(version: DatasetVersion, payload: ProfileRequest) -> DatasetProfileRead:
     target_column = payload.target_column.strip() if payload.target_column else None
+    project_id, dataset_id, dataset_version_id = version.project_id, version.dataset_id, version.id
 
     rows: list[dict[str, Any]] = []
     if _should_use_ray(version):

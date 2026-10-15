@@ -37,6 +37,16 @@ class ExperimentSpecCreate(RevisionCreate):
     task_type: TaskType
     target_column: str | None = Field(default=None, max_length=255)
     primary_metric: str = Field(min_length=1, max_length=160)
+    feature_registry_revision_id: uuid.UUID | None = None
+    feature_recipe_revision_id: uuid.UUID | None = None
+    positive_label: str | None = Field(default=None, max_length=255)
+    evaluation_column: str | None = Field(default=None, max_length=255)
+    entity_column: str | None = Field(default=None, max_length=255)
+    event_time_column: str | None = Field(default=None, max_length=255)
+    prediction_time_column: str | None = Field(default=None, max_length=255)
+    excluded_columns: list[str] = Field(default_factory=list, max_length=1000)
+    optimization_iterations: int = Field(default=5, ge=1, le=100)
+    cv_folds: int = Field(default=3, ge=2, le=20)
 
 
 class RevisionRead(BaseModel):
@@ -109,6 +119,7 @@ class CatalogEstimatorRead(BaseModel):
 
 
 class CatalogRead(BaseModel):
+    catalog_revision_id: uuid.UUID
     catalog_revision: str
     task_type: TaskType
     generated_at: datetime

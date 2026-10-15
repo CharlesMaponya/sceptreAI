@@ -1,0 +1,34 @@
+{
+  "verified_at": "2026-10-13T04:49:06.152079+00:00",
+  "phase_complete": false,
+  "scope": "Transactional trial enrollment primitive; production execution integration still pending",
+  "changes": [
+    "Add enroll_trial using existing TrainingTrial and typed WorkflowAttempt rows; no schema migration or dependency added.",
+    "Lock and refresh parent attempt before its run and trial rows. Reject stale fences, wrong stage/state/candidate lineage, terminal results and an expired parent lease when present.",
+    "Bind suggestion parameters with canonical digest and verify both persisted digest and parameters on replay. Reject conflicting execution identity.",
+    "Concurrent same-parent enrollment serializes to one logical trial and one pending execution; callers own commit and must commit before dispatch.",
+    "A new parent can append a child generation only after predecessor supersession, within the original/current retry budgets, with fresh fence and predecessor link. Completed results require verified adoption instead of rerun."
+  ],
+  "verification": {
+    "tests": 50,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "focused_cases": 20,
+  "passing_runs_on_final_sources": 2,
+  "environment": "Real local PostgreSQL, independent concurrent sessions, actual database commits with injected post-commit response loss; no production worker or Ray dispatch integration.",
+  "source_sha256": {
+    "apps/api/automl_api/services/training_trials.py": "8c3434ce1b0c60f685d1ddc97b7909fe73f0e59a22f3dbb754d95dc7f410ede9",
+    "tests/test_training_trial_enrollment.py": "ccd388ae7340974398dbd24f8f6cfda5306cad9349c6cf6584733ce95431850e",
+    "apps/api/automl_api/models/workflows.py": "ce9a3ca3608a722dc13e7ccee57f30d80f43343aea475bfc1dafdc67a2f914ea",
+    "docs/production-readiness/phase-1-trial-ownership.md": "7d5fe8095d67efb85d017e915433c73a216d611e637c083bc2c6aa81b74f9fe2"
+  },
+  "limits": [
+    "No production caller invokes enroll_trial yet. This primitive is not an implemented production trial lifecycle.",
+    "Worker start/heartbeat/child grant expiry/result publication, fallback generations, predecessor checkpoint adoption and durable trial recovery are pending.",
+    "Parent lease expiry is checked when a lease exists; parents without a lease remain compatible with the current run lifecycle. This is not full lease qualification.",
+    "Local CPU/GPU search, fixed CV, clustering, Tune and production Train integration remain required by phase-1-trial-ownership.md.",
+    "Four broader trial-ownership gates and all 36 Phase 1 requirements remain open. Current-image native tests, 45 GB migration storage and seven missing historical QA objects remain unresolved."
+  ]
+}

@@ -24,7 +24,7 @@ class _Db:
     def __exit__(self, *_args):
         return False
 
-    def get(self, model: object, identity: object) -> object | None:
+    def get(self, model: object, identity: object, **_kwargs) -> object | None:
         return self.values.get((model, identity))
 
     def add(self, value: object) -> None:

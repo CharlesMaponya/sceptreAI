@@ -286,9 +286,12 @@ def test_contract_route_wrappers_cover_public_revision_and_scope_mutations(monke
         target_column="target",
         specification={},
     )
-    assert routes.post_feature_contract(
-        revision.project_id, payload, MagicMock(), SimpleNamespace(), "key"
-    ).id == revision.id
+    assert (
+        routes.post_feature_contract(
+            revision.project_id, payload, MagicMock(), SimpleNamespace(), "key"
+        ).id
+        == revision.id
+    )
     scope_payload = EvaluationScopeCreate(
         scope_key="scope",
         split_revision_id=scope.split_revision_id,
@@ -298,9 +301,12 @@ def test_contract_route_wrappers_cover_public_revision_and_scope_mutations(monke
         mode="validation_only",
         membership_deadline_at=scope.membership_deadline_at,
     )
-    assert routes.post_scope(
-        revision.project_id, scope_payload, MagicMock(), SimpleNamespace(), "scope-key"
-    ).id == scope.id
+    assert (
+        routes.post_scope(
+            revision.project_id, scope_payload, MagicMock(), SimpleNamespace(), "scope-key"
+        ).id
+        == scope.id
+    )
 
 
 def test_contract_read_routes_cover_found_and_missing_resources(monkeypatch) -> None:
@@ -308,12 +314,13 @@ def test_contract_read_routes_cover_found_and_missing_resources(monkeypatch) -> 
     row = _revision()
     db = MagicMock()
     db.scalar.return_value = row
-    assert routes.read_experiment_spec(
-        row.project_id, row.id, db, SimpleNamespace()
-    ).id == row.id
-    assert routes._revision_read(
-        db, SimpleNamespace(), row.project_id, routes.FeatureRegistryRevision, row.id
-    ).id == row.id
+    assert routes.read_experiment_spec(row.project_id, row.id, db, SimpleNamespace()).id == row.id
+    assert (
+        routes._revision_read(
+            db, SimpleNamespace(), row.project_id, routes.FeatureRegistryRevision, row.id
+        ).id
+        == row.id
+    )
     db.scalar.return_value = None
     with pytest.raises(HTTPException, match="Experiment spec not found"):
         routes.read_experiment_spec(row.project_id, row.id, db, SimpleNamespace())
@@ -348,6 +355,7 @@ def test_contract_read_routes_cover_found_and_missing_resources(monkeypatch) -> 
 
 
 def test_contract_idempotency_conflict_is_typed(monkeypatch) -> None:
+    monkeypatch.setattr(contracts, "require_project_role", lambda *_args: None)
     monkeypatch.setattr(
         contracts,
         "begin_command",
@@ -384,8 +392,7 @@ def test_scope_membership_failure_matrix_and_sealing(monkeypatch) -> None:
     existing = SimpleNamespace(id=uuid.uuid4())
     db.scalar.side_effect = [scope, existing]
     assert (
-        contracts.add_scope_member(db, SimpleNamespace(), project_id, scope_id, run_id)
-        is existing
+        contracts.add_scope_member(db, SimpleNamespace(), project_id, scope_id, run_id) is existing
     )
 
     scope.status = ScopeStatus.SEALED
@@ -414,9 +421,12 @@ def test_scope_membership_failure_matrix_and_sealing(monkeypatch) -> None:
     seal.reset_mock()
     scope.expected_members = 3
     db.scalar.side_effect = [scope, None, run, 1]
-    assert contracts.add_scope_member(
-        db, SimpleNamespace(), project_id, scope_id, uuid.uuid4()
-    ).ordinal == 1
+    assert (
+        contracts.add_scope_member(
+            db, SimpleNamespace(), project_id, scope_id, uuid.uuid4()
+        ).ordinal
+        == 1
+    )
     seal.assert_not_called()
 
     db.scalar.side_effect = [None]
@@ -520,9 +530,7 @@ def test_collection_pagination_filters_and_resource_lookup(monkeypatch) -> None:
 
     db.scalar.return_value = candidates[0]
     assert (
-        contracts.candidate_for_run(
-            db, SimpleNamespace(), project_id, run_id, candidates[0].id
-        )
+        contracts.candidate_for_run(db, SimpleNamespace(), project_id, run_id, candidates[0].id)
         is candidates[0]
     )
     db.scalar.return_value = None
@@ -575,9 +583,12 @@ def test_event_resume_cursor_and_sse_route(monkeypatch) -> None:
 
     assert f"id: {event.id}" in asyncio.run(body())
     json_request = Request({"type": "http", "headers": []})
-    assert routes.events(
-        event.project_id, uuid.uuid4(), db, SimpleNamespace(), json_request
-    ).items[0]["id"] == event.id
+    assert (
+        routes.events(event.project_id, uuid.uuid4(), db, SimpleNamespace(), json_request).items[0][
+            "id"
+        ]
+        == event.id
+    )
 
     cursor = contracts.encode_cursor(event.event_key, event.id)
     monkeypatch.setattr(
@@ -617,6 +628,67 @@ def test_scope_member_route_replays_a_completed_mutation(monkeypatch) -> None:
     monkeypatch.setattr(routes, "begin_contract_mutation", lambda *_args: (command, True))
     payload = routes.EvaluationScopeMemberCreate(run_id=uuid.uuid4())
 
-    assert routes.post_scope_member(
-        uuid.uuid4(), uuid.uuid4(), payload, MagicMock(), SimpleNamespace(), "same-key"
-    ) == command.response_payload
+    assert (
+        routes.post_scope_member(
+            uuid.uuid4(), uuid.uuid4(), payload, MagicMock(), SimpleNamespace(), "same-key"
+        )
+        == command.response_payload
+    )
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        ["Ridge", "not-a-uuid"],
+        ["Ridge", None],
+        ["Ridge", 12],
+        [None, str(uuid.uuid4())],
+        [{"nested": "key"}, str(uuid.uuid4())],
+        ["Ridge", str(uuid.uuid4()), "extra"],
+        ["x" * 1500, str(uuid.uuid4())],
+    ],
+)
+def test_malformed_cursor_has_controlled_validation_error(values):
+    import base64
+    import json
+
+    cursor = base64.urlsafe_b64encode(json.dumps(values).encode()).decode()
+    with pytest.raises(HTTPException) as error:
+        contracts.decode_cursor(cursor)
+    assert error.value.status_code == 422
+    assert error.value.detail == {"code": "invalid_cursor"}
+
+
+def test_malformed_cursor_rejects_non_base64_characters():
+    cursor = contracts.encode_cursor("Ridge", uuid.uuid4())
+    with pytest.raises(HTTPException) as error:
+        contracts.decode_cursor("!" + cursor)
+    assert error.value.status_code == 422
+
+
+@pytest.mark.parametrize("collection", ["candidates", "trials", "events"])
+def test_malformed_cursor_returns_http_422_before_collection_query(monkeypatch, collection):
+    import base64
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    db = MagicMock()
+    db.scalars.return_value = []
+    monkeypatch.setattr(contracts, "require_project_role", lambda *_: None)
+    monkeypatch.setattr(contracts, "_require_run", lambda *_: None)
+    app = FastAPI()
+    app.include_router(routes.router)
+    app.dependency_overrides[routes.get_db] = lambda: db
+    app.dependency_overrides[routes.get_current_user] = lambda: SimpleNamespace(id=uuid.uuid4())
+    path = f"/projects/{uuid.uuid4()}/training/runs/{uuid.uuid4()}/{collection}"
+    with TestClient(app) as client:
+        response = client.get(path, params={"cursor": contracts.encode_cursor("key", uuid.uuid4())})
+        assert response.status_code == 200, response.text
+        assert response.json() == {"items": [], "next_cursor": None}
+        db.scalars.reset_mock()
+        cursor = base64.urlsafe_b64encode(b'["key","not-a-uuid"]').decode()
+        response = client.get(path, params={"cursor": cursor})
+        assert response.status_code == 422, response.text
+        assert response.json() == {"detail": {"code": "invalid_cursor"}}
+        db.scalars.assert_not_called()

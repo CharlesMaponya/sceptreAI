@@ -1,0 +1,28 @@
+{
+  "verified_at": "2026-10-14T17:25:15.045342+00:00",
+  "phase_complete": false,
+  "scope": "Reconciler-created active trial replacement execution handoff",
+  "negative_control": "Three initial PostgreSQL cases failed: reconciler-created pending replacements had no execution identity and enrollment rejected them. Budget testing also exposed a forbidden pending-to-failed transition.",
+  "changes": [
+    "Bind first execution identity only to untouched pending replacements with matching parent/predecessor/project/run/trial/logical key/workload/generation and remaining generation budgets. Preserve child identity/fence; identical concurrent bindings converge and conflicting executions fail.",
+    "Exhausted active-child budgets stop parent replacement. Terminal recovery cancels pending children, fails started children and updates logical trial status."
+  ],
+  "verification": {
+    "tests": 228,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "focused_cases": 21,
+  "environment": "Real PostgreSQL, actual reconciler replacement function and enrollment/lifecycle/runtime functions, actual Ridge CV. Synthetic worker loss; no Ray/Kubernetes submission or native qualification.",
+  "source_sha256": {
+    "apps/api/automl_api/services/training_trials.py": "641f899124248e07801bb648ba8902e322544ac85eb0ba62a0fef1cdd3ae53a1",
+    "apps/api/automl_api/services/reconciler.py": "192489788044b55d752ba9b5eb3dab6509f940bcfc545293df0ce52236d76c18",
+    "tests/test_trial_replacement_handoff.py": "ff76676f8c1b0bd5dd1f12f6eeffb69835adc2a6822f42e5fa2f396e075d87f5"
+  },
+  "limits": [
+    "Only active-trial replacement admission is repaired. Signed grants, predecessor checkpoint/result adoption and full durable recovery remain open.",
+    "No current-image native failure campaign; production Train remains absent. Final fitting and external effects remain outside CV receipts.",
+    "All four broad trial gates and all 36 Phase 1 requirements remain open. Storage for the 45 GB rehearsal and seven missing historical QA objects remain unresolved."
+  ]
+}

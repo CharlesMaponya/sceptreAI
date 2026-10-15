@@ -1,0 +1,114 @@
+{
+  "schema_revision": "sceptre-local-remediation-v1",
+  "observed_at": "2026-10-07T03:49:59.792782+00:00",
+  "phase": "1",
+  "phase_complete": false,
+  "production_qualified": false,
+  "review_status": "unsigned_local_evidence",
+  "scope": "Audit of champion contract gate oracles against current implementation and test assertions",
+  "change": "Replaced three nonexistent aggregate test-file references in the private gate runner with explicit inspected suites; English gate requirements unchanged",
+  "gates": {
+    "G2": {
+      "scope": "Preregistered refit, independent retry, one frozen pipeline",
+      "suite": "refit",
+      "checks": [
+        "test_refit_uses_all_registered_train_validation_rows inspects actual fitted sample count, predictions, input URI set and unchanged candidate",
+        "test_seal_registers_policy_before_releasing_new_training verifies policy digest persisted before release and rejects pre-executed training",
+        "test_refit_replacement_keeps_original_candidate_without_reranking rejects reranking and a third attempt",
+        "test_planned_retry_executes_and_publishes_original_selection runs planner, real fit and fenced publication together",
+        "test_refit_publishes_one_pipeline_with_idempotent_replay and stale-publication cases verify one checkpoint and conflicts",
+        "test_lost_refit_fails_before_planner_creates_one_replacement checks worker loss/lease before retry"
+      ],
+      "tests": {
+        "tests": 61,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "G3": {
+      "scope": "Frozen-pipeline evaluation, immutable results and recovery without a second final-data read",
+      "suite": "evaluation",
+      "checks": [
+        "test_frozen_prediction_signed_recovery_without_data prohibits fit and fails all final-data access during result verification",
+        "test_recovery_rejects_changed_result_signature_and_execution rejects digest, signature and lineage substitutions",
+        "test_connected_worker_evaluates_once_and_replays_only_acknowledgements counts actual HTTPS object requests and one credential mint across lost acknowledgements",
+        "test_lost_grant_reply_never_requests_or_evaluates_again and corrupt-pipeline checks prohibit another grant",
+        "test_controller_recovers_stored_result_without_worker_or_final_reads and test_controller_recovers_real_worker_output_without_second_grant cover pre/post-authority commit recovery, corruption and cancellation",
+        "Registration-abort cases recover prior signed operator receipts and reject altered evidence"
+      ],
+      "tests": {
+        "tests": 87,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "G4": {
+      "scope": "Application scheduling, complete membership barrier, separate fenced jobs and stale-worker rejection",
+      "suite": "reconciliation",
+      "checks": [
+        "test_main_uses_explicit_worker_identity_and_bounded_poll_interval verifies the application loop calls all three real stage entrypoints through the same session factory",
+        "test_global_selection_includes_every_member_and_waits_for_last_run and active-training-attempt case block planning before all member runs/attempts are terminal",
+        "Refit and evaluator job tests assert durable submission precedes external creation, distinct worker commands, isolated manifests and zero nested retries",
+        "Replacement tests preserve allocation/data, issue a new fence/key, reject old identity and enforce one replacement",
+        "Controller cleanup/heartbeat-race and stale control/publication tests reject obsolete workers and delay replacement until foreground cleanup"
+      ],
+      "tests": {
+        "tests": 146,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    }
+  },
+  "test_counts_overlap": true,
+  "integration_gates": {
+    "met": 5,
+    "unmet": 2,
+    "abandoned": 0
+  },
+  "sha256": {
+    ".unlazy/phase1-champion/check_contracts.py": "ba3300ab0524df2cbd1705bfdfd60bb08e8b957232c8880b2dc6d15abc1e7944",
+    ".unlazy/phase1-champion/champion-contract-audit-gates.log": "c7569ab95b6779200393671a06df6c6564194ccb709b849c7211c919d6b9381b",
+    ".unlazy/phase1-champion/refit.xml": "22620856ef08e89803441ef7002fe7880b90654336d8402786f6e91a5b7f84e1",
+    ".unlazy/phase1-champion/evaluation.xml": "f105dab8c0ed1bfd273361f80a27819855fde805893224e3a552ee4275ac67b6",
+    ".unlazy/phase1-champion/reconciliation.xml": "2c21f90c74c0b1f5186c52a5e2c89bb112dc145575a4d09587e63c97d4888193",
+    "tests/test_champion_authority_recovery.py": "c28227dcb34695c1d8f31be5cbd78f9808fc0340ae314cfc16cf6822dba4470e",
+    "tests/test_champion_credentials.py": "d1ffd59e6e2e55aed70518e7d343fc48f7abdd1a93abd8e9cb7273b1ba957f34",
+    "tests/test_champion_evaluation_authority.py": "262bb889d1c9db7561e0c0d4c8202eb6176771b3368065f7f8750e0f0c4547e4",
+    "tests/test_champion_evaluation_control.py": "9dc80ad61339f6a461cf1e16df45dbd1cebc754615400f98663df10f61e1f438",
+    "tests/test_champion_evaluation_execution.py": "50446a51802402dd412f172b8f46615b1cde54de0706b8ef0446ba92152cbe9b",
+    "tests/test_champion_evaluation_jobs.py": "d4184e489645910e85b1955da5c4e2a00ec282e15a5be8d7ed3e4bb86edd2a2b",
+    "tests/test_champion_evaluation_keys.py": "c4e0249216df257911dd5bce135cd8bae8ea82879eaee09b3598a33004b2eaef",
+    "tests/test_champion_evaluation_planning.py": "b66f3cd452739ba2a8d96138971eb66cb93fd83ce5f557a878d54f55ad8d5e80",
+    "tests/test_champion_evaluation_publication.py": "94f143c3f2ad6523bc0fc2138aba6886d2a22ca9d2b5c31c14e1a0eb69ffee40",
+    "tests/test_champion_evaluation_reconciler.py": "fe56bd383dbaa9a2d42cf87ce8c2e8d01c6c6625c42df6dc9b4e34d08701b314",
+    "tests/test_champion_evaluation_replacement.py": "3ff51dd9f8676c203fef10055e6ee7a331e223ad37d09d5f2baa0f4e25eac867",
+    "tests/test_champion_evaluation_worker.py": "19744b8a71712fa75b15074be704294c8aae37ddec089153f944126846614fa5",
+    "tests/test_champion_identity.py": "224b6e825f73307968cce46363346f64c9cc17ee19faf5ece4b63f45c304d8c2",
+    "tests/test_champion_planning.py": "6d6852ca95ef5164c93549606e6ecba370a7783789a2230ed792fe13b7226f27",
+    "tests/test_champion_refit_control.py": "e9f58328247da23e184319a33b0460c6ad69b0e87de8493297e53cd03173797c",
+    "tests/test_champion_refit_execution.py": "988af43ca9f4a891d2feedd3480bc75752b021a14f9b0a434c7cb1dfd911718c",
+    "tests/test_champion_refit_jobs.py": "9dd81280dc376a411a0f874ff0c434aa211a9f3255c390e6791ac714717690c7",
+    "tests/test_champion_refit_publication.py": "48302f53f9ca1a783e795ed95ea9ec3cc766e7da0121dcc01ebf23180c47d42e",
+    "tests/test_champion_registration_abort.py": "f2508dc1c9d0f5edc3f9b9d734b3e4f9acd37ff5cbaf3e2c2e21bba31718de6b",
+    "tests/test_phase1_reconciler_worker.py": "c03b0cda4ce3a1d207c7ef778bb082e4fcf93168624ea6fd2987ee6ed9501f57",
+    "tests/test_phase1_workflow_state.py": "759f1306704f5d8068f965db00af8ad921bb87aa4e68693a5c68b50ffb025a9a",
+    "apps/api/automl_api/workflow_reconciler.py": "7bfea959c35bb5a1bfc21171c1e47e0f4d43c48fc3536d94ff919919daf755c3",
+    "apps/api/automl_api/services/champion_planning.py": "01f9122945ac7c33bfeb345161b8928b9f14ecaeaa4cff6eab3483adacdf01fe",
+    "apps/api/automl_api/training/champion_refit.py": "1ad0d11f8d664f833372f0c03d0c3e923d1ce6e9341d85aeb1c60e6cbe650b8f",
+    "apps/api/automl_api/training/evaluation_worker.py": "a5caa1cceebd96bcd8dd936463a805c2f29832db18db9d2f127575e1243cfc30",
+    "apps/api/automl_api/services/evaluation_publication.py": "442c35f8a019d04a5a0c0443f2879eb48863720044b3795283e9cc38d6cbfc15",
+    "apps/api/automl_api/services/evaluation_reconciler.py": "543b1d6593d34f894f903fd98c4f2a368f1e7e783ac5c9176e70f3c73972933c",
+    "apps/api/automl_api/services/evaluation_jobs.py": "148d73b22d298184e23174b7383aa5c614f8932298721e9a972e0c7006583432",
+    "apps/api/automl_api/services/refit_jobs.py": "5a7a669d635056094b0193313b70513676285be0a894773e0608b2790a8491f8"
+  },
+  "remaining": [
+    "G5: full native k3d failure/recovery/network matrix, including stored-output and lost-commit recovery",
+    "G6: final integration/regression/documentation audit after native qualification",
+    "Job API doubles exercise control contracts; they do not prove Kubernetes scheduling or network enforcement",
+    "Synthetic fixed datasets and models do not prove the complete production training journey or native cloud credential boundaries",
+    "Every broader Phase 1 requirement remains in its separate ledger; 45 GB database qualification still lacks disk capacity"
+  ]
+}

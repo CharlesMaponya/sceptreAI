@@ -93,9 +93,10 @@ def results(kind, jobs, run):
                     ray.exceptions.OutOfMemoryError,
                 ) as exc:
                     from automl_api.services.workflow_state import StaleFence
+                    from automl_api.training.pipeline import TrackingCreationUnresolved
 
                     if isinstance(exc, ray.exceptions.RayTaskError) and isinstance(
-                        exc.as_instanceof_cause(), StaleFence
+                        exc.as_instanceof_cause(), (StaleFence, TrackingCreationUnresolved)
                     ):
                         raise
                     entry = {

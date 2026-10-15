@@ -125,7 +125,7 @@ def test_candidate_model_is_mirrored_with_stable_key(monkeypatch) -> None:
         {"fitted": True},
     )
 
-    assert uri.endswith("/models/Model-With-Spaces.joblib")
+    assert uri.endswith(f"/models/Model-With-Spaces/{digest}.joblib")
     assert digest == __import__("hashlib").sha256(captured["content"]).hexdigest()
     assert joblib.load(io.BytesIO(captured["content"])) == {"fitted": True}
 
@@ -284,7 +284,7 @@ def test_external_validation_rejects_missing_training_columns() -> None:
             schema_json={
                 "columns": [{"name": "age"}, {"name": "income"}, {"name": "target"}],
             }
-        )
+        ),
     )
     external = SimpleNamespace(
         schema_json={
@@ -400,7 +400,7 @@ class _AnalysisClient:
         self.error = error
         self.created = []
 
-    def build_job_manifest(self, *, run_id, project_id, estimate):
+    def build_job_manifest(self, *, run_id, project_id, estimate, attempt=None):
         return {"metadata": {"name": f"analysis-{run_id}"}}
 
     def create_job(self, manifest):

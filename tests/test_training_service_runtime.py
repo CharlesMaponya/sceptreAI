@@ -10,15 +10,22 @@ from automl_api.core.config import Settings
 from automl_api.models.enums import CommandStatus, RunKind, RunStatus, ScopeStatus, TaskType
 from automl_api.schemas.training import (
     ClusterCapacityRead,
+    EstimatorOverride,
     TrainingAddModelsRequest,
     TrainingEstimateRead,
     TrainingEstimateRequest,
     TrainingLaunchRequest,
 )
-from automl_api.services import training
+from automl_api.services import idempotency, training
+from automl_api.training.catalog_contract import catalog_digest, catalog_specification
 from automl_api.training.model_catalog import CandidateSpec
 from fastapi import HTTPException
 from kubernetes.client import ApiException
+
+
+@pytest.fixture
+def authorized_durable_mutation(monkeypatch):
+    monkeypatch.setattr(idempotency, "require_project_role", lambda *_args: None)
 
 
 class _ListResult:
@@ -60,6 +67,9 @@ class _Session:
                 instance.created_at = now
             if getattr(instance, "updated_at", None) is None:
                 instance.updated_at = now
+
+    def begin_nested(self):
+        return MagicMock()
 
     def add(self, instance: object) -> None:
         self.added.append(instance)
@@ -174,6 +184,9 @@ def _run(status: RunStatus = RunStatus.RUNNING) -> SimpleNamespace:
 
 
 def test_training_estimate_uses_catalog_cost_and_leakage_evidence(monkeypatch) -> None:
+    monkeypatch.setattr(
+        training, "_resolve_estimate_identity", lambda _db, _project, payload: payload
+    )
     version = _version()
     estimate = _estimate()
     client = MagicMock()
@@ -213,6 +226,9 @@ def test_training_estimate_uses_catalog_cost_and_leakage_evidence(monkeypatch) -
 
 
 def test_all_models_use_one_disclosed_pairwise_safe_tier(monkeypatch) -> None:
+    monkeypatch.setattr(
+        training, "_resolve_estimate_identity", lambda _db, _project, payload: payload
+    )
     version = _version()
     version.byte_size = 2 * 1024**3
     version.row_count = 12_748_986
@@ -262,6 +278,9 @@ def test_all_models_use_one_disclosed_pairwise_safe_tier(monkeypatch) -> None:
 
 
 def test_training_estimate_accepts_completed_clear_leakage_profile(monkeypatch) -> None:
+    monkeypatch.setattr(
+        training, "_resolve_estimate_identity", lambda _db, _project, payload: payload
+    )
     version = _version()
     client = MagicMock()
     client.estimate.return_value = _estimate()
@@ -289,6 +308,9 @@ def test_training_estimate_accepts_completed_clear_leakage_profile(monkeypatch) 
 
 
 def test_training_estimate_blocks_missing_objects_and_concurrency(monkeypatch) -> None:
+    monkeypatch.setattr(
+        training, "_resolve_estimate_identity", lambda _db, _project, payload: payload
+    )
     version = _version()
     estimate = _estimate()
     client = MagicMock()
@@ -325,6 +347,9 @@ def test_training_estimate_blocks_missing_objects_and_concurrency(monkeypatch) -
 
 
 def test_training_estimate_translates_invalid_metric_and_store_configuration(monkeypatch) -> None:
+    monkeypatch.setattr(
+        training, "_resolve_estimate_identity", lambda _db, _project, payload: payload
+    )
     version = _version()
     monkeypatch.setattr(training, "require_project_role", lambda *_args: None)
     invalid = _request(dataset_version_id=version.id, primary_metric="not-a-metric")
@@ -378,6 +403,9 @@ def _launch_request(version_id: uuid.UUID) -> TrainingLaunchRequest:
 
 
 def _mock_durable_launch(monkeypatch, payload: TrainingLaunchRequest):
+    monkeypatch.setattr(
+        training, "_resolve_estimate_identity", lambda _db, _project, payload: payload
+    )
     monkeypatch.setattr(training, "require_project_role", lambda *_args: None)
     command = SimpleNamespace(
         id=uuid.uuid4(),
@@ -386,7 +414,11 @@ def _mock_durable_launch(monkeypatch, payload: TrainingLaunchRequest):
         project_id=uuid.uuid4(),
     )
     revisions = {
-        "catalog": SimpleNamespace(id=payload.estimator_catalog_revision_id),
+        "catalog": SimpleNamespace(
+            id=payload.estimator_catalog_revision_id,
+            specification=catalog_specification(payload.task_type),
+            content_digest=catalog_digest(catalog_specification(payload.task_type)),
+        ),
         "recipe": SimpleNamespace(id=payload.feature_recipe_revision_id),
     }
     monkeypatch.setattr(training, "begin_command", lambda *_args, **_kwargs: (command, False))
@@ -621,34 +653,17 @@ def test_all_catalog_contract_omitted_candidate_limit_expands_catalog() -> None:
     assert "candidate_limit" not in payload.model_fields_set
 
 
-def test_experiment_spec_is_authoritative_and_compatibility_fields_are_assertions() -> None:
+def test_unversioned_experiment_spec_is_not_reinterpreted() -> None:
     spec = SimpleNamespace(
-        id=uuid.uuid4(),
-        dataset_version_id=uuid.uuid4(),
-        task_type=TaskType.REGRESSION.value,
-        target_column="target",
-        primary_metric="rmse",
-        catalog_revision_id=uuid.uuid4(),
+        id=uuid.uuid4(), digest_scope="legacy-v0", digest_algorithm="sha256", specification={}
     )
-    project_id = uuid.uuid4()
-    resolved = training._resolve_estimate_identity(
-        _Session(scalar_values=[spec]),
-        project_id,
-        TrainingEstimateRequest(experiment_spec_revision_id=spec.id, catalog_mode="all"),
-    )
-    assert resolved.dataset_version_id == spec.dataset_version_id
-    assert resolved.catalog_revision_id == spec.catalog_revision_id
     with pytest.raises(HTTPException) as error:
         training._resolve_estimate_identity(
             _Session(scalar_values=[spec]),
-            project_id,
-            TrainingEstimateRequest(
-                experiment_spec_revision_id=spec.id,
-                dataset_version_id=uuid.uuid4(),
-                catalog_mode="all",
-            ),
+            uuid.uuid4(),
+            TrainingEstimateRequest(experiment_spec_revision_id=spec.id, catalog_mode="all"),
         )
-    assert error.value.detail["code"] == "experiment_spec_mismatch"
+    assert error.value.detail["code"] == "experiment_spec_changed"
 
 
 def test_reservation_validation_is_atomic_and_digest_bound() -> None:
@@ -797,7 +812,10 @@ def test_estimate_identity_and_catalog_resolution_failure_paths() -> None:
         )
     assert error.value.detail["current_revision"] == str(current.id)
     request = _request(catalog_revision_id=None)
-    active = SimpleNamespace(id=uuid.uuid4())
+    active_spec = catalog_specification(TaskType.REGRESSION)
+    active = SimpleNamespace(
+        id=uuid.uuid4(), specification=active_spec, content_digest=catalog_digest(active_spec)
+    )
     assert (
         training._resolved_catalog_revision(_Session(scalar_values=[active]), project_id, request)
         is active
@@ -1017,6 +1035,7 @@ def test_cancel_training_run_is_idempotent_and_tolerates_missing_job(monkeypatch
         training.cancel_training_run(_Session(), user, active.project_id, active.id, client)
 
 
+@pytest.mark.usefixtures("authorized_durable_mutation")
 def test_restart_and_add_models_reject_invalid_source_states(monkeypatch) -> None:
     monkeypatch.setattr(training, "require_project_role", lambda *_args: None)
     user = SimpleNamespace(id=uuid.uuid4())
@@ -1033,7 +1052,7 @@ def test_restart_and_add_models_reject_invalid_source_states(monkeypatch) -> Non
     with pytest.raises(HTTPException, match="dataset object is missing"):
         training.restart_training_run(_Session(), user, source.project_id, source.id)
 
-    request = SimpleNamespace(candidate_models=["Ridge"])
+    request = TrainingAddModelsRequest(candidate_models=["Ridge"])
     source.status = RunStatus.RUNNING
     with pytest.raises(HTTPException, match="only be added"):
         training.add_models_to_training_run(_Session(), user, source.project_id, source.id, request)
@@ -1155,6 +1174,7 @@ def test_reconcile_active_runs_skips_unsubmitted_and_stops_on_api_error(monkeypa
     sync.assert_called_once()
 
 
+@pytest.mark.usefixtures("authorized_durable_mutation")
 def test_add_models_validates_parent_request_and_catalog(monkeypatch) -> None:
     monkeypatch.setattr(training, "require_project_role", lambda *_args: None)
     user = SimpleNamespace(id=uuid.uuid4())
@@ -1295,7 +1315,8 @@ def test_leaderboard_combines_parent_extension_and_cancelled_entries(monkeypatch
 def test_terminal_leaderboard_does_not_report_active_models(monkeypatch, status) -> None:
     run = _run(status)
     run.tags = {
-        "current_candidate": "Ridge", "candidate_phase": "hyperparameter_search",
+        "current_candidate": "Ridge",
+        "candidate_phase": "hyperparameter_search",
         "leaderboard": [
             {"model": "Ridge", "status": "running", "metrics": {}},
             {"model": "Lasso", "status": "pending", "metrics": {}},
@@ -1412,7 +1433,9 @@ def test_leaderboard_reads_full_partition_counts_from_saved_split(monkeypatch, n
     monkeypatch.setattr(training, "select_candidates", lambda *_args: [])
     result = training.training_leaderboard(
         _Session(scalar_values=[SimpleNamespace(specification=specification)]),
-        SimpleNamespace(), run.project_id, run.id,
+        SimpleNamespace(),
+        run.project_id,
+        run.id,
     )
     assert result.split_counts == counts
 
@@ -1426,6 +1449,7 @@ def _successful_submission_client() -> MagicMock:
     return client
 
 
+@pytest.mark.usefixtures("authorized_durable_mutation")
 def test_restart_legacy_run_requires_immutable_revision_bindings(monkeypatch) -> None:
     monkeypatch.setattr(training, "require_project_role", lambda *_args: None)
     source = _run(RunStatus.FAILED)
@@ -1461,6 +1485,7 @@ def test_restart_legacy_run_requires_immutable_revision_bindings(monkeypatch) ->
     assert error.value.status_code == 409
 
 
+@pytest.mark.usefixtures("authorized_durable_mutation")
 def test_restart_retains_feature_exclusions_and_estimator_overrides(monkeypatch) -> None:
     source = _run(RunStatus.CANCELLED)
     source.run_name = "taxi"
@@ -1496,11 +1521,14 @@ def test_restart_retains_feature_exclusions_and_estimator_overrides(monkeypatch)
 
     monkeypatch.setattr(training, "launch_training_run", capture)
     with pytest.raises(RuntimeError, match="captured restart"):
-        training.restart_training_run(_Session(), SimpleNamespace(), source.project_id, source.id)
+        training.restart_training_run(
+            _Session(), SimpleNamespace(id=uuid.uuid4()), source.project_id, source.id
+        )
     assert captured[0].excluded_columns == ["fare_amount", "tip_amount"]
     assert captured[0].estimator_overrides[0].enabled is False
 
 
+@pytest.mark.usefixtures("authorized_durable_mutation")
 def test_add_models_to_legacy_run_requires_immutable_revision_bindings(monkeypatch) -> None:
     monkeypatch.setattr(training, "require_project_role", lambda *_args: None)
     parent = _run(RunStatus.SUCCEEDED)
@@ -1527,6 +1555,9 @@ def test_add_models_to_legacy_run_requires_immutable_revision_bindings(monkeypat
 def test_estimate_uses_sealed_role_counts_and_blocks_another_project_run(
     monkeypatch, active_project
 ):
+    monkeypatch.setattr(
+        training, "_resolve_estimate_identity", lambda _db, _project, payload: payload
+    )
     version = _version()
     version.row_count = 1_000_000
     split = SimpleNamespace(
@@ -1584,3 +1615,189 @@ def test_estimate_rejects_an_unusable_split(problem):
             _Session(scalar_values=[split]), version.project_id, version, uuid.uuid4()
         )
     assert failure.value.status_code == 409
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        [{"estimator": "UnknownEstimator", "enabled": False}],
+        [{"estimator": "UnknownEstimator", "enabled": True}],
+        [{"estimator": "Ridge"}, {"estimator": "Ridge"}],
+        [{"estimator": "Ridge", "enabled": False}, {"estimator": "Ridge"}],
+    ],
+)
+def test_estimator_override_rejects_unknown_and_duplicate_names_before_intent(
+    monkeypatch, overrides
+):
+    version = _version()
+    payload = _launch_request(version.id).model_copy(
+        update={"estimator_overrides": [EstimatorOverride(**o) for o in overrides]}
+    )
+    _mock_durable_launch(monkeypatch, payload)
+    monkeypatch.setattr(training, "_lock_training_admission", MagicMock())
+    monkeypatch.setattr(training, "estimate_training_run", lambda *_: _estimate())
+    monkeypatch.setattr(training, "_latest_leakage_analysis", lambda *_: (None, {}))
+    db = _Session()
+    client = MagicMock()
+    with pytest.raises(HTTPException) as error:
+        training.launch_training_run(
+            db,
+            SimpleNamespace(id=uuid.uuid4()),
+            version.project_id,
+            payload,
+            client,
+            idempotency_key="invalid-override",
+        )
+    assert error.value.status_code == 422
+    assert error.value.detail["code"] == "invalid_estimator_override"
+    assert not db.added
+    training.enqueue_outbox.assert_not_called()
+    client.create_job.assert_not_called()
+
+
+def test_estimator_override_valid_selection_keeps_catalog_resource_class(monkeypatch):
+    from automl_api.models.workflows import TrainingCandidate
+
+    version = _version()
+    payload = _launch_request(version.id).model_copy(
+        update={
+            "candidate_models": ["Ridge", "Lasso"],
+            "candidate_limit": 2,
+            "estimator_overrides": [EstimatorOverride(estimator="Lasso", enabled=False)],
+        }
+    )
+    _mock_durable_launch(monkeypatch, payload)
+    monkeypatch.setattr(training, "_lock_training_admission", MagicMock())
+    monkeypatch.setattr(training, "estimate_training_run", lambda *_: _estimate())
+    monkeypatch.setattr(training, "_latest_leakage_analysis", lambda *_: (None, {}))
+    monkeypatch.setattr(
+        training,
+        "select_candidates",
+        lambda *_: [
+            CandidateSpec("Ridge", MagicMock(), {}, "low", True),
+            CandidateSpec("Lasso", MagicMock(), {}, "medium", True),
+        ],
+    )
+    db = _Session()
+    client = MagicMock()
+    client.settings = SimpleNamespace(training_namespace="sceptre")
+    training.launch_training_run(
+        db,
+        SimpleNamespace(id=uuid.uuid4()),
+        version.project_id,
+        payload,
+        client,
+        idempotency_key="valid-override",
+    )
+    candidates = [row for row in db.added if isinstance(row, TrainingCandidate)]
+    assert [(c.estimator_key, c.params["resource_class"]) for c in candidates] == [("Ridge", "low")]
+    assert db.added[0].params["candidate_models"] == ["Ridge"]
+    training.enqueue_outbox.assert_called_once()
+
+
+@pytest.mark.parametrize("enabled,resource_class", [(True, "low"), (False, "low"), (True, "")])
+def test_estimator_override_rejects_unsupported_resource_policy_before_intent(
+    monkeypatch, enabled, resource_class
+):
+    version = _version()
+    payload = _launch_request(version.id).model_copy(
+        update={
+            "candidate_models": ["Ridge", "Lasso"],
+            "candidate_limit": 2,
+            "estimator_overrides": [
+                EstimatorOverride(estimator="Lasso", enabled=enabled, resource_class=resource_class)
+            ],
+        }
+    )
+    _mock_durable_launch(monkeypatch, payload)
+    monkeypatch.setattr(training, "_lock_training_admission", MagicMock())
+    monkeypatch.setattr(training, "estimate_training_run", lambda *_: _estimate())
+    db = _Session()
+    client = MagicMock()
+    with pytest.raises(HTTPException) as error:
+        training.launch_training_run(
+            db,
+            SimpleNamespace(id=uuid.uuid4()),
+            version.project_id,
+            payload,
+            client,
+            idempotency_key="invalid-resource-policy",
+        )
+    assert error.value.status_code == 422
+    assert "not supported" in error.value.detail
+    assert not db.added
+    training.enqueue_outbox.assert_not_called()
+    client.create_job.assert_not_called()
+
+
+def test_launch_persists_catalog_digests_and_rejects_conflicting_catalog_alias(monkeypatch):
+    version = _version()
+    payload = _launch_request(version.id)
+    _mock_durable_launch(monkeypatch, payload)
+    monkeypatch.setattr(training, "_lock_training_admission", MagicMock())
+    monkeypatch.setattr(training, "estimate_training_run", lambda *_: _estimate())
+    monkeypatch.setattr(training, "_latest_leakage_analysis", lambda *_: (None, {}))
+    db = _Session()
+    client = MagicMock()
+    client.settings = SimpleNamespace(training_namespace="sceptre")
+    training.launch_training_run(
+        db,
+        SimpleNamespace(id=uuid.uuid4()),
+        version.project_id,
+        payload,
+        client,
+        idempotency_key="bound-catalog",
+    )
+    spec = catalog_specification(payload.task_type)
+    assert db.added[0].params["catalog_content_digest"] == catalog_digest(spec)
+    assert db.added[0].params["catalog_runtime_digest"] == spec["runtime_lock_digest"]
+    conflicting = payload.model_copy(update={"catalog_revision_id": uuid.uuid4()})
+    empty = _Session()
+    training.enqueue_outbox.reset_mock()
+    with pytest.raises(HTTPException) as error:
+        training.launch_training_run(
+            empty,
+            SimpleNamespace(id=uuid.uuid4()),
+            version.project_id,
+            conflicting,
+            client,
+            idempotency_key="conflicting-catalog",
+        )
+    assert error.value.detail["code"] == "catalog_revision_changed"
+    assert not empty.added
+    training.enqueue_outbox.assert_not_called()
+
+
+def test_selected_estimate_counts_actual_default_candidates(monkeypatch):
+    monkeypatch.setattr(
+        training, "_resolve_estimate_identity", lambda _db, _project, payload: payload
+    )
+    version = _version()
+    db = _Session(scalar_values=[version, 0, 0, 0])
+    client = MagicMock()
+    client.estimate.return_value = _estimate()
+    monkeypatch.setattr(training, "require_project_role", lambda *_: None)
+    monkeypatch.setattr(
+        training, "get_object_store", lambda: SimpleNamespace(exists=lambda _: True)
+    )
+    monkeypatch.setattr(training, "_reconcile_active_runs", MagicMock())
+    monkeypatch.setattr(training, "_latest_leakage_analysis", lambda *_: (None, {}))
+    result = training.estimate_training_run(
+        db,
+        SimpleNamespace(id=uuid.uuid4()),
+        version.project_id,
+        _request(dataset_version_id=version.id, candidate_models=[], candidate_limit=100),
+        client,
+    )
+    expected = sum(
+        item.default_selected for item in training.candidate_catalog(TaskType.REGRESSION)
+    )
+    assert result.candidate_count == expected
+    assert client.estimate.call_args.kwargs["candidate_limit"] == expected
+
+
+def test_selected_request_duplicate_estimators_fail_before_capacity(monkeypatch):
+    payload = _request(candidate_models=["Ridge", "Ridge"])
+    with pytest.raises(HTTPException) as error:
+        training._validate_candidate_models(payload)
+    assert error.value.detail["code"] == "invalid_catalog_selection"

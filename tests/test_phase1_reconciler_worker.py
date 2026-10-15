@@ -127,6 +127,7 @@ def test_run_once_leaves_claim_for_lease_recovery_when_database_fails_mid_delive
 
 def test_observe_once_commits_success_and_rolls_back_failure(monkeypatch) -> None:
     session = MagicMock()
+    monkeypatch.setattr(workflow_reconciler, "observe_analysis_attempts", lambda *_: 0)
     observer = MagicMock(return_value=2)
     monkeypatch.setattr(workflow_reconciler, "observe_training_ray_jobs", observer)
     k8s = MagicMock()
@@ -187,8 +188,12 @@ def test_main_uses_explicit_worker_identity_and_bounded_poll_interval(
     )
     monkeypatch.setattr(workflow_reconciler, "cleanup_retention_once", lambda *_args: 0)
     stages = {}
-    for name in ("plan_champions_once", "reconcile_refit_jobs_once",
-                 "reconcile_evaluation_jobs_once"):
+    for name in (
+        "plan_champions_once",
+        "reconcile_refit_jobs_once",
+        "reconcile_evaluation_jobs_once",
+        "reconcile_tracking_once",
+    ):
         stages[name] = MagicMock(return_value=0)
         monkeypatch.setattr(workflow_reconciler, name, stages[name])
     processed = iter([1, 0])

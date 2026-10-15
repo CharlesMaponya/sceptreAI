@@ -362,22 +362,81 @@ class S3ObjectStoreDriver:
         self.client.create_bucket(**params)
 
     def delete_prefix(self, prefix: str) -> None:
-        prefix = self._key(prefix).rstrip("/") + "/"
-        for page in self.client.get_paginator("list_objects_v2").paginate(
-            Bucket=self.bucket, Prefix=prefix
-        ):
-            objects = [{"Key": row["Key"]} for row in page.get("Contents", [])]
-            if objects:
-                result = self.client.delete_objects(
-                    Bucket=self.bucket, Delete={"Objects": objects, "Quiet": True}
-                )
-                if result.get("Errors"):
-                    raise RuntimeError(
-                        "Some stored files could not be deleted; cleanup will retry."
-                    )
+        self._delete_matching(self._key(prefix).rstrip("/") + "/", exact=False)
 
     def delete(self, uri: str) -> None:
-        self.client.delete_object(Bucket=self.bucket, Key=self._key_from_uri(uri))
+        self._delete_matching(self._key_from_uri(uri), exact=True)
+
+    def _deletion_items(self, operation, prefix, exact, kinds, **limits):
+        options = dict(Bucket=self.bucket, Prefix=prefix, **limits)
+        pages = (
+            self.client.get_paginator(operation).paginate(**options)
+            if exact
+            else [getattr(self.client, operation)(**options)]
+        )
+        for page in pages:
+            items = [
+                item
+                for kind in kinds
+                for item in page.get(kind, [])
+                if not exact or item["Key"] == prefix
+            ]
+            if items:
+                return items
+            if not exact and page.get("IsTruncated"):
+                raise RuntimeError("Cleanup listing is incomplete.")
+        return []
+
+    def _delete_matching(self, prefix, *, exact):
+        previous = None
+        while True:
+            uploads = self._deletion_items(
+                "list_multipart_uploads", prefix, exact, ("Uploads",), MaxUploads=1000
+            )
+            if not uploads:
+                break
+            pending = frozenset((item["Key"], item["UploadId"]) for item in uploads)
+            if pending == previous or any(not key.startswith(prefix) for key, _ in pending):
+                raise RuntimeError("Multipart cleanup made no progress or escaped its prefix.")
+            previous = pending
+            for key, upload_id in pending:
+                try:
+                    self.client.abort_multipart_upload(
+                        Bucket=self.bucket, Key=key, UploadId=upload_id
+                    )
+                    parts = self.client.list_parts(
+                        Bucket=self.bucket, Key=key, UploadId=upload_id, MaxParts=1
+                    )
+                    if parts.get("Parts") or parts.get("IsTruncated"):
+                        raise RuntimeError(
+                            "Multipart cleanup still has stored parts; retry required."
+                        )
+                except Exception as exc:
+                    if getattr(exc, "response", {}).get("Error", {}).get("Code") != "NoSuchUpload":
+                        raise
+        previous = None
+        while True:
+            objects = [
+                {"Key": item["Key"], "VersionId": item["VersionId"]}
+                for item in self._deletion_items(
+                    "list_object_versions",
+                    prefix,
+                    exact,
+                    ("Versions", "DeleteMarkers"),
+                    MaxKeys=1000,
+                )
+            ]
+            if not objects:
+                return
+            pending = frozenset((item["Key"], item["VersionId"]) for item in objects)
+            if pending == previous or any(not key.startswith(prefix) for key, _ in pending):
+                raise RuntimeError("Version cleanup made no progress or escaped its prefix.")
+            previous = pending
+            result = self.client.delete_objects(
+                Bucket=self.bucket, Delete={"Objects": objects, "Quiet": True}
+            )
+            if result.get("Errors"):
+                raise RuntimeError("Some stored versions could not be deleted; cleanup will retry.")
 
     def _validate_cursor(self, upload: ProviderUpload, cursor: TransferCursor) -> None:
         self._ensure_active(upload)

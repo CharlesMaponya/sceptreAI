@@ -2,26 +2,26 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from automl_api.api.deps import get_current_user
 from automl_api.core.config import get_settings
+from automl_api.core.redaction import redact_mapping
 from automl_api.db.session import get_db
 from automl_api.models.enums import CommandStatus, ProjectRole, TaskType
 from automl_api.models.iam import User
 from automl_api.models.workflows import (
-    EstimatorCatalogRevision,
     ExperimentSpecRevision,
     FeatureRecipeRevision,
     FeatureRegistryRevision,
     PromotionalScope,
 )
+from automl_api.schemas.candidates import CandidateDetailRead
 from automl_api.schemas.contracts import (
     CapabilitiesRead,
     CatalogEstimatorRead,
@@ -35,22 +35,22 @@ from automl_api.schemas.contracts import (
     RevisionRead,
     SearchSpaceCreate,
 )
+from automl_api.services.candidate_details import get_candidate_detail
 from automl_api.services.contracts import (
     add_scope_member,
     begin_contract_mutation,
     cancel_scope,
-    candidate_for_run,
     create_experiment_spec,
     create_revision,
     create_scope,
     event_cursor_after_id,
     get_revision,
+    resolve_catalog_revision,
     run_collection,
 )
 from automl_api.services.projects import require_project_role
 from automl_api.services.upload_policy import configured_upload_data_region
 from automl_api.services.workflow_state import transition_command
-from automl_api.training.model_catalog import candidate_catalog
 
 router = APIRouter(tags=["production contracts"])
 
@@ -108,7 +108,10 @@ def post_feature_contract(
     payload: FeatureContractCreate,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
+    idempotency_key: Annotated[
+        str,
+        Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S"),
+    ],
 ) -> RevisionRead:
     return _mutation(
         db,
@@ -140,7 +143,10 @@ def post_search_space(
     payload: SearchSpaceCreate,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
+    idempotency_key: Annotated[
+        str,
+        Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S"),
+    ],
 ) -> RevisionRead:
     return _mutation(
         db,
@@ -172,7 +178,10 @@ def post_search_objective(
     payload: SearchSpaceCreate,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
+    idempotency_key: Annotated[
+        str,
+        Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S"),
+    ],
 ) -> RevisionRead:
     return _mutation(
         db,
@@ -204,7 +213,10 @@ def post_experiment_spec(
     payload: ExperimentSpecCreate,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
+    idempotency_key: Annotated[
+        str,
+        Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S"),
+    ],
 ) -> RevisionRead:
     return _mutation(
         db,
@@ -247,7 +259,10 @@ def post_scope(
     payload: EvaluationScopeCreate,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
+    idempotency_key: Annotated[
+        str,
+        Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S"),
+    ],
 ) -> EvaluationScopeRead:
     return _mutation(
         db,
@@ -291,7 +306,10 @@ def post_scope_member(
     payload: EvaluationScopeMemberCreate,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
+    idempotency_key: Annotated[
+        str,
+        Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S"),
+    ],
 ) -> dict[str, str | int]:
     command, replayed = begin_contract_mutation(
         db,
@@ -324,7 +342,10 @@ def post_scope_cancel(
     scope_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
+    idempotency_key: Annotated[
+        str,
+        Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S"),
+    ],
 ) -> EvaluationScopeRead:
     return _mutation(
         db,
@@ -376,48 +397,36 @@ def catalog(
     task_type: TaskType,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    revision_id: uuid.UUID | None = None,
 ) -> CatalogRead:
     require_project_role(db, current_user, project_id, ProjectRole.VIEWER)
-    revision = db.scalar(
-        select(EstimatorCatalogRevision)
-        .where(EstimatorCatalogRevision.project_id == project_id)
-        .order_by(EstimatorCatalogRevision.revision.desc())
-    )
-    estimators = [
-        CatalogEstimatorRead(
-            name=item.name,
-            source="sklearn"
-            if not item.name.startswith(("XGB", "LGBM", "CatBoost"))
-            else "external",
-            status="supported",
-            recipe_id=item.name,
-            resource_class=item.cost_tier,
-            sampling_policy="full_or_qualified_tier",
-            incremental=False,
-            serializable=True,
-            inference=True,
-            deprecated=False,
-        )
-        for item in candidate_catalog(task_type)
-    ]
+    revision = resolve_catalog_revision(db, project_id, task_type, revision_id)
+    if revision is None:
+        raise HTTPException(status_code=404, detail="No catalog is published for this task.")
+    specification = revision.specification
     return CatalogRead(
-        catalog_revision=revision.content_digest if revision else "unpublished",
+        catalog_revision_id=revision.id,
+        catalog_revision=revision.content_digest,
         task_type=task_type,
-        generated_at=revision.created_at if revision else datetime.now(UTC),
-        runtime_lock_digest="unqualified",
+        generated_at=revision.created_at,
+        runtime_lock_digest=specification["runtime_lock_digest"],
         signature_verified=False,
-        estimators=estimators,
+        estimators=[
+            CatalogEstimatorRead.model_validate(item) for item in specification["estimators"]
+        ],
     )
 
 
 def _page(rows: list, next_cursor: str | None) -> CursorPage:
     return CursorPage(
         items=[
-            {
-                column.name: getattr(row, column.name)
-                for column in row.__table__.columns
-                if column.name not in {"parameters", "payload"}
-            }
+            redact_mapping(
+                {
+                    column.name: getattr(row, column.name)
+                    for column in row.__table__.columns
+                    if column.name not in {"parameters", "payload"}
+                }
+            )
             for row in rows
         ],
         next_cursor=next_cursor,
@@ -449,16 +458,18 @@ def candidates(
     return _page(rows, next_cursor)
 
 
-@router.get("/projects/{project_id}/training/runs/{run_id}/candidates/{candidate_id}")
+@router.get(
+    "/projects/{project_id}/training/runs/{run_id}/candidates/{candidate_id}",
+    response_model=CandidateDetailRead,
+)
 def candidate_detail(
     project_id: uuid.UUID,
     run_id: uuid.UUID,
     candidate_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-) -> dict:
-    row = candidate_for_run(db, current_user, project_id, run_id, candidate_id)
-    return _page([row], None).items[0] | {"parameters": row.params}
+) -> CandidateDetailRead:
+    return get_candidate_detail(db, current_user, project_id, run_id, candidate_id)
 
 
 @router.get("/projects/{project_id}/training/runs/{run_id}/trials", response_model=CursorPage)

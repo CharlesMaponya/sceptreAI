@@ -121,6 +121,9 @@ rules:
     resources: ["ingresses"]
     verbs: ["create", "get", "list", "watch", "delete"]
   {{- end }}
+  - apiGroups: ["ray.io"]
+    resources: ["rayjobs", "rayclusters"]
+    verbs: ["get"]
   - apiGroups: ["metrics.k8s.io"]
     resources: ["pods"]
     verbs: ["get", "list"]
@@ -225,3 +228,26 @@ roleRef:
   kind: ClusterRole
   name: {{ include "sceptre.fullname" . }}-observer
 {{- end }}
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ printf "%s-%s-attempt-review" .Release.Namespace (include "sceptre.fullname" .) | trunc 63 | trimSuffix "-" }}
+rules:
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["tokenreviews"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ printf "%s-%s-attempt-review" .Release.Namespace (include "sceptre.fullname" .) | trunc 63 | trimSuffix "-" }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "sceptre.apiServiceAccount" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ printf "%s-%s-attempt-review" .Release.Namespace (include "sceptre.fullname" .) | trunc 63 | trimSuffix "-" }}

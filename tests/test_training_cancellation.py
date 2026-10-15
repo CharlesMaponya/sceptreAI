@@ -676,8 +676,8 @@ def test_worker_returns_no_metrics_when_success_persistence_is_rejected(monkeypa
     monkeypatch.setattr(training_pipeline.mlflow, "set_tracking_uri", lambda *args: None)
     monkeypatch.setattr(training_pipeline.mlflow, "set_experiment", lambda *args: None)
     monkeypatch.setattr(
-        training_pipeline.mlflow,
-        "start_run",
+        training_pipeline,
+        "_tracked_mlflow_run",
         lambda *args, **kwargs: FakeMlflowRun(),
     )
     monkeypatch.setattr(training_pipeline.mlflow, "set_tags", lambda *args: None)

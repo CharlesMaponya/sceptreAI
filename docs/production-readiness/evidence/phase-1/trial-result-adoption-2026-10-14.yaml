@@ -1,0 +1,29 @@
+{
+  "verified_at": "2026-10-14T17:34:43.857883+00:00",
+  "phase_complete": false,
+  "scope": "Explicit predecessor database CV receipt adoption",
+  "negative_control": "The initial PostgreSQL test failed against the old reconciler: completed trial receipts had no authorized references in the replacement parent.",
+  "changes": [
+    "Reconciler verifies completed success/failure receipts and records typed exact source attempt/trial/digest references in the existing predecessor allowlist, alongside existing object checkpoint URIs. References grant no object access.",
+    "Enrollment verifies authorization, terminal event type/payload digest/CAS, immutable parameters, scope/workload and superseded parent lineage before committing a new terminal receipt plus adoption event. Source history remains unchanged; adoption has zero worker-claim count. Generation budgets still apply.",
+    "Carry verified authorizations through replacements that die before adoption. Every skipped parent generation must retain the exact reference and valid lineage; missing, changed or corrupted evidence fails closed."
+  ],
+  "verification": {
+    "tests": 259,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "focused_cases": 31,
+  "environment": "Real PostgreSQL, actual reconciler/admission/lifecycle functions, Ridge CV and deterministic local parameter search. Synthetic parent/process loss and lost acknowledgements; external tracking/artifacts mocked. No native Ray/Kubernetes loss or current-image qualification.",
+  "source_sha256": {
+    "apps/api/automl_api/services/training_trials.py": "9499861b3a4dda0003ddc2e644cab2e5be4e851770f9e793a65471da9b5f4c65",
+    "apps/api/automl_api/services/reconciler.py": "81506a34fd5f7953feb3f4e72ba8098a04aca6992f4fec5e31565c251c656b6c",
+    "tests/test_trial_result_adoption.py": "37b64611cc19ea04815ccf204c9c8d5e957a776cd45be7ad41299facb724249d"
+  },
+  "limits": [
+    "Database result receipt adoption does not implement predecessor object-checkpoint reads or signed expiring attempt grants.",
+    "Final full-data fitting and external candidate side effects remain outside CV receipts. Production Train is absent; native process-loss and full durable recovery campaigns remain unqualified.",
+    "All four broader trial gates and all 36 Phase 1 requirements remain open. Storage for the 45 GB rehearsal and seven missing historical QA objects remain unresolved."
+  ]
+}

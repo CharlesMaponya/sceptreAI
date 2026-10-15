@@ -1,0 +1,44 @@
+{
+  "verified_at": "2026-10-11T06:14:29.342819+00:00",
+  "phase_complete": false,
+  "scope": "Durable local profiling delivery and checkpoint publication",
+  "verification": {
+    "durable": {
+      "tests": 13,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "regression": {
+      "tests": 171,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "changes": [
+    "Create the local profile and outbox command in one transaction; remove API process-local scheduling.",
+    "Backfill legacy queued/running local jobs without resetting live owners or retry budgets.",
+    "Renew ownership during computation and fence all checkpoint writes by worker, delivery count and scheduling timestamp; use unique artifact paths per execution.",
+    "Recheck the exact delivery before recording dispatcher success or failure.",
+    "Preserve committed feature checkpoints across retries and retain Excel metadata-only behavior."
+  ],
+  "limits": [
+    "Not deployed or process-kill qualified on k3d.",
+    "Local computation occupies a reconciler process; multi-replica fairness and long-running provider calls remain unqualified.",
+    "No typed WorkflowAttempt added for this local path; the broad worker requirements remain open.",
+    "Excel profiling remains metadata-only, with zero rows analyzed and an explicit warning.",
+    "45 GB migration cannot fit current available disk plus overhead and cluster reserve. Largest-table targets remain unspecified.",
+    "Seven historical QA objects remain missing; the original preservation gate remains abandoned.",
+    "External MLflow deletion, other providers and the complete Phase 1 matrix remain open."
+  ],
+  "source_sha256": {
+    "apps/api/automl_api/services/profiling_jobs.py": "0f577d6a2f7bc813e56621ca41c92f0720219309b28db51d708d86024e77837e",
+    "apps/api/automl_api/services/profiling.py": "83881265fba1391590072cbf7ad5b30e1811da0bef12d1304867c0d5066f7968",
+    "apps/api/automl_api/services/reconciler.py": "bd6d7321dc62f69b998dcc8d8a7fecd3be3421ad4a1a24d7792657643e4f7490",
+    "apps/api/automl_api/workflow_reconciler.py": "e24b0e90ce1b2d2c95109ee5fd14afd20ccc1c323298a0c1b20e241a00c65452",
+    "apps/api/automl_api/api/routes/profiling.py": "cd62c6b5682810fb21e17b19130834a49526ba7456d6998b797b2fc7c8ad1650",
+    "tests/test_local_profiling_delivery.py": "d204e34f1e00ff69d83b747af516a6af518134b2f3f6b5657495fed317162973",
+    "tests/test_profiling_jobs.py": "f5ea68e4a356da6a736d8148f802b58e6fe871f35c125a38ef9d3040a66e171c"
+  }
+}

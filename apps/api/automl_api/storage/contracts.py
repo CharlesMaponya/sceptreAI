@@ -9,6 +9,12 @@ from typing import BinaryIO, Literal, Protocol, runtime_checkable
 UploadProtocol = Literal["multipart", "resumable_offset", "block_list", "single_put"]
 
 
+class DeletionPending(RuntimeError):
+    """Provider-retained data remains; recheck without consuming failure retries."""
+
+    retry_after_seconds = 3600
+
+
 class UploadContractError(ValueError):
     """A provider-neutral upload contract was violated."""
 

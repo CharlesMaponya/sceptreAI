@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import uuid
-from concurrent.futures import Future
 from contextlib import AbstractContextManager
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -17,7 +17,7 @@ from automl_api.models.enums import (
     WorkflowStage,
 )
 from automl_api.models.iam import User
-from automl_api.models.workflows import WorkflowAttempt
+from automl_api.models.workflows import OutboxEntry, WorkflowAttempt, WorkflowCommand
 from automl_api.schemas.profiling import (
     ColumnProfileRead,
     DatasetProfileRead,
@@ -26,6 +26,17 @@ from automl_api.schemas.profiling import (
 )
 from automl_api.schemas.profiling_jobs import ProfilingJobCreate
 from fastapi import HTTPException
+
+DELIVERY = jobs.ProfileDelivery(uuid.uuid4(), "unit-worker", 1, datetime.now(UTC))
+
+
+@pytest.fixture(autouse=True)
+def local_profile_unit_dependencies(monkeypatch):
+    monkeypatch.setattr(
+        jobs, "_locked_profile_job", lambda db, job_id, _delivery: db.get(ProfilingJob, job_id)
+    )
+    monkeypatch.setattr(jobs, "_enqueue_local_profile", MagicMock(return_value=True))
+    monkeypatch.setattr(jobs, "require_project_role", lambda *_args: None)
 
 
 class _Session(AbstractContextManager):
@@ -46,6 +57,8 @@ class _Session(AbstractContextManager):
             ProfilingJob: self.job,
             User: self.user,
             DatasetVersion: self.version,
+            OutboxEntry: SimpleNamespace(delivery_attempts=1, command_id=uuid.uuid4()),
+            WorkflowCommand: SimpleNamespace(max_retries=1),
         }.get(model)
 
     def scalar(self, _statement: object) -> object | None:
@@ -134,15 +147,17 @@ def test_monolithic_profile_job_persists_each_stage_and_marks_dataset_ready(
     stored_stages: list[str] = []
 
     monkeypatch.setattr(jobs, "get_session_factory", lambda: lambda: session)
-    monkeypatch.setattr(jobs, "build_dataset_profile", lambda *_args, **_kwargs: profile)
+    monkeypatch.setattr(jobs, "profile_dataset_version", lambda *_args, **_kwargs: profile)
 
-    def store_stage(current_job: object, stage: str, _payload: object) -> dict[str, str]:
+    def store_stage(
+        current_job: object, stage: str, _payload: object, _delivery: object
+    ) -> dict[str, str]:
         stored_stages.append(stage)
         return {**current_job.artifact_uris_json, stage: f"memory://{stage}.json"}
 
     monkeypatch.setattr(jobs, "_store_stage_artifact", store_stage)
 
-    jobs._run_monolithic_fallback(job.id)
+    jobs._run_monolithic_fallback(job.id, DELIVERY)
 
     assert stored_stages == ["features", "relationships", "preparation", "complete"]
     assert job.status == "succeeded"
@@ -198,10 +213,12 @@ def test_store_stage_artifact_uses_attempt_scoped_key(
     store.put_bytes.return_value = SimpleNamespace(uri="s3://bucket/profile.json")
     monkeypatch.setattr(jobs, "get_object_store", lambda: store)
 
-    result = jobs._store_stage_artifact(job, "features", {"count": 3})
+    result = jobs._store_stage_artifact(job, "features", {"count": 3}, DELIVERY)
 
     key, content = store.put_bytes.call_args.args
-    assert key.endswith(f"profiles/{job.id}/features.json")
+    assert key.endswith(
+        f"profiles/{job.id}/deliveries/{DELIVERY.entry_id}/{DELIVERY.artifact_id}/features.json"
+    )
     assert content == b'{"count":3}'
     assert result == {"features": "s3://bucket/profile.json"}
 
@@ -214,17 +231,6 @@ def test_get_version_rejects_unknown_dataset_version() -> None:
         jobs._get_version(db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
 
     assert error.value.status_code == 404
-
-
-def test_job_finished_releases_schedule_slot_and_swallows_worker_error() -> None:
-    job_id = uuid.uuid4()
-    future: Future[None] = Future()
-    future.set_exception(RuntimeError("persisted worker failure"))
-    jobs._scheduled_jobs.add(job_id)
-
-    jobs._job_finished(job_id, future)
-
-    assert job_id not in jobs._scheduled_jobs
 
 
 class _ListResult:
@@ -480,60 +486,6 @@ def test_profile_job_queries_enforce_scope_and_not_found(monkeypatch) -> None:
     assert error.value.status_code == 404
 
 
-def test_profile_scheduler_deduplicates_submission_and_releases_slot(monkeypatch) -> None:
-    job_id = uuid.uuid4()
-    future: Future[None] = Future()
-    executor = MagicMock()
-    executor.submit.return_value = future
-    monkeypatch.setattr(jobs, "_executor", executor)
-    jobs._scheduled_jobs.discard(job_id)
-
-    assert jobs.schedule_profiling_job(job_id) is True
-    assert jobs.schedule_profiling_job(job_id) is False
-    executor.submit.assert_called_once_with(jobs._run_profiling_job, job_id)
-    future.set_result(None)
-    assert job_id not in jobs._scheduled_jobs
-
-
-def test_resume_incomplete_jobs_requeues_and_schedules_each_once(monkeypatch) -> None:
-    job_ids = [uuid.uuid4(), uuid.uuid4()]
-    pending_jobs = [
-        SimpleNamespace(id=job_id, overview_json={"execution_mode": "control_plane"})
-        for job_id in job_ids
-    ]
-    query = MagicMock()
-    session = MagicMock()
-    session.__enter__.return_value = session
-    session.scalars.return_value.all.return_value = pending_jobs
-    session.query.return_value.filter.return_value = query
-    monkeypatch.setattr(jobs, "get_session_factory", lambda: lambda: session)
-    scheduled: list[uuid.UUID] = []
-    monkeypatch.setattr(
-        jobs,
-        "schedule_profiling_job",
-        lambda job_id: scheduled.append(job_id) or job_id == job_ids[0],
-    )
-
-    assert jobs.resume_incomplete_profiling_jobs() == 1
-    assert scheduled == job_ids
-    query.update.assert_called_once()
-    session.commit.assert_called_once()
-
-
-def test_resume_incomplete_jobs_leaves_kuberay_work_to_reconciler(monkeypatch) -> None:
-    distributed = SimpleNamespace(id=uuid.uuid4(), overview_json={"execution_mode": "kuberay"})
-    session = MagicMock()
-    session.__enter__.return_value = session
-    session.scalars.return_value.all.return_value = [distributed]
-    monkeypatch.setattr(jobs, "get_session_factory", lambda: lambda: session)
-    schedule = MagicMock()
-    monkeypatch.setattr(jobs, "schedule_profiling_job", schedule)
-
-    assert jobs.resume_incomplete_profiling_jobs() == 0
-    schedule.assert_not_called()
-    session.query.assert_not_called()
-
-
 def test_profile_worker_dispatches_partitioned_and_monolithic_paths(monkeypatch) -> None:
     for supported, expected in ((True, "partitioned"), (False, "monolithic")):
         job = _job()
@@ -560,15 +512,15 @@ def test_profile_worker_dispatches_partitioned_and_monolithic_paths(monkeypatch)
         monkeypatch.setattr(
             jobs,
             "_run_partitioned_stages",
-            lambda _job_id, current=calls: current.append("partitioned"),
+            lambda _job_id, _delivery, current=calls: current.append("partitioned"),
         )
         monkeypatch.setattr(
             jobs,
             "_run_monolithic_fallback",
-            lambda _job_id, current=calls: current.append("monolithic"),
+            lambda _job_id, _delivery, current=calls: current.append("monolithic"),
         )
 
-        jobs._run_profiling_job(job.id)
+        jobs._run_profiling_job(job.id, DELIVERY)
 
         assert calls == [expected]
         assert job.status == "running"
@@ -589,7 +541,7 @@ def test_profile_worker_persists_failure_and_preserves_cancellation(monkeypatch)
         MagicMock(side_effect=RuntimeError("profiling failed")),
     )
     with pytest.raises(RuntimeError, match="profiling failed"):
-        jobs._run_profiling_job(job.id)
+        jobs._run_profiling_job(job.id, DELIVERY)
     assert job.status == "failed"
     assert job.failure_message == "profiling failed"
     assert version.status == DatasetStatus.READY
@@ -599,7 +551,7 @@ def test_profile_worker_persists_failure_and_preserves_cancellation(monkeypatch)
     cancelled.status = "cancelled"
     cancelled_session = _Session(cancelled, SimpleNamespace(), version)
     monkeypatch.setattr(jobs, "get_session_factory", lambda: lambda: cancelled_session)
-    jobs._run_profiling_job(cancelled.id)
+    jobs._run_profiling_job(cancelled.id, DELIVERY)
     assert cancelled.status == "cancelled"
 
 
@@ -617,12 +569,14 @@ def test_finish_preparation_promotes_complete_profile_atomically(monkeypatch) ->
     monkeypatch.setattr(jobs, "get_session_factory", lambda: lambda: session)
     monkeypatch.setattr(jobs, "_build_preparation_plan", lambda *_args: [])
 
-    def store(current_job: object, stage: str, _payload: object) -> dict[str, str]:
+    def store(
+        current_job: object, stage: str, _payload: object, _delivery: object
+    ) -> dict[str, str]:
         return {**current_job.artifact_uris_json, stage: f"s3://profiles/{stage}.json"}
 
     monkeypatch.setattr(jobs, "_store_stage_artifact", store)
 
-    jobs._finish_preparation(job.id)
+    jobs._finish_preparation(job.id, DELIVERY)
 
     assert job.status == "succeeded"
     assert job.current_stage == "complete"
@@ -644,7 +598,7 @@ def test_finish_preparation_honors_cancellation(monkeypatch) -> None:
     store = MagicMock()
     monkeypatch.setattr(jobs, "_store_stage_artifact", store)
 
-    jobs._finish_preparation(job.id)
+    jobs._finish_preparation(job.id, DELIVERY)
 
     store.assert_not_called()
     assert version.status == DatasetStatus.PROFILING
@@ -675,13 +629,15 @@ def test_monolithic_fallback_reuses_features_but_recomputes_target_evidence(monk
     monkeypatch.setattr(jobs, "_build_preparation_plan", lambda *_args: [])
     stored: list[str] = []
 
-    def store(current_job: object, stage: str, _payload: object) -> dict[str, str]:
+    def store(
+        current_job: object, stage: str, _payload: object, _delivery: object
+    ) -> dict[str, str]:
         stored.append(stage)
         return {**current_job.artifact_uris_json, stage: f"s3://profiles/{stage}.json"}
 
     monkeypatch.setattr(jobs, "_store_stage_artifact", store)
 
-    jobs._run_monolithic_fallback(job.id)
+    jobs._run_monolithic_fallback(job.id, DELIVERY)
 
     assert stored == ["relationships", "preparation", "complete"]
     assert job.artifact_uris_json["features"] == "s3://profiles/reused-features.json"
@@ -720,13 +676,15 @@ def test_partitioned_ray_polars_stages_checkpoint_batches_and_complete(monkeypat
     monkeypatch.setattr(jobs, "_build_preparation_plan", lambda *_args: [])
     stored: list[str] = []
 
-    def store(current_job: object, stage: str, _payload: object) -> dict[str, str]:
+    def store(
+        current_job: object, stage: str, _payload: object, _delivery: object
+    ) -> dict[str, str]:
         stored.append(stage)
         return {**current_job.artifact_uris_json, stage: f"s3://profiles/{stage}.json"}
 
     monkeypatch.setattr(jobs, "_store_stage_artifact", store)
 
-    jobs._run_partitioned_stages(job.id)
+    jobs._run_partitioned_stages(job.id, DELIVERY)
 
     assert job.row_count == 4
     assert job.total_columns == 2

@@ -108,3 +108,40 @@ def test_candidate_process_returns_artifact_metadata_without_fitted_model(monkey
     assert "_model" not in entry
     fit.assert_called_once()
     monkeypatch.delenv("TRAINING_EXECUTION_MODE")
+
+
+@pytest.mark.parametrize("kind", ["supervised", "clustering"])
+@pytest.mark.parametrize("failure", ["stale", "tracking", "trial", "model"])
+def test_serialized_candidate_error_preserves_abort_semantics(monkeypatch, kind, failure):
+    from automl_api.services.workflow_state import StaleFence
+    from automl_api.training.trial_runtime import TrialExecutionUnresolved
+    from ray import cloudpickle
+
+    run, jobs, _, _, cancel = setup_runtime(monkeypatch)
+    error_type = {
+        "stale": StaleFence,
+        "tracking": pipeline.TrackingCreationUnresolved,
+        "trial": TrialExecutionUnresolved,
+        "model": ValueError,
+    }[failure]
+    remote_error = candidate_runtime.ray.exceptions.RayTaskError(
+        "_execute", "remote candidate traceback", error_type("candidate stopped"),
+        proctitle="test-worker", pid=123, ip="127.0.0.1",
+    )
+    remote_error = cloudpickle.loads(cloudpickle.dumps(remote_error))
+
+    def get(reference):
+        if reference == "b-ref":
+            raise remote_error.as_instanceof_cause()
+        return {"model": "A", "status": "succeeded"}
+
+    monkeypatch.setattr(candidate_runtime.ray, "get", get)
+    if failure == "model":
+        entries = list(candidate_runtime.results(kind, jobs, run))
+        assert entries[0][1]["status"] == "failed"
+        assert entries[1][1]["status"] == "succeeded"
+        cancel.assert_not_called()
+    else:
+        with pytest.raises(error_type):
+            list(candidate_runtime.results(kind, jobs, run))
+        cancel.assert_called_once_with("a-ref", force=True)

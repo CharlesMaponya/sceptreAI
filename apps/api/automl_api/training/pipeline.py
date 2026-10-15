@@ -47,9 +47,22 @@ from zenml import pipeline, step
 from automl_api.core.config import get_settings
 from automl_api.db.session import get_session_factory
 from automl_api.models.datasets import DatasetVersion
-from automl_api.models.enums import AttemptStatus, MetricKind, MetricSplit, RunStatus, TaskType
+from automl_api.models.enums import (
+    AttemptStatus,
+    CommandStatus,
+    MetricKind,
+    MetricSplit,
+    RunStatus,
+    TaskType,
+)
 from automl_api.models.runs import Metric, ModelRun
-from automl_api.models.workflows import DatasetSplitRevision, WorkflowAttempt
+from automl_api.models.workflows import (
+    DatasetSplitRevision,
+    EstimatorCatalogRevision,
+    TrainingCandidate,
+    WorkflowAttempt,
+    WorkflowCommand,
+)
 from automl_api.services.leakage import detect_target_leakage
 from automl_api.services.ray_polars_profiling import _ensure_ray, _ray_source
 from automl_api.services.temporal import (
@@ -58,8 +71,15 @@ from automl_api.services.temporal import (
 from automl_api.services.temporal import (
     series_unix_timestamp_unit as _series_unix_timestamp_unit,
 )
-from automl_api.services.workflow_state import StaleFence
+from automl_api.services.tracking_reconciliation import tracking_identity, validate_tracking_run
+from automl_api.services.workflow_state import (
+    StaleFence,
+    begin_command,
+    canonical_request_hash,
+    transition_command,
+)
 from automl_api.storage.object_store import get_object_store
+from automl_api.training.catalog_contract import validate_catalog_revision
 from automl_api.training.correlation import CorrelatedFeatureFilter
 from automl_api.training.evaluation import (
     aggregate_fold_metrics,
@@ -160,14 +180,132 @@ def _log_sklearn_model(model: Any, **kwargs: Any) -> Any:
     )
 
 
+class TrackingCreationUnresolved(RuntimeError):
+    pass
+
+
+def _tracked_mlflow_run(run: ModelRun, *, role: str, run_name: str, parent_run_id=None, tags=None):
+    # MLflow retries POST creation internally; only the durable command may retry it.
+    os.environ["MLFLOW_HTTP_REQUEST_MAX_RETRIES"] = "0"
+    attempt_id = os.getenv("AUTOML_ATTEMPT_ID") or "legacy"
+    payload = {
+        "model_run_id": str(run.id),
+        "attempt_id": attempt_id,
+        "role": role,
+        "parent_run_id": parent_run_id,
+        "tracking_backend_hash": hashlib.sha256(mlflow.get_tracking_uri().encode()).hexdigest(),
+    }
+    with get_session_factory()() as db:
+        current = _locked_run(db, run.id)
+        if (
+            current is None
+            or current.status in _TERMINAL_RUN_STATUSES
+            or _has_committed_training_result(current)
+        ):
+            raise StaleFence("This run no longer owns tracking creation.")
+        command, _ = begin_command(
+            db,
+            project_id=current.project_id,
+            actor_id=current.created_by_id,
+            operation="mlflow.run.ensure",
+            idempotency_key=canonical_request_hash(
+                {k: payload[k] for k in ("model_run_id", "attempt_id", "role")}
+            ),
+            payload=payload,
+        )
+        command.resource_type = "model_run"
+        command.resource_id = current.id
+        command_id = command.id
+        db.commit()
+    client = MlflowClient()
+    with get_session_factory()() as db:
+        current = _locked_run(db, run.id)
+        if (
+            current is None
+            or current.status in _TERMINAL_RUN_STATUSES
+            or _has_committed_training_result(current)
+        ):
+            raise StaleFence("This run no longer owns tracking creation.")
+        command = db.get(WorkflowCommand, command_id, with_for_update=True)
+        identity = tracking_identity(command, current)
+        known_id = (command.response_payload or {}).get("run_id")
+        if known_id:
+            tracked = client.get_run(known_id)
+        else:
+            experiment_name = f"automl-project-{current.project_id}"
+            experiment = client.get_experiment_by_name(experiment_name)
+            if experiment is None:
+                try:
+                    experiment_id = client.create_experiment(experiment_name)
+                except mlflow.exceptions.MlflowException:
+                    experiment = client.get_experiment_by_name(experiment_name)
+                    if experiment is None:
+                        raise
+                    experiment_id = experiment.experiment_id
+            else:
+                experiment_id = experiment.experiment_id
+            matches = client.search_runs(
+                [experiment_id],
+                filter_string=f"tags.automl_tracking_command = '{command.id}'",
+                run_view_type=mlflow.entities.ViewType.ALL,
+                max_results=2,
+            )
+            if len(matches) > 1:
+                raise ValueError("Multiple MLflow runs claim the same tracking command.")
+            if matches:
+                tracked = matches[0]
+            else:
+                if (command.response_payload or {}).get("creation_started"):
+                    raise TrackingCreationUnresolved(
+                        "MLflow creation is unresolved; refusing a duplicate request."
+                    )
+                command.response_payload = {"creation_started": True}
+                db.commit()
+                current = _locked_run(db, run.id)
+                if (
+                    current is None
+                    or current.status in _TERMINAL_RUN_STATUSES
+                    or _has_committed_training_result(current)
+                ):
+                    raise StaleFence("This run no longer owns tracking creation.")
+                command = db.get(WorkflowCommand, command_id, with_for_update=True)
+                try:
+                    tracked = client.create_run(
+                        experiment_id,
+                        run_name=run_name,
+                        tags={**(tags or {}), **identity},
+                    )
+                except Exception as exc:
+                    raise TrackingCreationUnresolved(
+                        "MLflow creation outcome is unknown; refusing an unverified retry."
+                    ) from exc
+        validate_tracking_run(tracked, identity)
+        command.resource_type = "model_run"
+        command.resource_id = current.id
+        command.response_payload = {"run_id": tracked.info.run_id}
+        command.response_status = 200
+        command.terminal_reason = None
+        if command.status != CommandStatus.SUCCEEDED:
+            if command.status == CommandStatus.FAILED:
+                transition_command(command, CommandStatus.PENDING)
+            transition_command(command, CommandStatus.RUNNING)
+            transition_command(command, CommandStatus.SUCCEEDED)
+        if role == "parent":
+            current.mlflow_run_id = tracked.info.run_id
+        db.commit()
+        tracking_id = tracked.info.run_id
+    return mlflow.start_run(run_id=tracking_id, nested=parent_run_id is not None)
+
+
 def execute_training_run(run_id: uuid.UUID) -> dict[str, float]:
     session_factory = get_session_factory()
     with session_factory() as db:
         run = _locked_run(db, run_id)
         if run is None:
             raise ValueError(f"Model run {run_id} was not found.")
-        if run.status in _TERMINAL_RUN_STATUSES:
+        if run.status in _TERMINAL_RUN_STATUSES or _has_committed_training_result(run):
             return {}
+        _validate_bound_catalog(db, run)
         version = db.get(DatasetVersion, run.dataset_version_id)
         if version is None:
             raise ValueError("Dataset version was not found.")
@@ -189,8 +327,12 @@ def execute_training_run(run_id: uuid.UUID) -> dict[str, float]:
         )
         settings = get_settings()
         mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
-        mlflow.set_experiment(f"automl-project-{run.project_id}")
-        with mlflow.start_run(run_name=run.run_name or str(run.id)) as mlflow_run:
+        with _tracked_mlflow_run(
+            run,
+            role="parent",
+            run_name=run.run_name or str(run.id),
+            tags={"task_type": run.task_type.value},
+        ) as mlflow_run:
             mlflow.set_tags(
                 {
                     "project_id": str(run.project_id),
@@ -236,6 +378,46 @@ def _load_dataframe(version: DatasetVersion) -> pd.DataFrame:
     if filename.endswith((".xlsx", ".xls")):
         return pd.read_excel(io.BytesIO(content))
     raise ValueError(f"Unsupported training dataset format: {filename}")
+
+
+def _validate_bound_catalog(db: Session, run: ModelRun) -> None:
+    revision_id = (run.params or {}).get("estimator_catalog_revision_id")
+    if revision_id is None:
+        # shortcut: allow unbound local calls until legacy migration retires them.
+        if os.getenv("AUTOML_ATTEMPT_ID") or get_settings().environment in {
+            "production",
+            "staging",
+        }:
+            raise ValueError("Training requires a bound catalog revision")
+        return
+    try:
+        revision_id = uuid.UUID(str(revision_id))
+    except ValueError as exc:
+        raise ValueError("Invalid bound catalog revision") from exc
+    revision = db.scalar(
+        select(EstimatorCatalogRevision).where(
+            EstimatorCatalogRevision.id == revision_id,
+            EstimatorCatalogRevision.project_id == run.project_id,
+        )
+    )
+    if revision is None:
+        raise ValueError("Bound catalog revision is unavailable")
+    specification = validate_catalog_revision(revision, run.task_type)
+    if (
+        run.params.get("catalog_content_digest") != revision.content_digest
+        or run.params.get("catalog_runtime_digest") != specification["runtime_lock_digest"]
+    ):
+        raise ValueError("Training catalog identity differs from admitted intent")
+    selected = run.params.get("candidate_models")
+    allowed = {row["name"] for row in specification["estimators"]}
+    if (
+        not isinstance(selected, list)
+        or not selected
+        or any(not isinstance(name, str) or name not in allowed for name in selected)
+        or len(selected) != len(set(selected))
+        or run.params.get("candidate_limit") != len(selected)
+    ):
+        raise ValueError("Training estimator selection differs from its bound catalog")
 
 
 def _bound_split_revision(db: Session, run: ModelRun) -> DatasetSplitRevision:
@@ -671,6 +853,7 @@ def _fit_candidate(
     scoring: str,
     run: ModelRun,
     _force_cpu: bool = False,
+    _fallback_from: str | None = None,
 ) -> dict[str, Any]:
     started = time.monotonic()
     print(f"Training candidate {candidate.name}", flush=True)
@@ -693,6 +876,7 @@ def _fit_candidate(
             candidate.search_space
             and os.getenv("TRAINING_EXECUTION_MODE") == "ray"
             and not gpu_vendor
+            and not _force_cpu
         ):
             from automl_api.training.tune_runtime import search_candidate
 
@@ -717,6 +901,9 @@ def _fit_candidate(
                 storage_filesystem=filesystem,
                 name=safe_name,
                 cpus_per_trial=cpu_threads,
+                run=run,
+                candidate_name=candidate.name,
+                base_parameters=_json_safe(estimator.get_params(deep=False)),
                 max_concurrent=max(1, int(os.getenv("AUTOML_TUNE_CONCURRENCY", "1"))),
             )
             params = _json_safe(search_evidence["params"])
@@ -725,32 +912,84 @@ def _fit_candidate(
             fitted = clone(model).set_params(**params).fit(train_x, train_y)
         elif candidate.search_space:
             _persist_candidate_phase(run.id, candidate.name, "hyperparameter_search")
-            search = BayesSearchCV(
-                model,
-                candidate.search_space,
-                n_iter=iterations,
-                cv=cv,
-                scoring=scoring,
-                n_jobs=1,
-                random_state=42,
-                error_score="raise",
-            )
-            search.fit(train_x, train_y)
-            fitted = search.best_estimator_
-            params = _json_safe(search.best_params_)
-            cv_mean = float(search.best_score_)
-            cv_std = float(search.cv_results_["std_test_score"][search.best_index_])
+            from automl_api.training.trial_runtime import requires_durable_trials
+
+            if requires_durable_trials():
+                from automl_api.training.tune_runtime import search_candidate_local
+
+                search_evidence = search_candidate_local(
+                    model,
+                    candidate.search_space,
+                    train_x,
+                    train_y,
+                    cv,
+                    scoring,
+                    run=run,
+                    candidate_name=candidate.name,
+                    iterations=iterations,
+                    base_parameters=_json_safe(estimator.get_params(deep=False)),
+                    accelerator=accelerator,
+                    fallback_from=_fallback_from,
+                )
+                params = _json_safe(search_evidence["params"])
+                cv_mean, cv_std = search_evidence["mean"], search_evidence["std"]
+                _persist_candidate_phase(run.id, candidate.name, "fitting_final_model")
+                fitted = clone(model).set_params(**params).fit(train_x, train_y)
+            else:
+                search = BayesSearchCV(
+                    model,
+                    candidate.search_space,
+                    n_iter=iterations,
+                    cv=cv,
+                    scoring=scoring,
+                    n_jobs=1,
+                    random_state=42,
+                    error_score="raise",
+                )
+                search.fit(train_x, train_y)
+                fitted = search.best_estimator_
+                params = _json_safe(search.best_params_)
+                cv_mean = float(search.best_score_)
+                cv_std = float(search.cv_results_["std_test_score"][search.best_index_])
         else:
             _persist_candidate_phase(run.id, candidate.name, "cross_validating")
-            cv_scores = cross_val_score(
-                model,
-                train_x,
-                train_y,
-                cv=cv,
-                scoring=scoring,
-                n_jobs=1,
-                error_score="raise",
+
+            def evaluate_cv():
+                return {
+                    "scores": cross_val_score(
+                        model,
+                        train_x,
+                        train_y,
+                        cv=cv,
+                        scoring=scoring,
+                        n_jobs=1,
+                        error_score="raise",
+                    ).tolist()
+                }
+
+            from automl_api.training.trial_runtime import evaluate_trial
+
+            prefix = (
+                "cpu-fallback:"
+                if _fallback_from is not None
+                else (f"{accelerator}:" if accelerator != "cpu" else "")
             )
+            specification = {
+                "parameters": _json_safe(estimator.get_params(deep=False)),
+                "cv": repr(cv),
+                "scoring": scoring,
+                "accelerator": accelerator,
+            }
+            if _fallback_from is not None:
+                specification["fallback_from"] = _fallback_from
+            cv_result = evaluate_trial(
+                run,
+                candidate.name,
+                f"{prefix}fixed-cv",
+                specification,
+                evaluate_cv,
+            )
+            cv_scores = np.asarray(cv_result["scores"])
             _persist_candidate_phase(run.id, candidate.name, "fitting_final_model")
             model.fit(train_x, train_y)
             fitted = model
@@ -804,7 +1043,9 @@ def _fit_candidate(
         if learning:
             diagnostics["learning_curve"] = learning
         diagnostics["runtime"] = {
-            "search_engine": "ray_tune" if search_evidence else "local_sklearn",
+            "search_engine": (
+                search_evidence.get("engine", "ray_tune") if search_evidence else "local_sklearn"
+            ),
             "search_evidence": search_evidence,
             "accelerator": accelerator,
             "detected_gpu_vendor": detected_gpu_vendor,
@@ -818,10 +1059,12 @@ def _fit_candidate(
         )
         registered_model_name = _registered_model_name(run, candidate.name)
         _persist_candidate_phase(run.id, candidate.name, "logging_to_mlflow")
-        with mlflow.start_run(
+        with _tracked_mlflow_run(
+            run,
+            role=f"candidate:{candidate.name}",
             run_name=candidate.name,
-            nested=True,
-            tags={"mlflow.parentRunId": parent_run_id} if parent_run_id else None,
+            parent_run_id=parent_run_id,
+            tags={"candidate_model": candidate.name},
         ) as candidate_run:
             mlflow.set_tags(
                 {
@@ -875,6 +1118,8 @@ def _fit_candidate(
             "model_artifact_sha256": model_artifact_sha256,
             "_model": fitted,
         }
+    except (StaleFence, TrackingCreationUnresolved):
+        raise
     except Exception as exc:
         if not _force_cpu and locals().get("accelerator") not in {None, "cpu"}:
             print(
@@ -893,8 +1138,9 @@ def _fit_candidate(
                 scoring,
                 run,
                 _force_cpu=True,
+                _fallback_from=accelerator,
             )
-        return _failed_candidate(candidate, started, exc)
+        return _failed_candidate(candidate, started, exc, run)
 
 
 def _fit_clustering(dataframe: pd.DataFrame, run: ModelRun) -> TournamentResult:
@@ -999,25 +1245,26 @@ def _fit_clustering_candidate(
             parameter_options = [
                 {"n_clusters": cluster_count} for cluster_count in range(2, maximum_clusters + 1)
             ]
+        from automl_api.training.trial_runtime import evaluate_trial
+
         prepared_folds = []
-        for train_index, test_index in splitter.split(features):
-            correlation_filter = CorrelatedFeatureFilter(task_type=TaskType.CLUSTERING.value)
-            train_features = correlation_filter.fit_transform(features.iloc[train_index])
-            test_features = correlation_filter.transform(features.iloc[test_index])
-            preprocessor = _preprocessor()
-            prepared_folds.append(
-                (
-                    np.asarray(preprocessor.fit_transform(train_features)),
-                    np.asarray(preprocessor.transform(test_features)),
-                    test_index,
-                )
-            )
-        best_metrics = None
-        best_standard_deviations = None
-        best_fold_metrics = None
-        best_params: dict[str, Any] = {}
-        _persist_candidate_phase(run.id, candidate.name, "cross_validating")
-        for parameters in parameter_options:
+
+        def evaluate_parameters(parameters: dict[str, Any]) -> dict[str, Any]:
+            if not prepared_folds:
+                for train_index, test_index in splitter.split(features):
+                    correlation_filter = CorrelatedFeatureFilter(
+                        task_type=TaskType.CLUSTERING.value
+                    )
+                    train_features = correlation_filter.fit_transform(features.iloc[train_index])
+                    test_features = correlation_filter.transform(features.iloc[test_index])
+                    preprocessor = _preprocessor()
+                    prepared_folds.append(
+                        (
+                            np.asarray(preprocessor.fit_transform(train_features)),
+                            np.asarray(preprocessor.transform(test_features)),
+                            test_index,
+                        )
+                    )
             fold_results = []
             for train_features, test_features, test_index in prepared_folds:
                 estimator = clone(base_estimator).set_params(**parameters)
@@ -1031,12 +1278,39 @@ def _fit_clustering_candidate(
                 )
                 fold_results.append(clustering_evaluation(test_features, labels, fold_reference))
             means, standard_deviations = aggregate_fold_metrics(fold_results)
+            return {
+                "means": means,
+                "standard_deviations": standard_deviations,
+                "fold_metrics": fold_results,
+            }
+
+        best_metrics = None
+        best_standard_deviations = None
+        best_fold_metrics = None
+        best_params: dict[str, Any] = {}
+        _persist_candidate_phase(run.id, candidate.name, "cross_validating")
+        for index, parameters in enumerate(parameter_options):
+            result = evaluate_trial(
+                run,
+                candidate.name,
+                f"cluster:{index}",
+                {
+                    "base_parameters": _json_safe(available_parameters),
+                    "parameter_options": parameter_options,
+                    "parameters": parameters,
+                    "cv": repr(splitter),
+                    "accelerator": accelerator,
+                    "external_evaluation": reference_labels is not None,
+                },
+                lambda parameters=parameters: evaluate_parameters(parameters),
+            )
+            means = result["means"]
             if "silhouette" not in means:
                 continue
             if best_metrics is None or means["silhouette"] > best_metrics["silhouette"]:
                 best_metrics = means
-                best_standard_deviations = standard_deviations
-                best_fold_metrics = fold_results
+                best_standard_deviations = result["standard_deviations"]
+                best_fold_metrics = result["fold_metrics"]
                 best_params = parameters
         if best_metrics is None:
             raise ValueError("No cross-validation fold produced valid clusters.")
@@ -1084,10 +1358,12 @@ def _fit_clustering_candidate(
         )
         registered_model_name = _registered_model_name(run, candidate.name)
         _persist_candidate_phase(run.id, candidate.name, "logging_to_mlflow")
-        with mlflow.start_run(
+        with _tracked_mlflow_run(
+            run,
+            role=f"candidate:{candidate.name}",
             run_name=candidate.name,
-            nested=True,
-            tags={"mlflow.parentRunId": parent_run_id} if parent_run_id else None,
+            parent_run_id=parent_run_id,
+            tags={"candidate_model": candidate.name},
         ) as candidate_run:
             mlflow.set_tags(
                 {
@@ -1139,19 +1415,30 @@ def _fit_clustering_candidate(
             "model_artifact_sha256": model_artifact_sha256,
             "_model": pipeline_model,
         }
+    except (StaleFence, TrackingCreationUnresolved):
+        raise
     except Exception as exc:
-        return _failed_candidate(candidate, started, exc)
+        return _failed_candidate(candidate, started, exc, run)
 
 
 def _failed_candidate(
     candidate: CandidateSpec,
     started: float,
     exc: Exception,
+    run: ModelRun,
 ) -> dict[str, Any]:
     duration = round(time.monotonic() - started, 3)
     message = str(exc)[:1000]
     print(f"Candidate {candidate.name} failed: {message}", flush=True)
-    with mlflow.start_run(run_name=candidate.name, nested=True):
+    parent = mlflow.active_run()
+    parent_run_id = parent.info.run_id if parent else run.tags.get("candidate_parent_run_id")
+    with _tracked_mlflow_run(
+        run,
+        role=f"failure:{candidate.name}",
+        run_name=candidate.name,
+        parent_run_id=parent_run_id,
+        tags={"candidate_model": candidate.name, "candidate_status": "failed"},
+    ):
         mlflow.set_tags(
             {
                 "candidate_model": candidate.name,
@@ -1208,12 +1495,13 @@ def _persist_candidate_model(
     safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "-", model_name).strip("-")
     attempt_id = os.getenv("AUTOML_ATTEMPT_ID")
     attempt_prefix = f"attempts/{uuid.UUID(attempt_id)}/" if attempt_id else ""
+    payload = buffer.getvalue()
+    digest = hashlib.sha256(payload).hexdigest()
     key = (
         f"projects/{run.project_id}/runs/{run.id}/{attempt_prefix}"
-        f"models/{safe_name or 'model'}.joblib"
+        f"models/{safe_name or 'model'}/{digest}.joblib"
     )
-    payload = buffer.getvalue()
-    return get_object_store().put_bytes(key, payload).uri, hashlib.sha256(payload).hexdigest()
+    return get_object_store().put_bytes(key, payload).uri, digest
 
 
 def _registered_model_name(run: ModelRun, candidate_name: str) -> str:
@@ -1323,6 +1611,44 @@ def merge_leaderboard_entries(
     return rank_leaderboard(list(by_model.values()), primary_metric)
 
 
+def _sync_candidate_statuses(db: Session, run: ModelRun, entries: list[dict]) -> None:
+    terminal = {"succeeded", "failed", "cancelled", "skipped"}
+    by_name = {
+        entry["model"]: entry
+        for entry in entries
+        if entry.get("status") in terminal | {"pending", "running"}
+    }
+    rows = list(
+        db.scalars(
+            select(TrainingCandidate).where(
+                TrainingCandidate.project_id == run.project_id,
+                TrainingCandidate.model_run_id == run.id,
+                TrainingCandidate.estimator_key.in_(by_name),
+            )
+        )
+    )
+    if len({row.estimator_key for row in rows}) != len(rows):
+        raise StaleFence("Duplicate durable candidate identities require controlled migration")
+    previous = {
+        entry["model"]: entry
+        for entry in (run.tags or {}).get("leaderboard", [])
+        if (entry.get("extension_run_id") is None or entry.get("extension_run_id") == str(run.id))
+    }
+    for row in rows:
+        entry = by_name[row.estimator_key]
+        if row.status in terminal:
+            if entry["status"] in terminal and entry["status"] != row.status:
+                raise StaleFence("A terminal candidate cannot change its recorded outcome")
+            if entry["status"] not in terminal:
+                old = previous.get(row.estimator_key)
+                if old is None or old.get("status") != row.status:
+                    raise StaleFence("Terminal candidate evidence is missing or inconsistent")
+                entry.clear()
+                entry.update(old)
+        else:
+            row.status = entry["status"]
+
+
 def _persist_partial_leaderboard(
     run_id: uuid.UUID,
     entries: list[dict[str, Any]],
@@ -1334,7 +1660,7 @@ def _persist_partial_leaderboard(
         run = _locked_run(db, run_id)
         if run is None:
             return
-        if run.status in _TERMINAL_RUN_STATUSES:
+        if run.status in _TERMINAL_RUN_STATUSES or _has_committed_training_result(run):
             return
         if os.getenv("AUTOML_MODEL_PODS") == "1":
             stored = {entry["model"]: entry for entry in run.tags.get("leaderboard", [])}
@@ -1352,6 +1678,9 @@ def _persist_partial_leaderboard(
                 primary_metric,
             )
             successful = [entry for entry in ranked if entry["status"] == "succeeded"]
+        _sync_candidate_statuses(db, run, ranked)
+        ranked = rank_leaderboard(ranked, primary_metric)
+        successful = [entry for entry in ranked if entry["status"] == "succeeded"]
         active = next((entry for entry in ranked if entry["status"] == "running"), None)
         run.tags = {
             **run.tags,
@@ -1412,7 +1741,7 @@ def _persist_candidate_phase(run_id: uuid.UUID, candidate: str, phase: str) -> N
         run = _locked_run(db, run_id)
         if run is None:
             return
-        if run.status in _TERMINAL_RUN_STATUSES:
+        if run.status in _TERMINAL_RUN_STATUSES or _has_committed_training_result(run):
             return
         leaderboard = [
             (
@@ -1427,6 +1756,13 @@ def _persist_candidate_phase(run_id: uuid.UUID, candidate: str, phase: str) -> N
             )
             for entry in (run.tags or {}).get("leaderboard", [])
         ]
+        _sync_candidate_statuses(db, run, leaderboard)
+        if any(
+            entry.get("model") == candidate
+            and entry.get("status") in {"succeeded", "failed", "cancelled", "skipped"}
+            for entry in leaderboard
+        ):
+            return
         run.tags = {
             **(run.tags or {}),
             "current_candidate": candidate,
@@ -1722,12 +2058,17 @@ def _json_default(value: Any) -> Any:
     return str(value)
 
 
+def _has_committed_training_result(run: ModelRun) -> bool:
+    receipt = (run.tags or {}).get("training_result_receipt")
+    return bool(receipt and receipt.get("attempt_id") == os.getenv("AUTOML_ATTEMPT_ID"))
+
+
 def _mark_failed(run_id: uuid.UUID, exc: Exception) -> None:
     with get_session_factory()() as db:
         run = _locked_run(db, run_id)
         if run is None:
             return
-        if run.status in _TERMINAL_RUN_STATUSES:
+        if run.status in _TERMINAL_RUN_STATUSES or _has_committed_training_result(run):
             return
         run.status = RunStatus.FAILED
         run.failure_code = "TRAINING_PIPELINE_FAILED"
@@ -1749,7 +2090,30 @@ def _persist_training_success(
         persisted_run = _locked_run(db, run_id)
         if persisted_run is None or persisted_run.status in _TERMINAL_RUN_STATUSES:
             return False
-        fenced_attempt = bool(os.getenv("AUTOML_ATTEMPT_ID"))
+        _sync_candidate_statuses(db, persisted_run, result.leaderboard)
+        attempt_id = os.getenv("AUTOML_ATTEMPT_ID")
+        fenced_attempt = bool(attempt_id)
+        receipt = None
+        if fenced_attempt:
+            receipt = {
+                "attempt_id": str(uuid.UUID(attempt_id)),
+                "digest": canonical_request_hash(
+                    _json_safe(
+                        {
+                            "metrics": result.metrics,
+                            "params": result.params,
+                            "leaderboard": result.leaderboard,
+                            "primary_metric": result.primary_metric,
+                            "mlflow_run_id": mlflow_run_id,
+                        }
+                    )
+                ),
+            }
+            previous = persisted_run.tags.get("training_result_receipt")
+            if previous and previous.get("attempt_id") == receipt["attempt_id"]:
+                if previous != receipt:
+                    raise StaleFence("This attempt already committed a different training result.")
+                return True
         persisted_run.status = RunStatus.RUNNING if fenced_attempt else RunStatus.SUCCEEDED
         persisted_run.mlflow_run_id = mlflow_run_id
         persisted_run.finished_at = None if fenced_attempt else datetime.now(UTC)
@@ -1758,6 +2122,7 @@ def _persist_training_success(
             "winner": result.leaderboard[0]["model"],
             "winner_mlflow_run_id": result.leaderboard[0].get("mlflow_run_id"),
             "winner_model_artifact_uri": result.leaderboard[0].get("model_artifact_uri"),
+            **({"training_result_receipt": receipt} if receipt is not None else {}),
             "leaderboard_primary_metric": result.primary_metric,
             "leaderboard": result.leaderboard,
         }
@@ -1798,12 +2163,17 @@ def _locked_run(db: Session, run_id: uuid.UUID, *, check_fence: bool = True) -> 
             select(WorkflowAttempt)
             .where(WorkflowAttempt.id == uuid.UUID(attempt_id))
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
         if (
             attempt is None
             or attempt.model_run_id != run_id
             or attempt.fencing_token != os.getenv("AUTOML_FENCING_TOKEN")
             or attempt.status not in {AttemptStatus.SUBMITTED, AttemptStatus.RUNNING}
+            or (
+                getattr(attempt, "lease_expires_at", None) is not None
+                and attempt.lease_expires_at <= datetime.now(UTC)
+            )
         ):
             raise StaleFence("The training attempt no longer owns this run.")
     return db.scalar(select(ModelRun).where(ModelRun.id == run_id).with_for_update())

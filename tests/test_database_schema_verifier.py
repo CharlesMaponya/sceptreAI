@@ -417,3 +417,62 @@ def test_application_byte_columns_have_64_bit_storage():
 def test_extra_constraint_is_not_ignored(schema_case, definition):
     schema_case.execute(text(f"ALTER TABLE child ADD CONSTRAINT extra_probe {definition}"))
     assert verifier.schema_differences(schema_case)
+
+
+@pytest.mark.parametrize("declared", [None, "C"])
+def test_column_collation_drift_is_not_hidden_by_type_reflection(schema_case, declared):
+    column = verifier.Base.metadata.tables["child"].c.label
+    if declared is not None:
+        column.type = String(64, collation=declared)
+        schema_case.execute(
+            text('ALTER TABLE child ALTER COLUMN label TYPE varchar(64) COLLATE "C"')
+        )
+    assert verifier.schema_differences(schema_case) == []
+    schema_case.execute(
+        text('ALTER TABLE child ALTER COLUMN label TYPE varchar(64) COLLATE "POSIX"')
+    )
+    differences = verifier.schema_differences(schema_case)
+    assert differences, "Column collation drift was not detected"
+
+
+@pytest.mark.parametrize("name", ["SortRule", 'Sort"Rule'])
+def test_quoted_collation_case_keeps_comparison_semantics(schema_case, name):
+    quote = schema_case.dialect.identifier_preparer.quote_identifier
+    declared, changed = quote(name), quote(name.lower())
+    schema_case.execute(
+        text(
+            f"CREATE COLLATION {declared} "
+            "(provider = icu, locale = 'und-u-ks-level2', deterministic = false)"
+        )
+    )
+    schema_case.execute(text(f'CREATE COLLATION {changed} FROM "C"'))
+    verifier.Base.metadata.tables["child"].c.label.type = String(64, collation=name)
+    schema_case.execute(
+        text(f"ALTER TABLE child ALTER COLUMN label TYPE varchar(64) COLLATE {declared}")
+    )
+    assert (
+        schema_case.scalar(text(f"SELECT 'A' COLLATE {declared} = 'a' COLLATE {declared}")) is True
+    )
+    assert verifier.schema_differences(schema_case) == []
+    schema_case.execute(
+        text(f"ALTER TABLE child ALTER COLUMN label TYPE varchar(64) COLLATE {changed}")
+    )
+    assert (
+        schema_case.scalar(text(f"SELECT 'A' COLLATE {changed} = 'a' COLLATE {changed}")) is False
+    )
+    assert verifier.schema_differences(schema_case), (
+        "Case-folded collation names hid changed equality"
+    )
+
+
+@pytest.mark.parametrize("name", ["CaseState", "Case  State", 'Case"State'])
+def test_quoted_native_type_default_matches_without_erasing_its_name(schema_case, name):
+    from sqlalchemy.dialects.postgresql import ENUM
+
+    state_type = ENUM("ready", "failed", name=name)
+    state_type.create(schema_case)
+    column = Column("native_state", state_type, server_default="ready")
+    verifier.Base.metadata.tables["child"].append_column(column)
+    ddl = CreateColumn(column).compile(dialect=schema_case.dialect)
+    schema_case.execute(text(f"ALTER TABLE child ADD COLUMN {ddl}"))
+    assert verifier.schema_differences(schema_case) == []
