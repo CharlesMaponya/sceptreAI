@@ -36,9 +36,11 @@ from automl_api.models.workflows import (
 )
 from automl_api.services.kubernetes_training import (
     KubernetesTrainingClient,
+    mount_provider_source_configuration,
     object_store_workload_environment,
 )
 from automl_api.services.upload_policy import inspect_and_scan_stream
+from automl_api.services.uploads import require_upload_byte_digest
 from automl_api.services.workflow_state import (
     StaleFence,
     canonical_request_hash,
@@ -534,6 +536,7 @@ def reconcile_upload_session(db: Session, entry: OutboxEntry) -> DatasetUploadSe
             db.flush()
             return session
         raise RuntimeError("The upload session is not yet eligible for terminal reconciliation.")
+    expected_digest = require_upload_byte_digest(session)
     upload_kind = getattr(session, "upload_kind", "dataset")
     version = None
     if session.dataset_version_id is not None:
@@ -563,11 +566,9 @@ def reconcile_upload_session(db: Session, entry: OutboxEntry) -> DatasetUploadSe
     session_id = session.id
     project_id = session.project_id
     expected_size = session.byte_size
-    expected_digest = getattr(session, "expected_object_digest", None)
     filename = getattr(session, "original_filename", "legacy.csv")
     version_id = session.dataset_version_id
-    if expected_digest:
-        session.status = "verifying"
+    session.status = "verifying"
     lease_seconds = max(60, get_settings().upload_scanner_timeout_seconds + 120)
     lease_started_at = datetime.now(UTC)
     entry.lease_expires_at = lease_started_at + timedelta(seconds=lease_seconds)
@@ -585,7 +586,7 @@ def reconcile_upload_session(db: Session, entry: OutboxEntry) -> DatasetUploadSe
     observed_size = store.size(object_uri)
     inspection = None
     inspection_error: TimeoutError | ValueError | None = None
-    if observed_size == expected_size and expected_digest:
+    if observed_size == expected_size:
         last_heartbeat_at = lease_started_at
 
         def renew_verification_lease(processed_bytes: int) -> None:
@@ -653,15 +654,6 @@ def reconcile_upload_session(db: Session, entry: OutboxEntry) -> DatasetUploadSe
             f"object byte size mismatch: expected {expected_size}, observed {observed_size}",
             version,
         )
-        db.flush()
-        return session
-    if not expected_digest:
-        # Legacy multipart-manifest hashes remain accurately labelled and size-verified;
-        # Phase 2 sessions always carry a client byte-stream SHA-256.
-        session.terminal_reason = None
-        session.lease_owner = None
-        session.lease_expires_at = None
-        session.heartbeat_at = datetime.now(UTC)
         db.flush()
         return session
     if inspection_error is not None:
@@ -944,6 +936,9 @@ def submit_training_ray_job(
     )
     if run is None:
         raise LookupError("The tracked training run no longer exists.")
+    from automl_api.services.provider_source import validate_attempt_source
+
+    validate_attempt_source(db, attempt, run)
     if attempt.status == AttemptStatus.PENDING:
         transition_attempt(attempt, AttemptStatus.CLAIMED, fencing_token=fencing_token)
     name = f"sceptre-run-{str(run.id)[:8]}-g{attempt.generation}"
@@ -1024,6 +1019,9 @@ def submit_dataset_ray_job(
     )
     if version is None:
         raise LookupError("The dataset Ray attempt has no scoped dataset version.")
+    from automl_api.services.provider_source import validate_attempt_source
+
+    validate_attempt_source(db, attempt)
 
     if attempt.status == AttemptStatus.PENDING:
         transition_attempt(attempt, AttemptStatus.CLAIMED, fencing_token=fencing_token)
@@ -1752,6 +1750,9 @@ def _replace_lost_dataset_attempt(
             version.status = DatasetStatus.READY
         return None
 
+    from automl_api.services.provider_source import validate_attempt_source
+
+    validate_attempt_source(db, attempt)
     command = _dataset_profile_command(db, attempt, profile)
     replacement = WorkflowAttempt(
         project_id=attempt.project_id,
@@ -2016,7 +2017,7 @@ def _replace_lost_ray_attempt(
 
 
 def build_ray_job_manifest(run: ModelRun, attempt: WorkflowAttempt, *, name: str) -> dict[str, Any]:
-    from automl_api.training.attempt_admission import TRAINING_CATALOG_PROTOCOL
+    from automl_api.training.attempt_admission import TRAINING_PROTOCOL
 
     settings = get_settings()
     environment = [
@@ -2057,7 +2058,7 @@ def build_ray_job_manifest(run: ModelRun, attempt: WorkflowAttempt, *, name: str
         name=name,
         entrypoint=(
             f"python -m automl_api.training.worker --run-id {run.id} "
-            f"--attempt-protocol {TRAINING_CATALOG_PROTOCOL}"
+            f"--attempt-protocol {TRAINING_PROTOCOL}"
         ),
         environment=environment,
         labels=labels,
@@ -2255,6 +2256,7 @@ def _build_ephemeral_ray_job_manifest(
             ],
             "volumes": deepcopy(volumes),
         }
+        mount_provider_source_configuration(spec)
         if container_name == "ray-head":
             # KubeRay creates a cluster-specific autoscaler identity and RBAC.
             # Workers and submitters keep their unprivileged stage identity.

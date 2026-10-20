@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from automl_api.models.enums import FinalTestStatus
 from automl_api.services import final_test_authority as authority
 from automl_api.services.workflow_state import InvalidTransition, canonical_request_hash
+from automl_api.storage.read_capabilities import validate_native_read_url
 
 Digest = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 
@@ -89,7 +90,7 @@ def mint_read_urls(manifest: FinalDataManifest, expires_at: datetime) -> list[st
             endpoint_url=endpoint,
             config=Config(signature_version="s3v4", retries={"max_attempts": 0}),
         )
-        return [
+        urls = [
             client.generate_presigned_url(
                 "get_object",
                 Params={"Bucket": manifest.bucket, "Key": obj.key, "VersionId": obj.version},
@@ -98,6 +99,8 @@ def mint_read_urls(manifest: FinalDataManifest, expires_at: datetime) -> list[st
             )
             for obj in manifest.objects
         ]
+        _validate_read_urls(manifest, expires_at, urls)
+        return urls
     if manifest.provider == "gcp":
         from google.auth.credentials import Signing
         from google.auth.transport.requests import Request
@@ -109,7 +112,7 @@ def mint_read_urls(manifest: FinalDataManifest, expires_at: datetime) -> list[st
             account = os.environ["QUALIFICATION_GCP_SIGNING_ACCOUNT"]
             client._credentials.refresh(Request())
             signing = {"service_account_email": account, "access_token": client._credentials.token}
-        return [
+        urls = [
             client.bucket(manifest.bucket)
             .blob(obj.key)
             .generate_signed_url(
@@ -121,6 +124,8 @@ def mint_read_urls(manifest: FinalDataManifest, expires_at: datetime) -> list[st
             )
             for obj in manifest.objects
         ]
+        _validate_read_urls(manifest, expires_at, urls)
+        return urls
     from azure.identity import DefaultAzureCredential
     from azure.storage.blob import BlobSasPermissions, BlobServiceClient, generate_blob_sas
 
@@ -131,7 +136,7 @@ def mint_read_urls(manifest: FinalDataManifest, expires_at: datetime) -> list[st
         BlobServiceClient(account_url=account_url, credential=credential) as client,
     ):
         key = client.get_user_delegation_key(now - timedelta(minutes=1), expires_at)
-        return [
+        urls = [
             f"{account_url}/{manifest.bucket}/{quote(obj.key, safe='/')}?"
             + urlencode({"versionid": obj.version})
             + "&"
@@ -148,6 +153,17 @@ def mint_read_urls(manifest: FinalDataManifest, expires_at: datetime) -> list[st
             )
             for obj in manifest.objects
         ]
+
+    _validate_read_urls(manifest, expires_at, urls)
+    return urls
+
+
+def _validate_read_urls(manifest, expires_at, urls):
+    driver = {"aws": "aws_s3", "gcp": "gcs", "azure": "azure_blob"}[manifest.provider]
+    now = datetime.now(UTC)
+    for obj, url in zip(manifest.objects, urls, strict=True):
+        version = str(int(obj.version)) if manifest.provider == "gcp" else obj.version
+        validate_native_read_url(url, driver, expires_at, version, now=now)
 
 
 def issue_final_grant(

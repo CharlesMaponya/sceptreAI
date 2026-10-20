@@ -1,0 +1,72 @@
+{
+  "status": "verified_scoped_evaluator_authority_recovery_boundaries",
+  "phase_complete": false,
+  "verified_at": "2026-10-20T06:42:00.405707+00:00",
+  "tests": {
+    "focused": 42,
+    "connected": 105
+  },
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "production_code_changed_in_scope": false,
+  "postgresql_authority_and_ed25519_positive_controls": true,
+  "validly_signed_wrong_allocation_attempt_and_pipeline_bindings_rejected": true,
+  "altered_or_untrusted_signatures_rejected": true,
+  "ambiguous_missing_or_changed_abort_custody_rejected": true,
+  "exact_immutable_receipt_replay_checked": true,
+  "http_errors_rejected": true,
+  "completed_or_deleted_scope_rejects_failure_finalization": true,
+  "protected_authority_state_preserved_by_negative_response_tests": true,
+  "synthetic_signed_response_mutations_only_not_production_history_rewrites": true,
+  "focused_tests_request_no_final_data_object_grant": true,
+  "connected_worker_regressions_use_existing_mocked_grant_fixtures": true,
+  "canonical_provider_fixture": "aws",
+  "all_provider_native_qualification": false,
+  "scoped_branch_coverage": {
+    "_authority_state": {
+      "covered_branches": 6,
+      "missing_branches": 0
+    },
+    "_seal_failed": {
+      "covered_branches": 8,
+      "missing_branches": 0
+    },
+    "_finish_failure": {
+      "covered_branches": 6,
+      "missing_branches": 0
+    },
+    "_abort_registration": {
+      "covered_branches": 10,
+      "missing_branches": 0
+    }
+  },
+  "tested_input_count": 488,
+  "target_production_source_sha256": {
+    "apps/api/automl_api/services/evaluation_reconciler.py": "a6f1f20d24451bf989047f177b650cde46a500bc669a2c39feaf99fed65de5ad"
+  },
+  "artifact_sha256": {
+    ".unlazy/phase1-evaluator-recovery-boundaries/source-sha256.json": "8ef59481b7da86d089f2223e8f85c649750ee4b5bdb43960cf875421437c5ab6",
+    ".unlazy/phase1-evaluator-recovery-boundaries/focused.xml": "3ca18fbe2852ead6d905c473de8dcd27fcec4939f03b57efa2eb354d9992b889",
+    ".unlazy/phase1-evaluator-recovery-boundaries/focused-state.json": "77ccf1ef29411f8cb7b8bd8b25f6b3aaa01b0c2b832e6f5ca458a2b50f32f68e",
+    ".unlazy/phase1-evaluator-recovery-boundaries/connected.xml": "6d2c7c285519c0017252c72dd2ba7a8585c389972aa027cf5e8fed3dfd077a0e",
+    ".unlazy/phase1-evaluator-recovery-boundaries/connected-state.json": "f1ab8f257b5557c2c718cf7e968d908fdf1285a5d186d17115bda76190288391",
+    ".unlazy/phase1-evaluator-recovery-boundaries/coverage.json": "0c7f9dcc1618e152e0de92915b7d279ecb00d94a51c2e618f88ef03a3561fffc",
+    ".unlazy/phase1-evaluator-recovery-boundaries/run.py": "65dd208650804d998701dfec00209e74d7b15c24d5d0a08b64ab00945cbb0502",
+    ".unlazy/phase1-evaluator-recovery-boundaries/audit.py": "11fd9aee5d3a7bfe0a3a72130324aa07ca60217d5cb8e2903c465d8dd297f245",
+    ".unlazy/phase1-evaluator-recovery-boundaries/lint.log": "ce04ce92b16073000b77c97a42c00b98b96305692d9d5ed4dcfa5a9ca9ea62d6"
+  },
+  "test_source_sha256": {
+    "tests/test_evaluator_recovery_boundaries.py": "9d2e90a391729d66e48d560bfc1531bcc7226122d523b6ebfa6997773c0b3149"
+  },
+  "coverage_original_sha256": "d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9",
+  "whole_phase_verified": 2,
+  "whole_phase_open": 34,
+  "full_backend_suite_or_global_coverage_requalified": false,
+  "native_worker_or_full_workflow_qualified": false,
+  "production_sized_or_prior_binary_migration_qualified": false,
+  "migration_qualification_ceiling_bytes": 45000000000,
+  "shared_preservation_qualified": false,
+  "historical_missing_qa_objects": 7,
+  "abandoned_handoff": "phase1-deletion:G7"
+}

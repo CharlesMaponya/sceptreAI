@@ -88,7 +88,13 @@ class EmbeddedObjectStoreDriver:
             uri=self._canonical_uri(path), byte_size=path.stat().st_size, storage_path=path
         )
 
-    def open_stream(self, uri: str, byte_range: ByteRange | None = None):
+    def open_stream(
+        self, uri: str, byte_range: ByteRange | None = None, *, version: str | None = None
+    ):
+        if version is not None:
+            raise UploadCapabilityUnavailable(
+                "Embedded storage has no immutable provider versions."
+            )
         path = self._path_from_uri(uri)
         if byte_range is None:
             return path.open("rb")

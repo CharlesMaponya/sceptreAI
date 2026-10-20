@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
-from urllib.request import HTTPSHandler, Request, build_opener
+from urllib.request import HTTPSHandler, ProxyHandler, Request, build_opener
 
 import joblib
 import pandas as pd
@@ -200,7 +200,9 @@ class GrantedFinalStore:
         }
         self.opened = set()
         # No authority/control bearer headers or environment credentials in this transport.
-        self.opener = build_opener(_NoRedirect(), HTTPSHandler(context=_tls_context(ca_file)))
+        self.opener = build_opener(
+            ProxyHandler({}), _NoRedirect(), HTTPSHandler(context=_tls_context(ca_file))
+        )
 
     def stat(self, uri):
         obj, _ = self.objects[uri]

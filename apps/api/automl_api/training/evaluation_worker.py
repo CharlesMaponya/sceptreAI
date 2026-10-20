@@ -8,7 +8,7 @@ from pathlib import Path
 from threading import Event, Thread
 from types import SimpleNamespace
 from urllib.parse import urlsplit
-from urllib.request import HTTPSHandler, Request, build_opener
+from urllib.request import HTTPSHandler, ProxyHandler, Request, build_opener
 
 import httpx
 from cryptography.hazmat.primitives import serialization
@@ -43,7 +43,9 @@ class CachedPipeline:
         response.raise_for_status()
         url = response.json()["url"]
         _https(url)
-        opener = build_opener(_NoRedirect(), HTTPSHandler(context=_tls_context(ca_file)))
+        opener = build_opener(
+            ProxyHandler({}), _NoRedirect(), HTTPSHandler(context=_tls_context(ca_file))
+        )
         source = SimpleNamespace(
             stat=self.stat,
             open_stream=lambda _uri: opener.open(Request(url, method="GET"), timeout=60),
@@ -173,7 +175,8 @@ def main():
     )
     public_key = Path(os.environ["EVALUATION_AUTHORITY_PUBLIC_KEY_FILE"]).read_text()
     options = dict(
-        verify=_tls_context(ca), follow_redirects=False, timeout=httpx.Timeout(60, connect=10)
+        verify=_tls_context(ca), follow_redirects=False, trust_env=False,
+        timeout=httpx.Timeout(60, connect=10)
     )
     with httpx.Client(
         base_url=control_url.rstrip("/") + "/",

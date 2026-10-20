@@ -1,0 +1,90 @@
+{
+  "status": "verified_scoped_refit_recorded_capability_retirement",
+  "phase_complete": false,
+  "verified_at": "2026-10-20T06:54:32.702080+00:00",
+  "connected_tests": 194,
+  "overlapping_focused_tests": 34,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "pre_fix_assertion_failures": 3,
+  "replacement_requires_confirmed_predecessor_cleanup": true,
+  "recorded_started_get_and_put_deadlines_preserved_and_awaited": true,
+  "logical_status_cannot_shorten_physical_retirement": true,
+  "job_stopped_before_secret_policy_retirement": true,
+  "terminal_cleanup_and_sweep_use_recorded_retirement_barrier": true,
+  "missing_submission_revokes_recorded_grants_but_keeps_cleanup_pending": true,
+  "unstarted_or_physically_expired_grants_allow_replacement": true,
+  "other_attempt_grants_preserved": true,
+  "critical_branch_coverage": {
+    "plan_scope_refit": {
+      "critical_decision_covered_branches": 2,
+      "critical_decision_missing_branches": 0
+    },
+    "_cleanup": {
+      "critical_decision_covered_branches": 2,
+      "critical_decision_missing_branches": 0
+    }
+  },
+  "lint_checked_paths": [
+    "apps/api/automl_api/services/champion_planning.py",
+    "apps/api/automl_api/services/refit_jobs.py",
+    "apps/api/automl_api/services/attempt_object_grants.py",
+    "apps/api/automl_api/services/provider_import_jobs.py",
+    "tests/test_champion_planning.py",
+    "tests/test_champion_refit_jobs.py",
+    "tests/test_attempt_object_grants.py",
+    "tests/test_champion_refit_recovery.py",
+    "tests/test_refit_retirement.py"
+  ],
+  "format_checked_paths": [
+    "apps/api/automl_api/services/refit_jobs.py",
+    "apps/api/automl_api/services/attempt_object_grants.py",
+    "apps/api/automl_api/services/provider_import_jobs.py",
+    "tests/test_champion_refit_jobs.py",
+    "tests/test_attempt_object_grants.py",
+    "tests/test_champion_refit_recovery.py",
+    "tests/test_refit_retirement.py"
+  ],
+  "existing_planner_and_planner_test_format_preserved": true,
+  "pre_fix_source_sha256": {
+    "apps/api/automl_api/services/champion_planning.py": "b0c355700a7461aa99066d55ab96e5114fe4e170c2378d5dcd34ca7c46653f31",
+    "apps/api/automl_api/services/refit_jobs.py": "4c262e363987c9364c0e9f83e194aea41700543781c3799d3c762cf0cddc8448",
+    "apps/api/automl_api/services/attempt_object_grants.py": "02e0b889d228510cde7ff3fe25e5234eb4b71ad5bfde1fe30209ec3020c16778",
+    "apps/api/automl_api/services/provider_import_jobs.py": "469a70314d1061891e2cdddf45389296ad18cc24bd325d1464dde6e9504d67c9"
+  },
+  "changed_source_sha256": {
+    "apps/api/automl_api/services/champion_planning.py": "301a5d21a6d3f13e0ba0cb5fe0e4166fa8ddf6ee2e4eef264d036aa553ca0e24",
+    "apps/api/automl_api/services/refit_jobs.py": "31125bc7bf7b02e30477c2a8539601c010334a3b083cf8e9ebe393ab097e89cc",
+    "apps/api/automl_api/services/attempt_object_grants.py": "afe0a9464c55b4321dc4f5f209885d1cb871e61847999f566b29182c4b5c1986",
+    "apps/api/automl_api/services/provider_import_jobs.py": "749d06ba8a7fd581dfb2901b646353b14501e3f912f22adad202dbaf792fbc09",
+    "tests/test_champion_planning.py": "cbf96cf369f7d98fa28f16431dab03e46be54a9fddbe313ab7ee6fa04bfe10ac",
+    "tests/test_champion_refit_jobs.py": "179e274642160fe21394edde91fef951f1dd671e595f4e9d8b839f1d89f7a7ad",
+    "tests/test_attempt_object_grants.py": "2360766719c92711535f830dfc886b181ec57a29ad1a22297df1763332d2e33b",
+    "tests/test_champion_refit_recovery.py": "e740baf5c85f1e336615c1b38fd95df3a885d05acfbd643aa257afd31140af55",
+    "tests/test_refit_retirement.py": "b5952a2d41e7034ad4145f46e19d7818100456f0906afa042c2967a56cfaf83d"
+  },
+  "tested_input_count": 489,
+  "artifact_sha256": {
+    ".unlazy/phase1-refit-retirement/source-sha256.json": "f5190e3ab67d9dc78db1c160b18c9f84c6c5b4c45a889e8cadeec29355142fd8",
+    ".unlazy/phase1-refit-retirement/connected.xml": "01179a7c99672653781ca02df5d96b7a91aae442f9c18bf742463aadaa87cd97",
+    ".unlazy/phase1-refit-retirement/connected-state.json": "1e6970ec493feea64710d30a144fc59a3c91324cdee4898c5d28b4ab413be337",
+    ".unlazy/phase1-refit-retirement/coverage.json": "5ae723f0eba68805adc748cd9642e397091d4a7ea2d8508d0a3ebac0f69b5a11",
+    ".unlazy/phase1-refit-retirement/reproduction.xml": "843eac9a54360619e0fe896c1cc75747516e72d1b7c3807c63b68987b0612261",
+    ".unlazy/phase1-refit-retirement/run.py": "2eecec5069e2f86df3ca0e7a0d797c2e91566584f85ab965eb2917ac6d23e856",
+    ".unlazy/phase1-refit-retirement/audit.py": "8b4be97061b80603700553ec70a5a1ebfc85df5f6d537b57a8c9b696239b878f",
+    ".unlazy/phase1-refit-retirement/lint.log": "0be7adce665690956090205e08186f7efd9939d7fe606e4a0d117c570ab71599"
+  },
+  "coverage_original_sha256": "d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9",
+  "whole_phase_verified": 2,
+  "whole_phase_open": 34,
+  "full_backend_suite_or_global_coverage_requalified": false,
+  "native_pod_or_provider_enforced_expiry_qualified": false,
+  "unjournaled_legacy_capabilities_retired": false,
+  "all_stage_replacement_retirement_qualified": false,
+  "production_sized_or_prior_binary_migration_qualified": false,
+  "migration_qualification_ceiling_bytes": 45000000000,
+  "shared_preservation_qualified": false,
+  "historical_missing_qa_objects": 7,
+  "abandoned_handoff": "phase1-deletion:G7"
+}

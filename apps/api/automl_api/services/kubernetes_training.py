@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import logging
 import math
+import os
 import uuid
 from copy import deepcopy
 from dataclasses import dataclass, replace
@@ -34,6 +35,56 @@ _REPORTED_CONTAINER_WAITING_FAILURE_REASONS = {
     "CreateContainerError",
     "RunContainerError",
 }
+
+
+def mount_provider_source_configuration(pod_spec: dict[str, Any]) -> None:
+    """Share the protected public source configuration across all workload pods."""
+    container = pod_spec["containers"][0]
+    policies = os.getenv("PROVIDER_IMPORT_POLICIES_CONFIG_MAP", "")
+    if policies:
+        public_key = os.getenv("EVALUATION_AUTHORITY_PUBLIC_KEY_SECRET", "")
+        if not public_key:
+            raise ValueError("Provider source policies require the authority public key Secret")
+        container["env"].extend(
+            [
+                {
+                    "name": "PROVIDER_IMPORT_POLICIES_FILE",
+                    "value": "/provider-import/policies.json",
+                },
+                {
+                    "name": "EVALUATION_AUTHORITY_PUBLIC_KEY_FILE",
+                    "value": "/evaluation-authority/public-key.pem",
+                },
+            ]
+        )
+        container["volumeMounts"].extend(
+            [
+                {"name": "provider-import", "mountPath": "/provider-import", "readOnly": True},
+                {
+                    "name": "evaluation-authority",
+                    "mountPath": "/evaluation-authority",
+                    "readOnly": True,
+                },
+            ]
+        )
+        pod_spec["volumes"].extend(
+            [
+                {
+                    "name": "provider-import",
+                    "configMap": {
+                        "name": policies,
+                        "items": [{"key": "policies.json", "path": "policies.json"}],
+                    },
+                },
+                {
+                    "name": "evaluation-authority",
+                    "secret": {
+                        "secretName": public_key,
+                        "items": [{"key": "public-key.pem", "path": "public-key.pem"}],
+                    },
+                },
+            ]
+        )
 
 
 def object_store_workload_environment(settings: Settings) -> list[dict[str, Any]]:
@@ -645,6 +696,7 @@ class KubernetesTrainingClient:
                 },
             ],
         }
+        mount_provider_source_configuration(pod_spec)
         if settings.dataset_cache_pvc_name:
             pod_spec["volumes"][0] = {
                 "name": "dataset-cache",

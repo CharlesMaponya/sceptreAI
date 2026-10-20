@@ -97,6 +97,7 @@ class DatasetVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ),
         Index("ix_dataset_versions_project_dataset", "project_id", "dataset_id"),
         Index("ix_dataset_versions_content_hash", "content_hash"),
+        CheckConstraint("source_kind IN ('raw', 'provider_distribution')", name="source_kind"),
     )
 
     project_id: Mapped[uuid.UUID] = mapped_column(
@@ -124,6 +125,9 @@ class DatasetVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         server_default=ObjectStoreType.S3_COMPATIBLE.value,
     )
     object_uri: Mapped[str] = mapped_column(String(1024), nullable=False)
+    source_kind: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="raw", server_default="raw"
+    )
     original_filename: Mapped[str | None] = mapped_column(String(512))
     content_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     content_hash_algorithm: Mapped[str] = mapped_column(
@@ -197,20 +201,115 @@ class DatasetVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
 
+class DatasetProviderImport(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Protected provenance for the signed non-canonical no-raw import exception."""
+
+    __tablename__ = "dataset_provider_imports"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["project_id", "dataset_version_id"],
+            ["dataset_versions.project_id", "dataset_versions.id"],
+            ondelete="CASCADE",
+            name="fk_provider_import_dataset_project",
+        ),
+        ForeignKeyConstraint(
+            ["project_id", "command_id"],
+            ["workflow_commands.project_id", "workflow_commands.id"],
+            ondelete="RESTRICT",
+            name="fk_provider_import_command_project",
+        ),
+        ForeignKeyConstraint(
+            ["project_id", "local_split_revision_id"],
+            ["dataset_split_revisions.project_id", "dataset_split_revisions.id"],
+            ondelete="RESTRICT",
+            name="fk_provider_import_split_project",
+        ),
+        ForeignKeyConstraint(
+            ["project_id", "prepared_artifact_id"],
+            ["prepared_artifacts.project_id", "prepared_artifacts.id"],
+            ondelete="RESTRICT",
+            name="fk_provider_import_artifact_project",
+        ),
+        UniqueConstraint("dataset_version_id", name="uq_provider_import_dataset_version"),
+        UniqueConstraint(
+            "allocation_id", "provider", name="uq_provider_import_allocation_provider"
+        ),
+        CheckConstraint(
+            "provider IN ('aws', 'gcp', 'azure') AND canonical_provider IN "
+            "('aws', 'gcp', 'azure') AND provider::text <> canonical_provider::text",
+            name="provider",
+        ),
+        CheckConstraint("mode = 'validation_only'", name="mode"),
+        CheckConstraint("status IN ('pending', 'verified', 'failed')", name="status"),
+        CheckConstraint(
+            "(status = 'verified' AND local_split_revision_id IS NOT NULL "
+            "AND prepared_artifact_id IS NOT NULL) OR "
+            "(status::text <> 'verified'::text AND local_split_revision_id IS NULL "
+            "AND prepared_artifact_id IS NULL)",
+            name="verified_lineage",
+        ),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    dataset_version_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    command_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    local_split_revision_id: Mapped[uuid.UUID | None] = mapped_column()
+    prepared_artifact_id: Mapped[uuid.UUID | None] = mapped_column()
+    allocation_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    authority_scope_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    project_reference: Mapped[str] = mapped_column(String(255), nullable=False)
+    fixture_revision: Mapped[str] = mapped_column(String(128), nullable=False)
+    split_revision: Mapped[str] = mapped_column(String(128), nullable=False)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    canonical_provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    mode: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="validation_only", server_default="validation_only"
+    )
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="pending", server_default="pending"
+    )
+    manifest_digest: Mapped[str] = mapped_column(String(128), nullable=False)
+    authority_key_digest: Mapped[str] = mapped_column(String(128), nullable=False)
+    distribution_receipt: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    verification: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+
+
 class DatasetUploadSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """Server-owned metadata for a browser-to-object-store multipart upload."""
 
     __tablename__ = "dataset_upload_sessions"
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["project_id", "dataset_id"],
+            ["datasets.project_id", "datasets.id"],
+            name="fk_upload_session_dataset_project",
+        ),
+        ForeignKeyConstraint(
+            ["project_id", "dataset_version_id"],
+            ["dataset_versions.project_id", "dataset_versions.id"],
+            name="fk_upload_session_version_project",
+        ),
+        Index(
+            "ix_upload_dataset_project",
+            "dataset_id",
+            "project_id",
+            postgresql_where=text("dataset_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_upload_version_project",
+            "dataset_version_id",
+            "project_id",
+            postgresql_where=text("dataset_version_id IS NOT NULL"),
+        ),
         Index("ix_dataset_upload_sessions_owner_status", "created_by_id", "status"),
         Index("ix_dataset_upload_sessions_expires_status", "expires_at", "status"),
         Index("ix_dataset_upload_sessions_project_created", "project_id", "created_at"),
-        Index(
-            "ix_upload_sessions_reconcile", "status", "last_progress_at", "expires_at"
-        ),
-        Index(
-            "ix_upload_sessions_project_storage", "project_id", "status", "byte_size"
-        ),
+        Index("ix_upload_sessions_reconcile", "status", "last_progress_at", "expires_at"),
+        Index("ix_upload_sessions_project_storage", "project_id", "status", "byte_size"),
         CheckConstraint(
             "confirmed_bytes >= 0 AND confirmed_bytes <= byte_size",
             name="upload_confirmed_byte_bounds",
@@ -315,9 +414,7 @@ class DatasetUploadSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     lease_owner: Mapped[str | None] = mapped_column(String(255))
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    retry_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     retry_budget: Mapped[int] = mapped_column(
         Integer, nullable=False, default=5, server_default="5"
     )

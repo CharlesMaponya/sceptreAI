@@ -26,6 +26,7 @@ from automl_api.models.enums import (
 )
 from automl_api.models.runs import Metric, ModelRun, RunArtifact
 from automl_api.models.workflows import WorkflowAttempt
+from automl_api.services.dataset_digests import require_verified_digest
 from automl_api.services.workflow_state import (
     StaleFence,
     cas_register_terminal_artifact,
@@ -75,6 +76,7 @@ def execute_analysis_run(run_id: uuid.UUID) -> dict[str, Any]:
             raise ValueError("Analysis dataset version was not found.")
         if run.status not in {RunStatus.QUEUED, RunStatus.PRECHECK_RUNNING, RunStatus.RUNNING}:
             raise StaleFence("The analysis run no longer admits computation.")
+        require_verified_digest(version)
         run.status = RunStatus.RUNNING
         run.started_at = run.started_at or datetime.now(UTC)
         db.commit()
@@ -333,6 +335,7 @@ def _execute_drift(
     reference_version_id = run.params.get("reference_dataset_version_id")
     if not reference_version_id:
         raise ValueError("A reference dataset version is required for drift analysis.")
+    require_verified_digest(current_version)
     with get_session_factory()() as db:
         reference_version = db.get(
             DatasetVersion,
@@ -340,6 +343,7 @@ def _execute_drift(
         )
         if reference_version is None or reference_version.project_id != run.project_id:
             raise ValueError("The reference dataset version was not found.")
+        require_verified_digest(reference_version)
     max_rows = max(100, min(100_000, int(run.params.get("max_rows", 10_000))))
     reference = sample_source(
         _analysis_training_uri(run), "train.parquet", max_rows=max_rows, seed=42

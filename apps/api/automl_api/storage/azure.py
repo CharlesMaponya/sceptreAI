@@ -23,7 +23,34 @@ from automl_api.storage.contracts import (
     UploadExpired,
     UploadInstruction,
     UploadProgress,
+    immutable_object_version,
 )
+
+
+class _AzureReader(io.RawIOBase):
+    def __init__(self, downloader):
+        super().__init__()
+        self.downloader = downloader
+
+    def readable(self):
+        return True
+
+    def read(self, size=-1):
+        if self.closed:
+            raise ValueError("I/O operation on closed stream.")
+        return self.downloader.read(-1 if size is None else size)
+
+    def readinto(self, buffer):
+        view = memoryview(buffer).cast("B")
+        if view.readonly:
+            raise TypeError("readinto requires a writable buffer")
+        value = self.read(len(view))
+        view[: len(value)] = value
+        return len(value)
+
+    def close(self):
+        self.downloader = None
+        super().close()
 
 
 class AzureBlobObjectStoreDriver:
@@ -208,15 +235,23 @@ class AzureBlobObjectStoreDriver:
             },
         )
 
-    def open_stream(self, uri: str, byte_range: ByteRange | None = None):
-        blob = self.container.get_blob_client(self._key_from_uri(uri))
+    def open_stream(
+        self, uri: str, byte_range: ByteRange | None = None, *, version: str | None = None
+    ):
+        blob_kwargs = (
+            {"version_id": immutable_object_version(version)} if version is not None else {}
+        )
+        blob = self.container.get_blob_client(self._key_from_uri(uri), **blob_kwargs)
         kwargs: dict[str, int] = {}
         if byte_range:
             kwargs = {
                 "offset": byte_range.start,
                 "length": byte_range.end_inclusive - byte_range.start + 1,
             }
-        return io.BytesIO(blob.download_blob(**kwargs).readall())
+        downloader = blob.download_blob(**kwargs)
+        if version is not None and getattr(downloader.properties, "version_id", None) != version:
+            raise UploadContractError("Object store returned a different or missing version.")
+        return _AzureReader(downloader)
 
     def put_stream(self, uri: str, source) -> ObjectMetadata:
         self.container.get_blob_client(self._key_from_uri(uri)).upload_blob(source, overwrite=True)

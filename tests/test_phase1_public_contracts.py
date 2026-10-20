@@ -19,10 +19,12 @@ from automl_api.schemas.contracts import (
     ExperimentSpecCreate,
     FeatureContractCreate,
     RevisionRead,
+    SearchObjectiveCreate,
     SearchSpaceCreate,
 )
 from automl_api.services import contracts
 from fastapi import HTTPException
+from feature_contract_fixtures import feature_specification, search_specification
 from starlette.requests import Request
 from starlette.responses import StreamingResponse
 
@@ -64,6 +66,7 @@ def test_capabilities_are_stable_and_do_not_expose_infrastructure(monkeypatch) -
 
 def test_revision_create_is_canonical_and_checks_optimistic_version(monkeypatch) -> None:
     monkeypatch.setattr(contracts, "require_project_role", lambda *_args: None)
+    monkeypatch.setattr(contracts, "validate_contract", MagicMock())
     db = MagicMock()
     db.scalar.return_value = None
     project_id = uuid.uuid4()
@@ -71,7 +74,7 @@ def test_revision_create_is_canonical_and_checks_optimistic_version(monkeypatch)
         name="contract",
         task_type=TaskType.REGRESSION,
         target_column="target",
-        specification={"columns": ["x"]},
+        specification=feature_specification(),
         expected_revision=0,
     )
     revision = contracts.create_revision(
@@ -94,11 +97,15 @@ def test_metric_revision_fields_are_typed(monkeypatch, kind: str) -> None:
     monkeypatch.setattr(contracts, "require_project_role", lambda *_args: None)
     db = MagicMock()
     db.scalar.return_value = 0
-    payload = SearchSpaceCreate(
+    monkeypatch.setattr(contracts, "validate_search", MagicMock())
+    schema = SearchSpaceCreate if kind == "feature-search-space" else SearchObjectiveCreate
+    payload = schema(
         name="objective",
         metric_name="rmse",
         metric_direction="minimize",
-        specification={"fold_aggregation": "mean"},
+        specification=search_specification()
+        if kind == "feature-search-space"
+        else {"fold_aggregation": "mean"},
     )
     revision = contracts.create_revision(db, SimpleNamespace(), uuid.uuid4(), kind, payload)
     assert revision.metric_name == "rmse"
@@ -139,14 +146,17 @@ def test_experiment_spec_requires_every_bound_revision(monkeypatch) -> None:
     db.scalar.return_value = None
     with pytest.raises(HTTPException) as error:
         contracts.create_experiment_spec(db, SimpleNamespace(), uuid.uuid4(), payload)
-    assert error.value.detail["code"] == "experiment_spec_mismatch"
+    assert error.value.detail["code"] == "preparation_required"
 
-    bindings = [uuid.uuid4()] * 5 + [0]
-    db.scalar.side_effect = bindings
+    identity = payload.model_dump(
+        mode="json", exclude={"name", "specification", "expected_revision"}
+    )
+    monkeypatch.setattr(contracts, "build_identity", lambda *_args: identity)
+    db.scalar.return_value = 0
     spec = contracts.create_experiment_spec(db, SimpleNamespace(), uuid.uuid4(), payload)
     assert spec.task_type == "regression"
     assert spec.primary_metric == "rmse"
-    db.scalar.side_effect = [*([uuid.uuid4()] * 5), 2]
+    db.scalar.return_value = 2
     conflicting = payload.model_copy(update={"expected_revision": 1})
     with pytest.raises(HTTPException) as error:
         contracts.create_experiment_spec(db, SimpleNamespace(), uuid.uuid4(), conflicting)
@@ -156,6 +166,13 @@ def test_experiment_spec_requires_every_bound_revision(monkeypatch) -> None:
 def test_scope_validation_and_cancel_are_explicit(monkeypatch) -> None:
     monkeypatch.setattr(contracts, "require_project_role", lambda *_args: None)
     db = MagicMock()
+    from unittest.mock import DEFAULT
+
+    from automl_api.models.datasets import DatasetProviderImport
+
+    db.scalar.side_effect = lambda statement: (
+        None if statement.column_descriptions[0]["entity"] is DatasetProviderImport else DEFAULT
+    )
     base = {
         "scope_key": "qualification",
         "split_revision_id": uuid.uuid4(),
@@ -284,7 +301,7 @@ def test_contract_route_wrappers_cover_public_revision_and_scope_mutations(monke
         name="contract",
         task_type=TaskType.REGRESSION,
         target_column="target",
-        specification={},
+        specification=feature_specification(),
     )
     assert (
         routes.post_feature_contract(
@@ -387,6 +404,7 @@ def test_scope_membership_failure_matrix_and_sealing(monkeypatch) -> None:
         status=ScopeStatus.OPEN,
         membership_deadline_at=datetime.now(UTC) + timedelta(minutes=5),
         expected_members=2,
+        mode="validation_only",
         cas_version=0,
     )
     existing = SimpleNamespace(id=uuid.uuid4())

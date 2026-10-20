@@ -12,7 +12,7 @@ from automl_api.services.attempt_identity import attempt_audience
 from automl_api.services.workflow_state import StaleFence
 
 ANALYSIS_PROTOCOL = "analysis-v1"
-TRAINING_CATALOG_PROTOCOL = "training-catalog-v1"
+TRAINING_PROTOCOL = "training-parameters-v1"
 TOKEN_PATH = "/var/run/sceptre/identity/token"
 
 

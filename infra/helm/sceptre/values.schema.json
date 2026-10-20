@@ -1444,6 +1444,55 @@
           "pattern": "^$|^https://[^?#@]+$"
         }
       }
+    },
+    "providerImports": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "policiesConfigMap": {
+          "type": "string"
+        },
+        "image": {
+          "type": "string",
+          "pattern": "^$|.+@sha256:[0-9a-f]{64}$"
+        },
+        "caSecret": {
+          "type": "string"
+        },
+        "cpuCores": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "memoryMiB": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "egressRules": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "nodeSelector": {
+          "type": "object",
+          "maxProperties": 32,
+          "propertyNames": {
+            "maxLength": 317,
+            "pattern": "^(?:[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\\.[a-z0-9](?:[-a-z0-9]*[a-z0-9])?)*/)?[A-Za-z0-9](?:[-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$",
+            "not": {
+              "pattern": "^.{254,}/"
+            }
+          },
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 63,
+            "pattern": "^(?:[A-Za-z0-9](?:[-A-Za-z0-9_.]*[A-Za-z0-9])?)?$"
+          }
+        }
+      },
+      "required": [
+        "nodeSelector"
+      ]
     }
   },
   "additionalProperties": false

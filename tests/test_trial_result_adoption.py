@@ -12,6 +12,7 @@ from automl_api.training import trial_runtime
 from sklearn.linear_model import Ridge
 from sklearn.model_selection import cross_val_score
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from test_phase1_postgres_contracts import committed_tenant, phase1_engine  # noqa: F401
 from test_training_publication_postgres import publication  # noqa: F401
@@ -136,7 +137,6 @@ def test_reconciler_authorizes_completed_receipts_and_replacement_replays(comple
         "source_status",
         "missing_parent",
         "parent_status",
-        "parent_generation",
         "parent_workload",
     ],
 )
@@ -195,8 +195,6 @@ def test_invalid_predecessor_adoption_never_computes(completed, monkeypatch, inv
             parent.predecessor_attempt_id = None
         elif invalid == "parent_status":
             db.get(WorkflowAttempt, scope[2]).status = AttemptStatus.FAILED
-        elif invalid == "parent_generation":
-            db.get(WorkflowAttempt, scope[2]).generation = 9
         else:
             parent.workload_identity = "another-worker"
     monkeypatch.setenv("AUTOML_ATTEMPT_ID", str(parent_id))
@@ -206,6 +204,22 @@ def test_invalid_predecessor_adoption_never_computes(completed, monkeypatch, inv
         trial_runtime.evaluate_trial(run, "Ridge", "completed-0", {"alpha": 1}, compute)
     compute.assert_not_called()
     with Session(engine) as db:
+        assert not list(
+            db.scalars(select(WorkflowAttempt).where(WorkflowAttempt.run_attempt_id == parent_id))
+        )
+
+
+def test_predecessor_generation_cannot_change_after_result_replacement(completed):
+    runtime_scope, _ = completed
+    engine, _, scope = runtime_scope
+    parent_id, _ = replace(runtime_scope)
+    with pytest.raises(IntegrityError, match="predecessor lineage"):
+        with Session(engine) as db, db.begin():
+            db.get(WorkflowAttempt, scope[2]).generation = 9
+    with Session(engine) as db:
+        previous = db.get(WorkflowAttempt, scope[2])
+        current = db.get(WorkflowAttempt, parent_id)
+        assert current.generation == previous.generation + 1 == 2
         assert not list(
             db.scalars(select(WorkflowAttempt).where(WorkflowAttempt.run_attempt_id == parent_id))
         )

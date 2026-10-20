@@ -1,0 +1,122 @@
+{
+  "status": "verified",
+  "scope_complete": true,
+  "phase_complete": false,
+  "scope": "admission_sql_network_boundary_only",
+  "verified_at": "2026-10-18T08:00:19.373120+00:00",
+  "requirements": [
+    "P1-W03",
+    "P1-W08",
+    "P1-W18"
+  ],
+  "met": [
+    "G1",
+    "G2",
+    "G3"
+  ],
+  "unmet": [],
+  "verification": {
+    "focused": {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "races": {
+      "tests": 45,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "regressions": {
+      "tests": 358,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "native-and-expiry": {
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "native-consumers": {
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "test_executions": 412,
+  "distinct_test_ids": 410,
+  "native_cases": 7,
+  "source_sha256": {
+    "apps/api/automl_api/services/attempt_identity.py": "455810bdfcbec256ffea6f8e263d509e0e4e45201863e5c2a26ba44a253ba058",
+    "apps/api/automl_api/api/routes/attempt_control.py": "187e4b70fe424a378325cd9a7fde818557266e20e32da4cdaf251a7979e9f9fb",
+    "apps/api/automl_api/services/provider_source.py": "416350cbb56fac76c9891100b4f6d39fd4d35297b3152fc67a1f242563edd02e",
+    "tests/test_attempt_identity.py": "8669e869b6b8f326e19bb036dea22ae7993a48db05cf5a8625aa9d33e44387b0",
+    "tests/test_preparation_admission.py": "ac92181e92c7dc39a926002d0418f0da21d38ca5a352a542fa8770b5a36c367b",
+    "tests/test_attempt_admission_io.py": "4528a6cec90c47b63e9c96c5bb3326556da1bc48b93c394e4ca82eee9f168dae",
+    ".unlazy/phase1-admission-io/check.py": "ae3e0329dfd79ae9aaa1fa37ae5d908f174742bb3f3e2a6ae65a5034c07a8e0a",
+    ".unlazy/phase1-attempt-identity/native_test.py": "6ae10469bff36ff34dbb87858ebed02c5d76ac659bf1525e5c03f0e86b307cff",
+    ".unlazy/phase1-admission-runtime/native_test.py": "af0d2a89499f55e45b02fe1823c79e18f2ce1c0bf424ea0214d3328147738a7a",
+    ".unlazy/phase1-analysis-admission/native_test.py": "d9d184476ff570f49348ab88d2dbafaed8a50abff355683e89dd1ee6b46f8de5",
+    ".unlazy/phase1-preparation-admission/native_test.py": "a2578f6dc6de55e31603c5c59538f2f42f5c42e602b05258f87ffc76834be9a5",
+    ".unlazy/phase1-admission-io/native_test.py": "eb7fdc64bace9b0608d3ca2cc2f61703f39f0d1af3493de27b481c2884a9da74",
+    "tests/test_analysis_admission.py": "b3543e9335e953b2bc1be3ad6f76e8710a75c2e0b9048a6a7b78ba797a8396ed",
+    ".unlazy/phase1-admission-io/native_analysis_test.py": "543c497bdfd09778257d5c6f866288f1a4ac57671324515b79f03a0be26752e4",
+    ".unlazy/phase1-admission-io/native_runtime_test.py": "88852c7a15951d89821834387ff1c1d8df4326d652a447c1a40ef5c0c045d6b6",
+    ".unlazy/phase1-admission-io/native_preparation_test.py": "a04b177b5ee3c95d50a6da5d478ffcc12678d6eca325194946375e2d8b9c9c59"
+  },
+  "artifact_sha256": {
+    ".unlazy/phase1-admission-io/GATES.md": "1518c7df1d66d654b08d9accbd1f2e6e319f489b88d8c3712206414fcf08f84f",
+    ".unlazy/phase1-admission-io/gates.log": "6e01fd97e09ede50e129b8e7f5bdaf4d29ca2076cee6c6890ad7e10035740713",
+    ".unlazy/phase1-admission-io/gates-final.log": "fc77c97d2b8c72743e080d7164787926054a6863e3f4f3af4e3982bc90501e35",
+    ".unlazy/phase1-admission-io/gates-reverify.log": "ab7ebb424f2731cd1f9d1e5584f84dd25d1c397feddb3f8f3aa9f73faac37a55",
+    ".unlazy/phase1-admission-io/source-sha256.json": "0c221ef67ef5b94a8384443a7f8aa95e4eced7f94cc037d58051e9a787900839",
+    ".unlazy/phase1-admission-io/native-report.json": "6adc03fae4c284f896368d1cf2cc2105ba2527bc9431ac160820522792e5f156",
+    ".unlazy/phase1-admission-io/native-runtime.json": "b5a4b5ab385e52a1285687ef21658b3ae3557ef05e6aed99b10325f0ab6ad38e",
+    ".unlazy/phase1-admission-io/native-analysis-validation.json": "957c2866aeb959a856e559bb1aff827c0552fd7263ab94dbbc618eceb5526beb",
+    ".unlazy/phase1-admission-io/native-analysis-explainability.json": "a139cc7398bee157a672b03ed930d4dd04842d8f64b8c64d08885907d3ce547b",
+    ".unlazy/phase1-admission-io/native-analysis-drift.json": "ab0ffdd6014e870141dc43890b7dc50fbdb5c019505aafba4b0682e5c08e5d70",
+    ".unlazy/phase1-admission-io/native-preparation-splitter.json": "b44f7a42fb25b127f926d779106a883a75ac576186e06d208c1b156846f61dd1",
+    ".unlazy/phase1-admission-io/native-preparation-preparation.json": "88621569d56a6215e42657953343cd0f6934ffc7b02d535d0a1eae20060483b9",
+    ".unlazy/phase1-admission-io/native-consumers-before.json": "d5c4afbd5b864dad0af70cc9f2d774c7267468fb160364c3f97fe8612e3b0614",
+    ".unlazy/phase1-admission-io/native-consumers-after.json": "d5c4afbd5b864dad0af70cc9f2d774c7267468fb160364c3f97fe8612e3b0614",
+    ".unlazy/phase1-admission-io/native-cleanup.json": "7bf968f7fd0b73c4dcdf0a0e844513002b05cfd7cbb09917a62ccc265d80c4b5",
+    ".unlazy/phase1-admission-io/lint.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    ".unlazy/phase1-admission-io/focused.xml": "e84e009ed7c4121d8088f5d6e9ea1d7c3820ee77f4cf1a72e997348034d05939",
+    ".unlazy/phase1-admission-io/focused.log": "8890217b3378c2ad78d4ba21a38c32abca1dec112c9edf30c379118ebd1006a9",
+    ".unlazy/phase1-admission-io/races.xml": "e8973c03becf756be74b09bd4f072703b33ba2e7900eb786b76943cc87258d80",
+    ".unlazy/phase1-admission-io/races.log": "a7c225832b62e6193045d3393bd84f638767c3e822decd9619b96ddb1d674381",
+    ".unlazy/phase1-admission-io/regressions.xml": "8f4c9c3fad28ebf339a3ef20ef20b6a5cf1c5aa71d59c2565b8c27b2850fd8f9",
+    ".unlazy/phase1-admission-io/regressions.log": "8329a09f93bf2db8a280168c8522e930cb0da2572a5023bef1ac43e8c1fe7530",
+    ".unlazy/phase1-admission-io/native-and-expiry.xml": "0ee8ced4f0f69e830f1b691079ceb9fd5c6a988f4752efd369b25c8ceaf498e7",
+    ".unlazy/phase1-admission-io/native-and-expiry.log": "650396c056d2a9707a1ba980dd9eebbe6ba5a4adf5fab3d7bc52f2f9b233471f",
+    ".unlazy/phase1-admission-io/native-consumers.xml": "27e2896791a169f39c642eca3227059a2ca3f2e9057c8ad4f4f849a28b6ba23c",
+    ".unlazy/phase1-admission-io/native-consumers.log": "959e56e8206305441d6d68dcc5f88caa077d8fde55a1217fc5bc48c2830a7e05"
+  },
+  "coverage_unchanged": true,
+  "owned_namespaces_absent": 7,
+  "preexisting_qa_identities_unchanged": true,
+  "schema_model_migration_inputs_unchanged": 24,
+  "whole_phase1": {
+    "requirements": 36,
+    "verified": 1,
+    "open": 35
+  },
+  "changes": [
+    "Admission owns short SQL phases around TokenReview/Pod/Ray-controller IO; frozen source/workload identity is compared after fresh project/attempt/parent/version checks before identity evidence commits.",
+    "Current project/run deletion intent, source/project archive, expiry after SQL waits and changed fences/identity/namespace/controller/source deny admission. Token bytes are never persisted.",
+    "Actual concurrent same-token/rotation and committed lost-acknowledgement tests preserve unique append-only evidence. HTTP consumers and maintained native harnesses use the transaction-owning factory interface.",
+    "Analysis conformance fixtures now persist actual local source bytes and their verified SHA-256 metadata instead of relying on the unrelated unverified publication fixture."
+  ],
+  "qualification_limits": [
+    "This is an admission prerequisite only, not the AttemptCredentialBroker or absent raw/final storage capabilities. Provider-import G5/G6 and the full W03/W08/W18 requirements remain open.",
+    "The seven native cases use real K3d TokenReview/Pod APIs and manually requested Pod-bound tokens for owned unscheduled Pods; current application code runs locally through ASGI. No workload container/image, live TLS/egress, automatic kubelet rotation or cloud IAM qualification is claimed.",
+    "Native training covers startup/heartbeat/manual token replacement. Analysis computation is stubbed while publication/terminal CAS is real; dataset cases exercise admission/expiry barriers, not parsing or model accuracy. Identity-only fixtures carry synthetic source metadata, not native storage byte proof.",
+    "No model/migration changes or QA rollout occurred. Dedicated test database is0013; QA remains0011/old images. Earlier import evidence is bound to its recorded source snapshot; this change does not requalify the whole deployment.",
+    "The45GB database target plus cluster reserve/overhead does not fit current host capacity, largest-table row targets remain unspecified, and actual previous-release binaries remain unqualified.",
+    "Seven historical QA objects remain missing and original preservationG7 remains abandoned. No replacement historical outputs/signatures, shared Pod/PVC/Secret/object changes, commits or pushes occurred."
+  ]
+}

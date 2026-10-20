@@ -367,12 +367,22 @@ championRefit:
   memoryMiB: 2048
   egressRules: []
 
+# Independently approved public import bindings, copied to the training namespace.
+providerImports:
+  policiesConfigMap: "" # policies.json; uses championEvaluation.authorityPublicKeySecret
+  image: "" # Defaults to the CPU image; managed verification requires a digest.
+  caSecret: "" # Optional public ca.crt for the HTTPS control endpoint.
+  cpuCores: 1
+  memoryMiB: 2048
+  nodeSelector: {} # Approved verifier pool; no fallback to other nodes when labels do not match.
+  egressRules: [] # Explicit TLS control/storage peers; no broad IP ranges.
+
 # Dedicated evaluator Jobs; allocator credentials stay in the reconciler.
 championEvaluation:
   enabled: false
   controlBaseUrl: ""
   authorityUrl: ""
-  allocatorSecret: "" # tokens.json: project_reference -> allocator token
+  allocatorSecret: "" # tokens.json: local project UUID -> {project_reference, token}
   authorityPublicKeySecret: "" # public-key.pem
   image: "" # Defaults to the training CPU image; must be digest-pinned.
   caSecret: "" # Optional ca.crt

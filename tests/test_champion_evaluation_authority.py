@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
-from automl_api.models.enums import AttemptStatus
+from automl_api.models.enums import AttemptStatus, ScopeStatus
 from automl_api.models.qualification import FinalTestAllocation
 from automl_api.models.workflows import WorkflowAttempt, WorkflowEvent
 from automl_api.qualification_control import create_app
@@ -45,18 +45,6 @@ def handoff_case(policy_case, authority_api):
     db, store, scope, policy = policy_case
     _, _, kwargs = authority_api
     scope.scope_deadline_at = datetime.now(UTC) + timedelta(seconds=90)
-    refit = plan_scope_refit(db, scope.id, store)
-    event = db.scalar(
-        select(WorkflowEvent).where(
-            WorkflowEvent.attempt_id == refit.id, WorkflowEvent.event_key == "refit_plan"
-        )
-    )
-    plan = RefitPlan.model_validate(event.payload)
-    refit.status = AttemptStatus.RUNNING
-    refit.lease_expires_at = scope.scope_deadline_at
-    output = FrozenPipeline.model_validate(execute_refit(plan, store))
-    publish_frozen_pipeline(db, plan, output, fencing_token=refit.fencing_token)
-    db.flush()
 
     @contextmanager
     def factory():
@@ -72,6 +60,40 @@ def handoff_case(policy_case, authority_api):
         with TestClient(
             app, base_url="https://authority.test/", headers={"Authorization": "Bearer allocator"}
         ) as client:
+            from automl_api.models.runs import ModelRun
+            from automl_api.services.scope_allocation import (
+                reconcile_scope_allocation,
+                register_scope_allocation,
+            )
+
+            # Register before refit; sealing order is separately exercised at the barrier.
+            previous = scope.status
+            scope.status = ScopeStatus.OPEN
+            scope.membership_deadline_at = datetime.now(UTC) + timedelta(minutes=5)
+            register_scope_allocation(
+                db,
+                scope,
+                actor_id=db.scalar(
+                    select(ModelRun.created_by_id).where(ModelRun.project_id == scope.project_id)
+                ),
+            )
+            db.flush()
+            assert reconcile_scope_allocation(factory, scope.id, client)
+            db.refresh(scope)
+            scope.status = previous
+            db.flush()
+            refit = plan_scope_refit(db, scope.id, store)
+            event = db.scalar(
+                select(WorkflowEvent).where(
+                    WorkflowEvent.attempt_id == refit.id, WorkflowEvent.event_key == "refit_plan"
+                )
+            )
+            plan = RefitPlan.model_validate(event.payload)
+            refit.status = AttemptStatus.RUNNING
+            refit.lease_expires_at = scope.scope_deadline_at
+            output = FrozenPipeline.model_validate(execute_refit(plan, store))
+            publish_frozen_pipeline(db, plan, output, fencing_token=refit.fencing_token)
+            db.flush()
             yield db, scope, factory, client, kwargs["signing_secret"].public_key(), public_key
     finally:
         with kwargs["session_factory"]() as session, session.begin():
@@ -82,7 +104,7 @@ def handoff_case(policy_case, authority_api):
             )
 
 
-@pytest.mark.parametrize("lost_path", ["allocations", "/refit", "/evaluators"])
+@pytest.mark.parametrize("lost_path", ["/refit", "/evaluators"])
 def test_handoff_recovers_lost_authority_response_without_new_attempt(handoff_case, lost_path):
     db, scope, factory, client, authority_key, result_key = handoff_case
     lost = False
@@ -169,4 +191,4 @@ def test_unexpected_allocation_state_stops_before_refit_or_identity(handoff_case
             authority_public_key=authority_key,
             result_public_key=result_key,
         )
-    assert posts == ["allocations"]
+    assert posts == []

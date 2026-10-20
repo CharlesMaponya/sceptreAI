@@ -1,0 +1,92 @@
+{
+  "status": "verified_scoped_revocation_transactions",
+  "phase_complete": false,
+  "verified_at": "2026-10-20T13:51:53.553967+00:00",
+  "connected_passed": 329,
+  "focused_cases_overlapping": 4,
+  "reproduction_failures": 2,
+  "reproduction_positive_controls_passed": 2,
+  "errors": 0,
+  "skips": 0,
+  "scoped_gates_met": 3,
+  "scoped_gates_unmet": 0,
+  "tested_session_autoflush_modes": [
+    true,
+    false
+  ],
+  "test_modules": {
+    "tests.test_attempt_object_grants": 27,
+    "tests.test_attempt_object_grant_schema": 58,
+    "tests.test_object_grant_http": 11,
+    "tests.test_grant_retirement": 22,
+    "tests.test_grant_retirement_deletion": 6,
+    "tests.test_provider_import_attempts": 15,
+    "tests.test_provider_import_jobs": 16,
+    "tests.test_provider_import_publication": 17,
+    "tests.test_champion_refit_jobs": 15,
+    "tests.test_refit_retirement": 34,
+    "tests.test_champion_evaluation_reconciler": 26,
+    "tests.test_evaluator_retirement": 44,
+    "tests.test_champion_cleanup_ownership": 38
+  },
+  "caller_source_locations": {
+    "apps/api/automl_api/services/provider_import_attempts.py": [
+      121,
+      138
+    ],
+    "apps/api/automl_api/services/refit_jobs.py": [
+      397,
+      307,
+      384
+    ],
+    "apps/api/automl_api/services/champion_planning.py": [
+      136
+    ],
+    "apps/api/automl_api/services/evaluation_reconciler.py": [
+      125,
+      897
+    ],
+    "apps/api/automl_api/services/provider_import_jobs.py": [
+      223
+    ],
+    "apps/api/automl_api/services/deletion.py": [
+      400
+    ]
+  },
+  "native_expiry_shortened": false,
+  "native_worker_or_all_stage_broker_qualified": false,
+  "source_input_count": 491,
+  "schema_head_rechecked": "0017_upload_session_project",
+  "post_suite_schema_parity": true,
+  "repository_ruff_pass": true,
+  "whole_phase_verified": 2,
+  "whole_phase_open": 34,
+  "current_source_full_backend_required": true,
+  "latest_full_backend_checkpoint": "fixture-backend-2026-10-20.yaml",
+  "latest_full_backend_checkpoint_is_historical": true,
+  "migration_qualification_ceiling_bytes": 45000000000,
+  "production_sized_or_prior_binary_migration_qualified": false,
+  "historical_missing_qa_objects": 7,
+  "abandoned_handoff": "phase1-deletion:G7",
+  "artifact_sha256": {
+    ".unlazy/phase1-revocation-transaction/GATES.md": "0ea0ad56cd4928408f27c60e642f6ac30c9c29f116a44cff40dc897c1e752bac",
+    ".unlazy/phase1-revocation-transaction/run.py": "21f904335a2746518a255242811deb46fa8a1e268f204ecd4eff844531d4103b",
+    ".unlazy/phase1-revocation-transaction/audit.py": "9ed278757e97724b369aab4dc43ff7b7e2ce1d6e5520262c8eae70c4dcc3a657",
+    ".unlazy/phase1-revocation-transaction/pre-fix-source.json": "1e22d81daaf79266888b257e3dbe201f4c7b4b53a594099fc088b721b52cb581",
+    ".unlazy/phase1-revocation-transaction/source-sha256.json": "309f4d919e3662fbb1896ffbec949fd16f6df3bb6c77bd61afb5cc1fb9b37673",
+    ".unlazy/phase1-revocation-transaction/reproduction.xml": "a17ba182f5b2ef88bf00edc87b70dd07483dd9654eb28a186f52b7768c078317",
+    ".unlazy/phase1-revocation-transaction/reproduction.log": "cf2ed84847fb2f615bf0fa465aa2bb5fd434ee043c2dcb0fff05b42523f50a25",
+    ".unlazy/phase1-revocation-transaction/reproduction-state.json": "319d2f000474d5216b4874e8e3c22e3892c8e6ed2ed9b7ae4f9658183e4e2575",
+    ".unlazy/phase1-revocation-transaction/connected.xml": "a0fb33063cabe457915f424fc046b7ffad3fd24e6a0105137e153e8ed894f186",
+    ".unlazy/phase1-revocation-transaction/connected.log": "46ed2059518a6738abd1f50c913d93b54c289b095a2d2ea76ab88bd93cc65154",
+    ".unlazy/phase1-revocation-transaction/connected-state.json": "6a67cbbe7f6390119a7e4553cfcf744afc87bd3e26039a96a51cbd98a7a82815",
+    ".unlazy/phase1-revocation-transaction/coverage.json": "46b8b3f5afb73a7f76b15d4521d4000c1b480189dda27b45be117e79e8528322",
+    ".unlazy/phase1-revocation-transaction/lint.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    ".unlazy/phase1-revocation-transaction/format.log": "3bc53bf3e981a98a34a852e175bf9b77af841edea74fca595d9aedcbaf9a4938",
+    ".unlazy/phase1-revocation-transaction/final-gates.log": "9cb6f147613648c9466cf5a3062c6682a760bfbd2d8c07806ba7cd51227d79f3"
+  },
+  "source_sha256": {
+    "apps/api/automl_api/services/attempt_object_grants.py": "6a8b6b6a5afbcabd89687958b633107cdef6ce004e0264c953db728404a86c87",
+    "tests/test_attempt_object_grants.py": "ff2b6cfd52e08d83aec188caf75c7bb3e42023c6a2cb47fb4000249c76e91775"
+  }
+}

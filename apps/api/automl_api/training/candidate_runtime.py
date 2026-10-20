@@ -12,7 +12,12 @@ def enabled() -> bool:
     return os.getenv("AUTOML_MODEL_PODS") == "1"
 
 
-def _execute(kind, candidate, arguments, snapshot):
+def _execute(kind, candidate, arguments, snapshot, *, parameter_protocol):
+    from automl_api.services.workflow_state import StaleFence
+    from automl_api.training.attempt_admission import TRAINING_PROTOCOL
+
+    if parameter_protocol != TRAINING_PROTOCOL:
+        raise StaleFence("Candidate worker does not support the admitted parameter protocol.")
     # This process owns all logical CPUs on its worker. Nested Ray Tune trials
     # would wait for those same CPUs forever; search/folds run inside the pod.
     os.environ["TRAINING_EXECUTION_MODE"] = "candidate"
@@ -49,6 +54,8 @@ def results(kind, jobs, run):
     """
     import mlflow
 
+    from automl_api.training.attempt_admission import TRAINING_PROTOCOL
+
     parent = mlflow.active_run()
     snapshot = {
         "id": run.id,
@@ -79,7 +86,13 @@ def results(kind, jobs, run):
             argument_key = tuple(id(argument) for argument in arguments)
             if argument_key not in references:
                 references[argument_key] = ray.put(arguments)
-            reference = execute.remote(kind, candidate, references[argument_key], snapshot)
+            reference = execute.remote(
+                kind,
+                candidate,
+                references[argument_key],
+                snapshot,
+                parameter_protocol=TRAINING_PROTOCOL,
+            )
             pending[reference] = (index, candidate)
         while pending:
             ready, _ = ray.wait(list(pending), num_returns=1)

@@ -27,6 +27,7 @@ from automl_api.schemas.profiling import (
     TargetPreviewRead,
     TaskInferenceRead,
 )
+from automl_api.services.dataset_digests import require_verified_digest, verify_dataset_bytes
 from automl_api.services.dataset_inspection import inspect_column_sample
 from automl_api.services.leakage import detect_target_leakage
 from automl_api.services.projects import require_project_role
@@ -54,6 +55,7 @@ def build_dataset_profile(
 
 
 def profile_dataset_version(version: DatasetVersion, payload: ProfileRequest) -> DatasetProfileRead:
+    require_verified_digest(version)
     target_column = payload.target_column.strip() if payload.target_column else None
     project_id, dataset_id, dataset_version_id = version.project_id, version.dataset_id, version.id
 
@@ -123,21 +125,15 @@ def build_target_preview(
     column: str,
 ) -> TargetPreviewRead:
     require_project_role(db, user, project_id, ProjectRole.VIEWER)
-    version = _get_project_dataset_version(
-        db, project_id, dataset_id, dataset_version_id
-    )
+    version = _get_project_dataset_version(db, project_id, dataset_id, dataset_version_id)
     normalized_column = column.strip()
-    if not normalized_column or normalized_column not in _columns_from_rows_or_version(
-        [], version
-    ):
+    if not normalized_column or normalized_column not in _columns_from_rows_or_version([], version):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Target column '{normalized_column}' was not found in the dataset.",
         )
     try:
-        content = get_object_store().read_head(
-            version.object_uri, TARGET_PREVIEW_MAX_BYTES
-        )
+        content = get_object_store().read_head(version.object_uri, TARGET_PREVIEW_MAX_BYTES)
         sample = inspect_column_sample(
             version.original_filename or "",
             content,
@@ -199,10 +195,12 @@ def _get_project_dataset_version(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Dataset version not found.",
         )
+    require_verified_digest(version)
     return version
 
 
 def _load_rows(version: DatasetVersion) -> tuple[list[dict[str, Any]], list[str]]:
+    require_verified_digest(version)
     warnings: list[str] = []
     if version.format not in {DatasetFormat.CSV, DatasetFormat.JSON}:
         return [], [
@@ -215,6 +213,7 @@ def _load_rows(version: DatasetVersion) -> tuple[list[dict[str, Any]], list[str]
     except (OSError, ValueError) as exc:
         return [], [f"Could not read stored dataset object for rich profiling: {exc}"]
 
+    verify_dataset_bytes(version, content)
     if version.format == DatasetFormat.CSV:
         return _load_csv_rows(content), warnings
     return _load_json_rows(content), warnings

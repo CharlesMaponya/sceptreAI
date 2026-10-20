@@ -152,6 +152,7 @@ export function TrainingPage() {
       if (!featureSearchSpace) throw new Error(`No governed feature search space exists for ${primaryMetric}.`);
       return api(`/projects/${projectId}/training/runs`, json("POST", {
         ...payload,
+        experiment_spec_revision_id: estimate.data?.experiment_spec_revision_id,
         run_name: runName,
         split_revision_id: launchBindings.split_revision_id,
         feature_contract_revision_id: launchBindings.feature_contract_revision_id,
@@ -201,7 +202,7 @@ export function TrainingPage() {
     <div className="training-layout"><div className="training-form">
       <Card className="form-section"><span className="step-number">1</span><div className="form-section__body"><h2>Choose training data</h2><p>Select an immutable dataset version.</p>
         <div className="form-grid"><label>Dataset<select value={datasetId} onChange={(e) => { setDatasetId(e.target.value); setVersionId(""); estimate.reset(); }}>{datasets.data.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
-          <label>Version<select value={versionId} onChange={(e) => { setVersionId(e.target.value); estimate.reset(); }}>{versions.data?.map((item) => <option value={item.id} key={item.id}>Version {item.version_number} · {titleCase(item.status)}</option>)}</select></label></div></div></Card>
+          <label>Version<select value={versionId} onChange={(e) => { setVersionId(e.target.value); estimate.reset(); }}>{versions.data?.map((item) => <option value={item.id} key={item.id}>Version {item.version_number} · {titleCase(item.status)}{item.source_kind === "provider_distribution" ? " · Validation only" : ""}</option>)}</select></label></div></div></Card>
       <Card className="form-section"><span className="step-number">2</span><div className="form-section__body"><h2>Frame the problem</h2><p>Confirm what the model should learn.</p>
         <div className="task-grid">{(["classification", "regression", "time_series", "clustering"] as TaskType[]).map((value) =>
           <button key={value} className={task === value ? "active" : ""} onClick={() => { setTask(value); estimate.reset(); }}><i>{task === value && <Check size={13} />}</i><b>{titleCase(value)}</b></button>)}</div>

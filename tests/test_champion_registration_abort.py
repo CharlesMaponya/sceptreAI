@@ -73,7 +73,7 @@ def test_abort_is_project_scoped_replayable_and_cannot_replace_registered_recove
     ).status_code in {403, 409}
 
 
-@pytest.mark.parametrize("boundary", ["allocations", "/refit", "/evaluators"])
+@pytest.mark.parametrize("boundary", ["allocation_state", "/refit", "/evaluators"])
 @pytest.mark.parametrize("cancelled", [False, True])
 @pytest.mark.parametrize("operator_aborted", [False, True])
 def test_expired_incomplete_handoff_is_sealed_with_or_without_local_plan(
@@ -84,11 +84,17 @@ def test_expired_incomplete_handoff_is_sealed_with_or_without_local_plan(
 
     def crash(path, **kwargs):
         if path.endswith(boundary):
-            if boundary == "allocations":
-                assert original(path, **kwargs).status_code == 200
             raise httpx.ReadError("Controller crashed during registration")
         return original(path, **kwargs)
 
+    original_get = authority.get
+
+    def crash_get(path, **kwargs):
+        if boundary == "allocation_state":
+            raise httpx.ReadError("Controller crashed reading preregistered allocation")
+        return original_get(path, **kwargs)
+
+    monkeypatch.setattr(authority, "get", crash_get)
     monkeypatch.setattr(authority, "post", crash)
     with pytest.raises(httpx.ReadError):
         prepare_evaluator(
@@ -99,6 +105,7 @@ def test_expired_incomplete_handoff_is_sealed_with_or_without_local_plan(
             result_public_key=result_key,
         )
     monkeypatch.setattr(authority, "post", original)
+    monkeypatch.setattr(authority, "get", original_get)
     prior_receipt = None
     if operator_aborted:
         intent = db.scalar(
@@ -129,7 +136,7 @@ def test_expired_incomplete_handoff_is_sealed_with_or_without_local_plan(
         reconcile_evaluation_jobs_once(
             factory,
             k8s,
-            authority_factory=lambda _: nullcontext(authority),
+            authority_factory=lambda project_id, reference: nullcontext(authority),
             public_key=public_key,
             store=object(),
         )
@@ -157,9 +164,10 @@ def test_expired_incomplete_handoff_is_sealed_with_or_without_local_plan(
         assert next(r for r in state["receipts"] if r["operation"] == "abort") == prior_receipt
         closed = db.scalar(
             select(WorkflowEvent).where(
-                WorkflowEvent.event_key == (
+                WorkflowEvent.event_key
+                == (
                     "evaluation_handoff_closed"
-                    if boundary == "allocations"
+                    if boundary == "allocation_state"
                     else "evaluation_failed"
                 ),
                 WorkflowEvent.project_id == scope.project_id,

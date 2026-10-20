@@ -1,0 +1,153 @@
+{
+  "verified_at": "2026-10-16T17:20:43.678232+00:00",
+  "status": "verified_increment",
+  "phase_complete": false,
+  "requirements": [
+    "P1-W06",
+    "P1-W07",
+    "P1-W09",
+    "P1-W18",
+    "P1-G08"
+  ],
+  "changes": [
+    "Create a server-owned closed allocation command atomically with a promotional scope, binding local project/scope/split/experiment revisions, evaluation-policy digest and exact central request.",
+    "The project-bound controller commits a bounded lease/retry claim, releases SQL before authority HTTP, and publishes only against current unchanged scope/intent/live ownership. Lost replies replay the same allocation; invalid configuration backs off.",
+    "Training/member services return409 while registration is unavailable. Sealing rechecks its completion before release. Evaluator handoff uses the pinned allocation ID and no longer allocates after refit.",
+    "Stopped pre-training scopes cancel never-sent commands locally; otherwise replay creation, verify the signed abort receipt and retain it without opening final data. Lost abort replies replay safely under a combined max_retries+5 claimed-attempt budget.",
+    "Refresh scope state under its row lock for sealing, member admission and training resolution. Old cached OPEN objects cannot bypass committed cancellation.",
+    "Update synthetic evaluator seed/runner to wait for actual registration before refit planning. Update connected fixtures, failure boundaries, API conflicts, operator upgrade instructions and readiness ledger. No new dependencies or schema change."
+  ],
+  "verification": {
+    "focused": {
+      "tests": 39,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "regressions": {
+      "tests": 393,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "regression_cases_by_module": {
+    "tests.test_scope_allocation": 39,
+    "tests.test_champion_planning": 17,
+    "tests.test_champion_evaluation_planning": 9,
+    "tests.test_champion_evaluation_authority": 3,
+    "tests.test_champion_evaluation_keys": 8,
+    "tests.test_champion_evaluation_jobs": 12,
+    "tests.test_champion_evaluation_worker": 8,
+    "tests.test_champion_evaluation_control": 5,
+    "tests.test_champion_evaluation_replacement": 6,
+    "tests.test_champion_registration_abort": 22,
+    "tests.test_champion_evaluation_reconciler": 13,
+    "tests.test_authority_project_binding": 18,
+    "tests.test_phase1_workflow_state": 28,
+    "tests.test_phase1_public_contracts": 28,
+    "tests.test_training_service_runtime": 86,
+    "tests.test_typed_feature_contracts": 71,
+    "tests.test_admission_runtime": 20
+  },
+  "source_sha256": {
+    "apps/api/automl_api/services/scope_allocation.py": "2f12765f2c0ddcb46d804a33b87d3ece6a0443caccd620b24f99673a951baee9",
+    "apps/api/automl_api/services/evaluation_reconciler.py": "4455888f695c57282d0f4afeb0c144c122640ed627fe7fa2cb583064ab38bd11",
+    "apps/api/automl_api/services/evaluation_authority.py": "7b19ae7a0e9c6a556fdedeb0b9955177f061485f3e2951ce50e433d2bd27a1c8",
+    "apps/api/automl_api/services/contracts.py": "7063f11529fbf20872898e5fe9a770b46eda5d5054ce7da19837b1e8a991648b",
+    "apps/api/automl_api/services/training.py": "6461bac232eeac9579a38a73d8b9fdb5e8447578642cf0fd03c534d86e8c8e44",
+    "apps/api/automl_api/services/workflow_state.py": "482c84b1dbb7b112b750241b1144ec2340906542112e53523b46d5bbf23525a9",
+    "scripts/validate_refit_workload.py": "71dd8e97f0e094b3a6f8fcf8fcf05683a9fde08023ca0d773c80bdd1417da545",
+    "scripts/validate_evaluator_workload.py": "97c9a5e0d5d6b79b015a9746d84e97f80eb9ac744cdce886e87f07fb770f7502",
+    "tests/test_scope_allocation.py": "d5d9ec786647cc29a4e51ff748ccc8aec9f7c35aecc3ba59d64aecbfb3952a4f",
+    "tests/test_champion_planning.py": "c3396ae3517dac0603879c62ddd3874e513d8b9cf65d1b71aefb0835ce271712",
+    "tests/test_champion_evaluation_authority.py": "8eacc25adecbe2cf7c0508761af7ee43c503aadd82dfb0bfc13e4f703b578c93",
+    "tests/test_champion_evaluation_planning.py": "fa23a003e41daa95227ecdb206041a7b4e49fa125eb2cc779e82c9abc0bb3ff4",
+    "tests/test_champion_evaluation_worker.py": "ec88f67062620ca04821e1419f394f29ba83da82fd630a2eca6ae3d0a4098550",
+    "tests/test_champion_registration_abort.py": "f6aadd1d8ea5d061822c97e8b595e5e2acf9ab486802be3ef24a36dc93b9e169",
+    "tests/test_champion_evaluation_reconciler.py": "f306746cfa590d2d7cb931e8a05965e3b2801b700b1441b87880b709025ac243",
+    "tests/test_phase1_public_contracts.py": "cc4b5b84ea9793126e7d3924a6a0bcc7379d375987a0f308af20efea29886ed0",
+    "services/qualification-control/README.md": "5547d4c5cd62e430f77dc75108a4ec9a6a4731015a4b3fecdafabb78d0870cb7",
+    ".unlazy/phase1-early-allocation/check.py": "dfc56284824353c08ceeb68fa5d06780e741f4362648095a9a7cf71bdeb923ae"
+  },
+  "artifact_sha256": {
+    ".unlazy/phase1-early-allocation/focused.log": "0c18761d0fecf4653fb9a07fca369c4059ca6c1cac8da9579ffd746eac21ecdd",
+    ".unlazy/phase1-early-allocation/lint.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    ".unlazy/phase1-early-allocation/regressions-report.json": "4b8244f3112879a29850aa57663d04c25b7a6809b9806e4a6059e780d2371d03",
+    ".unlazy/phase1-early-allocation/coverage-sha256.txt": "cbb6bdafcfa940a2c0534bb5d00a475564b1f53235a5b2d95f8657cba5e4196f",
+    ".unlazy/phase1-early-allocation/focused-report.json": "145c6b2ec6480d6cb8b7cf681968eaf8885bdae597a07eba4ec6f3fd03296475",
+    ".unlazy/phase1-early-allocation/focused.xml": "cea1af3bc4d996cda65839522f0a5531f548611b8db38822a0dbc4d2130b14ff",
+    ".unlazy/phase1-early-allocation/format.log": "2afb1c293434bc55d84b35d54454a0bf9aa84e41cda426817a5c6693d432e37a",
+    ".unlazy/phase1-early-allocation/regressions.log": "8ab16c968763b4ee7fbb22fe63f1be51867585a215da4205671aaf9ddb1d95f2",
+    ".unlazy/phase1-early-allocation/gates-before-cache-review.log": "19436ae3da9ffc2d1e4f437aa5142aaa93611be5a9e17f34a285d0122867db9e",
+    ".unlazy/phase1-early-allocation/regressions.xml": "5e940e83010911204eb32f0b47758b08e9270af70aba9c2a165a39ed901dd5dd",
+    ".unlazy/phase1-early-allocation/schema-source-check.json": "96650c2291e68227a65d81946df710e9a72bf98b38ea1eb6da83b0fe7a57c649",
+    ".unlazy/phase1-early-allocation/source-sha256.json": "22a98836637414b916c857ab031a7a45119a7434a6f54d79fe1161413ac975ae",
+    ".unlazy/phase1-early-allocation/gates-final.log": "fe049c73aba154fe823a6a0ec20eafae308a3efe49d3c5bca99db0b2aab7d4f7"
+  },
+  "documentation_sha256": {
+    "docs/production-readiness/phase-1-completion-ledger.md": "0f62acc7df5726b4839fe7a71c6406669b467259ea8e8dc04af643e41558c762",
+    "docs/production-readiness/remediation-progress.md": "78a0d35b19eb902b5ee8ed190406c2c19bc575bcb319a51111f9f4e29e681b86"
+  },
+  "schema_head": "0012_final_test_revision_pair",
+  "unchanged_schema_inputs": {
+    "alembic/versions/0001_initial_schema.py": "45855172dd549b19304fa8c5474f77cb298b9bfb230eaedcf6e066e54b6b57d4",
+    "alembic/versions/0002_expand_artifact_kind.py": "39253347a28433d7fedc0fbc18a1cc2744c774546dcfd32d55482cadb568d6bd",
+    "alembic/versions/0003_security_controls.py": "5338af3fa17d6a4e185ee5b29a9e0334a49d2087160d1a3887bc3396b6da4578",
+    "alembic/versions/0004_resumable_dataset_uploads.py": "19d0f9bb08db6ad0e2dee0d8e0696431b6b68a989aec8aac8c22dae9d6c223ac",
+    "alembic/versions/0005_phase1_durable_workflows_phase1_durable_workflow_state.py": "9127fe0a089ab0f000d3175b92515d6a9834e76945c2ada88c4054322425f3c8",
+    "alembic/versions/0006_phase1_public_contracts_phase1_public_contract_revisions.py": "2188404d3a4b793cfbe87396e86456f2d9f0ab78f816e55822796663bf1230f0",
+    "alembic/versions/0007_phase1_attempt_lineage.py": "fe04d5badaaa00923d1282bb35061499ec3d9251c2de1c29764175e1ee80ab6a",
+    "alembic/versions/0008_phase2_cloud_ingestion.py": "5535ca34ee81588b0d2fc925d2f0e05ecf1a00c5f86f4cbdeff1226cd434fdc5",
+    "alembic/versions/0009_phase2_provider_neutral_storage_default.py": "1807f61d4c92d30c7d50754a1bc4ea9aa0dcd127dcbe1a4d83f3c7bca35931b6",
+    "alembic/versions/0010_phase3_nullable_feature_contract_target.py": "95ac3c74d50509816af0fbe5165b2e7d1750c99448de0c20b3f38a2082a9056c",
+    "alembic/versions/0011_preserve_deletion_evidence.py": "893607c0feee2b4e1fc4eb06eacb67b4859f57d322f92aea87cfcd9b43cfbc8d",
+    "alembic/versions/0012_final_test_revision_pair.py": "c2741a396193ecea9397c90288bb4741074ace85a5ffe4c07832bfcd604bbe8c",
+    "apps/api/automl_api/models/__init__.py": "4dbb7a8e36c7b90a41a01f3afa04144748e486188ff98eb9437ddc41c2157ea7",
+    "apps/api/automl_api/models/base.py": "dda39c2e1b6eef92a43e2cf356804d0e78813cd2612142acc2dde5fa4b9e9dc3",
+    "apps/api/automl_api/models/datasets.py": "5c5a469a54c2c959adb86429a9ce6c43d584f384875b2d58c36a5df375d841a6",
+    "apps/api/automl_api/models/enums.py": "66b7bbdb97963a6b9e52a543ca28740634e4eb5863af7109fa7a1df08a5d26cd",
+    "apps/api/automl_api/models/iam.py": "e4f66266b4468c65928bfc8aa6fd9fc66f165f3825a9f46366bbdd68828671f5",
+    "apps/api/automl_api/models/projects.py": "b64622edca658ee0b6387ff10e71199ac076d010ca9e435325ce95c793168f0f",
+    "apps/api/automl_api/models/qualification.py": "776134c846e610be522950b32debbe6d22f3c3c7412e30f3f3d773f31c51cb5d",
+    "apps/api/automl_api/models/runs.py": "584885d3bd745952956dc18de1d104e6bb85648ca58f5b3992bb26c1f1235dd6",
+    "apps/api/automl_api/models/security.py": "672910f588822555ac8ede3ed0200c8e5c6299357ea8d41cdc41dc8da13990de",
+    "apps/api/automl_api/models/workflows.py": "ce9a3ca3608a722dc13e7ccee57f30d80f43343aea475bfc1dafdc67a2f914ea",
+    "services/qualification-control/migrations/0001_authority.sql": "f3c0a8e6761356325b5addd009598f13843e1dcc8d4dd1183cdf277b5afe78c9",
+    "services/qualification-control/migrations/0002_allocation_revisions.sql": "cf24787908f2a1c10b9185fbd60a94a7001f2e01831f1a9e06b992c8e16bead7"
+  },
+  "coverage_unchanged": true,
+  "phase_ledger": {
+    "requirements": 36,
+    "verified": 1,
+    "open": 35
+  },
+  "original_preservation_abandoned": true,
+  "counts_overlap": true,
+  "decisive_checks": [
+    "Actual dedicated PostgreSQL and real authority ASGI handlers prove one central allocation across lost creation/state replies, exact replay and completed-command binding; actual SQL rows/receipts are inspected.",
+    "Six committed-database cases use independent sessions: pool checkedout=0 and both scope/command locks available during authority callbacks, cancellation/replacement rejection, expired predecessor reclaim, and cached OPEN scope rejection after another session commits cancellation.",
+    "Changed policy/hash/resource, missing/pending/failed/corrupt response, changed/expired leases, stopped/expired scope and unavailable retry budget block release/publication. Invalid controller configuration backs off and malformed active intents fail durably without storage/HTTP calls.",
+    "Lost creation/abort responses and expired membership recover a single signed abort without any final grant. Never-sent cleanup needs no authority identity. Controller selection/cleanup use the project-bound credential factory.",
+    "Training/member services return normal409 and publish no outbox entry while registration is pending. Existing successful sealing checks and all evaluator key/job/worker/control/replacement/recovery/abort/project-binding regressions pass.",
+    "The maintained native seed function executes against the test PostgreSQL database and a temporary store, leaving an OPEN scope, pending command and no refit attempt. It is not a native k3d/production training campaign.",
+    "Independent XML/case/report audit measures39focused/393related zero failures/errors/skips. Sixteen Python files pass lint;14 whole-file format checks pass. Two inherited formatting differences are preserved. Eighteen frozen inputs and24 unchanged schema inputs match; actual test database head0012 and coverage unchanged are verified."
+  ],
+  "execution": {
+    "final_gate_session": 30372,
+    "final_gate_exit": 1,
+    "exit_reason": "Both runnable gates passed; final manual audit gate was pending at runner exit and is attested after this audit.",
+    "native_rollout": "not run",
+    "qa_mutation": false
+  },
+  "limits": [
+    "Whole Phase1 remains1VerifiedW12/35Open. This is early allocation for the existing canonical flow, not signed dataset import/distribution admission. Trusted source provenance, revision-bound imported campaign references, validation_only enforcement and exact safe prepared-reader integration remain required.",
+    "The existing flow still sends legacy allocation fields without fixture_revision/split_revision. Such allocations are not proof of the revision-bound release-distribution protocol and cannot be silently relabelled or upgraded. No copy receipt/client flag authorizes promotional import.",
+    "Old scopes without an early command fail closed at new sealing/handoff. Deploy matched API/controller and approved project bindings after legacy campaign review. Do not create historical success from late receipts. Old binaries, controlled legacy upgrades and current image compatibility remain unqualified.",
+    "Authority tests use actual ASGI handlers with an HTTPS base URL, not a deployed protected authority/TLS transport for this new operation. Existing related evaluator TLS fixtures pass. No k3d image/Secret/Pod/PVC/shared database/storage rollout or mutation occurred. Synthetic training is fixture setup, not production ordering/load proof.",
+    "Lease expiry and bounded HTTP client timeouts do not provide a hard process deadline. Actual process death/SQL acknowledgement-loss/current-image/native fault and full recovery inventories remain required. Cleanup exhaustion retains an unresolved command for operator investigation; configuration failures retry with backoff.",
+    "No45GB migration rehearsal or15x10GiB upload campaign occurred. About48GB free cannot hold45GB plus existing cluster reserve and overhead; largest-table row targets remain unspecified. Seven original QA objects remain missing and the original preservationG7 remainsABANDONED; no historical outputs or signatures were fabricated.",
+    "Schema head0012 and prior W12 structure evidence are unchanged, not newly migrated/requalified here. No commit or public push."
+  ],
+  "audit_script_sha256": "8d8bb1306c47cd94ac3ddbf3469f36289842b590b790aaa006e281535a7d4809"
+}

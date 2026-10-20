@@ -136,11 +136,13 @@ def _command_by_key(
     db: Session, project_id: uuid.UUID, operation: str, idempotency_key: str
 ) -> WorkflowCommand | None:
     return db.scalar(
-        select(WorkflowCommand).where(
+        select(WorkflowCommand)
+        .where(
             WorkflowCommand.project_id == project_id,
             WorkflowCommand.operation == operation,
             WorkflowCommand.idempotency_key == idempotency_key,
         )
+        .execution_options(populate_existing=True)
     )
 
 
@@ -226,9 +228,7 @@ def _claimable_outbox(now: datetime) -> Select[tuple[OutboxEntry]]:
     )
 
 
-def defer_outbox(
-    db: Session, row: OutboxEntry, *, worker_id: str, delay_seconds: int = 5
-) -> None:
+def defer_outbox(db: Session, row: OutboxEntry, *, worker_id: str, delay_seconds: int = 5) -> None:
     """Release a capacity wait without consuming the delivery failure budget."""
     with db.no_autoflush:
         row = db.get(OutboxEntry, row.id, with_for_update=True, populate_existing=True)
@@ -300,9 +300,7 @@ def replay_dead_outbox(
     if row.status != OutboxStatus.DEAD:
         raise InvalidTransition("Only a dead outbox entry can be replayed.")
     command = db.scalar(
-        select(WorkflowCommand)
-        .where(WorkflowCommand.id == row.command_id)
-        .with_for_update()
+        select(WorkflowCommand).where(WorkflowCommand.id == row.command_id).with_for_update()
     )
     if command is None:
         raise LookupError("The outbox command was not found.")
@@ -417,7 +415,10 @@ def seal_promotional_scope(
     expected_cas_version: int,
 ) -> PromotionalScope:
     scope = db.scalar(
-        select(PromotionalScope).where(PromotionalScope.id == scope_id).with_for_update()
+        select(PromotionalScope)
+        .where(PromotionalScope.id == scope_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     if scope is None:
         raise LookupError("Promotional scope was not found.")
@@ -443,9 +444,17 @@ def seal_promotional_scope(
         raise InvalidTransition("Scope member ordinals are not exact and contiguous.")
 
     if scope.mode == "promotional":
+        from automl_api.models.workflows import DatasetSplitRevision
         from automl_api.services.champion_planning import validate_refit_policy
         from automl_api.services.evaluation_planning import validate_evaluation_policy
+        from automl_api.services.provider_source import reject_provider_promotion
+        from automl_api.services.scope_allocation import require_scope_allocation
 
+        split = db.get(DatasetSplitRevision, scope.split_revision_id)
+        if split is None:
+            raise InvalidTransition("Promotional source split is missing")
+        reject_provider_promotion(db, split.dataset_version_id)
+        require_scope_allocation(db, scope)
         policy, digest = validate_refit_policy(db, scope)
         evaluation_policy, evaluation_digest = validate_evaluation_policy(db, scope)
         scope.comparison_policy = {
@@ -472,11 +481,7 @@ def seal_promotional_scope(
         member.released_at = started_at
 
     run_ids = [member.model_run_id for member in members]
-    runs = list(
-        db.scalars(
-            select(ModelRun).where(ModelRun.id.in_(run_ids)).with_for_update()
-        )
-    )
+    runs = list(db.scalars(select(ModelRun).where(ModelRun.id.in_(run_ids)).with_for_update()))
     commands = list(
         db.scalars(
             select(WorkflowCommand)
@@ -522,10 +527,13 @@ def seal_promotional_scope(
 
         experiment = db.get(ExperimentSpecRevision, scope.experiment_spec_revision_id)
         for run in runs:
-            if (run.status != RunStatus.PRECHECK_RUNNING
+            if (
+                run.status != RunStatus.PRECHECK_RUNNING
                 or (run.tags or {}).get("desired_state") != "barrier_pending"
-                or attempt_by_run[run.id].status != AttemptStatus.PENDING):
+                or attempt_by_run[run.id].status != AttemptStatus.PENDING
+            ):
                 raise InvalidTransition("Promotional members cannot have executed before sealing")
+            reject_provider_promotion(db, run.dataset_version_id)
             validate_refit_member(run, scope, policy, experiment.primary_metric)
 
     for reservation in reservations:

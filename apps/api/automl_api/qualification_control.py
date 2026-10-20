@@ -39,6 +39,11 @@ from automl_api.services.final_test_credentials import (
     expire_unacknowledged_grants,
     issue_final_grant,
 )
+from automl_api.services.provider_distribution import (
+    DistributionRequest,
+    Revision,
+    issue_distributions,
+)
 from automl_api.services.workflow_state import (
     IdempotencyConflict,
     InvalidTransition,
@@ -82,6 +87,14 @@ class AllocationRequest(Contract):
     scope_id: uuid.UUID
     canonical_provider: Literal["aws", "gcp", "azure"]
     provider_manifest_digest: Digest
+    fixture_revision: Revision | None = None
+    split_revision: Revision | None = None
+
+    @model_validator(mode="after")
+    def revision_pair(self):
+        if (self.fixture_revision is None) != (self.split_revision is None):
+            raise ValueError("Fixture and split revisions must be supplied together")
+        return self
 
 
 class OpenRequest(Contract):
@@ -317,8 +330,8 @@ def create_app(
     def ready():
         try:
             with session_factory() as db:
-                db.execute(select(FinalTestAllocation.id).limit(0))
-                db.execute(select(FinalTestAuthorityReceipt.id).limit(0))
+                db.execute(select(FinalTestAllocation).limit(0))
+                db.execute(select(FinalTestAuthorityReceipt).limit(0))
             return {"status": "ready"}
         except SQLAlchemyError as exc:
             raise HTTPException(503, "Authority store unavailable") from exc
@@ -340,6 +353,41 @@ def create_app(
                 }
             return result
         except IdempotencyConflict as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except SQLAlchemyError as exc:
+            raise HTTPException(503, "Authority store unavailable") from exc
+
+    @app.post("/allocations/{allocation_id}/distributions")
+    def distributions(
+        allocation_id: uuid.UUID,
+        payload: DistributionRequest,
+        principal: Principal = principal_dependency,
+    ):
+        if principal.role != "allocator":
+            raise HTTPException(403, "Distribution requires a control-plane identity")
+        try:
+            with session_factory() as db, db.begin():
+                allocation = authority._locked_allocation(db, allocation_id)
+                if allocation.project_reference != principal.project_reference:
+                    raise authority.ProviderRejected("Allocation belongs to another project")
+                manifest = manifest_by_digest.get(allocation.provider_manifest_digest)
+                if manifest is None:
+                    raise InvalidTransition("Registered final-data manifest is unavailable")
+                receipts = issue_distributions(
+                    db,
+                    allocation_id=allocation_id,
+                    project_reference=principal.project_reference,
+                    request=payload,
+                    final_data=manifest,
+                    signing_key=signing_secret,
+                )
+                result = [receipt_response(receipt) for receipt in receipts]
+            return JSONResponse(result, headers={"Cache-Control": "no-store"})
+        except LookupError as exc:
+            raise HTTPException(404, "Allocation not found") from exc
+        except authority.ProviderRejected as exc:
+            raise HTTPException(403, str(exc)) from exc
+        except (IdempotencyConflict, InvalidTransition, ValueError) as exc:
             raise HTTPException(409, str(exc)) from exc
         except SQLAlchemyError as exc:
             raise HTTPException(503, "Authority store unavailable") from exc
@@ -375,6 +423,8 @@ def create_app(
                     "scope_id": str(row.scope_id),
                     "project_reference": row.project_reference,
                     "split_digest": row.split_digest,
+                    "fixture_revision": row.fixture_revision,
+                    "split_revision": row.split_revision,
                     "canonical_provider": row.canonical_provider,
                     "provider_manifest_digest": row.provider_manifest_digest,
                     "status": row.status,

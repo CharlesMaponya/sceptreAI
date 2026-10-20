@@ -44,8 +44,15 @@ from automl_api.models.workflows import (
     WorkflowAttempt,
     WorkflowCommand,
 )
+from automl_api.schemas.feature_contracts import (
+    FEATURE_FAMILIES,
+    FeatureContractSpecification,
+    FeatureSearchSpecification,
+)
 from automl_api.schemas.profiling import ColumnProfileRead
+from automl_api.services.dataset_digests import require_verified_digest
 from automl_api.services.profiling import _build_preparation_plan, _infer_task
+from automl_api.services.provider_reader import read_provider_role
 from automl_api.services.ray_polars_profiling import (
     RAY_BATCH_ROWS,
     _load_dataset,
@@ -217,18 +224,23 @@ def _heartbeat_attempt(profile_id, context, worker_id):
 
 
 def _verify_raw(version: DatasetVersion) -> str:
-    if version.content_hash_algorithm.lower() != "sha256":
-        raise ValueError("The splitter only accepts SHA-256 verified raw datasets.")
+    require_verified_digest(version)
     store = get_object_store()
     metadata = store.stat(version.object_uri)
     if version.byte_size is not None and metadata.byte_size != version.byte_size:
         raise ValueError("Raw dataset byte size changed after upload verification.")
     digest = hashlib.sha256()
+    observed_size = 0
     with store.open_stream(version.object_uri) as source:
         while chunk := source.read(8 * 1024 * 1024):
+            observed_size += len(chunk)
+            if observed_size > version.byte_size:
+                raise ValueError("Raw dataset byte size changed after upload verification.")
             digest.update(chunk)
+    if observed_size != version.byte_size:
+        raise ValueError("Raw dataset byte size changed after upload verification.")
     actual = digest.hexdigest()
-    if actual != version.content_hash.removeprefix("sha256:").lower():
+    if actual != version.content_hash:
         raise ValueError("Raw dataset SHA-256 does not match the verified upload digest.")
     return actual
 
@@ -682,7 +694,7 @@ def _persist_split(
             stage=WorkflowStage.PREPARATION,
             logical_key=f"profile:{profile.id}:preparation",
             dataset_version_id=profile.dataset_version_id,
-            workload_identity="sceptre-dataset-preparation",
+            workload_identity=f"project-{profile.project_id}-preparation",
             generation=1,
             fencing_token=uuid.uuid4().hex,
             predecessor_attempt_id=attempt.id,
@@ -729,6 +741,28 @@ def _prepared_for_profile(db: Any, profile: ProfilingJob) -> PreparedArtifact:
         .order_by(PreparedArtifact.revision.desc())
         .all()
     )
+    imported = next(
+        (
+            item
+            for item in artifacts
+            if item.specification.get("provider_import_id")
+            and str(item.id) == str(profile.overview_json.get("prepared_artifact_id"))
+        ),
+        None,
+    )
+    if imported is not None:
+        from automl_api.services.provider_source import require_prepared_source
+
+        version = db.get(DatasetVersion, profile.dataset_version_id)
+        source = require_prepared_source(
+            db,
+            version,
+            prepared_artifact_id=imported.id,
+            split_revision_id=uuid.UUID(str(profile.overview_json["split_revision_id"])),
+        )
+        if source is None:
+            raise ValueError("The imported preparation source has no protected registration")
+        return imported
     artifact = next(
         (item for item in artifacts if item.specification.get("profile_job_id") == str(profile.id)),
         None,
@@ -755,7 +789,7 @@ def _feature_launch_revisions(
     result: dict[str, Any],
 ) -> dict[str, Any]:
     task_type = str(result["task_inference"]["task_type"])
-    target = str(profile.target_column or "")
+    target = profile.target_column or None
     excluded_leakage = set(result["leakage_analysis"].get("excluded_columns", []))
     identifiers = {
         item["name"] for item in result["columns"] if "identifier_like" in item["quality_flags"]
@@ -764,10 +798,12 @@ def _feature_launch_revisions(
     input_columns = [item["name"] for item in result["columns"] if item["name"] not in rejected]
     if not input_columns:
         raise ValueError("Feature safety gates rejected every available input column.")
+    if len(input_columns) > 500:
+        raise ValueError("The qualified raw feature view supports at most 500 input columns.")
     schema = {item["name"]: item["semantic_type"] for item in result["columns"]}
     recipe = FeatureRecipe.build(
         input_columns=input_columns,
-        target_column=target,
+        target_column=target or "",
         excluded_leakage_columns=sorted(excluded_leakage | identifiers),
     )
     split_revision_id = uuid.UUID(str(profile.overview_json["split_revision_id"]))
@@ -779,14 +815,7 @@ def _feature_launch_revisions(
         "source_snapshot_digest": artifact.specification["source_digest"],
         "source_columns": list(schema),
         "target_column": profile.target_column,
-        "allowed_feature_families": [
-            "raw_passthrough",
-            "numeric_unary",
-            "bounded_pairwise_arithmetic",
-            "datetime_decomposition",
-            "categorical_frequency",
-            "text_length_pattern",
-        ],
+        "allowed_feature_families": list(FEATURE_FAMILIES),
         "disabled_feature_families": ["lag", "rolling", "window", "arbitrary_python"],
         "budgets": {
             "maximum_expression_depth": 2,
@@ -797,6 +826,9 @@ def _feature_launch_revisions(
         "final_test_isolated": True,
         "value_fit_scope": "outer_train_only",
     }
+    contract_spec = FeatureContractSpecification.model_validate(contract_spec).model_dump(
+        mode="json"
+    )
     contract = FeatureContractRevision(
         project_id=profile.project_id,
         name=base_name,
@@ -851,6 +883,7 @@ def _feature_launch_revisions(
         "fitted_scope_digest": registry_spec["fitted_scope_digest"],
     }
     recipe_revision = FeatureRecipeRevision(
+        id=uuid.uuid4(),
         project_id=profile.project_id,
         name=base_name,
         revision=1,
@@ -881,7 +914,11 @@ def _feature_launch_revisions(
             "direction": direction,
             "allowed_feature_families": contract_spec["allowed_feature_families"],
             "recipe_revision": recipe.digest,
+            "feature_recipe_revision_id": str(recipe_revision.id),
         }
+        specification = FeatureSearchSpecification.model_validate(specification).model_dump(
+            mode="json"
+        )
         search_spaces.append(
             FeatureSearchSpaceRevision(
                 project_id=profile.project_id,
@@ -1002,6 +1039,14 @@ def prepare_profile(
         version = db.get(DatasetVersion, profile.dataset_version_id)
         if version is None:
             raise ValueError("Dataset version was not found.")
+        from automl_api.services.provider_source import require_prepared_source
+
+        source_plan = require_prepared_source(
+            db,
+            version,
+            prepared_artifact_id=artifact.id,
+            split_revision_id=uuid.UUID(str(profile.overview_json["split_revision_id"])),
+        )
         train_uri = str(artifact.specification["uris"]["train"])
         source = SimpleNamespace(
             object_uri=train_uri,
@@ -1066,12 +1111,20 @@ def prepare_profile(
         target,
         progress_callback=record_progress,
         feature_callback=record_feature,
+        **(
+            {"dataset_override": read_provider_role(source_plan, "train")}
+            if source_plan is not None
+            else {}
+        ),
     )
     validation_uri = str(artifact.specification["uris"]["validation"])
-    validation_path, validation_filesystem = _storage_path(validation_uri)
-    validation_count = ray.data.read_parquet(
-        validation_path, filesystem=validation_filesystem
-    ).count()
+    if source_plan is not None:
+        validation_count = read_provider_role(source_plan, "validation").count()
+    else:
+        validation_path, validation_filesystem = _storage_path(validation_uri)
+        validation_count = ray.data.read_parquet(
+            validation_path, filesystem=validation_filesystem
+        ).count()
     if attempt_id is not None and fencing_token is not None:
         _record_preparation_progress(
             profile_job_id,
@@ -1288,6 +1341,9 @@ def run_stage(profile_job_id: uuid.UUID, stage: WorkflowStage) -> None:
                 attempt = db.get(WorkflowAttempt, attempt_id)
                 if profile is None or version is None or attempt is None:
                     raise ValueError("The splitter source lineage is missing.")
+                from automl_api.services.provider_source import validate_attempt_source
+
+                validate_attempt_source(db, attempt)
                 target_column = profile.target_column
                 generation = attempt.generation
                 time_column = profile.overview_json.get("time_column")

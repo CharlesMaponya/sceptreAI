@@ -11,7 +11,7 @@ from typing import Any
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -32,12 +32,31 @@ def allocate(
     scope_id: uuid.UUID,
     canonical_provider: str,
     provider_manifest_digest: str,
+    fixture_revision: str | None = None,
+    split_revision: str | None = None,
 ) -> FinalTestAllocation:
-    lookup = select(FinalTestAllocation).where(
-        or_(
-            FinalTestAllocation.split_digest == split_digest,
-            FinalTestAllocation.scope_id == scope_id,
+    if (fixture_revision is None) != (split_revision is None) or any(
+        not isinstance(value, str)
+        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", value) is None
+        for value in (fixture_revision, split_revision)
+        if value is not None
+    ):
+        raise ValueError("Fixture and split revisions require a complete canonical pair")
+    identities = [
+        FinalTestAllocation.split_digest == split_digest,
+        FinalTestAllocation.scope_id == scope_id,
+    ]
+    if fixture_revision is not None:
+        identities.append(
+            and_(
+                FinalTestAllocation.fixture_revision == fixture_revision,
+                FinalTestAllocation.split_revision == split_revision,
+            )
         )
+    lookup = (
+        select(FinalTestAllocation)
+        .where(or_(*identities))
+        .execution_options(populate_existing=True)
     )
     existing = db.scalar(lookup)
     if existing is not None:
@@ -48,6 +67,8 @@ def allocate(
             scope_id=scope_id,
             canonical_provider=canonical_provider,
             provider_manifest_digest=provider_manifest_digest,
+            fixture_revision=fixture_revision,
+            split_revision=split_revision,
         )
         return existing
 
@@ -57,6 +78,8 @@ def allocate(
         scope_id=scope_id,
         canonical_provider=canonical_provider,
         provider_manifest_digest=provider_manifest_digest,
+        fixture_revision=fixture_revision,
+        split_revision=split_revision,
     )
     savepoint = db.begin_nested()
     try:
@@ -76,6 +99,8 @@ def allocate(
             scope_id=scope_id,
             canonical_provider=canonical_provider,
             provider_manifest_digest=provider_manifest_digest,
+            fixture_revision=fixture_revision,
+            split_revision=split_revision,
         )
         return existing
 
@@ -88,6 +113,8 @@ def _same_allocation(
     scope_id: uuid.UUID,
     canonical_provider: str,
     provider_manifest_digest: str,
+    fixture_revision: str | None = None,
+    split_revision: str | None = None,
 ) -> None:
     if (
         allocation.split_digest != split_digest
@@ -95,6 +122,8 @@ def _same_allocation(
         or allocation.scope_id != scope_id
         or allocation.canonical_provider != canonical_provider
         or allocation.provider_manifest_digest != provider_manifest_digest
+        or allocation.fixture_revision != fixture_revision
+        or allocation.split_revision != split_revision
     ):
         raise IdempotencyConflict("The locked split already belongs to another allocation.")
 

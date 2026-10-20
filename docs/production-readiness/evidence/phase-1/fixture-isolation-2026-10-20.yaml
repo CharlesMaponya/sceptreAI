@@ -1,0 +1,47 @@
+{
+  "status": "verified_scoped_fixture_isolation",
+  "phase_complete": false,
+  "verified_at": "2026-10-20T13:46:04.438494+00:00",
+  "passed": 105,
+  "test_modules": {
+    "tests.test_evaluator_recovery_boundaries": 42,
+    "tests.test_evaluator_retirement": 44,
+    "tests.test_object_store": 19
+  },
+  "failures": 0,
+  "errors": 0,
+  "skips": 0,
+  "scoped_gates_met": 3,
+  "scoped_gates_unmet": 0,
+  "production_sources_changed": false,
+  "preserved_embedded_uri_assertion": true,
+  "fixture_scope": "module_local_explicit_imports",
+  "complete_backend_rerun_required": false,
+  "baseline_full_backend_evidence": "replay-backend-2026-10-20.yaml",
+  "baseline_full_backend_passed": 3952,
+  "baseline_full_backend_failed": 1,
+  "migration_qualification_ceiling_bytes": 45000000000,
+  "whole_phase_verified": 2,
+  "whole_phase_open": 34,
+  "native_worker_or_capacity_qualified": false,
+  "historical_missing_qa_objects": 7,
+  "abandoned_handoff": "phase1-deletion:G7",
+  "artifact_sha256": {
+    ".unlazy/phase1-fixture-isolation/GATES.md": "860562c26f23e4ea258db3758ad53fec3cb3d5878be9400c26e1306e8115a526",
+    ".unlazy/phase1-fixture-isolation/run.py": "088ee4de87a21fe79983542833eaffdc14005486dd980ef23d0caf42cdc6346b",
+    ".unlazy/phase1-fixture-isolation/audit.py": "a21b807c249860a7724b8fcf070c1338a0d39e30857a798fa001ccaa571ac45f",
+    ".unlazy/phase1-fixture-isolation/failure.txt": "a844a3edd02c38c6cf4bcf5f37311b5a72176fd75d39170c391377df0776d84f",
+    ".unlazy/phase1-fixture-isolation/focused.log": "c3cefe01428f179241f0236dbc95b0e549daf8327764f3627a259c2de0ccde9f",
+    ".unlazy/phase1-fixture-isolation/focused.xml": "842c22b8b6210ee1e5e7e150390c01c56b42e31d951afd630d3e31ecbea93c23",
+    ".unlazy/phase1-fixture-isolation/focused-state.json": "aff8abbc576ac73512e906e6b21e18f5d1e206163717c6716ad3560a7377bf6f",
+    ".unlazy/phase1-fixture-isolation/preserved-sha256.json": "76cb259ba70c67524063adf9393f249b066a9109cc956463eeb40304d5cd1b81",
+    ".unlazy/phase1-fixture-isolation/lint.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    ".unlazy/phase1-fixture-isolation/format.log": "3bc53bf3e981a98a34a852e175bf9b77af841edea74fca595d9aedcbaf9a4938"
+  },
+  "source_sha256": {
+    "tests/test_evaluator_recovery_boundaries.py": "9b0a3079cd4e3c2dd18bfde8f113396af41835dd190bff30ef69829fbaff2587",
+    "tests/test_evaluator_retirement.py": "ddd4374bc4bb8983072aadb112420ff7dc3124cc5c7440e30b523a9b60699bc0",
+    "tests/test_object_store.py": "e1d5e2e40c43f995a91cc70b371fe5d443a47d66592434a60a88463146b77842"
+  },
+  "complete_backend_evidence": "fixture-backend-2026-10-20.yaml"
+}

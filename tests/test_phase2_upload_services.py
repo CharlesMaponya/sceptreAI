@@ -720,3 +720,36 @@ def test_retention_wait_does_not_starve_other_upload_cleanup(monkeypatch, status
     assert "retains" in pending.terminal_reason
     assert other.status == "failed"
     assert result == {"expired": 0, "completed_deleted": 0, "quarantine_deleted": 1}
+
+
+@pytest.mark.parametrize("upload_status", ["uploading", "object_completed", "verifying", "ready"])
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"digest_scope": "multipart_manifest"},
+        {"digest_scope": "future-v2"},
+        {"digest_scope": None},
+        {"digest_algorithm": "md5"},
+        {"digest_algorithm": None},
+        {"expected_object_digest": None},
+        {"expected_object_digest": "a" * 63},
+        {"expected_object_digest": "z" * 64},
+        {"expected_object_digest": "A" * 64},
+        {"expected_object_digest": 1},
+    ],
+)
+def test_completion_rejects_unqualified_digest_before_provider_or_replay(
+    monkeypatch, upload_status, metadata
+) -> None:
+    upload = _upload(status=upload_status, completed_object_uri="s3c://bucket/original", **metadata)
+    original = dict(vars(upload))
+    store = MagicMock()
+    monkeypatch.setattr(uploads, "get_object_store", store)
+    db = MagicMock()
+    with pytest.raises(UploadContractError, match="byte-stream SHA-256"):
+        uploads.complete_upload_session(
+            db, upload, sha256="a" * 64, receipts=[], settings=_settings()
+        )
+    store.assert_not_called()
+    db.flush.assert_not_called()
+    assert vars(upload) == original

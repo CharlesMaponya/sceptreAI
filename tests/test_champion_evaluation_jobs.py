@@ -21,8 +21,8 @@ class EvaluatorKubernetes(FakeKubernetes):
     def ensure_service_account(self, name):
         assert name == "sceptre-champion-evaluation"
 
-    def read(self, kind, name, namespace):
-        result = super().read(kind, name, namespace)
+    def read(self, kind, name, namespace, **kwargs):
+        result = super().read(kind, name, namespace, **kwargs)
         result.metadata.namespace = namespace
         result.immutable = self.objects[kind][name].get("immutable")
         return result

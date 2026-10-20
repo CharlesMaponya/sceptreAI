@@ -19,6 +19,10 @@ from automl_api.models.workflows import (
     WorkflowAttempt,
     WorkflowEvent,
 )
+from automl_api.services.attempt_object_grants import (
+    revoke_attempt_grants,
+    unretired_grant_deadline,
+)
 from automl_api.services.workflow_state import InvalidTransition, canonical_request_hash
 from automl_api.training.champion_refit import RefitObject, RefitPlan, RefitPolicy, _within
 from automl_api.training.evaluation import metric_direction, resolve_primary_metric
@@ -53,6 +57,10 @@ def validate_refit_policy(db: Session, scope: PromotionalScope) -> tuple[RefitPo
     policy = RefitPolicy.model_validate((scope.comparison_policy or {}).get("refit_policy"))
     split = db.get(DatasetSplitRevision, scope.split_revision_id)
     experiment = db.get(ExperimentSpecRevision, scope.experiment_spec_revision_id)
+    if split is not None:
+        from automl_api.services.provider_source import reject_provider_promotion
+
+        reject_provider_promotion(db, split.dataset_version_id)
     if (
         split is None or experiment is None or split.sealed_at is None
         or split.project_id != scope.project_id or experiment.project_id != scope.project_id
@@ -124,6 +132,12 @@ def plan_scope_refit(db: Session, scope_id: uuid.UUID, store) -> WorkflowAttempt
             return latest
         if latest.status != AttemptStatus.FAILED or latest.generation >= 2:
             scope.status = ScopeStatus.FAILED
+            return None
+        revoke_attempt_grants(db, latest.id)
+        if (
+            latest.cleanup_state != "complete"
+            or unretired_grant_deadline(db, latest.id) is not None
+        ):
             return None
         original = db.scalar(select(WorkflowEvent).where(
             WorkflowEvent.attempt_id == attempts[0].id,

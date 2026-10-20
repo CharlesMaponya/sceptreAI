@@ -110,7 +110,7 @@ def main():
     finally:
         refit_jobs.submission, evaluation_jobs.submission = original_refit, original_evaluation
     key = Path(os.environ["EVALUATION_AUTHORITY_PUBLIC_KEY_FILE"]).read_text()
-    with configured_authority(plan.final_manifest.project_reference) as authority:
+    with configured_authority(plan.project_id, plan.final_manifest.project_reference) as authority:
         response = authority.get(f"allocations/{plan.allocation_id}")
         response.raise_for_status()
         before = response.json()

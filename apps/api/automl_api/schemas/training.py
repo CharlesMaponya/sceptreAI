@@ -4,10 +4,18 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 from automl_api.core.run_names import versioned_run_name
 from automl_api.models.enums import RunKind, RunStatus, TaskType
+from automl_api.schemas.estimator_parameters import EstimatorParameterOverride, dump_overrides
 
 
 class TrainingEstimateRequest(BaseModel):
@@ -43,6 +51,20 @@ class TrainingEstimateRequest(BaseModel):
     execution_mode: Literal["auto", "in_memory", "incremental"] | None = None
     deadline_seconds: int | None = Field(default=7200, ge=60, le=604800)
     reserve_capacity: bool = False
+    parameter_overrides: list[EstimatorParameterOverride] = Field(
+        default_factory=list, max_length=100
+    )
+
+    @field_validator("parameter_overrides")
+    @classmethod
+    def unique_parameter_overrides(cls, rows):
+        if len({row.estimator for row in rows}) != len(rows):
+            raise ValueError("Each estimator may have one parameter override.")
+        return rows
+
+    @field_serializer("parameter_overrides")
+    def serialize_parameter_overrides(self, rows):
+        return dump_overrides(rows)
 
 
 class EstimatorOverride(BaseModel):
@@ -66,11 +88,25 @@ class TrainingLaunchRequest(TrainingEstimateRequest):
 
 
 class TrainingAddModelsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     candidate_models: list[str] = Field(min_length=1, max_length=100)
     optimization_iterations: int = Field(default=5, ge=1, le=25)
     cv_folds: int = Field(default=3, ge=2, le=5)
     expected_minutes: int = Field(default=10, ge=1, le=120)
     prefer_gpu: bool = True
+    parameter_overrides: list[EstimatorParameterOverride] = Field(
+        default_factory=list, max_length=100
+    )
+
+    @field_validator("parameter_overrides")
+    @classmethod
+    def unique_parameter_overrides(cls, rows):
+        return TrainingEstimateRequest.unique_parameter_overrides(rows)
+
+    @field_serializer("parameter_overrides")
+    def serialize_parameter_overrides(self, rows):
+        return dump_overrides(rows)
 
 
 class ClusterCapacityRead(BaseModel):

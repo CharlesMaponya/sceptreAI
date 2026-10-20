@@ -23,6 +23,7 @@ from automl_api.storage.contracts import (
     UploadInstruction,
     UploadProgress,
     UploadThrottled,
+    immutable_object_version,
 )
 
 
@@ -172,8 +173,21 @@ class GCSObjectStoreDriver:
             },
         )
 
-    def open_stream(self, uri: str, byte_range: ByteRange | None = None):
-        blob = self.bucket.blob(self._key_from_uri(uri))
+    def open_stream(
+        self, uri: str, byte_range: ByteRange | None = None, *, version: str | None = None
+    ):
+        kwargs = {}
+        if version is not None:
+            immutable_object_version(version)
+            if (
+                not version.isascii()
+                or not version.isdecimal()
+                or int(version) <= 0
+                or str(int(version)) != version
+            ):
+                raise UploadContractError("GCS reads require a positive immutable generation.")
+            kwargs["generation"] = int(version)
+        blob = self.bucket.blob(self._key_from_uri(uri), **kwargs)
         if byte_range is None:
             return blob.open("rb")
         value = blob.download_as_bytes(

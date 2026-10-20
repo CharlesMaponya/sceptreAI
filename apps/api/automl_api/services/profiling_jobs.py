@@ -32,6 +32,7 @@ from automl_api.schemas.profiling import (
     ProfileRequest,
 )
 from automl_api.schemas.profiling_jobs import ProfilingJobCreate
+from automl_api.services.dataset_digests import require_verified_digest
 from automl_api.services.leakage import LEAKAGE_SAMPLE_ROWS, detect_target_leakage
 from automl_api.services.profiling import (
     _build_preparation_plan,
@@ -41,6 +42,7 @@ from automl_api.services.profiling import (
     profile_dataset_version,
 )
 from automl_api.services.projects import require_project_role
+from automl_api.services.provider_source import require_prepared_source
 from automl_api.services.workflow_state import (
     StaleFence,
     begin_command,
@@ -67,7 +69,11 @@ def create_profiling_job(
 ) -> tuple[ProfilingJob, bool]:
     require_project_role(db, user, project_id, ProjectRole.VIEWER)
     version = _get_version(db, project_id, dataset_id, dataset_version_id)
-    distributed = requires_distributed_profile(version) or bool(payload.time_column)
+    distributed = (
+        getattr(version, "source_kind", None) == "provider_distribution"
+        or requires_distributed_profile(version)
+        or bool(payload.time_column)
+    )
     if distributed and version.format == DatasetFormat.EXCEL:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -225,6 +231,14 @@ def _enqueue_distributed_profile(
     version: DatasetVersion,
     job: ProfilingJob,
 ) -> WorkflowAttempt:
+    source = require_prepared_source(db, version)
+    stage = WorkflowStage.PREPARATION if source is not None else WorkflowStage.SPLITTER
+    if source is not None:
+        job.overview_json = {
+            **job.overview_json,
+            "prepared_artifact_id": str(source.prepared_artifact_id),
+            "split_revision_id": str(source.split_revision_id),
+        }
     request = {
         "profiling_job_id": str(job.id),
         "dataset_version_id": str(version.id),
@@ -243,7 +257,7 @@ def _enqueue_distributed_profile(
         existing = db.scalar(
             select(WorkflowAttempt).where(
                 WorkflowAttempt.project_id == job.project_id,
-                WorkflowAttempt.logical_key == f"profile:{job.id}:splitter",
+                WorkflowAttempt.logical_key == f"profile:{job.id}:{stage.value}",
                 WorkflowAttempt.generation == 1,
             )
         )
@@ -253,10 +267,10 @@ def _enqueue_distributed_profile(
 
     attempt = WorkflowAttempt(
         project_id=job.project_id,
-        stage=WorkflowStage.SPLITTER,
-        logical_key=f"profile:{job.id}:splitter",
+        stage=stage,
+        logical_key=f"profile:{job.id}:{stage.value}",
         dataset_version_id=version.id,
-        workload_identity="sceptre-dataset-splitter",
+        workload_identity=f"project-{job.project_id}-{stage.value}",
         generation=1,
         fencing_token=uuid.uuid4().hex,
     )
@@ -265,7 +279,7 @@ def _enqueue_distributed_profile(
     enqueue_outbox(
         db,
         command,
-        topic="ray.dataset.split.submit",
+        topic="ray.dataset.prepare.submit" if source is not None else "ray.dataset.split.submit",
         aggregate_type="profiling_job",
         aggregate_id=job.id,
         payload={
@@ -280,7 +294,7 @@ def _enqueue_distributed_profile(
     command.response_payload = {
         "profiling_job_id": str(job.id),
         "attempt_id": str(attempt.id),
-        "stage": WorkflowStage.SPLITTER.value,
+        "stage": stage.value,
     }
     transition_command(command, CommandStatus.RUNNING)
     job.overview_json = {
@@ -531,6 +545,7 @@ def _run_partitioned_stages(job_id: uuid.UUID, delivery: ProfileDelivery) -> Non
         version = db.get(DatasetVersion, job.dataset_version_id)
         if version is None:
             raise ValueError("The profiling job's dataset version was not found.")
+        require_verified_digest(version)
         previous_count = job.row_count
         existing_profiles = dict(job.feature_profiles_json)
         target_column = job.target_column
@@ -870,4 +885,5 @@ def _get_version(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Dataset version not found.",
         )
+    require_prepared_source(db, version)
     return version

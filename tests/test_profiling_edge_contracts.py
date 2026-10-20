@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from types import SimpleNamespace
 
 import automl_api.services.profiling as profiling
@@ -24,6 +25,7 @@ from automl_api.services.dataset_inspection import (
 from automl_api.services.dataset_inspection import (
     _looks_temporal as inspection_temporal,
 )
+from digest_fixtures import verified_raw_version
 from fastapi import HTTPException
 
 
@@ -63,11 +65,11 @@ def test_csv_loader_falls_back_for_an_unknown_dialect() -> None:
 
 
 def test_row_loading_and_column_fallbacks(monkeypatch: pytest.MonkeyPatch) -> None:
-    unsupported = SimpleNamespace(format=DatasetFormat.PARQUET)
+    unsupported = verified_raw_version(format=DatasetFormat.PARQUET)
     rows, warnings = profiling._load_rows(unsupported)
     assert rows == [] and "stored metadata" in warnings[0]
 
-    broken = SimpleNamespace(format=DatasetFormat.CSV, object_uri="store://missing")
+    broken = verified_raw_version(format=DatasetFormat.CSV, object_uri="store://missing")
     monkeypatch.setattr(
         profiling,
         "get_object_store",
@@ -294,7 +296,10 @@ def test_ray_routing_is_format_deterministic(format, filename, expected) -> None
 
 
 def test_build_profile_rejects_missing_target_on_local_path(monkeypatch) -> None:
-    version = SimpleNamespace(
+    version = verified_raw_version(
+        id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        dataset_id=uuid.uuid4(),
         format=DatasetFormat.PARQUET,
         original_filename="data.parquet",
         schema_json={"columns": [{"name": "feature"}]},
@@ -336,9 +341,7 @@ def test_temporal_statistics_and_distributions_accept_unix_timestamps() -> None:
 
 def test_relationship_math_non_degenerate_paths() -> None:
     assert profiling._pearson([(1, 2), (2, 4), (3, 6)]) == pytest.approx(1.0)
-    score = profiling._cramers_v(
-        [("a", "yes"), ("a", "yes"), ("b", "no"), ("b", "no")]
-    )
+    score = profiling._cramers_v([("a", "yes"), ("a", "yes"), ("b", "no"), ("b", "no")])
     assert score == pytest.approx(1.0)
     sparse_score = profiling._cramers_v(
         [(f"row-{index}", "yes" if index % 2 else "no") for index in range(1_000)]

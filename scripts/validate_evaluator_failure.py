@@ -91,7 +91,9 @@ def main():
                 continue
             attempt = attempts[-1]
             plan = EvaluationPlan.model_validate(_event(db, attempt.id, "evaluation_plan").payload)
-            with configured_authority(plan.final_manifest.project_reference) as authority:
+            with configured_authority(
+                plan.project_id, plan.final_manifest.project_reference
+            ) as authority:
                 response = authority.get(f"allocations/{plan.allocation_id}")
                 response.raise_for_status()
                 state = response.json()
@@ -180,7 +182,7 @@ def main():
         raise TimeoutError(f"Inspect scope {args.scope}; do not reseed after timeout")
     for _ in range(2):
         reconcile_evaluation_jobs_once(factory, k8s)
-    with configured_authority(plan.final_manifest.project_reference) as authority:
+    with configured_authority(plan.project_id, plan.final_manifest.project_reference) as authority:
         response = authority.get(f"allocations/{plan.allocation_id}")
         response.raise_for_status()
         assert response.json() == state

@@ -4,6 +4,7 @@ import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, Gauge, generate_latest
@@ -30,6 +31,7 @@ from automl_api.core.config import get_settings
 from automl_api.core.structured_logging import bind_logging_context, configure_structured_logging
 from automl_api.db.session import get_engine, pool_metrics
 from automl_api.security.authentication_policy import validate_authentication_configuration
+from automl_api.services.dataset_digests import DatasetDigestError
 from automl_api.services.profiling_jobs import resume_incomplete_profiling_jobs
 from automl_api.services.upload_policy import (
     configured_upload_data_region,
@@ -62,9 +64,7 @@ def create_app() -> FastAPI:
     )
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=list(
-            getattr(settings, "upload_allowed_origins", ("http://localhost:8080",))
-        ),
+        allow_origins=list(getattr(settings, "upload_allowed_origins", ("http://localhost:8080",))),
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allow_headers=[
@@ -87,6 +87,22 @@ def create_app() -> FastAPI:
         ],
         max_age=900,
     )
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid_request(_: Request, exc: RequestValidationError) -> JSONResponse:
+        # Do not echo credentials or nonfinite input values into validation responses.
+        detail = [
+            {key: error[key] for key in ("type", "loc", "msg") if key in error}
+            for error in exc.errors()
+        ]
+        return JSONResponse(status_code=422, content={"detail": detail})
+
+    @app.exception_handler(DatasetDigestError)
+    async def dataset_digest_error(_: Request, exc: DatasetDigestError) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content={"detail": {"code": "dataset_digest_unverified", "message": str(exc)}},
+        )
 
     @app.exception_handler(UploadExpired)
     async def upload_expired(_: Request, exc: UploadExpired) -> JSONResponse:

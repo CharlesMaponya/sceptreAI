@@ -1,0 +1,94 @@
+{
+  "verified_at": "2026-10-16T12:08:22.546077+00:00",
+  "status": "verified_increment",
+  "phase_complete": false,
+  "requirements": [
+    "P1-W09"
+  ],
+  "changes": [
+    "Closed provider-distribution-v1 declarations bind allocation/project/scope, fixture/split revision, split digest and canonical/named provider. Three versioned safe-role copies must match logical schema, row counts and XOR digests; physical partitions may differ. Known registered final URIs and byte digests cannot be safe copies.",
+    "Allocator-only HTTP issuance uses the trusted installed final manifest, locks the existing allocation and writes all three Ed25519 receipts atomically. First issuance must precede authority refit/evaluation evidence and state changes. Exact replay returns original signatures even after result commit; changed/partial/tampered history fails closed. No schema or dependency change.",
+    "Canonical receipt alone includes registered final object locations; non-canonical receipts have validation_only mode, safe-role copies and opaque final-role digests. Consumer verifier requires independent trusted references/public key, checks raw canonical JSON before signature/reference use and rejects coercion/default-removal/unknown fields/algorithm confusion.",
+    "CLI bounds input32MiB and emits only verification/protocol/provider/mode/safe-object count or a generic error. Operator README documents separate provider delivery and updates obsolete credential implementation text."
+  ],
+  "verification": {
+    "focused": {
+      "tests": 54,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "regressions": {
+      "tests": 121,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "counts_overlap": true,
+  "regression_cases_by_module": {
+    "tests.test_provider_distribution": 54,
+    "tests.test_qualification_control": 13,
+    "tests.test_champion_credentials": 14,
+    "tests.test_champion_identity": 3,
+    "tests.test_champion_evaluation_authority": 4,
+    "tests.test_champion_evaluation_keys": 8,
+    "tests.test_champion_authority_recovery": 3,
+    "tests.test_champion_registration_abort": 22
+  },
+  "decisive_checks": [
+    "Actual PostgreSQL six-caller races produce one complete set of three signed receipts for identical requests; competing fixture revisions produce one winning set and deterministic409 for losers.",
+    "The test terminates the exact active PostgreSQL backend after the first receipt and before the second insert. HTTP503 follows, zero distribution rows survive, and a fresh exact request creates one complete set.",
+    "Consumer negative controls cover all eight independently trusted reference fields, wrong key, signature/algorithm/hash/payload changes, validly signed inconsistent outer bindings, unknown fields, numeric coercion and omitted defaults. Non-canonical serialized payloads exclude registered final bucket/key locations.",
+    "Known final-byte overlap is rejected for all three providers, including s3/s3c URI aliases disguised as safe-role paths. Distinct physical partition layouts with matching logical rows are accepted. Missing copies, duplicate providers, row/schema drift, traversal, query credentials, backend/generation and boolean-size errors reject before issuance.",
+    "Actual CLI subprocess validates a signed non-canonical receipt with a PEM public key and explicit references, emits no object locations, then rejects a malformed private-query URI with only a generic error.",
+    "Integrated HTTP metadata lifecycle distributes before refit/evaluator registration, issues exactly one mocked provider credential set, commits one result and replays unchanged distribution. This proves protocol integration, not actual cloud data access or model execution. Existing authority/handoff/credential regressions pass.",
+    "Scoped four-file Ruff lint/format and diff checks pass. Source/artifact hashes and XML/report counts are independently audited; coverage.json is unchanged."
+  ],
+  "intermediate_runs": "Initial47focused/114related passed. Added known-final-overlap controls produced52/119; final404 handling and full distribution-to-committed-evaluation metadata lifecycle produced54/121. All test cohorts passed; final gate runner exited1 only for manual G3 pending this audit, while both runnable checks exited0 and matched EXPECT.",
+  "limits": [
+    "W09 remains Open. This is a signed declaration/reference protocol; actual provider copies, bytes, final-prefix IAM isolation and distributed consumer deployment are not verified. Row/schema/digest declarations are operator attestations and need independent import/byte qualification.",
+    "Automatic dataset-import/admission enforcement is not wired. Existing allocation/evaluator interfaces retain their prior protocol; existing campaigns without distribution receipts are not silently promoted to qualification. Fixture/split revision references are frozen per allocation, but database uniqueness for the revision pair remains required.",
+    "First issuance rejects existing authority refit/evaluation evidence; the authority cannot observe unreported provider training results. The operator must allocate/distribute before campaign training. Complete prerequisite enforcement belongs to campaign/import integration.",
+    "Only the allocator receives the complete response and must deliver each receipt to its named provider. Offline signature verification does not establish live allocation status or grant permission to open final data. Current-key verification rejects old-key replay after rotation until trusted key-ring policy is implemented.",
+    "Tests use a dedicated local PostgreSQL database, real Ed25519 signatures, HTTP test clients and actual CLI subprocesses. Credential minting in the integrated metadata lifecycle is mocked. No current-image/Kubernetes/cloud conformance, authority restore/HA or full native failure proof is claimed.",
+    "No QA data/object mutation, schema migration, rollout, commit or public publication occurred. Prior immutable image evidence predates these changes. FullPhase1 remains1Verified/35Open; production Train/general attempt grants and full failure inventory remain required.45GB migration capacity/reserve/row-count gap, seven historical QA objects and original abandoned preservation gate remain unresolved."
+  ],
+  "source_sha256": {
+    "apps/api/automl_api/qualification_control.py": "60e091805f797ffee938b91e0637bb77476ae5b146ce3b2b8d2c1fb22cc67525",
+    "apps/api/automl_api/services/provider_distribution.py": "f3d4e9220b854f6e072ace79ab7aa92696da966e46b4ea8fbe3402eca67700f9",
+    "apps/api/automl_api/services/final_test_authority.py": "1eff084ae666076ebdd6edba7426849c1c1608d4b4cee5f7d14b7ca2634ac65b",
+    "apps/api/automl_api/services/final_test_credentials.py": "700ad6f35c41cf7977b777ebed75fbb0d66691c6c7d3b6253a1dc3f9b22cf268",
+    "apps/api/automl_api/services/final_evaluator_identity.py": "6d4b9c107dd520d29dee9df7290018b5dae46de0f04e8b154a87dd0078ae9d07",
+    "apps/api/automl_api/models/qualification.py": "1b7e4f465f4d4da092520088d2b78c4d664c6e8f2ca031aa7f3ba32bc2924a6e",
+    "scripts/validate_provider_distribution.py": "89f8e9f8c768a539e12436fa36f6d208088c2f4f33e02d4ccea78c92b9bed346",
+    "tests/test_provider_distribution.py": "891b648473b1cfd4a44ca4cdd27e8bf7fdfed4818dd3bb25e3d28a98977254b5",
+    "services/qualification-control/README.md": "bfebfe7c72a547ddaf75476d63b9367fd6559d75fb8bb35c1a82f31fdf34dac9",
+    ".unlazy/phase1-provider-distribution/check.py": "9be2fcafdd40be0fc2b465bfaf9bde6b712a682b9c3b550f3d7cc007a0a02e44",
+    "tests/test_qualification_control.py": "db01af870c5c82bb3d3d213634f3832e42f25d2e3e8009b92f20956cc078ab01",
+    "tests/test_champion_credentials.py": "d1ffd59e6e2e55aed70518e7d343fc48f7abdd1a93abd8e9cb7273b1ba957f34",
+    "tests/test_champion_identity.py": "224b6e825f73307968cce46363346f64c9cc17ee19faf5ece4b63f45c304d8c2",
+    "tests/test_champion_evaluation_authority.py": "262bb889d1c9db7561e0c0d4c8202eb6176771b3368065f7f8750e0f0c4547e4",
+    "tests/test_champion_evaluation_keys.py": "c4e0249216df257911dd5bce135cd8bae8ea82879eaee09b3598a33004b2eaef",
+    "tests/test_champion_authority_recovery.py": "c28227dcb34695c1d8f31be5cbd78f9808fc0340ae314cfc16cf6822dba4470e",
+    "tests/test_champion_registration_abort.py": "f2508dc1c9d0f5edc3f9b9d734b3e4f9acd37ff5cbaf3e2c2e21bba31718de6b"
+  },
+  "artifact_sha256": {
+    ".unlazy/phase1-provider-distribution/focused.log": "14bbe2318a09361b39d60b4c86dd35b58ab3061cd3cef5060113c84ac4767d49",
+    ".unlazy/phase1-provider-distribution/lint.log": "4bd8248f4985e327cd636d5b563aa46d1d34db2021498c8d8b37613b35f181d1",
+    ".unlazy/phase1-provider-distribution/regressions-report.json": "c69bb22abd7f878473c342b1d57eb3b11006972328efd7b7cf77f104dd173201",
+    ".unlazy/phase1-provider-distribution/focused-report.json": "9d42fc268e40ffc902c31d30e91befb1c07bab7189a84b81b19cc3ab36c64305",
+    ".unlazy/phase1-provider-distribution/gates-initial.log": "f6fc852219c1c58f09e626006806cef653eddc2a846cce4137a04775492270eb",
+    ".unlazy/phase1-provider-distribution/gates-reviewed.log": "87102784b0afcd364219143b9a1f11e488c0321eeb2b535152a40b5a8256eb5f",
+    ".unlazy/phase1-provider-distribution/focused.xml": "dccfbac771e1182261b2b52e87199b81e7699a65a0bfe5befcf89d3dc27459b2",
+    ".unlazy/phase1-provider-distribution/regressions.log": "48b46a0b433d624de515f31b9d2301c23248ac20e2260672a6b0f12950cf8d56",
+    ".unlazy/phase1-provider-distribution/regressions.xml": "9d5561be3e993a736769680c54c5e0c2308204d2780501fb0c4c13ae66111188",
+    ".unlazy/phase1-provider-distribution/gates-integration.log": "1149cfb283cbf7ce37f31fe3854cf53c9c4a8a6e9ca454e0ae7d9dac8ede520b",
+    ".unlazy/phase1-provider-distribution/source-sha256.json": "6c5b582daa7800c13626297d23475ab4b29e2135b31e6b8378e7a6b095b337b6"
+  },
+  "phase_ledger": {
+    "requirements": 36,
+    "verified": 1,
+    "open": 35
+  }
+}

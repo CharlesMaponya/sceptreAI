@@ -288,8 +288,18 @@ def seed(factory, store, *, slow, evaluation_policy=None):
             )
         )
         db.flush()
-        attempt = plan_scope_refit(db, scope.id, store)
-        first_id = attempt.id
+        if evaluation_policy is not None:
+            from automl_api.services.scope_allocation import register_scope_allocation
+
+            # Synthetic training is fixture setup; central registration precedes refit.
+            scope.status = ScopeStatus.OPEN
+            scope.sealed_at = scope.scope_started_at = scope.scope_deadline_at = None
+            scope.membership_deadline_at = datetime.now(UTC) + timedelta(minutes=10)
+            register_scope_allocation(db, scope, actor_id=user.id)
+            first_id = None
+        else:
+            attempt = plan_scope_refit(db, scope.id, store)
+            first_id = attempt.id
     return scope_id, first_id, count
 
 

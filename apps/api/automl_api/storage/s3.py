@@ -21,6 +21,7 @@ from automl_api.storage.contracts import (
     UploadInstruction,
     UploadProgress,
     UploadThrottled,
+    immutable_object_version,
 )
 
 
@@ -283,11 +284,19 @@ class S3ObjectStoreDriver:
             },
         )
 
-    def open_stream(self, uri: str, byte_range: ByteRange | None = None):
+    def open_stream(
+        self, uri: str, byte_range: ByteRange | None = None, *, version: str | None = None
+    ):
         params: dict[str, Any] = {"Bucket": self.bucket, "Key": self._key_from_uri(uri)}
+        if version is not None:
+            params["VersionId"] = immutable_object_version(version)
         if byte_range:
             params["Range"] = f"bytes={byte_range.start}-{byte_range.end_inclusive}"
-        return self.client.get_object(**params)["Body"]
+        response = self.client.get_object(**params)
+        if version is not None and response.get("VersionId") != version:
+            response["Body"].close()
+            raise UploadContractError("Object store returned a different or missing version.")
+        return response["Body"]
 
     def put_stream(self, uri: str, source) -> ObjectMetadata:
         key = self._key_from_uri(uri)

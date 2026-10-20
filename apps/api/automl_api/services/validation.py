@@ -23,12 +23,13 @@ from automl_api.schemas.validation import (
     RunArtifactRead,
     ValidationLaunchRequest,
 )
+from automl_api.services.dataset_digests import require_verified_digest
 from automl_api.services.kubernetes_training import KubernetesTrainingClient
 from automl_api.services.projects import require_project_role
 from automl_api.services.training import (
     _leaderboard_parent,
     _lock_training_admission,
-    estimate_training_run,
+    estimate_analysis_resources,
 )
 from automl_api.storage.object_store import get_object_store
 from automl_api.training.feature_importance import normalize_feature_importance
@@ -202,7 +203,7 @@ def _launch_analysis_run(
 ) -> AnalysisLaunchRead:
     _lock_training_admission(db)
     k8s = client or KubernetesTrainingClient()
-    estimate = estimate_training_run(
+    estimate = estimate_analysis_resources(
         db,
         user,
         source.project_id,
@@ -380,6 +381,7 @@ def _dataset_version(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Dataset version not found.",
         )
+    require_verified_digest(version)
     if not get_object_store().exists(version.object_uri):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

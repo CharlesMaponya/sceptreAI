@@ -1,0 +1,50 @@
+{
+  "status": "verified_scoped_refit_recovery_fix",
+  "phase_complete": false,
+  "verified_at": "2026-10-20T06:32:30.190489+00:00",
+  "connected_tests": 152,
+  "overlapping_focused_tests": 29,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "pre_fix_false_cleanup_and_deadline_loss_failures": 2,
+  "missing_submission_custody_keeps_cleanup_pending": true,
+  "controlled_fixture_custody_restoration_allows_confirmed_cleanup": true,
+  "concurrent_scope_deadline_loss_fails_scope_and_attempt": true,
+  "scoped_reconcile_branches": {
+    "covered": 30,
+    "missing": 2,
+    "critical_decisions_with_both_outcomes_covered": 3
+  },
+  "pre_fix_source_sha256": {
+    "apps/api/automl_api/services/refit_jobs.py": "04b59cbbf876c15682c8f9855a2e216a973beadf1b9ac30ad5f82d06271da283"
+  },
+  "changed_source_sha256": {
+    "apps/api/automl_api/services/refit_jobs.py": "4c262e363987c9364c0e9f83e194aea41700543781c3799d3c762cf0cddc8448",
+    "tests/test_champion_refit_recovery.py": "47c3d75ae8c41e51e91ca6ecaef867bc1110256c055cc476a7d3b58d4ca0d4e1"
+  },
+  "tested_input_count": 487,
+  "artifact_sha256": {
+    ".unlazy/phase1-refit-recovery/source-sha256.json": "e65290468e381c4b191d592c815edaf6a416503e019133ba910fd41d3b8826d0",
+    ".unlazy/phase1-refit-recovery/connected.xml": "08a05f1b41c7533174f9d622f835b1a4fd83854b477fcbe09fa53f8a39207faa",
+    ".unlazy/phase1-refit-recovery/connected-state.json": "625d8ab7504258ac5c96adc165e954b93aed4c0bf4e49964c777ef64670d8b92",
+    ".unlazy/phase1-refit-recovery/coverage.json": "27a8a32b959d52e40b5336625720c16c4bc61c12f9d56d1102aba1662c3aa120",
+    ".unlazy/phase1-refit-recovery/reproduction.xml": "1a397e21618d0084f236576ea4c2031c54157efa82cdb0ca11e211c2cd30172a",
+    ".unlazy/phase1-refit-recovery/pre-fix-test.py": "5c9e290d52bd9625212e1108bd9b51e1228d18f181084a44db3acd408ebb5092",
+    ".unlazy/phase1-refit-recovery/run.py": "30255ed01f780e556351f76e3a6d1c616f85a5492fa5b025c78a10febf041af6",
+    ".unlazy/phase1-refit-recovery/audit.py": "a446595365ff5e9d8f954b7d9a442c7974aceba6a569e71e4d1fd3f1eafe795f",
+    ".unlazy/phase1-refit-recovery/lint.log": "afa20b27dacc9bf0aba3c1d265964c21e04ab42f6e39e2dd4769718ceded003a"
+  },
+  "coverage_original_sha256": "d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9",
+  "whole_phase_verified": 2,
+  "whole_phase_open": 34,
+  "full_backend_suite_or_global_coverage_requalified": false,
+  "previous_full_backend_checkpoint": "current-backend-2026-10-20.yaml",
+  "native_worker_or_full_workflow_qualified": false,
+  "legacy_missing_custody_or_all_stage_retirement_qualified": false,
+  "production_sized_or_prior_binary_migration_qualified": false,
+  "migration_qualification_ceiling_bytes": 45000000000,
+  "shared_preservation_qualified": false,
+  "historical_missing_qa_objects": 7,
+  "abandoned_handoff": "phase1-deletion:G7"
+}

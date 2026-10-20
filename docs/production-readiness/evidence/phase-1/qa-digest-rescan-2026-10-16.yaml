@@ -1,0 +1,40 @@
+{
+  "verified_at": "2026-10-16T05:00:08.376438+00:00",
+  "status": "verified_observations",
+  "phase_complete": false,
+  "requirement": "P1-W16",
+  "outcomes": {
+    "match_size_unrecorded": 13
+  },
+  "version_count": 13,
+  "read_bytes": 280788,
+  "metadata_size_missing": 13,
+  "database_rows_unchanged": true,
+  "qa_unchanged": true,
+  "oracle": "17 executed positive/negative controls cover chunk bounds, matching/mismatched digest, size mismatch, truncated/oversized streams, object identity change, zero bytes, unsupported sizes/algorithm/scope/digest, deadline/read failures and stream closure.",
+  "native": "Exact prior inventory set scanned with enforced read-only repeatable-read metadata snapshots before/after; complete database row fingerprints match. Known declared sizes were absent; provider HEAD sizes admitted reads under the unchanged16MiB object/64MiB total limits,64KiB chunks and40s deadline. All13 object streams match expected SHA256. Existing QA Pod/PVC UID/phase lists match before/after.",
+  "intermediate": "First native attempt rejected missing byte_size before acquiring storage/reading objects. It is retained under attempt-1. The second attempt uses bounded provider HEAD sizes when a persisted size is absent; it records match_size_unrecorded rather than inferring persisted-size verification.",
+  "limits": [
+    "Observation only: no metadata repair, schema migration, object write/delete or re-signing of historical content. Provider stat-before/after checks are not version-pinned grants or proof against all concurrent replacement/ABA scenarios. A future reader must enforce its own content binding.",
+    "QA contains no upload sessions; this does not qualify legacy-manifest migration, production data, all readers, prior binaries, arbitrary size/provider or current-image workflows.",
+    "45GB production migration remains untested due storage capacity; seven original QA models/results and original abandoned preservation gate remain unresolved. Phase1 remains1Verified/35Open."
+  ],
+  "artifact_sha256": {
+    ".unlazy/phase1-qa-digest-rescan/self_check.py": "dcdf18525fcefe3e66d4237525392dade626860c81bb56a77055891473d4976c",
+    ".unlazy/phase1-qa-digest-rescan/native-report.json": "27d0a8e3d846a23e85560aec68f861b82624e259b6a0487890a772da855e1ab3",
+    ".unlazy/phase1-qa-digest-rescan/native-state.json": "bbeaaf6e44a553306c04494c67572ce22b038d2387d53d47ea536597a7385138",
+    ".unlazy/phase1-qa-digest-rescan/native-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    ".unlazy/phase1-qa-digest-rescan/oracle-gates.log": "2836752a9e57c528db27f74fe97e4b106ba368b1e0c844d44cc48dd0d5f36935",
+    ".unlazy/phase1-qa-digest-rescan/run_native.py": "0ce082ecf4f3fb51d29994ed9cef0526069c8f7948571b5d03f789b208000bf4",
+    ".unlazy/phase1-qa-digest-rescan/verify_bytes.py": "1949ba8b7eadaa46aa01b80e3def7ead136d9c96239bf3030a2ad4a2681bec16",
+    ".unlazy/phase1-qa-digest-rescan/native-driver.log": "01b98998a8053109e15adaa710d67fd8dc2d62d69c4eafb78e131ff8c46ef811",
+    ".unlazy/phase1-qa-digest-rescan/native-output.log": "902c5bffc51bd36652ec0230d185b5bc44b59e3acd23d97ad08d3b4942fb58c4",
+    ".unlazy/phase1-qa-digest-rescan/oracle-gates-current.log": "6478ba60d2a29b2e299b78e7fa274a661919ae9c257b77b948082ad5b3b2249c",
+    ".unlazy/phase1-qa-digest-rescan/remote_probe.py": "fe40e55ad51f8ddb16e4374c322e3f08bf0207c4ee1cc63d8608eb7e53e52664"
+  },
+  "phase_ledger": {
+    "requirements": 36,
+    "verified": 1,
+    "open": 35
+  }
+}

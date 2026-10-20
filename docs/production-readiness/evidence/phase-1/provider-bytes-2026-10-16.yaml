@@ -1,0 +1,136 @@
+{
+  "verified_at": "2026-10-16T16:53:21.661737+00:00",
+  "status": "verified_increment",
+  "phase_complete": false,
+  "requirements": [
+    "P1-W09",
+    "P1-W16"
+  ],
+  "changes": [
+    "Verify signature/reference-validated safe provider objects through exact immutable version streams, whole-object SHA/size, actual Parquet schema/rows/canonical IDs/ordinals/recomputed content fingerprints/role/XOR digests. Final objects are never read.",
+    "Use one temporary object and a capped SQLite ID/fingerprint index, decoded group/batch checks, working free-space reserve and cooperative deadline/progress callback. Reject duplicate identities and cross-role equal content; allow same-role content duplicates with distinct IDs. Remove work on success/error.",
+    "Define arrow-logical-schema-v1 over name-sorted data field names/types/nullability, excluding identity fields and writer metadata. Existing mismatching declarations fail closed without digest/signature rewrite.",
+    "Extend existing operator CLI with optional physical checking and required bounded budget file; preserve default offline output and generic private failures. Validate signature/trusted references/resource declaration before storage construction. No schema/dependency/registration change."
+  ],
+  "verification": {
+    "focused": {
+      "tests": 32,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "regressions": {
+      "tests": 167,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "counts_overlap": true,
+  "regression_cases_by_module": {
+    "tests.test_provider_copy_verification": 24,
+    "tests.test_provider_copy_cli": 8,
+    "tests.test_provider_distribution": 54,
+    "tests.test_versioned_streams": 46,
+    "tests.test_phase2_upload_drivers": 8,
+    "tests.test_object_store": 19,
+    "tests.test_data_identity": 8
+  },
+  "native": {
+    "status": "passed",
+    "signature_and_references_verified": true,
+    "old_version_parquet_verified_after_replacement": true,
+    "signed_wrong_row_digest_rejected": true,
+    "temporary_work_removed": true,
+    "safe_rows": {
+      "train": 2,
+      "validation": 2
+    },
+    "verified_bytes": 4854,
+    "schema_digest": "002a9228855024db198a87cbfe9ab6595893738d27e9073789faacb8b5dc1c57",
+    "cli_locations_hidden": true,
+    "pyarrow_version": "24.0.0",
+    "verification_budget": {
+      "max_temporary_bytes": 8388608,
+      "max_decoded_group_bytes": 8388608,
+      "min_free_bytes": 33554432,
+      "timeout_seconds": 30
+    },
+    "owned_neighbor_preserved": true,
+    "verified_tls": true,
+    "fixture_versions": 4,
+    "fixture_bytes_written": 4892,
+    "fixture_cleanup": true,
+    "baseline_version_records": 16,
+    "metadata_fingerprint_before": "daa67b8081540a21a8163d5a5f9aa14a7dfe62e7c82af2593486c18723eb104c",
+    "metadata_fingerprint_after": "daa67b8081540a21a8163d5a5f9aa14a7dfe62e7c82af2593486c18723eb104c",
+    "preexisting_versions_unchanged": true
+  },
+  "native_source_sha256": {
+    "contracts": "1e016c9d24605f09897c9068d449beb87c3d5c56b88c1a302f80b27e9268e287",
+    "s3": "6d9a3c45920ed5b4a91a3281c01debab1e6e9e8b2e814e3537924aac2d0e4ee0",
+    "distribution": "13dbaeb51a1e7516effc3aa80f02850d30faa586f94e7991b3f311959f6818b2",
+    "verification": "f28490bfe3af5c2d01aeb503c34a39d4842b21398fe7655fdde03e405b0f940c",
+    "identity": "7f3a5f645a9129fd29e6d809c87a513fc4781d017bb38a9660fa714cb8757db0",
+    "cli": "5eba935a8db0913b8031eced4386f33c0f6e0509c3725afc54129902af7170b8"
+  },
+  "namespace_identities_unchanged": true,
+  "host_free_bytes_before": 48048955392,
+  "host_free_bytes_after": 48048918528,
+  "decisive_checks": [
+    "Actual generated Parquet fixtures, including omitted Hive role fields, explicit roles, reordered columns and differing writer metadata, verify successfully. Wrong declared bytes/SHA/schema/rows/XOR, malformed data and row IDs/ordinals/fingerprints/roles fail independently after positive controls.",
+    "Repeated IDs across files and cross-role equal content are rejected through a bounded disk index. Same-role distinct-ID duplicate content is accepted. Temporary/index/decode/free-space limits, cooperative expiry and a simulated lost-lease progress callback stop verification and clean work.",
+    "CLI invalid signature/reference/budget/no-budget cases never construct storage. Valid signature cannot bless changed object bytes; errors disclose no locations/private values. Existing offline signature output is unchanged.",
+    "Actual local TLS S3-compatible probe loads exact current contracts/S3/distribution/verifier/identity/CLI modules in a separate existing-Pod process with a real S3 client and test signer. CLI verifies4854bytes/four rows through historical versions after current train replacement, rejects a validly signed wrong row digest and removes temporary work. Four owned versions/4892bytes are removed;16existing version-record metadata and qa-refit/qa-phase1 Pod/PVC identities match. Default store configuration is injected to this bounded fixture client; production resolver/IAM is not qualified.",
+    "Four changed Python files pass Ruff lint/format/diff and coverage preservation. Independent20-input source/artifact/XML/report/native/whole-ledger audit verifies measured counts."
+  ],
+  "intermediate_runs": "Initial24physical cases/159related passed. Added eight CLI controls; final32focused/167related passed0fail/error/skip. Native handle87900 exited0 on first attempt. Test gate handles90399/48735 exited1 only for pending manualG3/G4; runnable checks both exited0 and matched EXPECT.",
+  "limits": [
+    "No dataset/version/import row is registered or admitted by this proof. Protected import mode/reference storage, validation_only admission restrictions, early campaign allocation/distribution and durable verification worker/replay/grant integration remain required; W09/wholePhase1 remain Open.",
+    "The proof validates signed safe-copy declarations and existing XOR row digests, not original raw-source derivation or final-role overlap. It never reads final objects or grants final-test access. A copy proof/CLI JSON is not authorization or a trusted client-supplied admission flag.",
+    "Budgets cap declared object-plus-index pages and decoded row-group/batch data, not complete process RSS or filesystem metadata. Provider SDK buffers/parser/Python overhead require worker limits/headroom. The deadline is cooperative between calls; outer process deadlines/provider RPC timeouts must bound blocking calls. SIGKILL/durable recovery cleanup remains unqualified.",
+    "Native uses tiny synthetic data, current helper source in an unchanged existing Pod, a fixture store override and administrative local S3 credentials. It is not a rebuilt/deployed image, actual cloud/least-privilege/IAM,45GB/memory/throughput or whole workflow qualification. Preservation compares16version-record metadata and Pod/PVC identities, not a new byte rescan of every historical object.",
+    "No schema, shared Secret/configuration, existing object, stateful restart, rollout, commit or public publication changed. Head0012/W12 structure is unchanged. Fullledger36requirements1VerifiedW12/35Open;45GB capacity/reserve/row-count gap, seven original missing QA objects and original preservationG7ABANDONED remain unresolved; no historical output/signature replacement."
+  ],
+  "source_sha256": {
+    ".unlazy/phase1-provider-bytes/check.py": "52e2d3ba55bf3d7ad93839e362442b2e3d94f08e55cd8231d7e50610052ef9b2",
+    ".unlazy/phase1-provider-bytes/native_probe.py": "8b9c0b4325351e1a30284f755462b4feab96d0b6c6a541ea39fb04ac9cefd8f9",
+    "apps/api/automl_api/services/provider_copy_verification.py": "f28490bfe3af5c2d01aeb503c34a39d4842b21398fe7655fdde03e405b0f940c",
+    "apps/api/automl_api/services/provider_distribution.py": "13dbaeb51a1e7516effc3aa80f02850d30faa586f94e7991b3f311959f6818b2",
+    "apps/api/automl_api/services/workflow_state.py": "fc0f1b26ba527ddcc31fd1a8278a68b7254409bbd8735b4278b8eca27aad79d9",
+    "apps/api/automl_api/storage/azure.py": "c707ef4fc0b6bfe8ba88104a7269ee9b1b0d985d399dc1e40a886fb507714be0",
+    "apps/api/automl_api/storage/contracts.py": "1e016c9d24605f09897c9068d449beb87c3d5c56b88c1a302f80b27e9268e287",
+    "apps/api/automl_api/storage/embedded.py": "73446b9acc476f97a5030168953a899d03ddc4dbb80058637b0c60f961bc36b1",
+    "apps/api/automl_api/storage/gcs.py": "8da17baf718ab24f5a8a8ef2233bd3cb26ee093f5c502bbca1c81925c2ef1d34",
+    "apps/api/automl_api/storage/s3.py": "6d9a3c45920ed5b4a91a3281c01debab1e6e9e8b2e814e3537924aac2d0e4ee0",
+    "packages/automl_shared/data_identity.py": "7f3a5f645a9129fd29e6d809c87a513fc4781d017bb38a9660fa714cb8757db0",
+    "scripts/validate_provider_distribution.py": "5eba935a8db0913b8031eced4386f33c0f6e0509c3725afc54129902af7170b8",
+    "services/qualification-control/README.md": "662aa9c2efa4b96c3d135b73a8945df6cf205d728279b297a098d50cce775857",
+    "tests/test_data_identity.py": "c622ace8d3f4e19dc545b7de0e68d794af331c2b08d2ff1759c222c6b5bcb218",
+    "tests/test_object_store.py": "e1d5e2e40c43f995a91cc70b371fe5d443a47d66592434a60a88463146b77842",
+    "tests/test_phase2_upload_drivers.py": "f1e136561f3b993453a0ca5c17aa08f7db010ffd2450da224e37caafcf3cb018",
+    "tests/test_provider_copy_cli.py": "5833c08e865b45730646be8d7680f0b2f08a2fab6deb26b3952bef1e9b9f47be",
+    "tests/test_provider_copy_verification.py": "769e06fb701e195496a4caeabb34298b84e27a75d3bb1a4f3d3d44dbbcab982b",
+    "tests/test_provider_distribution.py": "2d220be8dbaff71e1afde02d99ef4ed47b0ed6abbb68fb927fcf8ef6b5c2c726",
+    "tests/test_versioned_streams.py": "6d3396b839228f659ca000f68b8ebbd53eeb71d430545af0b367fc32d8e40322"
+  },
+  "artifact_sha256": {
+    ".unlazy/phase1-provider-bytes/focused.log": "f207cf1ef9ed06ba2a95263db9575d9b56663be5d228a4eb43496852636c00ba",
+    ".unlazy/phase1-provider-bytes/lint.log": "4bd8248f4985e327cd636d5b563aa46d1d34db2021498c8d8b37613b35f181d1",
+    ".unlazy/phase1-provider-bytes/regressions-report.json": "6f20d05a6f3d80846ce8b4482a3f16506e006232cb68676dcf0a9fa48efe4595",
+    ".unlazy/phase1-provider-bytes/focused-report.json": "ac589b0872edc0479061d0cacf6a32f59756edd29e43583d4e3f4c608f974ddc",
+    ".unlazy/phase1-provider-bytes/gates-cli.log": "3f4a9b0d071cfed1ab1870e5fc54a68c7a455e831558aabd2e0989827ba3c1a3",
+    ".unlazy/phase1-provider-bytes/gates-initial.log": "8d7c6e5c1437064427c702e5291a7ddbbefe732536f84e63053a3b5e80db4fc3",
+    ".unlazy/phase1-provider-bytes/native-state.json": "1bed8880a3eb163973b367158e6124bf7880e13da06b3173ba43be741ad65b3e",
+    ".unlazy/phase1-provider-bytes/focused.xml": "372e931b9d866fdd6cf5491fba74f2e94ba369a29827f47fd3561f7b69801e03",
+    ".unlazy/phase1-provider-bytes/regressions.log": "d9de1e356ee3aafb6486c5fa9b2e48e801a56cff4229c485be39ec1bed7b7791",
+    ".unlazy/phase1-provider-bytes/native.log": "542a502bee6a7621167c0c590c81e7058e14e7758d74ef298d96251676d12052",
+    ".unlazy/phase1-provider-bytes/regressions.xml": "025bca5dcabc3b7a79cdd7e6ccd33475f77d762902d11a8c40bcb323f5007add",
+    ".unlazy/phase1-provider-bytes/source-sha256.json": "8bbaf2a63204b89f6824acdd5880edebc7a87ecb04edca11797c3b9771add941"
+  },
+  "phase_ledger": {
+    "requirements": 36,
+    "verified": 1,
+    "open": 35
+  }
+}

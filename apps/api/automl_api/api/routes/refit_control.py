@@ -70,14 +70,22 @@ def input_grant(attempt_id: uuid.UUID, index: int, claims: Principal, db: DB, re
         items = (plan.candidate, *plan.partitions)
         if index < 0 or index >= len(items):
             raise HTTPException(404, "Refit input not found")
-        store = get_object_store()
-        validate_refit_paths(plan, store)
-        try:
-            grant = mint_refit_read_url(
-                store, items[index], min(scope.scope_deadline_at, attempt.lease_expires_at),
-            )
-        except Exception as exc:
-            raise HTTPException(503, "Refit input capability unavailable") from exc
+        deadline = min(scope.scope_deadline_at, attempt.lease_expires_at)
+    store = get_object_store()
+    validate_refit_paths(plan, store)
+    try:
+        grant = mint_refit_read_url(store, items[index], deadline)
+    except Exception as exc:
+        raise HTTPException(503, "Refit input capability unavailable") from exc
+    db.expire_all()
+    with db.begin():
+        scope, attempt, current = active(db, attempt_id, claims)
+        if (
+            current.digest != plan.digest
+            or deadline <= datetime.now(UTC)
+            or min(scope.scope_deadline_at, attempt.lease_expires_at) < deadline
+        ):
+            raise HTTPException(409, "Refit input authorization changed during mint")
     response.headers["Cache-Control"] = "no-store"
     return grant
 

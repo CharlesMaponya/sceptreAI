@@ -16,16 +16,21 @@ from automl_api.models.workflows import DatasetSplitRevision, WorkflowAttempt
 from automl_api.training import pipeline
 from automl_api.training.model_catalog import CandidateSpec
 from automl_api.training.pipeline import TournamentResult
+from digest_fixtures import verified_raw_version
 
 
 class _Session(AbstractContextManager):
     def __init__(self, run: object | None, version: object | None = None) -> None:
         self.run = run
         self.version = version
+        if version is not None and run is not None:
+            version.id = run.dataset_version_id
+            version.project_id = run.project_id
         self.added: list[object] = []
         self.commits = 0
         self.split = (
             SimpleNamespace(
+                id=uuid.UUID(run.params["split_revision_id"]),
                 project_id=run.project_id,
                 dataset_version_id=run.dataset_version_id,
                 specification={"uris": {"train": "s3://train", "validation": "s3://validation"}},
@@ -41,6 +46,11 @@ class _Session(AbstractContextManager):
         return None
 
     def scalar(self, _statement: object) -> object | None:
+        if _statement.column_descriptions[0]["entity"].__name__ in {
+            "DatasetProviderImport",
+            "PromotionalScopeMember",
+        }:
+            return None
         if _statement.column_descriptions[0]["entity"] is WorkflowAttempt:
             return SimpleNamespace(
                 model_run_id=self.run.id,
@@ -126,7 +136,7 @@ def _result() -> TournamentResult:
 
 def test_execute_training_run_persists_mlflow_and_database_results(monkeypatch) -> None:
     run = _run()
-    version = SimpleNamespace(object_uri="minio://datasets/train.csv")
+    version = verified_raw_version(object_uri="minio://datasets/train.csv")
     session = _Session(run, version)
     result = _result()
     persisted: list[tuple[uuid.UUID, TournamentResult, str]] = []
@@ -180,7 +190,7 @@ def test_execute_training_run_handles_terminal_missing_and_failed_runs(monkeypat
     with pytest.raises(ValueError, match="Dataset version"):
         pipeline.execute_training_run(active.id)
 
-    version = SimpleNamespace()
+    version = verified_raw_version()
     monkeypatch.setattr(pipeline, "get_session_factory", lambda: lambda: _Session(active, version))
     monkeypatch.setattr(
         pipeline,
@@ -194,8 +204,10 @@ def test_execute_training_run_handles_terminal_missing_and_failed_runs(monkeypat
     failed.assert_called_once()
 
     monkeypatch.setenv("AUTOML_ATTEMPT_ID", str(uuid.uuid4()))
-    # Catalog admission is covered separately; this case tests fenced failure reporting.
+    # Dedicated startup tests cover catalog/feature admission; isolate fenced failure reporting.
     monkeypatch.setattr(pipeline, "_validate_bound_catalog", MagicMock())
+    monkeypatch.setattr(pipeline, "_bound_feature_columns", MagicMock(return_value=None))
+    monkeypatch.setattr(pipeline, "validate_bound_overrides", MagicMock())
     failed.reset_mock()
     with pytest.raises(RuntimeError, match="corrupt object"):
         pipeline.execute_training_run(active.id)
@@ -225,7 +237,9 @@ def test_dataframe_loader_dispatches_by_immutable_filename(
     monkeypatch.setattr(pipeline, "get_object_store", lambda: store)
     read = MagicMock(return_value=expected)
     monkeypatch.setattr(pipeline.pd, reader, read)
-    version = SimpleNamespace(object_uri="minio://datasets/train", original_filename=filename)
+    version = verified_raw_version(
+        b"content", object_uri="minio://datasets/train", original_filename=filename
+    )
 
     assert pipeline._load_dataframe(version) is expected
     assert isinstance(read.call_args.args[0], io.BytesIO)
@@ -241,7 +255,9 @@ def test_dataframe_loader_rejects_unknown_format(monkeypatch) -> None:
     monkeypatch.setattr(pipeline, "get_object_store", lambda: store)
     with pytest.raises(ValueError, match="Unsupported training dataset format"):
         pipeline._load_dataframe(
-            SimpleNamespace(object_uri="minio://datasets/train", original_filename="train.txt")
+            verified_raw_version(
+                b"content", object_uri="minio://datasets/train", original_filename="train.txt"
+            )
         )
 
 

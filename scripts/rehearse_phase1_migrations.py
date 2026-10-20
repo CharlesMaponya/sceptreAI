@@ -25,6 +25,13 @@ SUPPORTED_STARTS = (
     "0008_phase2_cloud_ingestion",
     "0009_phase2_storage_default",
     "0010_phase3_contract_target",
+    "0011_preserve_deletion_evidence",
+    "0012_final_test_revision_pair",
+    "0013_provider_dataset_import",
+    "0014_attempt_object_grants",
+    "0015_attempt_predecessor_project",
+    "0016_trial_parent_integrity",
+    "0017_upload_session_project",
 )
 UPLOAD_SEED_ROWS = int(os.environ.get("PHASE1_REHEARSAL_UPLOAD_ROWS", "10000"))
 
@@ -142,6 +149,61 @@ def main() -> int:
     return 0
 
 
+def _seed_pending_provider_import(connection, user_id, project_id):
+    """Preserve pending lineage and receipt bytes; never manufacture verified imports."""
+    values = dict(
+        user=user_id,
+        project=project_id,
+        dataset=uuid.uuid4(),
+        version=uuid.uuid4(),
+        command=uuid.uuid4(),
+        import_id=uuid.uuid4(),
+        allocation=uuid.uuid4(),
+        scope=uuid.uuid4(),
+        nonce=uuid.uuid4().hex,
+        receipt=json.dumps({"migration_only": True, "verification": "not_performed"}),
+    )
+    connection.execute(
+        text(
+            "INSERT INTO datasets (id, project_id, created_by_id, name) VALUES (:dataset,"
+            " :project, :user, 'migration pending import')"
+        ),
+        values,
+    )
+    connection.execute(
+        text(
+            "INSERT INTO dataset_versions (id, dataset_id, project_id, created_by_id, "
+            "version_number, format, object_uri, content_hash, source_kind, "
+            "content_hash_verification_status) VALUES (:version, :dataset, :project, "
+            ":user, 1, 'JSON', 'provider-import://migration-pending', repeat('a',64), "
+            "'provider_distribution', 'pending')"
+        ),
+        values,
+    )
+    connection.execute(
+        text(
+            "INSERT INTO workflow_commands (id, project_id, actor_id, operation, "
+            "idempotency_key, request_hash) VALUES (:command, :project, :user, "
+            "'dataset.provider.import', :nonce, repeat('b',64))"
+        ),
+        values,
+    )
+    connection.execute(
+        text(
+            "INSERT INTO dataset_provider_imports (id, project_id, dataset_version_id, "
+            "command_id, allocation_id, authority_scope_id, project_reference, "
+            "fixture_revision, split_revision, provider, canonical_provider, mode, "
+            "status, manifest_digest, authority_key_digest, distribution_receipt) VALUES "
+            "(:import_id, :project, :version, :command, :allocation, :scope, "
+            "'migration-project', 'fixture-v1', 'split-v1', 'gcp', 'aws', "
+            "'validation_only', 'pending', repeat('c',64), repeat('d',64), CAST(:receipt "
+            "AS jsonb))"
+        ),
+        values,
+    )
+    return ["datasets", "dataset_versions", "workflow_commands", "dataset_provider_imports"]
+
+
 def _seed_legacy_rows(database_url: str, revision: str) -> dict:
     """Capture every seeded legacy field before migration; bound client memory."""
     if UPLOAD_SEED_ROWS < 1:
@@ -194,6 +256,42 @@ def _seed_legacy_rows(database_url: str, revision: str) -> dict:
             tables = ["users", "projects"]
             if has_uploads:
                 tables.append("dataset_upload_sessions")
+            if inspect(connection).has_table("final_test_allocations"):
+                allocation_id = uuid.uuid4()
+                connection.execute(
+                    text(
+                        "INSERT INTO final_test_allocations "
+                        "(id, split_digest, project_reference, scope_id, canonical_provider, "
+                        "provider_manifest_digest) VALUES "
+                        "(:id, :split, :project, :scope, 'aws', :manifest)"
+                    ),
+                    {
+                        "id": allocation_id,
+                        "split": hashlib.sha256(allocation_id.bytes).hexdigest(),
+                        "project": f"migration-{project_id}",
+                        "scope": uuid.uuid4(),
+                        "manifest": "a" * 64,
+                    },
+                )
+                connection.execute(
+                    text(
+                        "INSERT INTO final_test_authority_receipts "
+                        "(id, allocation_id, operation, provider, request_digest, receipt_digest, "
+                        "signature_algorithm, signature, payload) VALUES "
+                        "(:id, :allocation, 'legacy_fixture', 'aws', :request, :digest, "
+                        "'hmac-sha256', 'synthetic-preservation-fixture', CAST(:payload AS JSONB))"
+                    ),
+                    {
+                        "id": uuid.uuid4(),
+                        "allocation": allocation_id,
+                        "request": "b" * 64,
+                        "digest": hashlib.sha256(project_id.bytes).hexdigest(),
+                        "payload": json.dumps({"legacy": True}),
+                    },
+                )
+                tables.extend(("final_test_allocations", "final_test_authority_receipts"))
+            if inspect(connection).has_table("dataset_provider_imports"):
+                tables.extend(_seed_pending_provider_import(connection, user_id, project_id))
             expected = _snapshot_seeded_rows(connection, tables)
             for table, snapshot in expected.items():
                 count = UPLOAD_SEED_ROWS if table == "dataset_upload_sessions" else 1
@@ -228,6 +326,8 @@ def _verify_seeded_rows(database_url: str, expected: dict) -> None:
                         policy = (
                             {"sso_issuer": None, "sso_subject": None} if table == "users" else {}
                         )
+                        if table == "final_test_allocations":
+                            policy = {"fixture_revision": None, "split_revision": None}
                         if table == "dataset_upload_sessions":
                             quarantined = (
                                 row["dataset_version_id"] is None or row["status"] != "completed"

@@ -1,0 +1,98 @@
+{
+  "verified_at": "2026-10-16T11:17:00.187458+00:00",
+  "status": "verified_increment",
+  "phase_complete": false,
+  "requirements": [
+    "P1-W10",
+    "P1-W19"
+  ],
+  "changes": [
+    "Refit input and evaluator frozen-pipeline read grants close their caller SQL transaction before object-store construction, inspection or signing. The original plan and min(scope deadline,attempt lease) are captured while ownership is locked.",
+    "Before URL disclosure, both endpoints expire cached ORM state, reload and validate current parent/attempt ownership and full plan digest, reject shortened/expired original deadlines and preserve no-store responses. Valid heartbeat extensions/replays succeed; provider failures remain generic503 without disclosing URL contents.",
+    "No new credential service, dependency, schema, worker protocol or final-data one-shot behavior was introduced. Existing input path validation and exact-object signing helper remain in use."
+  ],
+  "verification": {
+    "focused": {
+      "tests": 22,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "regressions": {
+      "tests": 117,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "counts_overlap": true,
+  "regression_cases_by_module": {
+    "tests.test_champion_read_grants": 22,
+    "tests.test_champion_refit_control": 11,
+    "tests.test_champion_evaluation_control": 5,
+    "tests.test_champion_refit_execution": 7,
+    "tests.test_champion_refit_publication": 15,
+    "tests.test_champion_evaluation_execution": 15,
+    "tests.test_champion_evaluation_publication": 8,
+    "tests.test_champion_evaluation_worker": 8,
+    "tests.test_champion_evaluation_authority": 4,
+    "tests.test_champion_evaluation_keys": 8,
+    "tests.test_champion_credentials": 14
+  },
+  "decisive_checks": [
+    "Both actual endpoint functions run against a dedicated PostgreSQL database with genuinely committed, uniquely owned fixture rows and independent SQL connections. At mint entry the caller has no transaction, its engine has zero pool checkouts and another transaction immediately locks both scope and attempt. Owned project/user rows are deleted and scope/attempt absence is checked in teardown.",
+    "Concurrent scope cancellation, attempt supersession/fence/expiry, shortened scope/lease deadline and valid plan replacement are committed during minting. The stale endpoint raises409 and does not return the URL. A strongly retained old ORM plan event cannot conceal changes, including when expire_on_commit=False.",
+    "Valid mint and repeated read succeed with no-store. Heartbeat extension succeeds. A controlled endpoint clock proves original URL deadline expiry is rejected even when the attempt lease was extended. The clock test is a deterministic expiry boundary, not a real long-duration provider timeout.",
+    "Provider failure raises generic503 and leaves zero caller checkouts; its private URL is absent from the HTTP detail. Existing HTTP authentication/scoping, actual local HTTPS credential-free workers, publication and protected one-shot credential regressions pass.",
+    "Ruff lint passes for all three changed Python files. Formatting passes for the evaluator route, new test module and changed refit endpoint block; unrelated pre-existing refit formatting is preserved. Diff checks pass and coverage.json is unchanged."
+  ],
+  "intermediate_runs": "Initial focused20 pass; regression harness first failed before collection due an incorrect filename. Corrected run had113pass/2fail because registering the evaluator-control module as a global pytest plugin widened its autouse S3 URI fixture. Replaced plugin registration with fixture imports local to the new module;20/115 passed. Final original-deadline guard and two deterministic boundary cases yield22/117 all passing. Final runner exited1 only for manual G3 awaiting evidence audit; both runnable checks exited0 and matched EXPECT.",
+  "limits": [
+    "This proves local caller transaction release and fenced disclosure at the final SQL check. Previously disclosed signed URLs cannot be revoked by local cancellation and remain usable until expiry. A race after final authorization cannot be eliminated without provider-side revocation/attempt enforcement.",
+    "The signing helper is exercised through existing provider SDK contracts and local HTTPS byte serving; new concurrency tests inject mint results to isolate authorization timing. Actual cloud signing, Kubernetes process loss/current images, network outage/failover, scale and full grant inventories are not qualified by this increment.",
+    "Checks use a separate local PostgreSQL test database and uniquely owned synthetic fixtures. No QA data/object mutation, schema migration, rollout, commit or public publication occurred. The previous immutable image snapshot predates these changes.",
+    "Full Phase1 remains1Verified/35Open. Production Train, general child/provider/predecessor grants, protected-authority deployment, permanent unknown outcomes and full failure inventory remain required. The user45GB migration target remains untested due capacity/reserve/overhead, largest-table targets unspecified. Seven historical QA objects and the original abandoned preservation gate remain unresolved."
+  ],
+  "source_sha256": {
+    "apps/api/automl_api/api/routes/refit_control.py": "32aa683fa53aa8c6823cf81a6657113b17b1b6f91c819be8725fb37cd5ef53d2",
+    "apps/api/automl_api/api/routes/evaluation_control.py": "5c5a6fdb532c1ba634cb12b880c80c14390ce11972cfdc4d21fbc710a2e849ca",
+    "apps/api/automl_api/services/refit_access.py": "e620bc736740876648219c7d835416814cfa3cf6d3f533fb727b1156ea224f4e",
+    "apps/api/automl_api/services/evaluation_access.py": "c6b596f55ca6d8876f5aa56b06be81dc2e3414b0964bb186be8ea48fc1bf6d89",
+    "apps/api/automl_api/services/evaluation_publication.py": "442c35f8a019d04a5a0c0443f2879eb48863720044b3795283e9cc38d6cbfc15",
+    "apps/api/automl_api/training/champion_refit.py": "1ad0d11f8d664f833372f0c03d0c3e923d1ce6e9341d85aeb1c60e6cbe650b8f",
+    "apps/api/automl_api/training/champion_evaluation.py": "ef3ec55a93264582b2f6f4ce158cbc9e92fbd447aa0dcc510e175084558b5629",
+    "tests/test_champion_read_grants.py": "e6d7edfcfd1c3f91dbae8b510866f689db229f1bd2b5ea3f6cf2fdf17efadcba",
+    ".unlazy/phase1-read-grants/check.py": "a3efaef3d30ac43e9914ca4e845f8647252b5642ffcea600080cca0e3c0c6791",
+    "tests/test_champion_refit_control.py": "e9f58328247da23e184319a33b0460c6ad69b0e87de8493297e53cd03173797c",
+    "tests/test_champion_evaluation_control.py": "9dc80ad61339f6a461cf1e16df45dbd1cebc754615400f98663df10f61e1f438",
+    "tests/test_champion_refit_execution.py": "988af43ca9f4a891d2feedd3480bc75752b021a14f9b0a434c7cb1dfd911718c",
+    "tests/test_champion_refit_publication.py": "48302f53f9ca1a783e795ed95ea9ec3cc766e7da0121dcc01ebf23180c47d42e",
+    "tests/test_champion_evaluation_execution.py": "50446a51802402dd412f172b8f46615b1cde54de0706b8ef0446ba92152cbe9b",
+    "tests/test_champion_evaluation_publication.py": "94f143c3f2ad6523bc0fc2138aba6886d2a22ca9d2b5c31c14e1a0eb69ffee40",
+    "tests/test_champion_evaluation_worker.py": "19744b8a71712fa75b15074be704294c8aae37ddec089153f944126846614fa5",
+    "tests/test_champion_evaluation_authority.py": "262bb889d1c9db7561e0c0d4c8202eb6176771b3368065f7f8750e0f0c4547e4",
+    "tests/test_champion_evaluation_keys.py": "c4e0249216df257911dd5bce135cd8bae8ea82879eaee09b3598a33004b2eaef",
+    "tests/test_champion_credentials.py": "d1ffd59e6e2e55aed70518e7d343fc48f7abdd1a93abd8e9cb7273b1ba957f34"
+  },
+  "artifact_sha256": {
+    ".unlazy/phase1-read-grants/focused.log": "6e260caba9b9c4e9e96269c121ac687939c522f0f7e195893c4963fca54c2cca",
+    ".unlazy/phase1-read-grants/lint.log": "afa20b27dacc9bf0aba3c1d265964c21e04ab42f6e39e2dd4769718ceded003a",
+    ".unlazy/phase1-read-grants/regressions-report.json": "123c4b67b1db0ae5cad95ae954c153aae9918a3258eb92d3a765c131abfa9659",
+    ".unlazy/phase1-read-grants/focused-report.json": "68605ada0e61a32ed7543c2065c82c841b065fc542fe6b476f02b95fcff537c8",
+    ".unlazy/phase1-read-grants/gates-initial.log": "26b9cb6dcd5ec0e8356944936be827a1b251ef65bcc4c4eea52c5c87b1c53bac",
+    ".unlazy/phase1-read-grants/gates-reviewed.log": "c1ca46eec32b35174c9571646aa358eafde79657c9cde59dd2e351bcc25f25aa",
+    ".unlazy/phase1-read-grants/focused.xml": "df774916958cabcb4acfa6d2724c7ffd673957c8d32adef5a4e58074af0cc98d",
+    ".unlazy/phase1-read-grants/attempt-1-regressions.log": "6dd6777912a1dbd3c50943d5aeac87d1b1bba8630739299ccd9701c005888d77",
+    ".unlazy/phase1-read-grants/regressions.log": "f80fc599d380f555c52361096e8a80dc0138e19af5c467134b465dfc8b599974",
+    ".unlazy/phase1-read-grants/gates-fixture-isolation.log": "95a6286600d46a37d3d5121472af0c9a30a2c29a89b779fb780bfbe866b3e90f",
+    ".unlazy/phase1-read-grants/regressions.xml": "eac10093780d92b994d8a2dd06a03eaa84b60951aac99af1bc0842b3e8c5b81e",
+    ".unlazy/phase1-read-grants/attempt-1-regressions.xml": "89c2a21efbd421f1c66712de463f386296b7f86d75bc727a7bbfdbc9f6af9b80",
+    ".unlazy/phase1-read-grants/source-sha256.json": "e8a927acbddfe5423fa41367cf73a226462590afc97bd2f4441d4916836b3003",
+    ".unlazy/phase1-read-grants/gates-final.log": "8e6906f9dc453c8e063dca9adda66f98061988c18181110e5dd876c884be58c2"
+  },
+  "phase_ledger": {
+    "requirements": 36,
+    "verified": 1,
+    "open": 35
+  }
+}

@@ -6,16 +6,18 @@ from unittest.mock import MagicMock
 import jwt
 import pytest
 from automl_api.api.routes import attempt_control
-from automl_api.db.session import get_db
+from automl_api.db.session import get_session_factory
+from automl_api.models.datasets import DatasetVersion
 from automl_api.models.enums import AttemptStatus, RunStatus
 from automl_api.models.runs import ModelRun
 from automl_api.models.workflows import WorkflowAttempt, WorkflowEvent
 from automl_api.services import attempt_identity
 from automl_api.services.workflow_state import StaleFence
+from digest_fixtures import verified_digest_metadata
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 from test_phase1_postgres_contracts import committed_tenant, phase1_engine  # noqa: F401
 from test_training_publication_postgres import publication  # noqa: F401
 
@@ -27,6 +29,10 @@ def identity(publication, monkeypatch):  # noqa: F811
     with Session(engine) as db, db.begin():
         run = db.get(ModelRun, run_id)
         run.k8s_namespace = namespace
+        version = db.get(DatasetVersion, run.dataset_version_id)
+        for key, value in verified_digest_metadata().items():
+            setattr(version, key, value)
+        version.byte_size = 1
         parent = db.get(WorkflowAttempt, parent_id)
         parent.ray_job_name = "ray-job"
         labels = {
@@ -68,8 +74,7 @@ def identity(publication, monkeypatch):  # noqa: F811
 
 def admit(identity):
     scope, token, k8s, *_ = identity
-    with Session(scope[0]) as db, db.begin():
-        return attempt_identity.admit_attempt(db, scope[2], token, k8s)
+    return attempt_identity.admit_attempt(sessionmaker(bind=scope[0]), scope[2], token, k8s)
 
 
 def test_pod_bound_admission_persists_only_digest_and_replays(identity):
@@ -211,11 +216,7 @@ def test_admission_route_rejects_user_tokens_and_does_not_store_token(identity, 
     app = FastAPI()
     app.include_router(attempt_control.router)
 
-    def db():
-        with Session(scope[0]) as session:
-            yield session
-
-    app.dependency_overrides[get_db] = db
+    app.dependency_overrides[get_session_factory] = lambda: sessionmaker(bind=scope[0])
     monkeypatch.setattr(attempt_control, "KubernetesTrainingClient", lambda: k8s)
     with TestClient(app) as client:
         path = f"/internal/attempts/{scope[2]}/admission"
@@ -293,11 +294,7 @@ def test_admission_route_reports_unavailable_cluster_without_admitting(identity,
     app = FastAPI()
     app.include_router(attempt_control.router)
 
-    def db():
-        with Session(scope[0]) as session:
-            yield session
-
-    app.dependency_overrides[get_db] = db
+    app.dependency_overrides[get_session_factory] = lambda: sessionmaker(bind=scope[0])
     monkeypatch.setattr(attempt_control, "KubernetesTrainingClient", lambda: k8s)
     with TestClient(app) as http:
         response = http.post(

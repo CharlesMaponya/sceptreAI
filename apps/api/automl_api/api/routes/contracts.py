@@ -33,6 +33,7 @@ from automl_api.schemas.contracts import (
     ExperimentSpecCreate,
     FeatureContractCreate,
     RevisionRead,
+    SearchObjectiveCreate,
     SearchSpaceCreate,
 )
 from automl_api.services.candidate_details import get_candidate_detail
@@ -48,6 +49,7 @@ from automl_api.services.contracts import (
     resolve_catalog_revision,
     run_collection,
 )
+from automl_api.services.idempotency import replay_response
 from automl_api.services.projects import require_project_role
 from automl_api.services.upload_policy import configured_upload_data_region
 from automl_api.services.workflow_state import transition_command
@@ -68,8 +70,8 @@ def _mutation(
     command, replayed = begin_contract_mutation(
         db, user, project_id, operation, idempotency_key, payload
     )
-    if replayed and command.response_payload:
-        return schema.model_validate(command.response_payload)
+    if replayed:
+        return schema.model_validate(replay_response(command))
     row = create()
     response = schema.model_validate(row)
     command.resource_type = operation
@@ -175,7 +177,7 @@ def read_search_space(
 @router.post("/projects/{project_id}/search-objectives", response_model=RevisionRead)
 def post_search_objective(
     project_id: uuid.UUID,
-    payload: SearchSpaceCreate,
+    payload: SearchObjectiveCreate,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
     idempotency_key: Annotated[
@@ -319,8 +321,8 @@ def post_scope_member(
         idempotency_key,
         {"scope_id": str(scope_id), **payload.model_dump(mode="json")},
     )
-    if replayed and command.response_payload:
-        return command.response_payload
+    if replayed:
+        return replay_response(command)
     member = add_scope_member(db, current_user, project_id, scope_id, payload.run_id)
     response = {"member_id": str(member.id), "ordinal": member.ordinal}
     command.resource_type = "promotional_scope_member"

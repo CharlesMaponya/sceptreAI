@@ -245,3 +245,44 @@ describe("training resource estimate evidence", () => {
     expect(screen.getByRole("heading", { name: "New training run" })).toBeInTheDocument();
   });
 });
+
+it("launches with the immutable experiment returned by resource estimation", async () => {
+  let launchBody: Record<string, unknown> | undefined;
+  vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
+    const url = String(input);
+    if (url.endsWith("/active-run")) return response(null);
+    if (url.endsWith("/datasets")) return response([dataset]);
+    if (url.endsWith("/versions")) return response([version]);
+    if (url.endsWith("/profile-jobs/latest")) return response({
+      id: "profile-1", status: "succeeded", target_column: "churned",
+      overview_json: {
+        task_inference: { task_type: "classification" },
+        launch_bindings: {
+          split_revision_id: "split-1", feature_contract_revision_id: "contract-1",
+          feature_registry_revision_id: "registry-1", feature_recipe_revision_id: "recipe-1",
+          feature_search_space_revision_ids: { balanced_accuracy: "search-1" },
+          estimator_catalog_revision_id: "catalog-1",
+        },
+      },
+    });
+    if (url.includes("/training/estimators")) return response([{ name: "Ridge", default_selected: true, cost_tier: "low" }]);
+    if (url.endsWith("/training/estimate")) return response({
+      experiment_spec_revision_id: "frozen-experiment-1", cpu_request_cores: 1,
+      memory_request_mb: 1024, estimated_core_hours: .1, gpu_requested: false,
+      capacity: { available_cpu_cores: 4 }, can_launch: true, warnings: [], blockers: [],
+    });
+    if (url.endsWith("/training/runs") && options?.method === "POST") {
+      launchBody = JSON.parse(String(options.body));
+      return response({ detail: "Captured launch request" }, 409);
+    }
+    return response({ feature_profiles_json: {} });
+  });
+  renderTraining();
+  const estimate = await screen.findByRole("button", { name: /Estimate resources/ });
+  await waitFor(() => expect(estimate).toBeEnabled());
+  await userEvent.click(estimate);
+  await userEvent.click(await screen.findByRole("button", { name: /Launch training/ }));
+  await waitFor(() => expect(launchBody).toMatchObject({
+    experiment_spec_revision_id: "frozen-experiment-1", split_revision_id: "split-1",
+  }));
+});

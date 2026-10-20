@@ -39,7 +39,9 @@ def control_case(durable_refit, refit_case, tmp_path, monkeypatch):
     attempt.status = AttemptStatus.SUBMITTED
     db.flush()
     monkeypatch.setattr(
-        refit_access, "get_settings", lambda: SimpleNamespace(jwt_secret_key=SECRET),
+        refit_access,
+        "get_settings",
+        lambda: SimpleNamespace(jwt_secret_key=SECRET),
     )
     token = refit_access.refit_token(attempt, scope.scope_deadline_at)
     monkeypatch.setattr(refit_control, "get_object_store", lambda: store)
@@ -67,20 +69,34 @@ def control_case(durable_refit, refit_case, tmp_path, monkeypatch):
 
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "refit-input-test")])
-    cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name)
-            .public_key(key.public_key()).serial_number(x509.random_serial_number())
-            .not_valid_before(datetime.now(UTC) - timedelta(minutes=1))
-            .not_valid_after(datetime.now(UTC) + timedelta(hours=1))
-            .add_extension(x509.SubjectAlternativeName([
-                x509.IPAddress(ipaddress.ip_address("127.0.0.1")),
-            ]), critical=False)
-            .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
-            .sign(key, hashes.SHA256()))
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(name)
+        .issuer_name(name)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(datetime.now(UTC) - timedelta(minutes=1))
+        .not_valid_after(datetime.now(UTC) + timedelta(hours=1))
+        .add_extension(
+            x509.SubjectAlternativeName(
+                [
+                    x509.IPAddress(ipaddress.ip_address("127.0.0.1")),
+                ]
+            ),
+            critical=False,
+        )
+        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+        .sign(key, hashes.SHA256())
+    )
     cert_path, key_path = tmp_path / "ca.pem", tmp_path / "key.pem"
     cert_path.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
-    key_path.write_bytes(key.private_bytes(serialization.Encoding.PEM,
-                                          serialization.PrivateFormat.PKCS8,
-                                          serialization.NoEncryption()))
+    key_path.write_bytes(
+        key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+    )
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain(cert_path, key_path)
@@ -91,8 +107,10 @@ def control_case(durable_refit, refit_case, tmp_path, monkeypatch):
     def mint(_store, item, deadline):
         assert _store is store and item.uri in paths
         assert 0 < (deadline - datetime.now(UTC)).total_seconds() <= 90
-        return {"url": f"https://127.0.0.1:{server.server_port}{paths[item.uri]}",
-                "expires_at": deadline.isoformat()}
+        return {
+            "url": f"https://127.0.0.1:{server.server_port}{paths[item.uri]}",
+            "expires_at": deadline.isoformat(),
+        }
 
     monkeypatch.setattr(refit_control, "mint_refit_read_url", mint)
     app = FastAPI()
@@ -104,8 +122,11 @@ def control_case(durable_refit, refit_case, tmp_path, monkeypatch):
 
     app.dependency_overrides[get_db] = database
     try:
-        with TestClient(app, base_url=f"https://testserver/api/v1/internal/refits/{attempt.id}/",
-                        headers={"Authorization": f"Bearer {token}"}) as client:
+        with TestClient(
+            app,
+            base_url=f"https://testserver/api/v1/internal/refits/{attempt.id}/",
+            headers={"Authorization": f"Bearer {token}"},
+        ) as client:
             yield client, db, store, plan, attempt, scope, str(cert_path), token
     finally:
         server.shutdown()
@@ -125,9 +146,15 @@ def test_credential_free_worker_fits_uploads_and_replays_publication(control_cas
     assert client.post("publish", json=result).status_code == 200
     assert client.post("start").status_code == 409
     assert client.get("inputs/0").status_code == 409
-    events = list(db.scalars(select(WorkflowEvent).where(
-        WorkflowEvent.attempt_id == attempt.id,
-    ).order_by(WorkflowEvent.sequence)))
+    events = list(
+        db.scalars(
+            select(WorkflowEvent)
+            .where(
+                WorkflowEvent.attempt_id == attempt.id,
+            )
+            .order_by(WorkflowEvent.sequence)
+        )
+    )
     assert [event.event_key for event in events] == ["refit_plan", "refit_output", "refit_frozen"]
 
 
@@ -138,9 +165,12 @@ def test_input_capability_requires_current_attempt_and_cannot_name_arbitrary_obj
     assert grant.status_code == 200 and grant.headers["cache-control"] == "no-store"
     assert client.get("inputs/-1").status_code == 404
     assert client.get("inputs/3").status_code == 404
-    assert client.get(
-        f"https://testserver/api/v1/internal/refits/{uuid.uuid4()}/inputs/0",
-    ).status_code == 401
+    assert (
+        client.get(
+            f"https://testserver/api/v1/internal/refits/{uuid.uuid4()}/inputs/0",
+        ).status_code
+        == 401
+    )
     db.refresh(attempt)
     attempt.lease_expires_at = datetime.now(UTC) - timedelta(seconds=1)
     db.flush()
@@ -154,16 +184,23 @@ def test_output_intent_precedes_storage_and_rejects_wrong_or_changed_bytes(contr
     content = b"first model"
     digest = hashlib.sha256(content).hexdigest()
     assert client.put(f"model/{digest}", content=b"wrong bytes").status_code == 422
-    intent = db.scalar(select(WorkflowEvent).where(
-        WorkflowEvent.attempt_id == attempt.id, WorkflowEvent.event_key == "refit_output",
-    ))
+    intent = db.scalar(
+        select(WorkflowEvent).where(
+            WorkflowEvent.attempt_id == attempt.id,
+            WorkflowEvent.event_key == "refit_output",
+        )
+    )
     assert intent is not None
     assert not store.exists(intent.payload["uri"])
     assert client.put(f"model/{digest}", content=content).status_code == 200
     assert client.put(f"model/{'d' * 64}", content=content).status_code == 409
-    result = {"frozen_pipeline_uri": intent.payload["uri"], "frozen_pipeline_digest": digest,
-              "refit_policy_digest": plan.policy_digest, "row_count": 10,
-              "byte_size": len(content)}
+    result = {
+        "frozen_pipeline_uri": intent.payload["uri"],
+        "frozen_pipeline_digest": digest,
+        "refit_policy_digest": plan.policy_digest,
+        "row_count": 10,
+        "byte_size": len(content),
+    }
     store.put_stream(intent.payload["uri"], io.BytesIO(b"corrupt"))
     assert client.post("publish", json=result).status_code == 409
 
@@ -202,12 +239,19 @@ def test_replaced_cancelled_or_invalid_capabilities_cannot_read(control_case, in
 def test_oversized_upload_is_rejected_before_storage_or_output_intent(control_case):
     client, db, _, plan, attempt, _, _, _ = control_case
     assert client.post("start").status_code == 200
-    response = client.put(f"model/{'a' * 64}", content=b"x",
-                          headers={"Content-Length": str(plan.max_model_bytes + 1)})
+    response = client.put(
+        f"model/{'a' * 64}", content=b"x", headers={"Content-Length": str(plan.max_model_bytes + 1)}
+    )
     assert response.status_code == 413
-    assert db.scalar(select(WorkflowEvent).where(
-        WorkflowEvent.attempt_id == attempt.id, WorkflowEvent.event_key == "refit_output",
-    )) is None
+    assert (
+        db.scalar(
+            select(WorkflowEvent).where(
+                WorkflowEvent.attempt_id == attempt.id,
+                WorkflowEvent.event_key == "refit_output",
+            )
+        )
+        is None
+    )
 
 
 def test_mint_failure_does_not_disclose_provider_capabilities(control_case, monkeypatch):
@@ -229,7 +273,18 @@ def test_native_s3_grant_is_exact_version_get_only(refit_case):
     _, plan = refit_case
     client = MagicMock()
     client.head_object.return_value = {"ContentLength": 100, "VersionId": "version-1"}
-    client.generate_presigned_url.return_value = "https://objects.example/input?signature=opaque"
+    from urllib.parse import urlencode
+
+    client.generate_presigned_url.side_effect = lambda *_a, **kw: (
+        "https://objects.example/input?"
+        + urlencode(
+            {
+                "X-Amz-Date": datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
+                "X-Amz-Expires": str(kw["ExpiresIn"]),
+                "versionId": "version-1",
+            }
+        )
+    )
     store = S3ObjectStoreDriver(bucket="test", client=client)
     item = SimpleNamespace(uri="s3://test/train/input.parquet", byte_size=100)
     grant = refit_access.mint_refit_read_url(store, item, datetime.now(UTC) + timedelta(seconds=60))
@@ -238,9 +293,12 @@ def test_native_s3_grant_is_exact_version_get_only(refit_case):
     assert call.args == ("get_object",)
     assert call.kwargs["HttpMethod"] == "GET"
     assert call.kwargs["Params"] == {
-        "Bucket": "test", "Key": "train/input.parquet", "VersionId": "version-1",
+        "Bucket": "test",
+        "Key": "train/input.parquet",
+        "VersionId": "version-1",
     }
     assert 0 < call.kwargs["ExpiresIn"] <= 60
+    client.generate_presigned_url.side_effect = None
     client.generate_presigned_url.return_value = "http://objects.example/input"
     with pytest.raises(ValueError, match="HTTPS"):
         refit_access.mint_refit_read_url(store, item, datetime.now(UTC) + timedelta(seconds=60))

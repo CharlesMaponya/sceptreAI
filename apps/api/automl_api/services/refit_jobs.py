@@ -17,8 +17,12 @@ from sqlalchemy import func, or_, select
 
 from automl_api.models.enums import AttemptStatus, ScopeStatus, WorkflowStage
 from automl_api.models.workflows import PromotionalScope, WorkflowAttempt, WorkflowEvent
+from automl_api.services.attempt_object_grants import (
+    revoke_attempt_grants,
+    unretired_grant_deadline,
+)
 from automl_api.services.champion_planning import ACTIVE_ATTEMPTS
-from automl_api.services.champion_workloads import DIGEST, isolated_workload
+from automl_api.services.champion_workloads import DIGEST, delete_owned_resource, isolated_workload
 from automl_api.services.refit_access import locked_refit, refit_claims, refit_token
 from automl_api.services.workflow_state import canonical_request_hash, transition_attempt
 
@@ -181,24 +185,33 @@ def _ensure_resources(k8s, desired, attempt_id, project_id, fence, token):
                 ) from None
 
 
-def _cleanup(k8s, desired):
+def _cleanup(k8s, desired, *, labels, retiring=False):
     name, namespace = (desired["job"]["metadata"][key] for key in ("name", "namespace"))
-    # Keep the deny policy until foreground Job deletion has removed every worker Pod.
+    role = "refit" if LABEL in labels else "evaluation"
     try:
-        k8s.batch.delete_namespaced_job(name, namespace, propagation_policy="Foreground")
+        identity = uuid.UUID(labels[f"automl.platform/{role}-attempt"])
+    except (KeyError, TypeError, ValueError, AttributeError):
         return False
-    except ApiException as exc:
-        if exc.status != 404:
-            raise
-    for delete in (
-        k8s.core.delete_namespaced_secret,
-        k8s.networking.delete_namespaced_network_policy,
+    if name != f"{role}-{identity.hex}":
+        return False
+    metadata = {"name": name, "namespace": namespace, "labels": labels}
+    # Keep the deny policy until foreground Job deletion has removed every worker Pod.
+    for kind, read, delete in (
+        ("job", k8s.batch.read_namespaced_job, k8s.batch.delete_namespaced_job),
+        ("secret", k8s.core.read_namespaced_secret, k8s.core.delete_namespaced_secret),
+        (
+            "network",
+            k8s.networking.read_namespaced_network_policy,
+            k8s.networking.delete_namespaced_network_policy,
+        ),
     ):
-        try:
-            delete(name=name, namespace=namespace)
-        except ApiException as exc:
-            if exc.status != 404:
-                raise
+        if kind != "job" and retiring:
+            return False
+        expected = {**metadata, **desired.get(kind, {}).get("metadata", {})}
+        if any((expected.get("labels") or {}).get(key) != value for key, value in labels.items()):
+            return False
+        if not delete_owned_resource(read, delete, expected, foreground=kind == "job"):
+            return False
     return True
 
 
@@ -255,11 +268,11 @@ def reconcile_refit_jobs_once(session_factory, k8s, *, limit=25):
 def sweep_refit_resources(session_factory, k8s):
     """Recover a late external create after terminal cleanup or a project cascade."""
     namespace = k8s.settings.training_namespace
-    names = set()
-    for listing in (
-        k8s.core.list_namespaced_secret,
-        k8s.networking.list_namespaced_network_policy,
-        k8s.batch.list_namespaced_job,
+    names = {}
+    for kind, listing in (
+        ("secret", k8s.core.list_namespaced_secret),
+        ("network", k8s.networking.list_namespaced_network_policy),
+        ("job", k8s.batch.list_namespaced_job),
     ):
         page = None
         while True:
@@ -268,28 +281,46 @@ def sweep_refit_resources(session_factory, k8s):
                 value = (resource.metadata.labels or {}).get(LABEL, "")
                 try:
                     attempt_id = uuid.UUID(value)
-                except ValueError:
+                except (ValueError, TypeError, AttributeError):
                     continue
                 if resource.metadata.name == f"refit-{attempt_id.hex}":
-                    names.add(attempt_id)
+                    names.setdefault(attempt_id, {})[kind] = {
+                        "metadata": {
+                            "name": resource.metadata.name,
+                            "namespace": namespace,
+                            "uid": getattr(resource.metadata, "uid", None),
+                            "labels": {LABEL: str(attempt_id)},
+                        }
+                    }
             page = result.metadata._continue
             if not page:
                 break
-    for attempt_id in names:
-        with session_factory() as db:
-            attempt = db.get(WorkflowAttempt, attempt_id)
-            if attempt is not None and attempt.status in ACTIVE_ATTEMPTS:
+    for attempt_id, observed in names.items():
+        with session_factory() as db, db.begin():
+            attempt = db.get(WorkflowAttempt, attempt_id, with_for_update=True)
+            if attempt is not None and (
+                attempt.stage != WorkflowStage.CHAMPION_REFIT or attempt.status in ACTIVE_ATTEMPTS
+            ):
                 continue
+            retiring = False
+            if attempt is not None:
+                revoke_attempt_grants(db, attempt_id)
+                retiring = unretired_grant_deadline(db, attempt_id) is not None
         _cleanup(
             k8s,
             {
+                **observed,
                 "job": {
                     "metadata": {
                         "name": f"refit-{attempt_id.hex}",
                         "namespace": namespace,
+                        "labels": {LABEL: str(attempt_id)},
+                        **observed.get("job", {}).get("metadata", {}),
                     }
-                }
+                },
             },
+            labels={LABEL: str(attempt_id)},
+            retiring=retiring,
         )
 
 
@@ -350,7 +381,7 @@ def _reconcile(session_factory, k8s, attempt_id):
             attempt.lease_expires_at = min(scope.scope_deadline_at, now + timedelta(minutes=5))
         if event is None:
             if attempt.status not in ACTIVE_ATTEMPTS:
-                attempt.cleanup_state = "complete"
+                revoke_attempt_grants(db, attempt_id)
                 return
             raise ValueError("Refit attempt has no durable submission")
         desired = event.payload
@@ -361,12 +392,16 @@ def _reconcile(session_factory, k8s, attempt_id):
         ):
             _terminal(attempt, "Refit startup or heartbeat lease expired")
         terminal = attempt.status not in ACTIVE_ATTEMPTS
+        retiring = False
+        if terminal:
+            revoke_attempt_grants(db, attempt_id)
+            retiring = unretired_grant_deadline(db, attempt_id) is not None
         observed_status = attempt.status
         project_id, fence = attempt.project_id, attempt.fencing_token
         token = None if terminal else refit_token(attempt, scope.scope_deadline_at)
     # Durable SUBMITTED state, manifest and startup lease are committed before all side effects.
     if terminal:
-        if _cleanup(k8s, desired):
+        if _cleanup(k8s, desired, labels={LABEL: str(attempt_id)}, retiring=retiring):
             with session_factory() as db, db.begin():
                 _, attempt = _locked(db, attempt_id)
                 if attempt is not None and attempt.status not in ACTIVE_ATTEMPTS:
@@ -379,9 +414,12 @@ def _reconcile(session_factory, k8s, attempt_id):
         if attempt is None or attempt.status != observed_status:
             return
         now = datetime.now(UTC)
+        if scope.status == ScopeStatus.RUNNING and (
+            scope.scope_deadline_at is None or scope.scope_deadline_at <= now
+        ):
+            scope.status = ScopeStatus.FAILED
         if (
             scope.status != ScopeStatus.RUNNING
-            or scope.scope_deadline_at <= now
             or attempt.lease_expires_at is None
             or attempt.lease_expires_at <= now
         ):

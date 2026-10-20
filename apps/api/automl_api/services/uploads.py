@@ -250,6 +250,7 @@ def complete_upload_session(
     settings: Settings | None = None,
 ) -> UploadCompletionRead:
     settings = settings or get_settings()
+    require_upload_byte_digest(upload)
     if upload.status in {"object_completed", "verifying", "ready"} and upload.completed_object_uri:
         return completion_read(db, upload)
     _require_active(upload)
@@ -572,6 +573,38 @@ def _validate_client_receipts(
             raise UploadContractError("Client receipt length differs from provider state.")
         if receipt.etag and observed.etag and receipt.etag.strip('"') != observed.etag.strip('"'):
             raise UploadContractError("Client ETag differs from the provider receipt.")
+
+
+def require_upload_byte_digest(upload: DatasetUploadSession) -> str:
+    digest = getattr(upload, "expected_object_digest", None)
+    if (
+        getattr(upload, "digest_algorithm", None) != "sha256"
+        or getattr(upload, "digest_scope", None) != "byte_stream"
+        or not isinstance(digest, str)
+        or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+    ):
+        # Legacy manifest hashes require reviewed migration, never automatic deletion.
+        raise UploadContractError("Upload requires an explicit byte-stream SHA-256 manifest.")
+    return digest
+
+
+def require_verified_upload_digest(upload: DatasetUploadSession) -> str:
+    digest = require_upload_byte_digest(upload)
+    verified_at = getattr(upload, "checksum_verified_at", None)
+    size = getattr(upload, "byte_size", None)
+    if (
+        getattr(upload, "status", None) != "ready"
+        or getattr(upload, "observed_object_digest", None) != digest
+        or getattr(upload, "scanner_status", None) != "allowed"
+        or not isinstance(verified_at, datetime)
+        or verified_at.tzinfo is None
+        or verified_at.utcoffset() is None
+        or not isinstance(size, int)
+        or isinstance(size, bool)
+        or size < 0
+    ):
+        raise UploadContractError("Upload has not passed object digest verification.")
+    return digest
 
 
 def _require_active(upload: DatasetUploadSession) -> None:

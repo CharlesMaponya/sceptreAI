@@ -7,6 +7,7 @@ import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import MagicMock
 
 import automl_api.api.routes.operations as operation_routes
 import automl_api.services.inference_gateway as gateway
@@ -15,6 +16,7 @@ import pytest
 from automl_api.api.deps import get_current_user
 from automl_api.api.routes.operations import deployment_inference_gateway
 from automl_api.models.enums import ProjectRole, RunKind, RunStatus
+from digest_fixtures import verified_upload_metadata
 from fastapi import HTTPException, status
 from fastapi.dependencies.utils import get_dependant
 from starlette.requests import Request
@@ -145,9 +147,7 @@ def test_gateway_route_selects_object_backed_offline_protocol(
 ) -> None:
     target = _target()
     calls: list[str] = []
-    monkeypatch.setattr(
-        operation_routes, "resolve_deployment_inference_target", lambda *_: target
-    )
+    monkeypatch.setattr(operation_routes, "resolve_deployment_inference_target", lambda *_: target)
 
     async def object_backed(*_args):
         calls.append("object")
@@ -157,9 +157,7 @@ def test_gateway_route_selects_object_backed_offline_protocol(
         calls.append("ordinary")
         return gateway.Response(status_code=200)
 
-    monkeypatch.setattr(
-        operation_routes, "proxy_object_backed_offline_inference", object_backed
-    )
+    monkeypatch.setattr(operation_routes, "proxy_object_backed_offline_inference", object_backed)
     monkeypatch.setattr(operation_routes, "proxy_deployment_inference", ordinary)
     arguments = (
         uuid.uuid4(),
@@ -225,7 +223,11 @@ def test_resolver_scopes_lookup_to_project_run_and_deployment_kind(
     parameters = list(db.statement.compile().params.values())
     assert project_id in parameters
     assert run_id in parameters
-    assert RunKind.DEPLOYMENT in parameters
+    assert any(
+        isinstance(value, (list, tuple))
+        and set(value) == {RunKind.DEPLOYMENT.name, RunKind.DEPLOYMENT.value}
+        for value in parameters
+    )
 
 
 @pytest.mark.parametrize(
@@ -690,6 +692,7 @@ def test_gateway_streams_verified_object_backed_offline_upload(
         gateway,
         "get_upload_session",
         lambda *_: SimpleNamespace(
+            **verified_upload_metadata(b"feature\n1\n"),
             upload_kind="offline_scoring",
             status="ready",
             completed_object_uri="s3://bucket/input.csv",
@@ -776,6 +779,7 @@ def test_object_backed_offline_upload_rejects_provider_change(
         gateway,
         "get_upload_session",
         lambda *_: SimpleNamespace(
+            **verified_upload_metadata(b"feature\n1\n"),
             upload_kind="offline_scoring",
             status="ready",
             completed_object_uri="s3://bucket/input.csv",
@@ -921,3 +925,38 @@ def test_gateway_docs_embed_sanitized_openapi_without_follow_up_fetch(
     assert "https://attacker.example" not in html
     assert upstream_stream.closed
     assert client.is_closed
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"digest_scope": "multipart_manifest"},
+        {"digest_algorithm": "md5"},
+        {"observed_object_digest": None},
+        {"checksum_verified_at": None},
+        {"scanner_status": "pending"},
+        {"byte_size": None},
+    ],
+)
+def test_ready_offline_upload_requires_digest_evidence_before_provider(monkeypatch, changes):
+    upload = SimpleNamespace(
+        **{**verified_upload_metadata(), **changes},
+        upload_kind="offline_scoring",
+        status="ready",
+        completed_object_uri="secret://object",
+    )
+    monkeypatch.setattr(gateway, "get_upload_session", lambda *_: upload)
+    store = MagicMock()
+    monkeypatch.setattr(gateway, "get_object_store", store)
+    request = _request(
+        "POST", "/gateway", body=json.dumps({"upload_session_id": str(uuid.uuid4())}).encode()
+    )
+    with pytest.raises(HTTPException) as error:
+        _run(
+            gateway.proxy_object_backed_offline_inference(
+                request, _target(), SimpleNamespace(), SimpleNamespace(), uuid.uuid4()
+            )
+        )
+    assert error.value.status_code == 409
+    assert "digest" in error.value.detail
+    store.assert_not_called()

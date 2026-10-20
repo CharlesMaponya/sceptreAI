@@ -81,7 +81,10 @@ spec:
             - configMapRef:
                 name: {{ include "sceptre.fullname" . }}-config
           env:
-            {{- if .Values.championEvaluation.enabled }}
+            {{- if .Values.providerImports.policiesConfigMap }}
+            - {name: PROVIDER_IMPORT_POLICIES_FILE, value: /provider-import/policies.json}
+            {{- end }}
+            {{- if or .Values.championEvaluation.enabled .Values.providerImports.policiesConfigMap }}
             - {name: EVALUATION_AUTHORITY_PUBLIC_KEY_FILE, value: /evaluation-authority/public-key.pem}
             {{- end }}
             - name: DATABASE_URL
@@ -171,12 +174,21 @@ spec:
             readOnlyRootFilesystem: true
             runAsNonRoot: true
           volumeMounts:
-            {{- if .Values.championEvaluation.enabled }}
+            {{- if .Values.providerImports.policiesConfigMap }}
+            - {name: provider-import, mountPath: /provider-import, readOnly: true}
+            {{- end }}
+            {{- if or .Values.championEvaluation.enabled .Values.providerImports.policiesConfigMap }}
             - {name: evaluation-authority, mountPath: /evaluation-authority, readOnly: true}
             {{- end }}
             - {name: tmp, mountPath: /tmp}
       volumes:
-        {{- if .Values.championEvaluation.enabled }}
+        {{- if .Values.providerImports.policiesConfigMap }}
+        - name: provider-import
+          configMap:
+            name: {{ .Values.providerImports.policiesConfigMap | quote }}
+            items: [{key: policies.json, path: policies.json}]
+        {{- end }}
+        {{- if or .Values.championEvaluation.enabled .Values.providerImports.policiesConfigMap }}
         - name: evaluation-authority
           secret:
             secretName: {{ .Values.championEvaluation.authorityPublicKeySecret | quote }}
@@ -218,8 +230,13 @@ spec:
             - configMapRef:
                 name: {{ include "sceptre.fullname" . }}-config
           env:
-            {{- if .Values.championEvaluation.enabled }}
+            {{- if .Values.providerImports.policiesConfigMap }}
+            - {name: PROVIDER_IMPORT_POLICIES_FILE, value: /provider-import/policies.json}
+            {{- end }}
+            {{- if or .Values.championEvaluation.enabled .Values.providerImports.policiesConfigMap }}
             - {name: EVALUATION_AUTHORITY_PUBLIC_KEY_FILE, value: /evaluation-authority/public-key.pem}
+            {{- end }}
+            {{- if .Values.championEvaluation.enabled }}
             - {name: EVALUATION_ALLOCATOR_TOKENS_FILE, value: /evaluation-allocator/tokens.json}
             {{- if .Values.championEvaluation.caSecret }}
             - {name: EVALUATION_CA_FILE, value: /evaluation-ca/ca.crt}
@@ -256,8 +273,13 @@ spec:
             readOnlyRootFilesystem: true
             runAsNonRoot: true
           volumeMounts:
-            {{- if .Values.championEvaluation.enabled }}
+            {{- if .Values.providerImports.policiesConfigMap }}
+            - {name: provider-import, mountPath: /provider-import, readOnly: true}
+            {{- end }}
+            {{- if or .Values.championEvaluation.enabled .Values.providerImports.policiesConfigMap }}
             - {name: evaluation-authority, mountPath: /evaluation-authority, readOnly: true}
+            {{- end }}
+            {{- if .Values.championEvaluation.enabled }}
             - {name: evaluation-allocator, mountPath: /evaluation-allocator, readOnly: true}
             {{- if .Values.championEvaluation.caSecret }}
             - {name: evaluation-ca, mountPath: /evaluation-ca, readOnly: true}
@@ -265,11 +287,19 @@ spec:
             {{- end }}
             - {name: tmp, mountPath: /tmp}
       volumes:
-        {{- if .Values.championEvaluation.enabled }}
+        {{- if .Values.providerImports.policiesConfigMap }}
+        - name: provider-import
+          configMap:
+            name: {{ .Values.providerImports.policiesConfigMap | quote }}
+            items: [{key: policies.json, path: policies.json}]
+        {{- end }}
+        {{- if or .Values.championEvaluation.enabled .Values.providerImports.policiesConfigMap }}
         - name: evaluation-authority
           secret:
             secretName: {{ .Values.championEvaluation.authorityPublicKeySecret | quote }}
             items: [{key: public-key.pem, path: public-key.pem}]
+        {{- end }}
+        {{- if .Values.championEvaluation.enabled }}
         - name: evaluation-allocator
           secret:
             secretName: {{ .Values.championEvaluation.allocatorSecret | quote }}

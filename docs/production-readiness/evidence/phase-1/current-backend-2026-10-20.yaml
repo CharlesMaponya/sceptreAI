@@ -1,0 +1,58 @@
+{
+  "status": "audited_complete_backend_run",
+  "phase_complete": false,
+  "verified_at": "2026-10-20T06:24:22.090181+00:00",
+  "collected": 3781,
+  "passed": 3781,
+  "failures": [],
+  "errors": [],
+  "skipped": [],
+  "all_backend_tests_pass": true,
+  "independent_coverage_thresholds_pass": false,
+  "coverage": {
+    "statements": {
+      "covered": 21835,
+      "total": 23080,
+      "percent": 94.60571923743501
+    },
+    "branches": {
+      "covered": 5895,
+      "total": 6838,
+      "percent": 86.20941795846738
+    }
+  },
+  "required_each_dimension_percent": 90.01,
+  "schema_head_rechecked": "0017_upload_session_project",
+  "post_suite_schema_parity": true,
+  "repository_ruff_pass": true,
+  "tested_input_count": 486,
+  "coverage_original_sha256": "d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9",
+  "artifact_sha256": {
+    ".unlazy/phase1-current-backend/backend-state.json": "5ad49e49551c4e30cb0cb6f6bc37cca0ebfab8c551ff7d88fbec420f48f6dcff",
+    ".unlazy/phase1-current-backend/source-sha256.json": "9cf4dcf33f5edafbd626fbc8f804577aafbd808e0426e91ac359c48906b3939f",
+    ".unlazy/phase1-current-backend/backend.log": "d8c40615b230afa0afa5076e655ff914009ef37d1033188ead84a259764f4b5c",
+    ".unlazy/phase1-current-backend/backend.xml": "c9178c5748dea5b39c23c49c49ad689f66a0cc67313a486e70e4d4882ce81cb1",
+    ".unlazy/phase1-current-backend/collect.log": "3a97f89d244b03177fd37b2b5ffbb3821a24630d478e4ac7c6bef2e3bdad8598",
+    ".unlazy/phase1-current-backend/coverage.json": "775b06d0893c71755425475edade1559bc5c63fda662f6ce4fbc88f19f81ec96",
+    ".unlazy/phase1-current-backend/coverage-threshold.log": "08e37f9c9224dee20dc72f63adfe91368a16f473888e04641889297952752ea7",
+    ".unlazy/phase1-current-backend/generate_production_task_index.log": "00c8dcf3b37f2eac6114a4c21f9f742c56e354ada6672f1b15189664820d92a5",
+    ".unlazy/phase1-current-backend/validate_phase2_evidence.log": "a414947a0f058a04ee8ca14e4023b0661f0892a6cb81c082ba87469dd71ed9e9",
+    ".unlazy/phase1-current-backend/check_no_dask_runtime.log": "dffd5dbca119ddf99cc5a088942e02d1127f7108463f4627161d74775ec7e554",
+    ".unlazy/phase1-current-backend/run.py": "39f2b54fa2b6689c2b76ffdad417dd0937d520869050746e67abba8d0b803ad9",
+    ".unlazy/phase1-current-backend/audit.py": "73070dcab21c52a5e06391c974642202830c4e5aa4aea936e84fafbe9cc6c867",
+    ".unlazy/phase1-current-backend/toolchain.json": "74326659b9422921066a1f6a462a53940a1b71f4a51e15a2640d2b1f5d57ff83",
+    ".unlazy/phase1-current-backend/lint.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+  },
+  "minimum_free_bytes": 45116678144,
+  "reserve_bytes": 43500000000,
+  "isolated_database": "automl_branch_0e6a232bc7_tests",
+  "live_provider_or_kubernetes_tests_enabled": false,
+  "whole_phase_verified": 2,
+  "whole_phase_open": 34,
+  "native_worker_release_image_or_complete_workflow_qualified": false,
+  "production_sized_or_prior_binary_migration_qualified": false,
+  "migration_qualification_ceiling_bytes": 45000000000,
+  "shared_preservation_qualified": false,
+  "historical_missing_qa_objects": 7,
+  "abandoned_handoff": "phase1-deletion:G7"
+}

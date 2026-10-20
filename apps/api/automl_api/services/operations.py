@@ -45,7 +45,7 @@ from automl_api.services.training import (
     _leaderboard_parent,
     _lock_training_admission,
     _sync_run_status,
-    estimate_training_run,
+    estimate_analysis_resources,
 )
 from automl_api.storage.object_store import get_object_store
 
@@ -357,7 +357,7 @@ def launch_drift_check(
         else "standard"
     )
     k8s = client or KubernetesTrainingClient()
-    estimate = estimate_training_run(
+    estimate = estimate_analysis_resources(
         db,
         user,
         project_id,

@@ -1,0 +1,62 @@
+{
+  "status": "backend_regression_gate_unmet",
+  "phase_complete": false,
+  "recorded_at": "2026-10-19T20:12:45.503300+00:00",
+  "full_suite": {
+    "collected": 3677,
+    "passed": 3676,
+    "failed": [
+      {
+        "class": "tests.test_training_cancellation",
+        "name": "test_worker_returns_no_metrics_when_success_persistence_is_rejected"
+      }
+    ],
+    "errors": 0,
+    "skipped": 0
+  },
+  "fixture_repair": {
+    "file": "tests/test_training_cancellation.py",
+    "current_sha256": "e4af743748ce1c94a32cc94f977e341f299433dea3e5f51c02318a2bbb170c6a",
+    "module_passed": 37,
+    "production_guard_relaxed": false
+  },
+  "coverage": {
+    "statements": {
+      "covered": 21741,
+      "total": 23015,
+      "percent": 94.46447968716055
+    },
+    "branches": {
+      "covered": 5837,
+      "total": 6804,
+      "percent": 85.78777189888301
+    }
+  },
+  "minimum_percent": 90.01,
+  "additional_covered_branches_needed_on_this_denominator": 288,
+  "threshold_lowered": false,
+  "full_suite_rerun_after_repair_required": true,
+  "schema_read_only_verified_head": "0016_trial_parent_integrity",
+  "artifact_sha256": {
+    ".unlazy/phase1-branch-regression/fixed-backend/backend-state.json": "bb8a7b79ac96bf5065c975949762b7a48e81047036bab014411cec42a3d14455",
+    ".unlazy/phase1-branch-regression/fixed-backend/backend.xml": "b4ffa596aa5ede24b2f1092c7d5219c68942059483fe36adfdac5d18f842f494",
+    ".unlazy/phase1-branch-regression/fixed-backend/coverage.json": "7dcdf94be17d8ab06dd65909e4c658ac6a6a96f3fcc7f6c39af8757dd2403046",
+    ".unlazy/phase1-branch-regression/fixed-backend/coverage-threshold.log": "8c9ad167ef408b45ecc0468a3ff64d723abe2c21cc162ad5c25d9915e0454d4c",
+    ".unlazy/phase1-branch-regression/fixed-backend/source-sha256.json": "f0361877156c9f2e1aae919df7f111b4b83328a552545335a5f94c93c54acc45",
+    ".unlazy/phase1-branch-regression/fixed-backend/toolchain.json": "55a81b73628ae1783fd7e2040af8edaf35e9d597e25ad89ddd2818b65e1ea702",
+    ".unlazy/phase1-branch-regression/cancellation-reproduction.log": "192846b1fc8388acfd4e65e122de8f2422155e2e68d9f1e24d5823120abc078e",
+    ".unlazy/phase1-branch-regression/cancellation-repaired.xml": "15d714c2a50bd65dee2f862e3cfcf2bff75640a20cff9aba330e836003e71b1a",
+    ".unlazy/phase1-branch-regression/cancellation-repaired.log": "de701574960ba8a6e9b1fec8f394f28652dfc931e2b90623f3e7ea70b23ca88e"
+  },
+  "coverage_original_sha256": "d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9",
+  "minimum_free_bytes": 45028884480,
+  "whole_phase_verified": 1,
+  "whole_phase_open": 35,
+  "production_sized_migration_qualified": false,
+  "migration_qualification_ceiling_bytes": 45000000000,
+  "prior_binary_qualified": false,
+  "native_release_image_qualified": false,
+  "shared_preservation_qualified": false,
+  "historical_missing_qa_objects": 7,
+  "abandoned_handoff": "phase1-deletion:G7"
+}

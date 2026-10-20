@@ -115,6 +115,7 @@ def test_refit_replacement_keeps_original_candidate_without_reranking(planning_c
     db, store, expected, scope, run = planning_case
     first = plan_scope_refit(db, scope.id, store)
     first.status = AttemptStatus.FAILED
+    first.cleanup_state = "complete"  # No workload was submitted by this planner-only fixture.
     run.tags = {"leaderboard": []}  # A retry uses durable selection, not mutable leaderboards.
     db.flush()
     replacement = plan_scope_refit(db, scope.id, store)
@@ -256,6 +257,7 @@ def test_planned_retry_executes_and_publishes_original_selection(planning_case):
     db, store, expected, scope, _ = planning_case
     first = plan_scope_refit(db, scope.id, store)
     first.status = AttemptStatus.FAILED
+    first.cleanup_state = "complete"  # No workload was submitted by this planner-only fixture.
     db.flush()
     second = plan_scope_refit(db, scope.id, store)
     event = db.scalar(select(WorkflowEvent).where(WorkflowEvent.attempt_id == second.id))
@@ -305,12 +307,21 @@ def test_seal_registers_policy_before_releasing_new_training(planning_case, alre
 
     db, _, expected, scope, run = planning_case
     scope.status = ScopeStatus.OPEN
+    scope.membership_deadline_at = datetime.now(UTC) + timedelta(minutes=5)
     scope.cas_version = 0
     scope.scope_started_at = None
     scope.scope_deadline_at = None
     scope.sealed_at = None
     scope.comparison_policy = {"refit_policy": scope.comparison_policy["refit_policy"]}
     install_evaluation_policy(db, scope)
+    from automl_api.models.enums import CommandStatus
+    from automl_api.services.scope_allocation import register_scope_allocation
+
+    registration = register_scope_allocation(db, scope, actor_id=run.created_by_id)
+    registration.status = CommandStatus.SUCCEEDED
+    registration.response_status = 200
+    registration.response_payload = {"allocation_id": str(uuid.uuid4())}
+    db.flush()
     member = db.scalar(select(PromotionalScopeMember).where(
         PromotionalScopeMember.scope_id == scope.id,
     ))

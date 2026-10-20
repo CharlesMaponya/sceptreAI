@@ -1187,7 +1187,7 @@ def test_drift_launch_prepares_a_resource_bounded_job_without_external_mutation(
     monkeypatch.setattr(operations_service, "_registry_entry", lambda *_: entry)
     monkeypatch.setattr(operations_service, "_dataset_version", lambda *_: current)
     monkeypatch.setattr(
-        operations_service, "estimate_training_run", lambda *_: _operations_estimate()
+        operations_service, "estimate_analysis_resources", lambda *_: _operations_estimate()
     )
 
     result = operations_service.launch_drift_check(
@@ -1234,7 +1234,7 @@ def test_drift_launch_rejects_same_dataset_and_failed_precheck(monkeypatch) -> N
     source.dataset_version_id = uuid.uuid4()
     monkeypatch.setattr(
         operations_service,
-        "estimate_training_run",
+        "estimate_analysis_resources",
         lambda *_: _operations_estimate(can_launch=False),
     )
     db = SimpleNamespace(scalars=lambda _: SimpleNamespace(all=lambda: []))

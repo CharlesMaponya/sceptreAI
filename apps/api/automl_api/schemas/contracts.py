@@ -4,9 +4,14 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from automl_api.models.enums import TaskType
+from automl_api.schemas.feature_contracts import (
+    FeatureContractSpecification,
+    FeatureSearchSpecification,
+    SearchObjectiveSpecification,
+)
 
 
 class RevisionCreate(BaseModel):
@@ -18,12 +23,29 @@ class RevisionCreate(BaseModel):
 
 
 class FeatureContractCreate(RevisionCreate):
+    specification: FeatureContractSpecification
     task_type: TaskType
     target_column: str | None = Field(default=None, min_length=1, max_length=255)
 
 
 class SearchSpaceCreate(RevisionCreate):
-    metric_name: str = Field(min_length=1, max_length=160)
+    specification: FeatureSearchSpecification
+    metric_name: str = Field(min_length=1, max_length=64)
+    metric_direction: Literal["maximize", "minimize"]
+
+    @model_validator(mode="after")
+    def matching_objective(self):
+        if (
+            self.metric_name != self.specification.metric
+            or self.metric_direction != self.specification.direction
+        ):
+            raise ValueError("Search objective fields must match the specification.")
+        return self
+
+
+class SearchObjectiveCreate(RevisionCreate):
+    specification: SearchObjectiveSpecification
+    metric_name: str = Field(min_length=1, max_length=64)
     metric_direction: Literal["maximize", "minimize"]
 
 
@@ -116,6 +138,7 @@ class CatalogEstimatorRead(BaseModel):
     serializable: bool
     inference: bool
     deprecated: bool
+    parameter_schema: dict[str, Any]
 
 
 class CatalogRead(BaseModel):

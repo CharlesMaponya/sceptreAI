@@ -47,6 +47,7 @@ class DatasetVersionRead(BaseModel):
     format: DatasetFormat
     object_store_type: ObjectStoreType
     object_uri: str
+    source_kind: Literal["raw", "provider_distribution"] = "raw"
     original_filename: str | None = None
     content_hash: str
     content_hash_algorithm: str = "sha256"

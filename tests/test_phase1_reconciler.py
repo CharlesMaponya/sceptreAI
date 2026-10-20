@@ -30,6 +30,7 @@ from automl_api.services.kubernetes_training import (
     KubernetesTrainingClient,
     object_store_workload_environment,
 )
+from digest_fixtures import verified_raw_version
 from kubernetes.client import ApiException
 
 
@@ -250,7 +251,14 @@ def test_submit_reconciler_persists_ray_identity_and_is_idempotent() -> None:
     attempt = _attempt(run)
     entry = _entry(attempt)
     db = MagicMock()
-    db.scalar.side_effect = [attempt, run]
+    values = iter([attempt, run])
+    db.scalar.side_effect = lambda statement: (
+        None
+        if statement.column_descriptions[0]["entity"].__name__
+        in {"DatasetProviderImport", "PromotionalScopeMember"}
+        else next(values)
+    )
+    db.get.return_value = verified_raw_version(id=run.dataset_version_id, project_id=run.project_id)
     k8s = MagicMock()
     k8s.create_ray_job.return_value = {
         "metadata": {"name": "created-job"},
@@ -279,7 +287,14 @@ def test_submit_reconciler_claims_a_new_pending_attempt_before_submission() -> N
     attempt = _attempt(run, AttemptStatus.PENDING)
     entry = _entry(attempt)
     db = MagicMock()
-    db.scalar.side_effect = [attempt, run]
+    values = iter([attempt, run])
+    db.scalar.side_effect = lambda statement: (
+        None
+        if statement.column_descriptions[0]["entity"].__name__
+        in {"DatasetProviderImport", "PromotionalScopeMember"}
+        else next(values)
+    )
+    db.get.return_value = verified_raw_version(id=run.dataset_version_id, project_id=run.project_id)
     k8s = MagicMock()
     k8s.create_ray_job.return_value = {"metadata": {"name": "created-job"}}
 
@@ -688,6 +703,9 @@ def test_upload_reconciler_handles_terminal_expired_and_quarantined_sessions(
         id=uuid.UUID(str(entry.payload["session_id"])),
         status="completed",
         dataset_version_id=None,
+        digest_algorithm="sha256",
+        digest_scope="byte_stream",
+        expected_object_digest="a" * 64,
         quarantine_reason=None,
         terminal_reason=None,
     )
@@ -705,6 +723,9 @@ def test_upload_reconciler_verifies_object_size_and_visibility(monkeypatch) -> N
         project_id=entry.project_id,
         dataset_version_id=uuid.uuid4(),
         byte_size=10,
+        digest_algorithm="sha256",
+        digest_scope="byte_stream",
+        expected_object_digest="a" * 64,
         quarantine_reason=None,
         terminal_reason=None,
         lease_owner="worker",
@@ -734,15 +755,6 @@ def test_upload_reconciler_verifies_object_size_and_visibility(monkeypatch) -> N
     assert session.status == "quarantined"
     assert "expected 10, observed 9" in session.quarantine_reason
 
-    session.status = "completed"
-    db.scalar.side_effect = [session, version, session]
-    store.size.return_value = 10
-    reconciler.reconcile_upload_session(db, entry)
-    assert session.status == "completed"
-    assert session.terminal_reason is None
-    assert session.lease_owner is None
-    assert session.heartbeat_at is not None
-
 
 def test_phase2_upload_reconciler_streams_scans_and_verifies_sha256(monkeypatch) -> None:
     content = b"a,b\n1,2\n"
@@ -758,6 +770,8 @@ def test_phase2_upload_reconciler_streams_scans_and_verifies_sha256(monkeypatch)
         completed_object_uri="s3c://automl/object.csv",
         original_filename="object.csv",
         byte_size=len(content),
+        digest_algorithm="sha256",
+        digest_scope="byte_stream",
         expected_object_digest=digest,
         scanner_status="pending",
         quarantine_reason=None,
@@ -833,6 +847,8 @@ def test_phase2_upload_reconciler_quarantines_digest_and_scanner_failures(
             completed_object_uri=version.object_uri,
             original_filename=filename,
             byte_size=len(content),
+            digest_algorithm="sha256",
+            digest_scope="byte_stream",
             expected_object_digest="0" * 64,
             scanner_status="pending",
             quarantine_reason=None,
@@ -1303,3 +1319,56 @@ def test_dataset_startup_recovery_observes_grace_and_does_not_retry_capacity_wai
         assert reason in failure
         # Old database timestamps without timezone information represent UTC.
         assert reconciler._ray_startup_failure(status, observed.replace(tzinfo=None)) == failure
+
+
+@pytest.mark.parametrize("upload_status", ["completed", "object_completed", "verifying"])
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {},
+        {
+            "digest_algorithm": "sha256",
+            "digest_scope": "multipart_manifest",
+            "expected_object_digest": "a" * 64,
+        },
+        {
+            "digest_algorithm": "md5",
+            "digest_scope": "byte_stream",
+            "expected_object_digest": "a" * 64,
+        },
+        {
+            "digest_algorithm": "sha256",
+            "digest_scope": "byte_stream",
+            "expected_object_digest": None,
+        },
+        {
+            "digest_algorithm": "sha256",
+            "digest_scope": "byte_stream",
+            "expected_object_digest": "z" * 64,
+        },
+    ],
+)
+def test_upload_reconciler_blocks_unqualified_digest_without_mutating_history(
+    monkeypatch, upload_status, metadata
+) -> None:
+    entry = _entry(_attempt(_run()), "upload.reconcile")
+    entry.payload = {"session_id": str(uuid.uuid4())}
+    session = SimpleNamespace(
+        id=uuid.UUID(entry.payload["session_id"]),
+        project_id=entry.project_id,
+        status=upload_status,
+        dataset_version_id=uuid.uuid4(),
+        completed_object_uri="s3c://bucket/original",
+        **metadata,
+    )
+    original = vars(session).copy()
+    db = MagicMock()
+    db.scalar.return_value = session
+    store = MagicMock()
+    monkeypatch.setattr(reconciler, "get_object_store", store)
+    with pytest.raises(ValueError, match="byte-stream SHA-256"):
+        reconciler.reconcile_upload_session(db, entry)
+    store.assert_not_called()
+    db.flush.assert_not_called()
+    db.commit.assert_not_called()
+    assert vars(session) == original

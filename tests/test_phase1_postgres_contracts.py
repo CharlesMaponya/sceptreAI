@@ -873,6 +873,7 @@ def test_revision_request_race_returns_versions_or_conflict(
     from automl_api.schemas.contracts import (
         ExperimentSpecCreate,
         FeatureContractCreate,
+        SearchObjectiveCreate,
         SearchSpaceCreate,
     )
     from automl_api.services import contracts
@@ -893,13 +894,27 @@ def test_revision_request_race_returns_versions_or_conflict(
             primary_metric="rmse",
         )
         invoke = routes.post_experiment_spec
-    elif kind == "feature-contract":
-        payload = FeatureContractCreate(
-            **body, task_type=TaskType.REGRESSION, target_column="target"
-        )
-        invoke = routes.post_feature_contract
+    elif kind in {"feature-contract", "feature-search-space"}:
+        from automl_api.models.workflows import FeatureContractRevision, FeatureSearchSpaceRevision
+
+        bindings = request.getfixturevalue("revision_experiment_bindings")
+        with Session(phase1_engine) as db:
+            if kind == "feature-contract":
+                body["specification"] = db.get(
+                    FeatureContractRevision, bindings["feature_contract_revision_id"]
+                ).specification
+                payload = FeatureContractCreate(
+                    **body, task_type=TaskType.REGRESSION, target_column="target"
+                )
+                invoke = routes.post_feature_contract
+            else:
+                body["specification"] = db.get(
+                    FeatureSearchSpaceRevision, bindings["feature_search_space_revision_id"]
+                ).specification
+                payload = SearchSpaceCreate(**body, metric_name="rmse", metric_direction="minimize")
+                invoke = routes.post_search_space
     else:
-        payload = SearchSpaceCreate(**body, metric_name="rmse", metric_direction="minimize")
+        payload = SearchObjectiveCreate(**body, metric_name="rmse", metric_direction="minimize")
         invoke = (
             routes.post_search_space
             if kind == "feature-search-space"
@@ -971,7 +986,11 @@ def test_revision_request_race_returns_versions_or_conflict(
             else contracts.REVISION_MODELS[kind]
         )
         rows = list(
-            db.scalars(select(model).where(model.project_id == project_id).order_by(model.revision))
+            db.scalars(
+                select(model)
+                .where(model.project_id == project_id, model.name == payload.name)
+                .order_by(model.revision)
+            )
         )
         assert [row.revision for row in rows] == ([1] if expected_revision == 0 else [1, 2])
         commands = list(
@@ -992,63 +1011,44 @@ def revision_experiment_bindings(phase1_engine, committed_tenant):
     from automl_api.models.workflows import (
         DatasetSplitRevision,
         ExperimentSpecRevision,
-        FeatureContractRevision,
-        FeatureSearchSpaceRevision,
         SearchObjectiveRevision,
     )
+    from test_selected_identity import publish_graph
 
     user_id, project_id = committed_tenant
     with Session(phase1_engine) as db, db.begin():
-        dataset = Dataset(project_id=project_id, created_by_id=user_id, name="revision-race")
-        db.add(dataset)
-        db.flush()
-        version = DatasetVersion(
-            project_id=project_id,
-            dataset_id=dataset.id,
-            created_by_id=user_id,
-            version_number=1,
-            format=DatasetFormat.CSV,
-            object_uri="embedded://revision-race/source",
-            content_hash="a" * 64,
-        )
-        db.add(version)
-        db.flush()
-        common = dict(
-            project_id=project_id,
-            revision=1,
-            digest_scope="revision-race-v1",
-            content_digest="a" * 64,
-        )
-        split = DatasetSplitRevision(
-            **common,
-            dataset_version_id=version.id,
-            train_digest="b" * 64,
-            validation_digest="c" * 64,
-            final_test_digest="d" * 64,
-        )
-        contract = FeatureContractRevision(
-            **common, name="bound-contract", task_type="regression", target_column="target"
-        )
-        search = FeatureSearchSpaceRevision(
-            **common, name="bound-search", metric_name="rmse", metric_direction="minimize"
-        )
+        version, _, graph = publish_graph(db, user_id, project_id, TaskType.REGRESSION)
         objective = SearchObjectiveRevision(
-            **common, name="bound-objective", metric_name="rmse", metric_direction="minimize"
+            project_id=project_id,
+            name="bound-objective",
+            revision=1,
+            digest_scope="search-objective-v2",
+            content_digest=state.canonical_request_hash(
+                {
+                    "metric_name": "rmse",
+                    "metric_direction": "minimize",
+                    "specification": {"fold_aggregation": "mean"},
+                }
+            ),
+            metric_name="rmse",
+            metric_direction="minimize",
+            specification={"fold_aggregation": "mean"},
         )
-        catalog = EstimatorCatalogRevision(**common, name="bound-catalog", release_version="test")
-        db.add_all([split, contract, search, objective, catalog])
+        db.add(objective)
         db.flush()
         bindings = dict(
             dataset_version_id=version.id,
-            split_revision_id=split.id,
-            feature_contract_revision_id=contract.id,
-            feature_search_space_revision_id=search.id,
+            split_revision_id=graph["split_revision_id"],
+            feature_contract_revision_id=graph["feature_contract_revision_id"],
+            feature_registry_revision_id=graph["feature_registry_revision_id"],
+            feature_recipe_revision_id=graph["feature_recipe_revision_id"],
+            feature_search_space_revision_id=graph["feature_search_space_revision_ids"]["rmse"],
             search_objective_revision_id=objective.id,
-            catalog_revision_id=catalog.id,
+            catalog_revision_id=graph["estimator_catalog_revision_id"],
         )
     try:
         yield bindings
     finally:
         with Session(phase1_engine) as db, db.begin():
-            for model in (ExperimentSpecRevision, DatasetSplitRevision, DatasetVersion, Dataset):
+            for model in (ExperimentSpecRevision, DatasetSplitRevision):
                 db.execute(delete(model).where(model.project_id == project_id))

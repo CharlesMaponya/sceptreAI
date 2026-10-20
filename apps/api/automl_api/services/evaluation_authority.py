@@ -1,7 +1,6 @@
 """Replay-safe handoff from a durable frozen pipeline to the central authority."""
 
 import hashlib
-import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -85,6 +84,9 @@ def prepare_evaluator(
             or event.result_digest != output.frozen_pipeline_digest
         ):
             raise InvalidTransition("Frozen pipeline evidence changed")
+        from automl_api.services.scope_allocation import require_scope_allocation
+
+        allocation_id = require_scope_allocation(db, scope)
         manifest = FinalDataManifest(**policy.final_data.model_dump(), scope_id=scope.id)
         allocation_request = dict(
             split_digest=manifest.split_digest,
@@ -113,9 +115,6 @@ def prepare_evaluator(
                 scope_deadline_at=deadline.isoformat(),
             ),
         )
-    response = authority.post("allocations", json=allocation_request)
-    response.raise_for_status()
-    allocation_id = uuid.UUID(response.json()["allocation_id"])
     path = f"allocations/{allocation_id}"
     response = authority.get(path)
     response.raise_for_status()

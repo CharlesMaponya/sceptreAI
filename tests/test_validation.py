@@ -18,6 +18,7 @@ from automl_api.schemas.training import ClusterCapacityRead, TrainingEstimateRea
 from automl_api.schemas.validation import ExplainabilityLaunchRequest, ValidationLaunchRequest
 from automl_api.services.validation import _reusable_explainability_run
 from automl_api.training import analysis, pipeline
+from digest_fixtures import verified_raw_version
 from fastapi import HTTPException
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
@@ -422,7 +423,7 @@ def test_analysis_launch_persists_desired_state_without_inline_side_effect(
     if busy:
         estimate.can_launch = False
         estimate.blockers = ["Concurrent training limit reached (1/1)."]
-    monkeypatch.setattr(validation_service, "estimate_training_run", lambda *_: estimate)
+    monkeypatch.setattr(validation_service, "estimate_analysis_resources", lambda *_: estimate)
 
     result = validation_service._launch_analysis_run(
         db,
@@ -449,7 +450,7 @@ def test_analysis_launch_rejects_precheck_without_contacting_cluster(monkeypatch
     version = SimpleNamespace(id=uuid.uuid4())
     monkeypatch.setattr(validation_service, "_lock_training_admission", lambda *_: None)
     monkeypatch.setattr(
-        validation_service, "estimate_training_run", lambda *_: _estimate(can_launch=False)
+        validation_service, "estimate_analysis_resources", lambda *_: _estimate(can_launch=False)
     )
     with pytest.raises(HTTPException, match="Analysis precheck failed"):
         validation_service._launch_analysis_run(
@@ -572,7 +573,7 @@ def test_validation_lookup_helpers_fail_closed(monkeypatch) -> None:
     with pytest.raises(HTTPException, match="Dataset version not found"):
         validation_service._dataset_version(db, project_id, item_id)
 
-    version = SimpleNamespace(id=item_id, object_uri="s3://missing", schema_json={})
+    version = verified_raw_version(id=item_id, object_uri="s3://missing", schema_json={})
     monkeypatch.setattr(
         validation_service, "get_object_store", lambda: SimpleNamespace(exists=lambda _: False)
     )

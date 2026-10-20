@@ -23,6 +23,17 @@ class UploadCapabilityUnavailable(UploadContractError):
     """The selected provider explicitly does not implement an optional capability."""
 
 
+def immutable_object_version(version: str) -> str:
+    if (
+        not isinstance(version, str)
+        or not version.strip()
+        or version.strip().lower() == "null"
+        or any(ord(c) < 32 or ord(c) == 127 for c in version)
+    ):
+        raise UploadContractError("An immutable object version is required.")
+    return version
+
+
 class UploadExpired(UploadContractError):
     """The provider upload or transfer instruction is no longer valid."""
 
@@ -179,7 +190,9 @@ class ObjectStoreDriver(UploadDriver, Protocol):
 
     def stat(self, uri: str) -> ObjectMetadata: ...
 
-    def open_stream(self, uri: str, byte_range: ByteRange | None = None) -> BinaryIO: ...
+    def open_stream(
+        self, uri: str, byte_range: ByteRange | None = None, *, version: str | None = None
+    ) -> BinaryIO: ...
 
     def put_stream(self, uri: str, source: BinaryIO) -> ObjectMetadata: ...
 

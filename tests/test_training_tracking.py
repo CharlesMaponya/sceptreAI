@@ -76,15 +76,17 @@ def test_lost_create_ack_recovers_one_tagged_tracking_run(tracking, monkeypatch,
             assert db.get(ModelRun, run.id).mlflow_run_id == created_ids[0]
 
 
-@pytest.mark.parametrize("corruption", ["deleted", "lineage"])
+@pytest.mark.parametrize("corruption", ["deleted", "lineage", "unexpected_parent"])
 def test_tracking_replay_rejects_deleted_or_changed_remote_record(tracking, corruption):
     _, run, _, client = tracking
     with pipeline._tracked_mlflow_run(run, role="parent", run_name="fixture") as active:
         tracking_id = active.info.run_id
     if corruption == "deleted":
         client.delete_run(tracking_id)
-    else:
+    elif corruption == "lineage":
         client.set_tag(tracking_id, "automl_run_id", "another-run")
+    else:
+        client.set_tag(tracking_id, "mlflow.parentRunId", "unexpected-parent")
     with pytest.raises(ValueError, match="lineage"):
         pipeline._tracked_mlflow_run(run, role="parent", run_name="fixture")
 
@@ -111,9 +113,13 @@ def test_lost_database_commit_ack_replays_recorded_tracking_id(tracking, monkeyp
 
     class LostAcknowledgement(Session):
         def commit(self):
+            publishes_id = any(
+                isinstance(row, WorkflowCommand) and (row.response_payload or {}).get("run_id")
+                for row in self.identity_map.values()
+            )
             super().commit()
-            commits.append(True)
-            if len(commits) == 3:
+            commits.append(publishes_id)
+            if publishes_id and sum(bool(value) for value in commits) == 1:
                 raise ConnectionError("database commit acknowledgement lost")
 
     monkeypatch.setattr(
@@ -411,10 +417,15 @@ def test_tracking_batch_reaches_work_behind_busy_or_orphaned_rows(tracking, monk
             db.add(run)
             db.flush()
             command, _ = begin_command(
-                db, project_id=run.project_id, actor_id=run.created_by_id,
-                operation="mlflow.run.ensure", idempotency_key=f"queue-{index}",
+                db,
+                project_id=run.project_id,
+                actor_id=run.created_by_id,
+                operation="mlflow.run.ensure",
+                idempotency_key=f"queue-{index}",
                 payload={
-                    "model_run_id": str(run.id), "attempt_id": "legacy", "role": "parent",
+                    "model_run_id": str(run.id),
+                    "attempt_id": "legacy",
+                    "role": "parent",
                     "tracking_backend_hash": hashlib.sha256(
                         client.tracking_uri.encode()
                     ).hexdigest(),
@@ -424,9 +435,9 @@ def test_tracking_batch_reaches_work_behind_busy_or_orphaned_rows(tracking, monk
             command.resource_id = run.id
             command.response_payload = {"creation_started": True}
             command.available_at = now - timedelta(seconds=2 - index)
-            remote_ids.append(client.create_run(
-                experiment_id, tags=tracking_identity(command, run)
-            ).info.run_id)
+            remote_ids.append(
+                client.create_run(experiment_id, tags=tracking_identity(command, run)).info.run_id
+            )
             commands.append(command.id)
             runs.append(run.id)
         if blocked == "missing_run":
@@ -442,7 +453,8 @@ def test_tracking_batch_reaches_work_behind_busy_or_orphaned_rows(tracking, monk
         if blocked != "missing_run":
             owner.get(
                 ModelRun if blocked == "run" else WorkflowCommand,
-                runs[0] if blocked == "run" else commands[0], with_for_update=True,
+                runs[0] if blocked == "run" else commands[0],
+                with_for_update=True,
             )
         assert reconcile_tracking_once(session_factory, client=client, limit=1, now=now) == 1
         with Session(engine) as db:

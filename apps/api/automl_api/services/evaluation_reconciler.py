@@ -12,12 +12,16 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
-from kubernetes.client import ApiException
 from sqlalchemy import or_, select
 
 from automl_api.models.enums import AttemptStatus, ScopeStatus, WorkflowStage
 from automl_api.models.workflows import PromotionalScope, WorkflowAttempt, WorkflowEvent
+from automl_api.services.attempt_object_grants import (
+    revoke_attempt_grants,
+    unretired_grant_deadline,
+)
 from automl_api.services.champion_planning import ACTIVE_ATTEMPTS
+from automl_api.services.champion_workloads import delete_owned_resource
 from automl_api.services.evaluation_authority import _record
 from automl_api.services.evaluation_jobs import LABEL, _url, submit_evaluator
 from automl_api.services.evaluation_keys import prepare_evaluator_credentials
@@ -41,12 +45,28 @@ _next_sweep = 0.0
 
 
 @contextmanager
-def configured_authority(project_reference):
+def configured_authority(project_id, project_reference):
     """Controller-only project token map; never copied to an evaluator Pod."""
-    tokens = json.loads(Path(os.environ["EVALUATION_ALLOCATOR_TOKENS_FILE"]).read_text())
-    token = tokens[project_reference]
-    if not isinstance(token, str) or not token:
-        raise ValueError("Missing project allocator identity")
+    try:
+        bindings = json.loads(Path(os.environ["EVALUATION_ALLOCATOR_TOKENS_FILE"]).read_text())
+        binding = bindings[str(uuid.UUID(str(project_id)))]
+        if (
+            not isinstance(binding, dict)
+            or set(binding) != {"project_reference", "token"}
+            or not isinstance(project_reference, str)
+            or not project_reference.strip()
+            or binding["project_reference"] != project_reference
+        ):
+            raise ValueError
+        token = binding["token"]
+        if (
+            not isinstance(token, str)
+            or not token
+            or any(ord(c) <= 32 or ord(c) >= 127 for c in token)
+        ):
+            raise ValueError
+    except (KeyError, ValueError, TypeError, OSError):
+        raise ValueError("Missing or invalid project-bound allocator identity") from None
     with httpx.Client(
         base_url=_url(os.environ["EVALUATION_AUTHORITY_URL"]) + "/",
         headers={"Authorization": f"Bearer {token}"},
@@ -96,12 +116,51 @@ def _stop(attempt, reason):
 
 
 def _cleanup_attempt(factory, k8s, attempt_id):
-    with factory() as db:
+    with factory() as db, db.begin():
         attempt = db.get(WorkflowAttempt, attempt_id)
         if attempt is None or attempt.status in ACTIVE_ATTEMPTS:
             return False
+        if attempt.stage != WorkflowStage.CHAMPION_EVALUATION or attempt.scope_id is None:
+            return False
+        revoke_attempt_grants(db, attempt_id)
+        retiring = unretired_grant_deadline(db, attempt_id) is not None
         event = _event(db, attempt_id, "evaluation_submission")
+        if event is not None and event.result_digest != canonical_request_hash(event.payload):
+            raise InvalidTransition("Evaluator cleanup submission changed")
         scope_id, generation = attempt.scope_id, attempt.generation
+        labels = {
+            LABEL: str(attempt_id),
+            "automl.platform/evaluation-scope": str(scope_id),
+            "automl.platform/project-id": str(attempt.project_id),
+        }
+        key_name = f"evaluation-key-{scope_id.hex}-{generation}"
+        key_label = "evaluation_key_ready" + ("" if generation == 1 else f"_{generation}")
+        key_events = list(
+            db.scalars(
+                select(WorkflowEvent)
+                .join(WorkflowAttempt)
+                .where(
+                    WorkflowAttempt.scope_id == scope_id,
+                    WorkflowAttempt.project_id == attempt.project_id,
+                    WorkflowAttempt.stage == WorkflowStage.CHAMPION_REFIT,
+                    WorkflowEvent.event_key == key_label,
+                )
+            )
+        )
+        key_event = key_events[0] if len(key_events) == 1 else None
+        key = key_event.payload if key_event is not None else None
+        key_digest = key_event.result_digest if key_event is not None else None
+        namespace = k8s.settings.training_namespace
+        if event is None:
+            if (
+                key_event is None
+                or not isinstance(key_event.payload, dict)
+                or key_event.result_digest != canonical_request_hash(key_event.payload)
+                or not isinstance(key_event.payload.get("namespace"), str)
+                or not key_event.payload["namespace"]
+            ):
+                return False
+            namespace = key_event.payload["namespace"]
         desired = (
             event.payload
             if event
@@ -109,21 +168,37 @@ def _cleanup_attempt(factory, k8s, attempt_id):
                 "job": {
                     "metadata": {
                         "name": f"evaluation-{attempt_id.hex}",
-                        "namespace": k8s.settings.training_namespace,
+                        "namespace": namespace,
+                        "labels": labels,
                     }
                 }
             }
         )
-    if not _cleanup(k8s, desired):
+    if not _cleanup(k8s, desired, labels=labels, retiring=retiring):
         return False
-    try:
-        k8s.core.delete_namespaced_secret(
-            name=f"evaluation-key-{scope_id.hex}-{generation}",
-            namespace=k8s.settings.training_namespace,
-        )
-    except ApiException as error:
-        if error.status != 404:
-            raise
+    if key_event is None:
+        return False
+    key_labels = {
+        "automl.platform/evaluation-scope": str(scope_id),
+        "automl.platform/project-id": labels["automl.platform/project-id"],
+        "automl.platform/evaluation-generation": str(generation),
+    }
+    if (
+        not isinstance(key, dict)
+        or key_digest != canonical_request_hash(key)
+        or key.get("name") != key_name
+        or key.get("algorithm") != "Ed25519"
+        or not isinstance(key.get("namespace"), str)
+        or not key["namespace"]
+        or key.get("labels") != key_labels
+    ):
+        raise InvalidTransition("Evaluator cleanup key custody changed")
+    if not delete_owned_resource(
+        k8s.core.read_namespaced_secret,
+        k8s.core.delete_namespaced_secret,
+        {"name": key_name, "namespace": key["namespace"], "labels": key_labels},
+    ):
+        return False
     with factory() as db, db.begin():
         _scope(db, scope_id)
         attempt = db.get(WorkflowAttempt, attempt_id)
@@ -360,6 +435,8 @@ def reconcile_scope(factory, k8s, scope_id, authority, *, public_key, store):
         else:
             _close_handoff(factory, scope_id, authority, public_key)
         return
+    if generation == 2 and not _cleanup_attempt(factory, k8s, snapshots[0][0]):
+        return
     plan = plans[-1]
     name = f"evaluation-{attempt_id.hex}"
     job_state = k8s.job_state(name)
@@ -502,10 +579,124 @@ def reconcile_evaluation_jobs_once(
             return 0
         authority_factory = configured_authority
         public_key = Path(os.environ["EVALUATION_AUTHORITY_PUBLIC_KEY_FILE"]).read_text()
+    from automl_api.models.enums import CommandStatus
+    from automl_api.models.workflows import WorkflowCommand
+    from automl_api.services.scope_allocation import (
+        OPERATION,
+        ScopeAllocationIntent,
+        close_scope_allocation,
+        defer_scope_allocation,
+        reconcile_scope_allocation,
+    )
+
+    with factory() as db:
+        registrations = list(
+            db.execute(
+                select(
+                    PromotionalScope.id,
+                    PromotionalScope.project_id,
+                    PromotionalScope.comparison_policy,
+                )
+                .join(
+                    WorkflowCommand,
+                    (WorkflowCommand.resource_id == PromotionalScope.id)
+                    & (WorkflowCommand.project_id == PromotionalScope.project_id),
+                )
+                .where(
+                    PromotionalScope.mode == "promotional",
+                    PromotionalScope.status == ScopeStatus.OPEN,
+                    PromotionalScope.membership_deadline_at > datetime.now(UTC),
+                    WorkflowCommand.operation == OPERATION,
+                    WorkflowCommand.status.in_([CommandStatus.PENDING, CommandStatus.RUNNING]),
+                    WorkflowCommand.available_at <= datetime.now(UTC),
+                    or_(
+                        WorkflowCommand.lease_expires_at.is_(None),
+                        WorkflowCommand.lease_expires_at <= datetime.now(UTC),
+                    ),
+                )
+                .order_by(WorkflowCommand.available_at, WorkflowCommand.id)
+                .limit(limit)
+            )
+        )
+    for scope_id, project_id, policy in registrations:
+        try:
+            reference = policy["evaluation_policy"]["final_data"]["project_reference"]
+            with authority_factory(project_id, reference) as authority:
+                reconcile_scope_allocation(factory, scope_id, authority)
+        except Exception as error:
+            defer_scope_allocation(factory, scope_id)
+            LOGGER.error(
+                "Early scope allocation failed",
+                extra={
+                    "scope_id": str(scope_id),
+                    "error_type": type(error).__name__,
+                },
+            )
+    with factory() as db:
+        stopped = list(
+            db.execute(
+                select(
+                    PromotionalScope.id,
+                    PromotionalScope.project_id,
+                    WorkflowCommand.request_payload,
+                    WorkflowCommand.retry_count,
+                )
+                .join(
+                    WorkflowCommand,
+                    (WorkflowCommand.resource_id == PromotionalScope.id)
+                    & (WorkflowCommand.project_id == PromotionalScope.project_id),
+                )
+                .where(
+                    PromotionalScope.mode == "promotional",
+                    or_(
+                        PromotionalScope.status.in_([ScopeStatus.CANCELLED, ScopeStatus.FAILED]),
+                        (PromotionalScope.status == ScopeStatus.OPEN)
+                        & (PromotionalScope.membership_deadline_at <= datetime.now(UTC)),
+                    ),
+                    ~select(WorkflowAttempt.id)
+                    .where(
+                        WorkflowAttempt.scope_id == PromotionalScope.id,
+                        WorkflowAttempt.stage == WorkflowStage.CHAMPION_REFIT,
+                    )
+                    .exists(),
+                    WorkflowCommand.operation == OPERATION,
+                    WorkflowCommand.status != CommandStatus.CANCELLED,
+                    WorkflowCommand.retry_count < WorkflowCommand.max_retries + 5,
+                    WorkflowCommand.available_at <= datetime.now(UTC),
+                    or_(
+                        WorkflowCommand.lease_expires_at.is_(None),
+                        WorkflowCommand.lease_expires_at <= datetime.now(UTC),
+                    ),
+                )
+                .order_by(WorkflowCommand.available_at, WorkflowCommand.id)
+                .limit(limit)
+            )
+        )
+    for scope_id, project_id, payload, retries in stopped:
+        try:
+            if retries == 0:
+                close_scope_allocation(factory, scope_id, None, public_key=public_key)
+                continue
+            intent = ScopeAllocationIntent.model_validate(payload)
+            with authority_factory(project_id, intent.project_reference) as authority:
+                close_scope_allocation(factory, scope_id, authority, public_key=public_key)
+        except Exception as error:
+            defer_scope_allocation(factory, scope_id)
+            LOGGER.error(
+                "Stopped scope allocation cleanup failed",
+                extra={
+                    "scope_id": str(scope_id),
+                    "error_type": type(error).__name__,
+                },
+            )
     with factory() as db:
         scopes = list(
             db.execute(
-                select(PromotionalScope.id, PromotionalScope.comparison_policy)
+                select(
+                    PromotionalScope.id,
+                    PromotionalScope.project_id,
+                    PromotionalScope.comparison_policy,
+                )
                 .where(
                     PromotionalScope.mode == "promotional",
                     select(WorkflowAttempt.id)
@@ -548,13 +739,13 @@ def reconcile_evaluation_jobs_once(
             )
         )
     store = (store or get_object_store()) if scopes else None
-    for scope_id, policy in scopes:
+    for scope_id, project_id, policy in scopes:
         try:
             if "evaluation_policy" not in policy:
                 _close_unconfigured_handoff(factory, scope_id)
                 continue
             reference = policy["evaluation_policy"]["final_data"]["project_reference"]
-            with authority_factory(reference) as authority:
+            with authority_factory(project_id, reference) as authority:
                 reconcile_scope(
                     factory, k8s, scope_id, authority, public_key=public_key, store=store
                 )
@@ -574,7 +765,7 @@ def reconcile_evaluation_jobs_once(
     if time.monotonic() >= _next_sweep:
         _next_sweep = time.monotonic() + 30
         sweep_evaluation_resources(factory, k8s)
-    return len(scopes)
+    return len(scopes) + len(registrations) + len(stopped)
 
 
 def sweep_evaluation_resources(factory, k8s):
@@ -582,6 +773,7 @@ def sweep_evaluation_resources(factory, k8s):
     namespace = k8s.settings.training_namespace
     names, keys = {}, {}
     scope_label = "automl.platform/evaluation-scope"
+    project_label = "automl.platform/project-id"
     for kind, listing, selector in (
         ("secret", k8s.core.list_namespaced_secret, scope_label),
         ("network", k8s.networking.list_namespaced_network_policy, LABEL),
@@ -596,52 +788,116 @@ def sweep_evaluation_resources(factory, k8s):
                 labels = resource.metadata.labels or {}
                 try:
                     scope_id = uuid.UUID(labels[scope_label])
+                    project_id = uuid.UUID(labels[project_label])
                     if LABEL in labels:
                         attempt_id = uuid.UUID(labels[LABEL])
                         if resource.metadata.name == f"evaluation-{attempt_id.hex}":
-                            names[attempt_id] = scope_id
+                            owned_labels = {
+                                LABEL: str(attempt_id),
+                                scope_label: str(scope_id),
+                                project_label: str(project_id),
+                            }
+                            names.setdefault(attempt_id, {})[kind] = {
+                                "metadata": {
+                                    "name": resource.metadata.name,
+                                    "namespace": namespace,
+                                    "labels": owned_labels,
+                                    "uid": getattr(resource.metadata, "uid", None),
+                                }
+                            }
                     elif kind == "secret":
-                        generation = int(labels["automl.platform/evaluation-generation"])
-                        if generation in (1, 2) and resource.metadata.name == (
+                        generation = labels["automl.platform/evaluation-generation"]
+                        if generation in ("1", "2") and resource.metadata.name == (
                             f"evaluation-key-{scope_id.hex}-{generation}"
                         ):
-                            keys[resource.metadata.name] = scope_id
-                except (KeyError, TypeError, ValueError):
+                            keys[resource.metadata.name] = {
+                                "name": resource.metadata.name,
+                                "namespace": namespace,
+                                "uid": getattr(resource.metadata, "uid", None),
+                                "labels": {
+                                    scope_label: str(scope_id),
+                                    project_label: str(project_id),
+                                    "automl.platform/evaluation-generation": generation,
+                                },
+                            }
+                except (KeyError, TypeError, ValueError, AttributeError):
                     continue
             page = result.metadata._continue
             if not page:
                 break
     waiting = set()
-    for attempt_id, scope_id in names.items():
+    for attempt_id, observed in names.items():
+        observed_scopes = {
+            uuid.UUID(resource["metadata"]["labels"][scope_label]) for resource in observed.values()
+        }
+        metadata = next(iter(observed.values()))["metadata"]
+        labels = metadata["labels"]
+        scope_id = uuid.UUID(labels[scope_label])
         with factory() as db:
             attempt = db.get(WorkflowAttempt, attempt_id)
+            if attempt is not None and (
+                attempt.stage != WorkflowStage.CHAMPION_EVALUATION
+                or attempt.scope_id != scope_id
+                or str(attempt.project_id) != labels[project_label]
+            ):
+                waiting.update(observed_scopes)
+                if attempt.scope_id is not None:
+                    waiting.add(attempt.scope_id)
+                continue
             active = attempt is not None and attempt.status in ACTIVE_ATTEMPTS
         if active:
-            waiting.add(scope_id)
+            waiting.update(observed_scopes)
         elif attempt is not None:
             if not _cleanup_attempt(factory, k8s, attempt_id):
-                waiting.add(scope_id)
+                waiting.update(observed_scopes)
         elif not _cleanup(
             k8s,
             {
+                **observed,
                 "job": {
                     "metadata": {
                         "name": f"evaluation-{attempt_id.hex}",
                         "namespace": namespace,
+                        "labels": labels,
+                        **observed.get("job", {}).get("metadata", {}),
                     }
-                }
+                },
             },
+            labels=labels,
         ):
-            waiting.add(scope_id)
-    for name, scope_id in keys.items():
+            waiting.update(observed_scopes)
+    for metadata in keys.values():
+        scope_id = uuid.UUID(metadata["labels"][scope_label])
         if scope_id in waiting:
             continue
-        with factory() as db:
+        with factory() as db, db.begin():
             scope = db.get(PromotionalScope, scope_id)
-            if scope is not None and scope.status == ScopeStatus.RUNNING:
+            if scope is not None and (
+                scope.status == ScopeStatus.RUNNING
+                or str(scope.project_id) != metadata["labels"][project_label]
+            ):
                 continue
-        try:
-            k8s.core.delete_namespaced_secret(name=name, namespace=namespace)
-        except ApiException as error:
-            if error.status != 404:
-                raise
+            attempts = list(
+                db.scalars(
+                    select(WorkflowAttempt)
+                    .where(
+                        WorkflowAttempt.scope_id == scope_id,
+                        WorkflowAttempt.project_id == uuid.UUID(metadata["labels"][project_label]),
+                        WorkflowAttempt.stage == WorkflowStage.CHAMPION_EVALUATION,
+                        WorkflowAttempt.generation
+                        == int(metadata["labels"]["automl.platform/evaluation-generation"]),
+                    )
+                    .with_for_update()
+                )
+            )
+            if any(attempt.status in ACTIVE_ATTEMPTS for attempt in attempts):
+                continue
+            retiring = False
+            for attempt in attempts:
+                revoke_attempt_grants(db, attempt.id)
+                retiring = unretired_grant_deadline(db, attempt.id) is not None or retiring
+            if retiring:
+                continue
+        delete_owned_resource(
+            k8s.core.read_namespaced_secret, k8s.core.delete_namespaced_secret, metadata
+        )

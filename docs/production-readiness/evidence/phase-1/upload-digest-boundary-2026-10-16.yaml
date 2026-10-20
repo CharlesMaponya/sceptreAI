@@ -1,0 +1,51 @@
+{
+  "verified_at": "2026-10-16T04:47:36.161354+00:00",
+  "status": "verified_increment",
+  "phase_complete": false,
+  "requirement": "P1-W16",
+  "scope": "Reject unqualified upload digest interpretation at completion and reconciliation without mutating historical content or enabling retention deletion.",
+  "changes": [
+    "Shared validation requires exact sha256 algorithm, byte_stream scope and lowercase 64-hex expected digest. No default scope or digest inference is used.",
+    "Completion validates before its replay fast path. Reconciliation validates before dataset checks, storage acquisition, lease changes or verified publication; the legacy size-only success branch is removed.",
+    "Unsupported legacy uploads raise the existing UploadContractError. No automatic quarantine is applied because the existing quarantine path schedules object deletion. Historical digest labels/values and object references are retained for a reviewed migration."
+  ],
+  "verification": {
+    "tests": 217,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "tests": [
+    "40 completion boundary cases cover uploading/object_completed/verifying/ready, missing/unsupported algorithm/scope and absent/malformed/noncanonical digests. Provider acquisition and flush remain uncalled; rows remain unchanged.",
+    "15 reconciliation boundary cases cover completed/object_completed/verifying and missing/unsupported metadata; provider acquisition, flush and commit remain uncalled, preserving historical state.",
+    "3 real PostgreSQL cases persist legacy or missing digests, claim the actual outbox row and invoke normal dispatch. Rejection retains original scope/hash/status/object reference, no observed digest or deletion deadline, and no delivered outbox result.",
+    "Existing valid streaming/scanner/hash verification, provider drivers, API import boundary and real PostgreSQL heartbeat/publication takeover controls pass in the same 217-case suite.",
+    "Scoped Ruff lint/format and git diff checks pass. coverage.json is unchanged."
+  ],
+  "limits": [
+    "No production or QA data was migrated, rescanned, quarantined or deleted. Existing legacy rows not encountering these boundaries are not inventoried or claimed repaired; training/read paths and previous-release compatibility require their own reviewed qualification.",
+    "Blocked legacy work requires operator-controlled inventory/migration and may exhaust the existing outbox retry budget. This change deliberately prevents size-only acceptance; it does not complete P1-W16.",
+    "The prior immutable API/CPU image proof qualified the source snapshot before this upload guard. These latest source changes have local Python/PostgreSQL verification only; no new image build, shared rollout or native upload qualification is claimed.",
+    "The 45,000,000,000-byte database migration target remains untested. Largest-table targets are unspecified. Approximately48.1GB free cannot hold the45GB fixture plus the existing37.47GB cluster reserve and migration overhead.",
+    "Full Phase1 remains1Verified/35Open. Seven original QA objects and the original abandoned preservation gate remain unresolved. No public push, commit or release publication occurred."
+  ],
+  "source_sha256": {
+    "apps/api/automl_api/services/uploads.py": "710fec8b6d8d86d45df4fdea8bd7c1bb176581ea209b2c262c1bb91076f4a569",
+    "apps/api/automl_api/services/reconciler.py": "9d504cdfd0dff76111521c2a14bb8e476258c95fc681de0057c342bbd13f6af6",
+    "tests/test_phase2_upload_services.py": "320495836ee3d2e29ec4d5f58e18c36803697ec5239cc8b19df36d24530fa077",
+    "tests/test_phase1_reconciler.py": "5219853a64b4751971b25da8fee709a14afea1dacf5c27530380d68793b3b896",
+    "tests/test_outbox_delivery_fence.py": "420eb906191a65e9ad687d3068078dd9ccf9727d0e760980846f077432d7d2bb"
+  },
+  "artifact_sha256": {
+    ".unlazy/phase1-upload-digest-boundary/check.py": "5c450b4e3023a81b90b954203cdcbe00ab2da3bd51a82bb189468aafe7b7bb12",
+    ".unlazy/phase1-upload-digest-boundary/tests.xml": "652a3f6096ea8ef37cafee15b807dd0e88001c4a2d02d306bf306ed4da67c800",
+    ".unlazy/phase1-upload-digest-boundary/tests.log": "b2e33e778f9fe1cf86e4bf007b5d1b1ddc9f10355223f48e475ee49940cbde98",
+    ".unlazy/phase1-upload-digest-boundary/report.json": "7f262978a6575af40021a7cd9108ecd9e323aaaec7fa0bb1352997924f38d970",
+    ".unlazy/phase1-upload-digest-boundary/gates-final.log": "d36b402c1ce70bba5aa9f96b31a62845b5dabf524a339508eb97b4bfceb257cd"
+  },
+  "phase_ledger": {
+    "requirements": 36,
+    "verified": 1,
+    "open": 35
+  }
+}

@@ -1,0 +1,199 @@
+{
+  "verified_at": "2026-10-16T12:33:14.183736+00:00",
+  "status": "verified_increment",
+  "phase_complete": false,
+  "requirements": [
+    "P1-W09",
+    "P1-W11",
+    "P1-W12",
+    "P1-W25",
+    "P1-G05"
+  ],
+  "fully_verified_requirements": [
+    "P1-W12"
+  ],
+  "changes": [
+    "Add paired nullable fixture_revision/split_revision columns, global UNIQUE pair and canonical identifier CHECK to application Alembic0012 and dedicated authority SQL0002. Preserve unbound historical rows without inference/backfill/relabel. Downgrade refuses to discard bound evidence.",
+    "Allocation API/service/SQL identity binds both revisions alongside scope/project/provider/digests; conflicts serialize across changed digests/scopes/projects. Lookup refreshes stale cached ORM rows. Allocator inspection exposes revisions; distribution cannot relabel unbound/differently bound allocations.",
+    "Readiness probes all columns of both authority tables and rejects missing expansion. Operator instructions require expansion before binary deployment and schema retention during rollback.",
+    "Add prior schema0011 to full rehearsals, seed/preserve synthetic nonempty allocation/receipt records on every capable start and verify new references remain NULL. Use exact PostgreSQL native cast syntax in declarations; strict schema comparator is unchanged."
+  ],
+  "verification": {
+    "focused": {
+      "tests": 23,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "schema": {
+      "tests": 93,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "regressions": {
+      "tests": 185,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "counts_overlap": true,
+  "regression_cases_by_module": {
+    "tests.test_final_test_revisions": 23,
+    "tests.test_provider_distribution": 54,
+    "tests.test_qualification_control": 13,
+    "tests.test_champion_credentials": 14,
+    "tests.test_champion_identity": 3,
+    "tests.test_champion_evaluation_authority": 4,
+    "tests.test_champion_evaluation_keys": 8,
+    "tests.test_phase1_workflow_state": 28,
+    "tests.test_phase1_postgres_contracts": 38
+  },
+  "schema_inventory": {
+    "tests": {
+      "tests": 93,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "postgres_version": "16.15",
+    "tables": 41,
+    "columns": 610,
+    "constraints": 193,
+    "foreign_keys": 83,
+    "indexes": 41,
+    "byte_columns": [
+      "capacity_reservations.memory_bytes",
+      "dataset_versions.byte_size",
+      "dataset_upload_sessions.byte_size",
+      "dataset_upload_sessions.part_size",
+      "dataset_upload_sessions.confirmed_bytes",
+      "prepared_artifacts.byte_size",
+      "run_artifacts.byte_size"
+    ],
+    "metadata_ddl_sha256": "9df204ad6d4fc2a8bcebe361ed6a2808b444079b0f049fae83c83dc37fbe644a",
+    "read_only_verification": true
+  },
+  "migration_heads": [
+    "0012_final_test_revision_pair"
+  ],
+  "prior_schemas": [
+    "0001_initial",
+    "0002_expand_artifact_kind",
+    "0003_security_controls",
+    "0004_resumable_dataset_uploads",
+    "0005_phase1_durable_workflows",
+    "0006_phase1_public_contracts",
+    "0007_phase1_attempt_lineage",
+    "0008_phase2_cloud_ingestion",
+    "0009_phase2_storage_default",
+    "0010_phase3_contract_target",
+    "0011_preserve_deletion_evidence"
+  ],
+  "nonempty_preservation": {
+    "upload_paths": 8,
+    "authority_paths": 7
+  },
+  "owned_rehearsal_database_cleanup": true,
+  "decisive_checks": [
+    "Actual PostgreSQL six-caller races establish global pair uniqueness and exact replay; changed scope/digest/provider/project/revision conflict. Direct SQL rejects duplicate/half/invalid pairs. An expire_on_commit=False retained row refreshes before replay.",
+    "Dedicated SQL0001\u21920002 preserves every old allocation/receipt field over nonempty fixtures and accepts old-column inserts/reads. Actual HTTP readiness fails503 before expansion and succeeds afterward. Full authority two-table model/schema comparison passes.",
+    "An isolated Alembic downgrade with bound references fails while retaining the new head/values; existing deletion-evidence downgrade protection passes. NULL/differently bound allocations cannot issue distributions or append receipts.",
+    "Every checked-in prior schema reaches0012 with full schema/Alembic drift checks, all seeded field fingerprints and per-row backfill policy checks, and owned-database cleanup. Eight starts preserve10000 upload metadata rows each; seven preserve one synthetic legacy allocation/receipt each with new references NULL.",
+    "Nine changed Python files pass Ruff lint/format; diff and unchanged coverage.json checks pass. Independent48-file source/artifact/XML/report/full-ledger audit verifies all completion counts."
+  ],
+  "intermediate_runs": "First focused21pass/1schema mismatch; schema90pass/3fail (cast spelling, expanded seed-count expectation and downstream schema comparison); related183pass/1schema mismatch. Second attempt still differed in CAST versus PostgreSQL native :: parser spelling and exposed a missing test import. Final native :: declarations, fixed seed/import and full-column readiness produce23focused/93schema/185related with0fail/error/skip plus11 prior-schema paths. The comparator was unchanged. Final runner exited1 solely because manualG4 awaited final audit; all runnable checks exited0 with EXPECT matched. Final documentation audit also caught/repaired two malformed status cells before any completion attestation.",
+  "limits": [
+    "Old-column SQL compatibility is tested, not actual previous-release binaries or all expand/backfill/contract workflows. Legacy NULL revisions are deliberately not inferred/rewritten; controlled binding remains required.",
+    "Automatic signed dataset import/admission and early-campaign allocation/distribution remain unwired. Existing unbound allocation/evaluator protocols retain compatibility; historical campaigns are not release-qualified by this change. W09 and other Phase1 requirements remain Open.",
+    "Only automl_tests:55439 was expanded; it initially contained zero authority rows. Nonempty preservation proof comes from rolled-back owned SQL schemas and disposable prior-schema rehearsal fixtures. No QA/shared schema, object, Pod or PVC was changed.",
+    "Metadata rehearsals are bounded fixtures, not45GB qualification. Actual provider copies/bytes/IAM, current deployment images, production Train/general attempt grants and complete native failure/restore/HA remain required. Previous image evidence predates this source/schema.",
+    "All36 requirements remain1VerifiedW12/35Open.45GB storage/reserve/row-count limits, seven original QA objects and original preservation G7 ABANDONED remain unresolved; no missing object/signature was fabricated or replaced. No commit or public publication."
+  ],
+  "source_sha256": {
+    ".unlazy/phase1-allocation-revisions/check.py": "f72f3e637c70c0ad29ab7fd2691590cae26e686f5b5260289b1b94540acc29c7",
+    ".unlazy/phase1-allocation-revisions/rehearse.py": "ed82d248c2c7b2d9338dc6f1bf4bbf2f0115203e51300acbb045aec86461a8fe",
+    ".unlazy/phase1-allocation-revisions/schema-check.py": "feb3cf377ac2d51b5054364cbe97a99bb3b2b1dbe27f7c58bfe371427b21cd09",
+    ".unlazy/phase1-allocation-revisions/schema.py": "1b18a2ef6750e66b689b5c07d69ab83cc1629d3f9560303010a145cdff700349",
+    ".unlazy/phase1-allocation-revisions/upgrade_test_database.py": "c4bbfd363baa52adb546d7efed6eb0611a4eca1c2178fda58d3621f3a45590ef",
+    "alembic/versions/0001_initial_schema.py": "45855172dd549b19304fa8c5474f77cb298b9bfb230eaedcf6e066e54b6b57d4",
+    "alembic/versions/0002_expand_artifact_kind.py": "39253347a28433d7fedc0fbc18a1cc2744c774546dcfd32d55482cadb568d6bd",
+    "alembic/versions/0003_security_controls.py": "5338af3fa17d6a4e185ee5b29a9e0334a49d2087160d1a3887bc3396b6da4578",
+    "alembic/versions/0004_resumable_dataset_uploads.py": "19d0f9bb08db6ad0e2dee0d8e0696431b6b68a989aec8aac8c22dae9d6c223ac",
+    "alembic/versions/0005_phase1_durable_workflows_phase1_durable_workflow_state.py": "9127fe0a089ab0f000d3175b92515d6a9834e76945c2ada88c4054322425f3c8",
+    "alembic/versions/0006_phase1_public_contracts_phase1_public_contract_revisions.py": "2188404d3a4b793cfbe87396e86456f2d9f0ab78f816e55822796663bf1230f0",
+    "alembic/versions/0007_phase1_attempt_lineage.py": "fe04d5badaaa00923d1282bb35061499ec3d9251c2de1c29764175e1ee80ab6a",
+    "alembic/versions/0008_phase2_cloud_ingestion.py": "5535ca34ee81588b0d2fc925d2f0e05ecf1a00c5f86f4cbdeff1226cd434fdc5",
+    "alembic/versions/0009_phase2_provider_neutral_storage_default.py": "1807f61d4c92d30c7d50754a1bc4ea9aa0dcd127dcbe1a4d83f3c7bca35931b6",
+    "alembic/versions/0010_phase3_nullable_feature_contract_target.py": "95ac3c74d50509816af0fbe5165b2e7d1750c99448de0c20b3f38a2082a9056c",
+    "alembic/versions/0011_preserve_deletion_evidence.py": "893607c0feee2b4e1fc4eb06eacb67b4859f57d322f92aea87cfcd9b43cfbc8d",
+    "alembic/versions/0012_final_test_revision_pair.py": "c2741a396193ecea9397c90288bb4741074ace85a5ffe4c07832bfcd604bbe8c",
+    "apps/api/automl_api/models/__init__.py": "4dbb7a8e36c7b90a41a01f3afa04144748e486188ff98eb9437ddc41c2157ea7",
+    "apps/api/automl_api/models/base.py": "dda39c2e1b6eef92a43e2cf356804d0e78813cd2612142acc2dde5fa4b9e9dc3",
+    "apps/api/automl_api/models/datasets.py": "5c5a469a54c2c959adb86429a9ce6c43d584f384875b2d58c36a5df375d841a6",
+    "apps/api/automl_api/models/enums.py": "66b7bbdb97963a6b9e52a543ca28740634e4eb5863af7109fa7a1df08a5d26cd",
+    "apps/api/automl_api/models/iam.py": "e4f66266b4468c65928bfc8aa6fd9fc66f165f3825a9f46366bbdd68828671f5",
+    "apps/api/automl_api/models/projects.py": "b64622edca658ee0b6387ff10e71199ac076d010ca9e435325ce95c793168f0f",
+    "apps/api/automl_api/models/qualification.py": "776134c846e610be522950b32debbe6d22f3c3c7412e30f3f3d773f31c51cb5d",
+    "apps/api/automl_api/models/runs.py": "584885d3bd745952956dc18de1d104e6bb85648ca58f5b3992bb26c1f1235dd6",
+    "apps/api/automl_api/models/security.py": "672910f588822555ac8ede3ed0200c8e5c6299357ea8d41cdc41dc8da13990de",
+    "apps/api/automl_api/models/workflows.py": "ce9a3ca3608a722dc13e7ccee57f30d80f43343aea475bfc1dafdc67a2f914ea",
+    "apps/api/automl_api/qualification_control.py": "20cde4c05085a3a5be6ca49eb56eb04a8f696b87feb6f0390dcceb636f00df0d",
+    "apps/api/automl_api/services/final_evaluator_identity.py": "6d4b9c107dd520d29dee9df7290018b5dae46de0f04e8b154a87dd0078ae9d07",
+    "apps/api/automl_api/services/final_test_authority.py": "1b9e398b2f5c96a8b254f9766720ff870252025bdee9baab15dfd9b09e6609a8",
+    "apps/api/automl_api/services/final_test_credentials.py": "700ad6f35c41cf7977b777ebed75fbb0d66691c6c7d3b6253a1dc3f9b22cf268",
+    "apps/api/automl_api/services/provider_distribution.py": "13dbaeb51a1e7516effc3aa80f02850d30faa586f94e7991b3f311959f6818b2",
+    "scripts/rehearse_phase1_migrations.py": "cf04ecbe6c2cbd9f08228e6f3d606eb70ac910ab8a6aac2aded78e3b3ee6c5f9",
+    "scripts/verify_database_schema.py": "6f79a9e7231e868e69544799ec2a13a4b71093309187b47c4133bbbeba4df1a1",
+    "services/qualification-control/README.md": "30a5b8e5c1079f46ce40a9dff8f1884c44eb4bf0d6be149b913760e15d44acfa",
+    "services/qualification-control/migrations/0001_authority.sql": "f3c0a8e6761356325b5addd009598f13843e1dcc8d4dd1183cdf277b5afe78c9",
+    "services/qualification-control/migrations/0002_allocation_revisions.sql": "cf24787908f2a1c10b9185fbd60a94a7001f2e01831f1a9e06b992c8e16bead7",
+    "tests/test_champion_credentials.py": "d1ffd59e6e2e55aed70518e7d343fc48f7abdd1a93abd8e9cb7273b1ba957f34",
+    "tests/test_champion_evaluation_authority.py": "262bb889d1c9db7561e0c0d4c8202eb6176771b3368065f7f8750e0f0c4547e4",
+    "tests/test_champion_evaluation_keys.py": "c4e0249216df257911dd5bce135cd8bae8ea82879eaee09b3598a33004b2eaef",
+    "tests/test_champion_identity.py": "224b6e825f73307968cce46363346f64c9cc17ee19faf5ece4b63f45c304d8c2",
+    "tests/test_database_schema_verifier.py": "c46aa52fc09b8ac027b3bbbcabf96b0b4577ef75aecaaa169814836b8b33d5d0",
+    "tests/test_final_test_revisions.py": "e57f4cde613eee828aa2c8d2373ddbb3090d8c07aa59158d20345a17dc7e8de8",
+    "tests/test_phase1_migration_rehearsal.py": "4859ddf433fc63794ab65705a530ac472d031da6dcbcd715e9a62cfdac33d284",
+    "tests/test_phase1_postgres_contracts.py": "498ada57ba5e4dee6a52ece923c205d29df388171dbdb8f20676b15f82a2ec4a",
+    "tests/test_phase1_workflow_state.py": "759f1306704f5d8068f965db00af8ad921bb87aa4e68693a5c68b50ffb025a9a",
+    "tests/test_provider_distribution.py": "2d220be8dbaff71e1afde02d99ef4ed47b0ed6abbb68fb927fcf8ef6b5c2c726",
+    "tests/test_qualification_control.py": "db01af870c5c82bb3d3d213634f3832e42f25d2e3e8009b92f20956cc078ab01"
+  },
+  "artifact_sha256": {
+    ".unlazy/phase1-allocation-revisions/focused.log": "0edd2be7983891b0a7150067f847b863089670d6f4b8546782c0ebe4249596b2",
+    ".unlazy/phase1-allocation-revisions/lint.log": "29f20c3ee57f1f120dc768e38618eb81e56e89f005f4c1237d5b8be6d18d302b",
+    ".unlazy/phase1-allocation-revisions/regressions-report.json": "763c8e7633181cbc0e1fa364ae16916a29a192849f54c89967e2c9a5adc2fe0b",
+    ".unlazy/phase1-allocation-revisions/focused-report.json": "61859462377ff25cd04a1ffde7456b320ae4a0943f687bfa61f4d3f101df2c26",
+    ".unlazy/phase1-allocation-revisions/schema-inventory.json": "44f3f42fbc64ebb0d62c0c5322d9ad4911411a4f84a9a43b7e91c82ad5c58d12",
+    ".unlazy/phase1-allocation-revisions/gates-native-casts.log": "04589249ff80653aa100b30d93ea90be70de90aabf200ebac32c082399e4fbb0",
+    ".unlazy/phase1-allocation-revisions/gates-initial.log": "c9c272a30da62bd789a9a9add2848a696cb0c615640283593943632e419c2773",
+    ".unlazy/phase1-allocation-revisions/results.xml": "47d3214aeee2db4c1d9ef02f55ef14d4f5ed1751c6f2384848b3a553d7392d20",
+    ".unlazy/phase1-allocation-revisions/attempt-2-results.xml": "cfd689112241ffec82bb9db437131abf99311f6f0ba3bbfa7b400abe96a2b762",
+    ".unlazy/phase1-allocation-revisions/attempt-2-regressions.xml": "f8cad1d758085994658788b2405baea8b156b895a11c58d62b7d195c352fcf06",
+    ".unlazy/phase1-allocation-revisions/gates-reviewed.log": "f8dd15bf7f22234869cc4ba9e81f66ff26007ab99dd3ad4d0a04ad4be6212d88",
+    ".unlazy/phase1-allocation-revisions/focused.xml": "f2c86980373ac6b36a78a4a6da5440bb8e8c69bd38398c6c942a5474621ee31a",
+    ".unlazy/phase1-allocation-revisions/migration-paths.log": "bc67e15d18214fab304c65aee0c4a814d5e313ffc765ad5a23d83ad03c42654c",
+    ".unlazy/phase1-allocation-revisions/attempt-2-focused.log": "77a865d34f610054f29a93fae0aea6725938a7c50f6bcee86fb2919a0dec7d7b",
+    ".unlazy/phase1-allocation-revisions/attempt-2-regressions.log": "761319d98149183cd1e209362d3546e43b54ac327efdc38342780aca4af1c28c",
+    ".unlazy/phase1-allocation-revisions/test-database-expansion.json": "4620df60fe94017bc4dd8f4d56649d7bb9f2d2c2ccc350189379ef6950c0d0ee",
+    ".unlazy/phase1-allocation-revisions/attempt-1-regressions.log": "46d30d3e63676e6a0817ade717f57308dfeca438092a7446fdddc4ab7f2fa022",
+    ".unlazy/phase1-allocation-revisions/attempt-1-results.xml": "9cfafa9cd53cd36d9d65df3124b39a510f27496dd39e55a1e85299b3a9076d53",
+    ".unlazy/phase1-allocation-revisions/regressions.log": "2993bf2e8d4868980dacad0316f9541fe75ebc0daccbd424db5619095c71e575",
+    ".unlazy/phase1-allocation-revisions/attempt-1-focused.xml": "a85de71a89e140573996b43e64f17b13f63782dad08839071d14ff4781ddf645",
+    ".unlazy/phase1-allocation-revisions/migration-report.json": "d481ee7363f328f1c405760db12be606b4c0e462bba7b7a9539e5189767de4aa",
+    ".unlazy/phase1-allocation-revisions/attempt-2-schema-regressions.log": "83799e7b690acde763fc41524a02fd9d41b75e44ffdee9cce031e36cf2ac43a3",
+    ".unlazy/phase1-allocation-revisions/regressions.xml": "23610a4e47f9c2db6a39720507d4a168498cffe8c034766807cc7f24ab09f9e6",
+    ".unlazy/phase1-allocation-revisions/attempt-1-regressions.xml": "84e9670870bc730f743a50bd4dbe9d7cd5212be33fc863984de62f2b0dc7084c",
+    ".unlazy/phase1-allocation-revisions/attempt-2-focused.xml": "11307212dcf9f1972845b72da8dc4344737b4b0ecef5dd0ab1aa2dfc502b3ba7",
+    ".unlazy/phase1-allocation-revisions/source-sha256.json": "a86bbde73b502f99df1c0c636a5cc62958a895b6d723b49a195450e5f5699b31",
+    ".unlazy/phase1-allocation-revisions/attempt-1-focused.log": "7315df43e961ef6c3247b811082966f483277fa55c6368d71dc22ca6818516df",
+    ".unlazy/phase1-allocation-revisions/schema-regressions.log": "5c4fcd78eaee67d623f053e82bb453ae8c4c91c3fac3dfce1754d35045ef902a"
+  },
+  "phase_ledger": {
+    "requirements": 36,
+    "verified": 1,
+    "open": 35
+  }
+}

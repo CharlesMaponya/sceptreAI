@@ -17,10 +17,37 @@ metadata:
   labels:
     {{- include "sceptre.labels" . | nindent 4 }}
 data:
+  {{- if .Values.providerImports.policiesConfigMap }}
+  {{- if not .Values.championEvaluation.authorityPublicKeySecret }}
+  {{- fail "providerImports requires championEvaluation.authorityPublicKeySecret" }}
+  {{- end }}
+  {{- $verifierImage := default (include "sceptre.image" (dict "root" . "image" .Values.training.cpu.image)) .Values.providerImports.image }}
+  {{- if not (regexMatch ".+@sha256:[0-9a-f]{64}$" $verifierImage) }}
+  {{- fail "providerImports requires a digest-pinned verifier image" }}
+  {{- end }}
+  {{- if not (hasPrefix "https://" .Values.attemptIdentity.controlBaseUrl) }}
+  {{- fail "providerImports requires an HTTPS attemptIdentity.controlBaseUrl" }}
+  {{- end }}
+  {{- if not .Values.providerImports.egressRules }}
+  {{- fail "providerImports requires explicit TLS endpoint egressRules" }}
+  {{- end }}
+  {{- if gt (len (toJson .Values.providerImports.nodeSelector)) 4096 }}
+  {{- fail "providerImports.nodeSelector exceeds its byte limit" }}
+  {{- end }}
+  PROVIDER_IMPORT_POLICIES_CONFIG_MAP: {{ .Values.providerImports.policiesConfigMap | quote }}
+  PROVIDER_IMPORT_IMAGE: {{ $verifierImage | quote }}
+  PROVIDER_IMPORT_CPU_CORES: {{ .Values.providerImports.cpuCores | quote }}
+  PROVIDER_IMPORT_MEMORY_MIB: {{ .Values.providerImports.memoryMiB | quote }}
+  PROVIDER_IMPORT_NODE_SELECTOR: {{ .Values.providerImports.nodeSelector | toJson | quote }}
+  PROVIDER_IMPORT_EGRESS_RULES: {{ .Values.providerImports.egressRules | toJson | quote }}
+  ATTEMPT_CONTROL_CA_SECRET: {{ .Values.providerImports.caSecret | quote }}
+  {{- end }}
+  {{- if or .Values.championEvaluation.enabled .Values.providerImports.policiesConfigMap }}
+  EVALUATION_AUTHORITY_PUBLIC_KEY_SECRET: {{ .Values.championEvaluation.authorityPublicKeySecret | quote }}
+  {{- end }}
   {{- if .Values.championEvaluation.enabled }}
   EVALUATION_CONTROL_BASE_URL: {{ .Values.championEvaluation.controlBaseUrl | quote }}
   EVALUATION_AUTHORITY_URL: {{ .Values.championEvaluation.authorityUrl | quote }}
-  EVALUATION_AUTHORITY_PUBLIC_KEY_SECRET: {{ .Values.championEvaluation.authorityPublicKeySecret | quote }}
   EVALUATION_IMAGE: {{ default (include "sceptre.image" (dict "root" . "image" .Values.training.cpu.image)) .Values.championEvaluation.image | quote }}
   EVALUATION_CA_SECRET: {{ .Values.championEvaluation.caSecret | quote }}
   EVALUATION_CPU_CORES: {{ .Values.championEvaluation.cpuCores | quote }}

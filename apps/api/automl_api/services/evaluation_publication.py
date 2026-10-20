@@ -16,6 +16,7 @@ from automl_api.models.workflows import (
     WorkflowCheckpoint,
     WorkflowEvent,
 )
+from automl_api.services.evaluation_planning import validate_replacement
 from automl_api.services.final_test_authority import verify_receipt
 from automl_api.services.workflow_state import (
     IdempotencyConflict,
@@ -36,6 +37,8 @@ def _event(db, attempt_id, key):
 
 
 def _append(db, attempt, key, payload):
+    # Production sessions disable autoflush; include pending revocation events.
+    db.flush()
     sequence = 1 + (
         db.scalar(
             select(func.max(WorkflowEvent.sequence)).where(WorkflowEvent.attempt_id == attempt.id)
@@ -81,6 +84,8 @@ def _locked(
         or attempt.status not in statuses
     ):
         raise StaleFence("Evaluation publication no longer owns its scope and attempt")
+    if attempt.generation == 2 and attempt.status != AttemptStatus.SUCCEEDED:
+        validate_replacement(db, scope.id)
     event = _event(db, attempt.id, "evaluation_plan")
     if (
         event is None

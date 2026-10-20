@@ -80,14 +80,20 @@ def heartbeat(attempt_id: uuid.UUID, claims: Principal, db: DB):
 def pipeline(attempt_id: uuid.UUID, claims: Principal, db: DB, response: Response):
     with db.begin():
         scope, attempt, plan = active(db, attempt_id, claims)
-        try:
-            grant = mint_refit_read_url(
-                get_object_store(),
-                plan.frozen_pipeline,
-                min(scope.scope_deadline_at, attempt.lease_expires_at),
-            )
-        except Exception as error:
-            raise HTTPException(503, "Frozen pipeline capability unavailable") from error
+        deadline = min(scope.scope_deadline_at, attempt.lease_expires_at)
+    try:
+        grant = mint_refit_read_url(get_object_store(), plan.frozen_pipeline, deadline)
+    except Exception as error:
+        raise HTTPException(503, "Frozen pipeline capability unavailable") from error
+    db.expire_all()
+    with db.begin():
+        scope, attempt, current = active(db, attempt_id, claims)
+        if (
+            current.digest != plan.digest
+            or deadline <= datetime.now(UTC)
+            or min(scope.scope_deadline_at, attempt.lease_expires_at) < deadline
+        ):
+            raise HTTPException(409, "Frozen pipeline authorization changed during mint")
     response.headers["Cache-Control"] = "no-store"
     return grant
 

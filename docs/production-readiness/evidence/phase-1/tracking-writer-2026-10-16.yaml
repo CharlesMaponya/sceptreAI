@@ -1,0 +1,99 @@
+{
+  "verified_at": "2026-10-16T11:07:37.340941+00:00",
+  "status": "verified_increment",
+  "phase_complete": false,
+  "requirements": [
+    "P1-W03",
+    "P1-W06",
+    "P1-W07",
+    "P1-W10",
+    "P1-W19",
+    "P1-W20",
+    "P1-W21"
+  ],
+  "changes": [
+    "Inline tracking creation and cached replay close the caller transaction before experiment lookup/create, run search/create/get and fluent resume. Fresh work commits an exclusive tracking-writer lease, renews through short independent heartbeats and commits an irreversible creation marker before run POST.",
+    "Publication requires current live parent and unchanged command project/resource/type/operation, request hash, typed JSON payload/response, tracking lineage and live owner/expiry. A live writer can supersede read-only recovery but another writer cannot steal its lease. Heartbeats stop before publication.",
+    "Errors release only a still-matching owned claim. Stored response states use a closed parser; malformed/ambiguous states block before remote calls. Unknown run outcomes never recreate a missing experiment. Client backend must match committed intent.",
+    "Lost-publication-ack test now injects at semantic run-ID publication instead of a fixed commit number, preserving its intended failure boundary after transaction splitting."
+  ],
+  "verification": {
+    "focused": {
+      "tests": 76,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "regressions": {
+      "tests": 321,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "counts_overlap": true,
+  "regression_cases_by_module": {
+    "tests.test_tracking_writer": 24,
+    "tests.test_training_tracking": 24,
+    "tests.test_tracking_leases": 28,
+    "tests.test_training_tracking_http": 2,
+    "tests.test_training_publication_postgres": 18,
+    "tests.test_phase1_reconciler": 90,
+    "tests.test_phase1_reconciler_worker": 11,
+    "tests.test_training_pipeline_runtime": 29,
+    "tests.test_training_analysis_edge_contracts": 24,
+    "tests.test_outbox_delivery_fence": 17,
+    "tests.test_training_parent_lease": 20,
+    "tests.test_dataset_digests": 34
+  },
+  "decisive_checks": [
+    "Actual PostgreSQL pool checkedout=0 and independent command/run row locks succeed at all five MLflow client methods; fluent resume also sees no caller connection. Fresh and known replay produce one experiment and one run.",
+    "Actual separate Python writer processes receive SIGKILL at lookup, immediately before run creation and immediately after actual remote creation. Their committed leases prevent competing work before expiry; forced expiry permits safe fresh creation or visible-result adoption without a duplicate POST. A before-POST unknown marker remains blocked.",
+    "Competing live writers, cancelled/superseded parent, stolen/expired claim, changed payload/resource and cancellation after remote creation cannot authorize a new create or publish/resume. Writer heartbeats advance during remote waits.",
+    "Lost initial-lease acknowledgement releases the owned claim and permits safe retry. Lost irreversible-marker acknowledgement sends zero POSTs and cannot retry blindly. Lost successful publication acknowledgement replays the recorded ID.",
+    "Existing read-only recovery, heartbeat races, exhausted budgets, real local HTTP503/dropped-response servers, nesting, lineage tampering and training publication regressions pass. Scoped Ruff lint/format/diff and coverage preservation checks pass."
+  ],
+  "intermediate_runs": "Initial focused67/related312 passed before nine additional fault-boundary cases; final76/321 pass. The gate runner exited1 only because manual G3 awaited final evidence/ledger audit; its two runnable checks both exited0 and matched EXPECT.",
+  "limits": [
+    "A committed creation marker followed by process loss or lost SQL acknowledgement before POST can remain unresolved indefinitely without a remote object. No blind retry is enabled. Permanent unknown-outcome resolution remains required for W06/W07/G02.",
+    "Checks use a dedicated local PostgreSQL test database, actual MLflow SQLite fixtures and local HTTP fault servers. Writer SIGKILL is an actual Python process, not a Kubernetes Pod. Lease expiry is forced in the fixture; production timing, service outages/PgBouncer failover and current-image/native full journeys are unqualified.",
+    "Local checks fence new operations and SQL publication; they cannot revoke an already-started remote operation. Remote service-side authorization, version pinning and attempt/child/provider/predecessor grants remain open. Late remote objects can require orphan handling.",
+    "Full queue/pool/side-effect/reconciler inventories, old data/binaries and production Train/failure qualification remain required. Earlier immutable runtime-image evidence predates these changes.",
+    "No QA data/object mutation, schema migration, rollout, commit or public publication occurred. The user-confirmed45GB migration target remains untested due capacity plus cluster reserve/overhead; largest-table row targets remain unspecified. Seven historical QA objects and the original abandoned preservation gate remain unresolved. Phase1 remains1Verified/35Open."
+  ],
+  "source_sha256": {
+    "apps/api/automl_api/training/pipeline.py": "4ca154431e2a2501410fbae4cc28291c668b146f1b5ebf0c2ecc52b2ced5139c",
+    "apps/api/automl_api/services/tracking_reconciliation.py": "d181e1a46c2f77ac18ac685692634b1ff385a6d7ce6d5f4b7063e6975de413d3",
+    "tests/test_tracking_writer.py": "9aeba2b3c9e8f39a9db67c1a8829e730423a2f957f256183d7813e8db3242ca5",
+    "tests/test_training_tracking.py": "ace1b3fc580ca231985298c605604c8bb693d69872d287a0a7bd493030510cf0",
+    "tests/test_tracking_leases.py": "a6a2a9fc6e0b3a18d7a649107b6eee693e819f815a4aee4de8709351a6e68e71",
+    "tests/test_training_tracking_http.py": "7dd0347a8950487f8a4b2dafa2f16782495c5784f54d48577153c1d12ba41657",
+    "tests/test_training_publication_postgres.py": "9f025890c82d97fc77301133a97db999a1c4937f01ebbf8ee23ce7f1bb3a99c7",
+    "tests/test_phase1_reconciler.py": "5219853a64b4751971b25da8fee709a14afea1dacf5c27530380d68793b3b896",
+    "tests/test_phase1_reconciler_worker.py": "dc8131f724807887d3b10f4a7a229ee3371121c46f72d71ea54c0dbed3775139",
+    "tests/test_training_pipeline_runtime.py": "2583375252a3e2f2334ed4b4a47eb219cbb1cdc55d9683d58329565c267d9842",
+    "tests/test_training_analysis_edge_contracts.py": "6c9c62a4fc30106550753e026737147ce3169335ef7d9b2f42cdaafc99584a2d",
+    "tests/test_outbox_delivery_fence.py": "420eb906191a65e9ad687d3068078dd9ccf9727d0e760980846f077432d7d2bb",
+    "tests/test_training_parent_lease.py": "e3a25b70dee37a2c87a4cf5d962203d7cae70fc6c78098edde2ba67b27bbc2e1",
+    "tests/test_dataset_digests.py": "d51a6e257eb14be01f41840808471a4c43187892bcd05d1f093a5813aca6d5e1",
+    "tests/test_phase1_postgres_contracts.py": "498ada57ba5e4dee6a52ece923c205d29df388171dbdb8f20676b15f82a2ec4a",
+    ".unlazy/phase1-tracking-writer/check.py": "df4affed8dcc30cdab1fac2630e660e6858fd08faf58f6b671cea77448d2e1f7"
+  },
+  "artifact_sha256": {
+    ".unlazy/phase1-tracking-writer/focused.log": "3ba547205582505787509d329bb08758d4473024fa7a3c0d25ace36611ea307f",
+    ".unlazy/phase1-tracking-writer/lint.log": "4bd8248f4985e327cd636d5b563aa46d1d34db2021498c8d8b37613b35f181d1",
+    ".unlazy/phase1-tracking-writer/regressions-report.json": "57cff2bd853301acdf090d73910f560a517d6056aa2cd14300507ce82811cc49",
+    ".unlazy/phase1-tracking-writer/focused-report.json": "f279d371e9693a0d0e96f8172db94011162494a622546955cd407c9be271e8a9",
+    ".unlazy/phase1-tracking-writer/gates-initial.log": "a6665ae44f1c3da611c938a09c66f3bf189de320dd74ea4dca2e63d05a8a4332",
+    ".unlazy/phase1-tracking-writer/gates-fault-boundaries.log": "ad39bbdc210a315bfa16a8e2568da69f2b87c77a533d7e5e12f542bda79c15df",
+    ".unlazy/phase1-tracking-writer/focused.xml": "d005ba90aa3fe4ced8bf249922d21e2048af34c85db2fb548e6d7fca0414aebf",
+    ".unlazy/phase1-tracking-writer/regressions.log": "e8980b8217a825a546c5dcf3264cd0e72d789bfa28298a16cba372de4240e070",
+    ".unlazy/phase1-tracking-writer/regressions.xml": "a53a666fc66b6df8bc1d0614cd86d190efc48f39d1d0315688834ca67a339876",
+    ".unlazy/phase1-tracking-writer/source-sha256.json": "591c6ebcd89f90d5a7f42b9b12067207f8add250128b87745c0a6dcbaa887937"
+  },
+  "phase_ledger": {
+    "requirements": 36,
+    "verified": 1,
+    "open": 35
+  }
+}

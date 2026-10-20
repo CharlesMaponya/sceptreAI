@@ -59,6 +59,7 @@ def profile_dataset_with_ray(
     *,
     progress_callback: Callable[[str], None] | None = None,
     feature_callback: Callable[[ColumnProfileRead, int, int, int], None] | None = None,
+    dataset_override=None,
 ) -> tuple[
     int,
     list[ColumnProfileRead],
@@ -66,7 +67,7 @@ def profile_dataset_with_ray(
     LeakageAnalysisRead,
     list[str],
 ]:
-    dataset = _load_dataset(version)
+    dataset = _load_dataset(version) if dataset_override is None else dataset_override
     row_count = dataset.count()
     if progress_callback is not None:
         progress_callback("row_counted")

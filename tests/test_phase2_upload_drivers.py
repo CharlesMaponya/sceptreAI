@@ -435,7 +435,7 @@ class AzureBlob:
 
     def download_blob(self, offset: int = 0, length: int | None = None) -> SimpleNamespace:
         value = self.objects[self.blob_name][offset : offset + length if length else None]
-        return SimpleNamespace(readall=lambda: value)
+        return SimpleNamespace(readall=lambda: value, read=io.BytesIO(value).read)
 
     def upload_blob(self, source: object, **_kwargs: object) -> None:
         self.objects[self.blob_name] = source.read() if hasattr(source, "read") else bytes(source)

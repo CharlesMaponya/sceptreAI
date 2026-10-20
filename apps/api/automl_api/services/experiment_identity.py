@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
@@ -21,6 +22,13 @@ from automl_api.models.workflows import (
     SearchObjectiveRevision,
 )
 from automl_api.schemas.training import TrainingEstimateRequest
+from automl_api.services.feature_contracts import (
+    validate_compiled_view,
+    validate_contract,
+    validate_objective,
+    validate_search,
+    verify_revision_content,
+)
 from automl_api.services.workflow_state import canonical_request_hash
 from automl_api.training.catalog_contract import validate_catalog_revision
 from automl_api.training.evaluation import metric_direction, resolve_primary_metric
@@ -162,10 +170,17 @@ def _objective(db, project_id, search, identity=None):
     if identity is not None:
         objective = _row(db, SearchObjectiveRevision, project_id, identity)
         if (
-            objective.metric_name != search.metric_name
+            not isinstance(objective.specification, dict)
+            or objective.metric_name != search.metric_name
             or objective.metric_direction != search.metric_direction
             or objective.specification.get("fold_aggregation", "mean") != "mean"
         ):
+            _conflict("search_objective_changed")
+        verify_revision_content(objective, "search-objective")
+        parsed = validate_objective(
+            objective.specification, search.metric_name, search.metric_direction
+        )
+        if parsed.feature_search_space_revision_id not in (None, search.id):
             _conflict("search_objective_changed")
         return objective
     specification = {
@@ -222,7 +237,18 @@ def build_identity(db, project_id, payload, *, creating=True):
         or search.specification.get("recipe_revision") != recipe.content_digest
     ):
         _conflict("prepared_revision_changed")
-    task = TaskType(contract.task_type)
+    try:
+        task = TaskType(contract.task_type)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=409, detail={"code": "prepared_revision_changed"}) from exc
+    verify_revision_content(contract, "feature-contract")
+    verify_revision_content(registry, "feature-registry")
+    verify_revision_content(search, "feature-search-space")
+    validate_contract(db, project_id, contract.specification, task, contract.target_column)
+    validate_search(
+        db, project_id, search.specification, search.metric_name, search.metric_direction
+    )
+    compiled = validate_compiled_view(contract, registry, recipe, search)
     metric = _metric(task, payload.primary_metric or search.metric_name)
     if search.metric_name != metric or search.metric_direction != metric_direction(metric):
         _conflict("search_objective_changed")
@@ -252,16 +278,27 @@ def build_identity(db, project_id, payload, *, creating=True):
     roles["event_time_column"] = roles["event_time_column"] or split.specification.get(
         "time_column"
     )
-    for key in ("entity_column", "event_time_column", "prediction_time_column"):
-        if key in payload.model_fields_set and getattr(payload, key) != roles[key]:
+    for key in ROLES:
+        declared = roles[key]
+        if key in ("positive_label", "evaluation_column") and declared is None:
+            roles[key] = getattr(payload, key)
+        elif key in payload.model_fields_set and getattr(payload, key) != declared:
             _mismatch(key)
-    roles["positive_label"] = payload.positive_label
-    roles["evaluation_column"] = payload.evaluation_column
-    if payload.evaluation_column is not None and (
-        task != TaskType.CLUSTERING or payload.evaluation_column not in columns
+    if any(
+        roles[key] is not None and roles[key] not in columns
+        for key in (
+            "evaluation_column",
+            "entity_column",
+            "event_time_column",
+            "prediction_time_column",
+        )
+    ):
+        _conflict("prepared_revision_changed")
+    if roles["evaluation_column"] is not None and (
+        task != TaskType.CLUSTERING or roles["evaluation_column"] not in columns
     ):
         _mismatch("evaluation_column")
-    if payload.positive_label is not None:
+    if roles["positive_label"] is not None:
         if task != TaskType.CLASSIFICATION:
             _mismatch("positive_label")
         if creating:
@@ -272,10 +309,9 @@ def build_identity(db, project_id, payload, *, creating=True):
                         ProfilingJob.project_id == project_id,
                         ProfilingJob.dataset_version_id == version.id,
                         ProfilingJob.status == "succeeded",
-                        ProfilingJob.overview_json["launch_bindings"][
-                            "feature_contract_revision_id"
-                        ].astext
-                        == str(contract.id),
+                        ProfilingJob.target_column == contract.target_column,
+                        ProfilingJob.overview_json["launch_bindings"]["split_revision_id"].astext
+                        == str(split.id),
                     )
                     .order_by(ProfilingJob.finished_at.desc())
                     .limit(1)
@@ -285,10 +321,12 @@ def build_identity(db, project_id, payload, *, creating=True):
                 if profile
                 else {}
             )
-            if target_profile.get(
-                "distinct_count"
-            ) != 2 or payload.positive_label not in target_profile.get("sample_values", []):
+            if target_profile.get("distinct_count") != 2 or roles[
+                "positive_label"
+            ] not in target_profile.get("sample_values", []):
                 _mismatch("positive_label")
+    if not set(compiled.input_columns) - set(excluded) - {roles["evaluation_column"]}:
+        _mismatch("excluded_columns")
     objective = _objective(db, project_id, search, payload.search_objective_revision_id)
     identity = {
         key: str(value)
@@ -371,7 +409,10 @@ def _read_spec(db, project_id, spec):
         frozen = TrainingEstimateRequest.model_validate({key: identity[key] for key in CRITERIA})
     except (ValueError, KeyError) as exc:
         raise HTTPException(status_code=409, detail={"code": "experiment_spec_changed"}) from exc
-    current = build_identity(db, project_id, frozen, creating=False)
+    try:
+        current = build_identity(db, project_id, frozen, creating=False)
+    except ValidationError as exc:
+        raise HTTPException(status_code=409, detail={"code": "prepared_revision_changed"}) from exc
     if current != identity:
         _conflict("experiment_spec_changed")
     return identity

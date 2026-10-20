@@ -1,0 +1,193 @@
+{
+  "status": "in_progress",
+  "scope_complete": false,
+  "phase_complete": false,
+  "scope": "attempt_object_grant_integration_checkpoint",
+  "audited_at": "2026-10-18T09:25:20.696790+00:00",
+  "met": [
+    "G1"
+  ],
+  "unmet": [
+    "G2",
+    "G3",
+    "G4",
+    "G5",
+    "G6",
+    "G7"
+  ],
+  "whole_phase_1": {
+    "verified": 1,
+    "open": 35,
+    "verified_requirement": "P1-W12_structural_schema_only"
+  },
+  "schema": {
+    "tests": {
+      "tests": 165,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "postgres_version": "16.15",
+    "tables": 43,
+    "columns": 657,
+    "constraints": 219,
+    "foreign_keys": 89,
+    "indexes": 42,
+    "byte_columns": [
+      "capacity_reservations.memory_bytes",
+      "dataset_versions.byte_size",
+      "dataset_upload_sessions.byte_size",
+      "dataset_upload_sessions.part_size",
+      "dataset_upload_sessions.confirmed_bytes",
+      "prepared_artifacts.byte_size",
+      "run_artifacts.byte_size",
+      "workflow_attempt_credential_grants.byte_limit"
+    ],
+    "metadata_ddl_sha256": "29fa6249fac1b78dd795141a5170019e600eaaf71f62ca72d5b7a9b910ac013b",
+    "read_only_verification": true
+  },
+  "migration": {
+    "application_head": "0014_attempt_object_grants",
+    "prior_schema_paths": 13,
+    "upload_capable_paths": 10,
+    "upload_metadata_rows_per_path": 10000,
+    "authority_capable_paths": 9,
+    "pending_import_preserved": true,
+    "owned_database_cleanup": true,
+    "actual_previous_binaries_qualified": false,
+    "database_45gb_qualified": false,
+    "dedicated_authority_schema": "0002_allocation_revisions.sql",
+    "qa_application_head": "0011_preserve_deletion_evidence"
+  },
+  "verification": {
+    "tests": {
+      "schema-regressions.xml": {
+        "tests": 165,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "read-credentials-final.xml": {
+        "tests": 173,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "final-expiry.xml": {
+        "tests": 15,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "executions": 353,
+    "distinct_tests": 339,
+    "lint_and_format": "passed for eight touched issuer/identity/shared-validator/test files",
+    "read_only_schema_parity": true,
+    "alembic_no_drift": true,
+    "coverage_sha256": "d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9",
+    "source_files_checked": 51,
+    "schema_source_files_checked": 32,
+    "real_botocore_refresh_cases": 2,
+    "native_storage_or_k3d_cases_this_checkpoint": 0,
+    "notes": [
+      "The 173-case connected run preceded addition of the final-data overrun test; all 15 final credential cases were then rerun.",
+      "Provider signing is doubled in committed grant protocol tests; botocore refresh tests exercise actual local signing without cloud requests.",
+      "Earlier native and image evidence remains historical; this checkpoint does not qualify the current complete branch."
+    ]
+  },
+  "implemented_but_incomplete": [
+    "Typed grant constraints cover all seven stages. Service authorization currently supports only registered safe train/validation inputs for preparation and training parents.",
+    "Intent and issuance ownership commit before remote minting; publication rechecks current identity and source authority.",
+    "Same-request replay returns a receipt without credential material or extension. Unknown outcomes cannot remint under the same request.",
+    "Concurrent same-request, actual commit acknowledgement loss, authority changes, revocation, expiry and ownership loss have committed PostgreSQL coverage.",
+    "Shared refit/final-data validation checks native immutable versions and encoded expiry against the original authorized deadline.",
+    "A native deadline overrun consumes final-data permission, records a signed failure and discloses no URL; replay cannot mint again."
+  ],
+  "remaining": [
+    "G2: all-stage protected source, child and predecessor selection",
+    "G3: complete issuance and recovery coverage across all required stages and native paths",
+    "G4: bounded outputs, Tune/Train filesystems, final once semantics throughout integration and physical grant retirement barriers",
+    "G5: HTTP and worker wiring, all producers/consumers and removal of ambient database/storage/metadata/RBAC authority bypasses",
+    "G6: isolated current-image native safe-read controls and raw/final/cross-scope/method/version/expiry denials with owned cleanup",
+    "G7: complete connected verification and whole-phase final audit",
+    "45 GB migration qualification, representative table sizes and previous-binary compatibility",
+    "Seven original QA objects remain missing: two models and five signed results. Original deletion preservation G7 remains abandoned; no replacement evidence was fabricated."
+  ],
+  "safety": {
+    "qa_rollout": false,
+    "shared_pod_restart": false,
+    "qa_secret_pvc_object_or_schema_mutation": false,
+    "commit_or_push": false,
+    "native_read_revocation": "Logical revocation stops disclosure; existing native URLs require original-deadline retirement.",
+    "rollback": "Nonempty grant table blocks downgrade. Referenced attempt fences cannot be rewritten and referenced attempts cannot be deleted."
+  },
+  "source_sha256": {
+    ".unlazy/phase1-attempt-object-grants/check-schema.py": "4c13d0136f08cf6c156ec2afd966546fe01e3db9beac7aeaab243ba39be20923",
+    "alembic/env.py": "d28d598cf7581290987c2d7d55c14bff0664ba51e2beaf7d85b012a36166fec9",
+    "alembic/versions/0001_initial_schema.py": "45855172dd549b19304fa8c5474f77cb298b9bfb230eaedcf6e066e54b6b57d4",
+    "alembic/versions/0002_expand_artifact_kind.py": "39253347a28433d7fedc0fbc18a1cc2744c774546dcfd32d55482cadb568d6bd",
+    "alembic/versions/0003_security_controls.py": "5338af3fa17d6a4e185ee5b29a9e0334a49d2087160d1a3887bc3396b6da4578",
+    "alembic/versions/0004_resumable_dataset_uploads.py": "19d0f9bb08db6ad0e2dee0d8e0696431b6b68a989aec8aac8c22dae9d6c223ac",
+    "alembic/versions/0005_phase1_durable_workflows_phase1_durable_workflow_state.py": "9127fe0a089ab0f000d3175b92515d6a9834e76945c2ada88c4054322425f3c8",
+    "alembic/versions/0006_phase1_public_contracts_phase1_public_contract_revisions.py": "2188404d3a4b793cfbe87396e86456f2d9f0ab78f816e55822796663bf1230f0",
+    "alembic/versions/0007_phase1_attempt_lineage.py": "fe04d5badaaa00923d1282bb35061499ec3d9251c2de1c29764175e1ee80ab6a",
+    "alembic/versions/0008_phase2_cloud_ingestion.py": "5535ca34ee81588b0d2fc925d2f0e05ecf1a00c5f86f4cbdeff1226cd434fdc5",
+    "alembic/versions/0009_phase2_provider_neutral_storage_default.py": "1807f61d4c92d30c7d50754a1bc4ea9aa0dcd127dcbe1a4d83f3c7bca35931b6",
+    "alembic/versions/0010_phase3_nullable_feature_contract_target.py": "95ac3c74d50509816af0fbe5165b2e7d1750c99448de0c20b3f38a2082a9056c",
+    "alembic/versions/0011_preserve_deletion_evidence.py": "893607c0feee2b4e1fc4eb06eacb67b4859f57d322f92aea87cfcd9b43cfbc8d",
+    "alembic/versions/0012_final_test_revision_pair.py": "c2741a396193ecea9397c90288bb4741074ace85a5ffe4c07832bfcd604bbe8c",
+    "alembic/versions/0013_provider_dataset_import.py": "0fc24654f85063e5677d7b0a1e43ed4a350f354bce48336659e8a33dcbb817e5",
+    "alembic/versions/0014_attempt_object_grants.py": "4d588791e6227361215bd162e44803a7f229f96de41411258d4e59757f8b3b67",
+    "apps/api/automl_api/models/__init__.py": "4dbb7a8e36c7b90a41a01f3afa04144748e486188ff98eb9437ddc41c2157ea7",
+    "apps/api/automl_api/models/base.py": "dda39c2e1b6eef92a43e2cf356804d0e78813cd2612142acc2dde5fa4b9e9dc3",
+    "apps/api/automl_api/models/datasets.py": "5a1012855c85b30ede93f73ee3bce788e5d472d83ca3391f664701db844fb9ff",
+    "apps/api/automl_api/models/enums.py": "66b7bbdb97963a6b9e52a543ca28740634e4eb5863af7109fa7a1df08a5d26cd",
+    "apps/api/automl_api/models/iam.py": "e4f66266b4468c65928bfc8aa6fd9fc66f165f3825a9f46366bbdd68828671f5",
+    "apps/api/automl_api/models/projects.py": "b64622edca658ee0b6387ff10e71199ac076d010ca9e435325ce95c793168f0f",
+    "apps/api/automl_api/models/qualification.py": "776134c846e610be522950b32debbe6d22f3c3c7412e30f3f3d773f31c51cb5d",
+    "apps/api/automl_api/models/runs.py": "584885d3bd745952956dc18de1d104e6bb85648ca58f5b3992bb26c1f1235dd6",
+    "apps/api/automl_api/models/security.py": "672910f588822555ac8ede3ed0200c8e5c6299357ea8d41cdc41dc8da13990de",
+    "apps/api/automl_api/models/workflows.py": "fbc5ce360acfee04446da00fdafeff71d850f6bd4c1d40a35d58ba63cacce9fa",
+    "apps/api/automl_api/qualification_control.py": "20cde4c05085a3a5be6ca49eb56eb04a8f696b87feb6f0390dcceb636f00df0d",
+    "apps/api/automl_api/services/attempt_identity.py": "c7697d0a398d273ce79df4ee858c6580ab23a1e00d3155630936c610d5ec444a",
+    "apps/api/automl_api/services/attempt_object_grants.py": "ad1729a9730f4298f38d6353f309f326fd99b719d6ec8a0c8b20d3fa769e488e",
+    "apps/api/automl_api/services/final_test_authority.py": "1b9e398b2f5c96a8b254f9766720ff870252025bdee9baab15dfd9b09e6609a8",
+    "apps/api/automl_api/services/final_test_credentials.py": "14d3f430ce01090ca692ce3e4717e985a7dbe742cb316d4cad6e95e3ee5c2e6f",
+    "apps/api/automl_api/services/provider_source.py": "416350cbb56fac76c9891100b4f6d39fd4d35297b3152fc67a1f242563edd02e",
+    "apps/api/automl_api/services/refit_access.py": "6fc78e417ec1041e7e538222cab0ec322eee60a23026cc6effe986cf4bc57c89",
+    "apps/api/automl_api/services/workflow_state.py": "ae24c1f5154d0a3167be42cf1f6445571c25cb993269182fde74032bd704d8a1",
+    "apps/api/automl_api/storage/azure.py": "c707ef4fc0b6bfe8ba88104a7269ee9b1b0d985d399dc1e40a886fb507714be0",
+    "apps/api/automl_api/storage/gcs.py": "8da17baf718ab24f5a8a8ef2233bd3cb26ee093f5c502bbca1c81925c2ef1d34",
+    "apps/api/automl_api/storage/read_capabilities.py": "0cfb63cde8e6e36c2b351288e87411343dfb17417ce794c6f0968a5426777c0f",
+    "apps/api/automl_api/storage/s3.py": "6d9a3c45920ed5b4a91a3281c01debab1e6e9e8b2e814e3537924aac2d0e4ee0",
+    "scripts/rehearse_phase1_migrations.py": "42b2b5e3323eadacb09caebc3b0e8ab73ef4ea33998ebdb72fae0bb4c251f9bd",
+    "scripts/verify_database_schema.py": "6f79a9e7231e868e69544799ec2a13a4b71093309187b47c4133bbbeba4df1a1",
+    "tests/test_attempt_admission_io.py": "4528a6cec90c47b63e9c96c5bb3326556da1bc48b93c394e4ca82eee9f168dae",
+    "tests/test_attempt_identity.py": "8669e869b6b8f326e19bb036dea22ae7993a48db05cf5a8625aa9d33e44387b0",
+    "tests/test_attempt_object_grant_schema.py": "e9475a13facd6f2db37c5755fa598dddc82bfe593789f19330077b0f67356f8d",
+    "tests/test_attempt_object_grants.py": "9bd3a6eeb036e40eb1da71212d84d999497da044a25955e9da9d386d1bd8071a",
+    "tests/test_champion_credentials.py": "f37ed33fbe98c69606bc78d87a9e97217a294718bba80136f08b14d769bed7ed",
+    "tests/test_champion_read_grants.py": "e6d7edfcfd1c3f91dbae8b510866f689db229f1bd2b5ea3f6cf2fdf17efadcba",
+    "tests/test_champion_refit_control.py": "21e68b3dbdad2739df30b686abef780ddd276d3f65116686fc6a1b37e4d983d5",
+    "tests/test_database_schema_verifier.py": "c46aa52fc09b8ac027b3bbbcabf96b0b4577ef75aecaaa169814836b8b33d5d0",
+    "tests/test_object_read_capabilities.py": "2376a9d91d808dedd04b603e43b5574d7dadf679419df7ad75c5c96880687b1e",
+    "tests/test_phase1_migration_rehearsal.py": "9e87b6fc215ead362fd7b911be7b19601c2621efe865010888570c0d6b0bf518",
+    "tests/test_provider_import_schema.py": "9f0f206ad8c39d60dc6eb9febe637c75a5671784a7837c84b8fd6d11c9398352"
+  },
+  "artifact_sha256": {
+    "schema-source-sha256.json": "8fb128f5f875ce4ef26c8ec7f1d51f0686a9e1d34783977c2c68581156acb213",
+    "checkpoint-source-sha256.json": "1211c5312578659ed5c6e4160cfeb0f867ced3c8c072446e81b87993a07627bd",
+    "schema-inventory.json": "7896174a9accae6ce2bc9e5fa6845b2dde38f2d52642460374b1a21a49977994",
+    "migration-report.json": "dbeed9c995744f382de8ae3c3d2dbe6da584d83747971a221f4e58fa6d93ef32",
+    "schema-regressions.xml": "6ad07c83d8e15b4331d4988465c822e31695726b4a5535061325d92c61ad396c",
+    "read-credentials-final.xml": "9ff15cdde0de0f0aebeaa98ccb62c1db987d387ca925e4c194592945d646980a",
+    "final-expiry.xml": "b36018fe2e93f1be480864cb89691d0dc0b40de6c1f7cf45567d1eb07b953b36",
+    "alembic-check.log": "8a380081870e428e321e0e16bc0bd236d9e1146fc3f2b9885d1a28733abe476e",
+    "schema-final.log": "bf41390de0e1df71081b067190f609ba2bf44fc1c73dff37a3ee29774c9096a4",
+    "migration-paths.log": "da13746734a66ebd935a8504289f0783c50ac02f0180d65d2b70b2505c95f3d2",
+    "gates-schema-final.log": "73396580e541c947a1fc0df496f4590c5401af0a5786fce852a391661776d8e2",
+    "GATES.md": "35b067d6e77e2182572f8d1917a3d703a26a3222c4e56993d6e0c2e2d3db39e9",
+    "audit-checkpoint.py": "e51ca1a15b15b39bd0eef3d7720ceb646a7175db691b1c50245bc356b4c40c4a"
+  }
+}

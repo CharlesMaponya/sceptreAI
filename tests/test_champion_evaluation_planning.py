@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 from automl_api.models.enums import AttemptStatus
+from automl_api.models.runs import ModelRun
 from automl_api.models.workflows import WorkflowAttempt, WorkflowEvent
 from automl_api.services.champion_planning import plan_scope_refit
 from automl_api.services.evaluation_planning import (
@@ -46,7 +47,16 @@ def test_scope_creation_validates_template_without_client_scope_id(policy_case, 
         comparison_policy=scope.comparison_policy,
         final_threshold_revision="registered-v1",
     )
-    created = contracts.create_scope(db, SimpleNamespace(), scope.project_id, payload)
+    created = contracts.create_scope(
+        db,
+        SimpleNamespace(
+            id=db.scalar(
+                select(ModelRun.created_by_id).where(ModelRun.project_id == scope.project_id)
+            )
+        ),
+        scope.project_id,
+        payload,
+    )
     assert created.id != scope.id
     assert "scope_id" not in created.comparison_policy["evaluation_policy"]["final_data"]
     with pytest.raises(HTTPException) as error:

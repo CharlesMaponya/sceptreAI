@@ -1,3 +1,4 @@
+import hashlib
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -8,6 +9,7 @@ from automl_api.models.workflows import OutboxEntry
 from automl_api.schemas.profiling_jobs import ProfilingJobCreate
 from automl_api.services import profiling_jobs as jobs
 from automl_api.services import workflow_state as state
+from digest_fixtures import verified_digest_metadata
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from test_phase1_postgres_contracts import committed_tenant, phase1_engine  # noqa: F401
@@ -29,6 +31,7 @@ def profile_source(phase1_engine, committed_tenant, monkeypatch, tmp_path):  # n
         db.add(dataset)
         db.flush()
         version = DatasetVersion(
+            **verified_digest_metadata(),
             project_id=project_id,
             dataset_id=dataset.id,
             created_by_id=user_id,
@@ -36,8 +39,8 @@ def profile_source(phase1_engine, committed_tenant, monkeypatch, tmp_path):  # n
             format=DatasetFormat.CSV,
             object_uri=stored.uri,
             original_filename="profile.csv",
-            content_hash="a" * 64,
-            byte_size=8,
+            content_hash=hashlib.sha256(b"x,y\n1,2\n3,4\n").hexdigest(),
+            byte_size=len(b"x,y\n1,2\n3,4\n"),
             row_count=2,
             column_count=2,
             schema_json={"columns": [{"name": "x"}, {"name": "y"}]},
@@ -114,6 +117,7 @@ def queued_profile(source, *, format=DatasetFormat.JSON):
         version = db.get(DatasetVersion, version_id)
         version.format, version.original_filename = format, filename
         version.object_uri, version.byte_size = stored.uri, len(content)
+        version.content_hash = hashlib.sha256(content).hexdigest()
         job, _ = jobs.create_profiling_job(
             db, db.get(User, user_id), project_id, dataset_id, version_id, ProfilingJobCreate()
         )

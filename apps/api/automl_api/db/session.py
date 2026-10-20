@@ -25,6 +25,18 @@ def engine_options(settings) -> dict:
     options: dict = {"pool_pre_ping": True}
     if not settings.sqlalchemy_database_url.startswith("postgresql"):
         return options
+    for name, minimum in (
+        ("database_pool_size", 1),
+        ("database_max_overflow", 0),
+        ("database_pool_timeout_seconds", 1),
+        ("database_connect_timeout_seconds", 1),
+        ("database_statement_timeout_ms", 1),
+        ("database_lock_timeout_ms", 1),
+        ("database_idle_transaction_timeout_ms", 1),
+    ):
+        value = getattr(settings, name)
+        if type(value) is not int or value < minimum:
+            raise RuntimeError(f"{name} must be an integer greater than or equal to {minimum}.")
     if settings.environment in {"staging", "production"}:
         if settings.database_ssl_mode not in {"verify-ca", "verify-full"}:
             raise RuntimeError("Production PostgreSQL requires sslmode verify-ca or verify-full.")

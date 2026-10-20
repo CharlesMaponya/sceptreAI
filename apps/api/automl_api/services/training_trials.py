@@ -50,6 +50,10 @@ def enroll_trial(
     )
     if candidate is None:
         raise StaleFence("The trial candidate does not belong to this training run.")
+    from automl_api.training.parameter_overrides import validate_trial_overrides
+
+    validate_trial_overrides(run, candidate, parameters)
+
     trial = db.scalar(
         select(TrainingTrial)
         .where(
@@ -61,8 +65,11 @@ def enroll_trial(
     )
     if trial is None:
         trial = TrainingTrial(
-            project_id=parent.project_id, candidate_id=candidate.id,
-            suggestion_id=suggestion_id, parameters=parameters, params_digest=digest,
+            project_id=parent.project_id,
+            candidate_id=candidate.id,
+            suggestion_id=suggestion_id,
+            parameters=parameters,
+            params_digest=digest,
         )
         db.add(trial)
         db.flush()
@@ -82,21 +89,33 @@ def enroll_trial(
     )
     if previous is not None and previous.run_attempt_id == parent.id:
         if previous.ray_submission_id is None:
-            predecessor = db.get(
-                WorkflowAttempt, previous.predecessor_attempt_id, populate_existing=True,
-            ) if previous.predecessor_attempt_id is not None else None
+            predecessor = (
+                db.get(
+                    WorkflowAttempt,
+                    previous.predecessor_attempt_id,
+                    populate_existing=True,
+                )
+                if previous.predecessor_attempt_id is not None
+                else None
+            )
             if (
-                previous.status != AttemptStatus.PENDING or previous.retry_count != 0
-                or previous.project_id != parent.project_id or previous.model_run_id != run.id
+                previous.status != AttemptStatus.PENDING
+                or previous.retry_count != 0
+                or previous.project_id != parent.project_id
+                or previous.model_run_id != run.id
                 or previous.logical_key != f"trial:{trial.id}"
                 or previous.workload_identity != parent.workload_identity
-                or previous.lease_owner is not None or previous.lease_expires_at is not None
-                or previous.terminal_cas_version != 0 or trial.result_digest is not None
+                or previous.lease_owner is not None
+                or previous.lease_expires_at is not None
+                or previous.terminal_cas_version != 0
+                or trial.result_digest is not None
                 or previous.generation > min(parent.retry_budget, previous.retry_budget)
-                or predecessor is None or predecessor.status != AttemptStatus.SUPERSEDED
+                or predecessor is None
+                or predecessor.status != AttemptStatus.SUPERSEDED
                 or predecessor.stage != WorkflowStage.TRAINING_TRIAL
                 or predecessor.project_id != parent.project_id
-                or predecessor.model_run_id != run.id or predecessor.trial_id != trial.id
+                or predecessor.model_run_id != run.id
+                or predecessor.trial_id != trial.id
                 or predecessor.run_attempt_id != parent.predecessor_attempt_id
                 or previous.generation != predecessor.generation + 1
             ):
@@ -138,21 +157,37 @@ def enroll_trial(
     db.add(attempt)
     db.flush()
     if adopted_payload is not None:
-        for status in (AttemptStatus.CLAIMED, AttemptStatus.SUBMITTED, AttemptStatus.RUNNING,
-                       previous.status):
+        for status in (
+            AttemptStatus.CLAIMED,
+            AttemptStatus.SUBMITTED,
+            AttemptStatus.RUNNING,
+            previous.status,
+        ):
             transition_attempt(
-                attempt, status, fencing_token=attempt.fencing_token,
+                attempt,
+                status,
+                fencing_token=attempt.fencing_token,
                 expected_cas_version=attempt.terminal_cas_version,
                 terminal_reason=adopted_payload.get("failure"),
             )
-        for sequence, (key, payload) in enumerate((
-            ("trial.adopted", reference), ("trial.terminal", adopted_payload),
-        ), start=1):
-            db.add(WorkflowEvent(
-                project_id=attempt.project_id, attempt_id=attempt.id, sequence=sequence,
-                event_key=key, event_type=key, payload=payload,
-                result_digest=canonical_request_hash(payload),
-            ))
+        for sequence, (key, payload) in enumerate(
+            (
+                ("trial.adopted", reference),
+                ("trial.terminal", adopted_payload),
+            ),
+            start=1,
+        ):
+            db.add(
+                WorkflowEvent(
+                    project_id=attempt.project_id,
+                    attempt_id=attempt.id,
+                    sequence=sequence,
+                    event_key=key,
+                    event_type=key,
+                    payload=payload,
+                    result_digest=canonical_request_hash(payload),
+                )
+            )
         db.flush()
     return attempt
 
@@ -190,8 +225,9 @@ def _locked_parent_run(db, parent_id, parent_token):
 
 def _locked_execution(db, attempt_id, fencing_token, run_fencing_token):
     identity = db.execute(
-        select(WorkflowAttempt.run_attempt_id, WorkflowAttempt.trial_id)
-        .where(WorkflowAttempt.id == attempt_id)
+        select(WorkflowAttempt.run_attempt_id, WorkflowAttempt.trial_id).where(
+            WorkflowAttempt.id == attempt_id
+        )
     ).one_or_none()
     if identity is None or identity.run_attempt_id is None or identity.trial_id is None:
         raise StaleFence("The trial execution identity is missing.")
@@ -209,14 +245,19 @@ def _locked_execution(db, attempt_id, fencing_token, run_fencing_token):
         .execution_options(populate_existing=True)
     )
     attempt = db.scalar(
-        select(WorkflowAttempt).where(WorkflowAttempt.id == attempt_id)
-        .with_for_update().execution_options(populate_existing=True)
+        select(WorkflowAttempt)
+        .where(WorkflowAttempt.id == attempt_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     if (
-        trial is None or attempt is None
+        trial is None
+        or attempt is None
         or attempt.stage != WorkflowStage.TRAINING_TRIAL
-        or attempt.project_id != parent.project_id or attempt.model_run_id != run.id
-        or attempt.run_attempt_id != parent.id or attempt.trial_id != trial.id
+        or attempt.project_id != parent.project_id
+        or attempt.model_run_id != run.id
+        or attempt.run_attempt_id != parent.id
+        or attempt.trial_id != trial.id
         or attempt.fencing_token != fencing_token
         or trial.params_digest != canonical_request_hash(trial.parameters)
         or (
@@ -229,11 +270,17 @@ def _locked_execution(db, attempt_id, fencing_token, run_fencing_token):
 
 
 def _terminal_evidence(db, trial, attempt):
-    event = db.scalar(select(WorkflowEvent).where(
-        WorkflowEvent.attempt_id == attempt.id, WorkflowEvent.event_key == "trial.terminal",
-    ).execution_options(populate_existing=True))
+    event = db.scalar(
+        select(WorkflowEvent)
+        .where(
+            WorkflowEvent.attempt_id == attempt.id,
+            WorkflowEvent.event_key == "trial.terminal",
+        )
+        .execution_options(populate_existing=True)
+    )
     if (
-        event is None or event.event_type != "trial.terminal"
+        event is None
+        or event.event_type != "trial.terminal"
         or event.payload.get("status") != attempt.status.value
         or trial.status != attempt.status.value
         or event.result_digest != canonical_request_hash(event.payload)
@@ -245,19 +292,28 @@ def _terminal_evidence(db, trial, attempt):
 
 def trial_result_reference(db, parent, attempt):
     """Verify an immutable database CV receipt before explicitly allowing its adoption."""
-    trial = db.scalar(select(TrainingTrial).join(
-        TrainingCandidate, TrainingCandidate.id == TrainingTrial.candidate_id,
-    ).where(
-        TrainingTrial.id == attempt.trial_id,
-        TrainingTrial.project_id == parent.project_id,
-        TrainingCandidate.project_id == parent.project_id,
-        TrainingCandidate.model_run_id == parent.model_run_id,
-    ).execution_options(populate_existing=True))
+    trial = db.scalar(
+        select(TrainingTrial)
+        .join(
+            TrainingCandidate,
+            TrainingCandidate.id == TrainingTrial.candidate_id,
+        )
+        .where(
+            TrainingTrial.id == attempt.trial_id,
+            TrainingTrial.project_id == parent.project_id,
+            TrainingCandidate.project_id == parent.project_id,
+            TrainingCandidate.model_run_id == parent.model_run_id,
+        )
+        .execution_options(populate_existing=True)
+    )
     if (
-        trial is None or attempt.stage != WorkflowStage.TRAINING_TRIAL
+        trial is None
+        or attempt.stage != WorkflowStage.TRAINING_TRIAL
         or attempt.status not in {AttemptStatus.SUCCEEDED, AttemptStatus.FAILED}
-        or attempt.project_id != parent.project_id or attempt.model_run_id != parent.model_run_id
-        or attempt.run_attempt_id != parent.id or attempt.terminal_cas_version != 1
+        or attempt.project_id != parent.project_id
+        or attempt.model_run_id != parent.model_run_id
+        or attempt.run_attempt_id != parent.id
+        or attempt.terminal_cas_version != 1
         or attempt.logical_key != f"trial:{trial.id}"
         or attempt.workload_identity != parent.workload_identity
         or trial.params_digest != canonical_request_hash(trial.parameters)
@@ -265,8 +321,12 @@ def trial_result_reference(db, parent, attempt):
         raise StaleFence("The predecessor trial result has invalid lineage.")
     payload = _terminal_evidence(db, trial, attempt)
     json.dumps(payload, allow_nan=False)
-    return {"kind": "trial_result", "attempt_id": str(attempt.id),
-            "trial_id": str(trial.id), "result_digest": trial.result_digest}
+    return {
+        "kind": "trial_result",
+        "attempt_id": str(attempt.id),
+        "trial_id": str(trial.id),
+        "result_digest": trial.result_digest,
+    }
 
 
 def authorized_trial_result(db, parent, attempt):
@@ -279,11 +339,18 @@ def authorized_trial_result(db, parent, attempt):
     for _ in range(parent.retry_budget):
         if reference not in current.predecessor_checkpoint_allowlist:
             raise StaleFence("The predecessor trial result is not explicitly authorized.")
-        predecessor = db.get(
-            WorkflowAttempt, current.predecessor_attempt_id, populate_existing=True,
-        ) if current.predecessor_attempt_id is not None else None
+        predecessor = (
+            db.get(
+                WorkflowAttempt,
+                current.predecessor_attempt_id,
+                populate_existing=True,
+            )
+            if current.predecessor_attempt_id is not None
+            else None
+        )
         if (
-            predecessor is None or predecessor.status != AttemptStatus.SUPERSEDED
+            predecessor is None
+            or predecessor.status != AttemptStatus.SUPERSEDED
             or predecessor.stage != WorkflowStage.TRAINING_RUN
             or predecessor.project_id != parent.project_id
             or predecessor.model_run_id != parent.model_run_id
@@ -299,8 +366,10 @@ def authorized_trial_result(db, parent, attempt):
 
 def _live_owner(attempt, worker_id, now):
     if (
-        attempt.status != AttemptStatus.RUNNING or attempt.lease_owner != worker_id
-        or attempt.lease_expires_at is None or attempt.lease_expires_at <= now
+        attempt.status != AttemptStatus.RUNNING
+        or attempt.lease_owner != worker_id
+        or attempt.lease_expires_at is None
+        or attempt.lease_expires_at <= now
     ):
         raise StaleFence("The trial worker no longer owns a live lease.")
 
@@ -344,7 +413,13 @@ def _trial_deadline(db, attempt, now, lease_limit):
 
 
 def heartbeat_trial(
-    db, *, attempt_id, fencing_token, run_fencing_token, worker_id, lease_limit=None,
+    db,
+    *,
+    attempt_id,
+    fencing_token,
+    run_fencing_token,
+    worker_id,
+    lease_limit=None,
 ):
     _, attempt = _locked_execution(db, attempt_id, fencing_token, run_fencing_token)
     now = datetime.now(UTC)
@@ -354,7 +429,14 @@ def heartbeat_trial(
 
 
 def finish_trial(
-    db, *, attempt_id, fencing_token, run_fencing_token, worker_id, result=None, failure=None,
+    db,
+    *,
+    attempt_id,
+    fencing_token,
+    run_fencing_token,
+    worker_id,
+    result=None,
+    failure=None,
 ):
     """Persist immutable result/event/CAS together; the caller owns commit and retries."""
     if (result is None) == (failure is None):
@@ -379,20 +461,33 @@ def finish_trial(
         return committed
     _live_owner(attempt, worker_id, datetime.now(UTC))
     transition_attempt(
-        attempt, status, fencing_token=fencing_token,
+        attempt,
+        status,
+        fencing_token=fencing_token,
         expected_cas_version=attempt.terminal_cas_version,
         terminal_reason=payload.get("failure"),
     )
     trial.status = status.value
     trial.result_digest = digest
     attempt.lease_expires_at = None
-    sequence = (db.scalar(select(func.max(WorkflowEvent.sequence)).where(
-        WorkflowEvent.attempt_id == attempt.id,
-    )) or 0) + 1
-    db.add(WorkflowEvent(
-        project_id=attempt.project_id, attempt_id=attempt.id, sequence=sequence,
-        event_key="trial.terminal", event_type="trial.terminal",
-        payload=payload, result_digest=digest,
-    ))
+    sequence = (
+        db.scalar(
+            select(func.max(WorkflowEvent.sequence)).where(
+                WorkflowEvent.attempt_id == attempt.id,
+            )
+        )
+        or 0
+    ) + 1
+    db.add(
+        WorkflowEvent(
+            project_id=attempt.project_id,
+            attempt_id=attempt.id,
+            sequence=sequence,
+            event_key="trial.terminal",
+            event_type="trial.terminal",
+            payload=payload,
+            result_digest=digest,
+        )
+    )
     db.flush()
     return payload

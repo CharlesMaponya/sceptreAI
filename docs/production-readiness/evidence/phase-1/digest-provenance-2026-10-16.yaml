@@ -1,0 +1,85 @@
+{
+  "verified_at": "2026-10-16T04:54:38.525092+00:00",
+  "status": "verified_increment",
+  "phase_complete": false,
+  "requirement": "P1-W16",
+  "changes": [
+    "Direct byte upload writer explicitly records sha256, byte_stream, verified and UTC verification time for the exact bytes hashed before storage submission. This is digest provenance, not scanner or later provider-readback attestation.",
+    "A metadata-only inventory streams every upload and dataset version under an enforced PostgreSQL READ ONLY REPEATABLE READ snapshot in500-row batches. Versions linked to legacy upload scopes are flagged despite misleading version labels; EXISTS preserves one version record even with multiple legacy links.",
+    "Owner-only output is created exclusively, contains the target database/snapshot/transaction settings, per-resource review reasons, complete terminal counts and SHA256 of exact UTF8 resource lines. Incomplete output lacks its terminal summary and is not migration evidence. No mutating SQL or object reads are part of inventory."
+  ],
+  "verification": {
+    "tests": 182,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "tests": [
+    "Valid dataset and upload digest controls; nine malformed/unsupported/legacy/incomplete provenance cases.",
+    "Real PostgreSQL inventory sees five fixture rows exactly once, identifies one legacy-linked version despite two links, retains a valid version and preserves hashes/upload scopes/deletion deadlines.",
+    "Each real metadata SELECT observes read_only=on and repeatable read. Both resource queries use yield_per500. A concurrent committed insertion after snapshot creation is excluded; an attempted UPDATE is rejected by PostgreSQL ReadOnlySqlTransaction and cannot produce a complete report.",
+    "Report resource-line hash and row counts are independently recomputed; CLI creates private files and refuses overwrite; non-PostgreSQL fails before connection. Existing direct upload, scanner, provider-boundary, reconciler and fenced outbox checks pass.",
+    "Scoped Ruff lint/format, git diff checks and coverage.json preservation pass."
+  ],
+  "local_k3d_inventory": {
+    "status": "verified",
+    "header": {
+      "database": "refit",
+      "isolation": "repeatable read",
+      "read_only": "on",
+      "schema": "dataset-digest-inventory-v1",
+      "snapshot": "1838:1838:",
+      "type": "header"
+    },
+    "summary": {
+      "complete": true,
+      "counts": {
+        "dataset_version": 13,
+        "dataset_version_requires_review": 13,
+        "upload": 0,
+        "upload_requires_review": 0
+      },
+      "resource_records_sha256": "0b2d733bc5c78681c33898829c9ca15b46bc4f75393759d9580f244262655bc0",
+      "review_reasons": {
+        "verification_not_proven": 13
+      },
+      "type": "summary"
+    },
+    "resource_count": 13,
+    "report_sha256": "7a994a691353077af2be214faff36ccaa5b3e5f9524892eec92dd096b50bec9d",
+    "qa_unchanged": true,
+    "inventory_source_sha256": "a70dbf42ed0579a600925e7a1480f764c20e4531ee79a09f0675ab37eb976d51"
+  },
+  "native_scope": "Metadata-only script executed in the existing qa-refit API Pod using its database configuration. No image build, application rollout, schema migration, database row change, object read/write or restart. Existing Pod/PVC identity/phase lists match before/after.",
+  "limits": [
+    "The13 QA versions require verification review; none is inferred corrupt, rescanned or repaired. QA has0 persisted upload sessions, so it is not a native legacy-upload migration campaign. Synthetic PostgreSQL fixtures exercise legacy-link handling.",
+    "The command inventories current schema metadata and cannot prove object bytes, predecessor-reader behavior, full ingest-to-training safety, or old schema deployment compatibility. Historical hashes and immutable snapshots are unchanged.",
+    "Controlled byte rescans, append-only historical evidence, migration/new-version decisions, consuming-reader safeguards, previous release qualification and the full P1-W16 outcome remain required. Normal quarantine schedules deletion and must not be used blindly for old objects.",
+    "The earlier immutable runtime-image proof covers its earlier source snapshot. Latest direct-upload metadata/source changes have local Python/PostgreSQL verification, not current-image upload execution.",
+    "The45GB migration target remains untested due to storage capacity; largest-table row counts are unspecified. Seven original QA objects and original abandoned preservation gate remain unresolved. Full Phase1 remains1Verified/35Open."
+  ],
+  "source_sha256": {
+    "apps/api/automl_api/services/datasets.py": "82de3a0ae8a53726c0a9b0d554194bbcdf1d09087f2a9b538307e357d555cb02",
+    "tests/test_datasets_service.py": "c18d500bf28f3888279dc9d9ad1eba958396614a46659d360e8833b96248c3eb",
+    "scripts/inventory_dataset_digests.py": "a70dbf42ed0579a600925e7a1480f764c20e4531ee79a09f0675ab37eb976d51",
+    "tests/test_digest_inventory.py": "ec08594d00d3c460a1b4c7c64f50e6703039652c1e4d3740aff89ee3c43a31e4",
+    "docs/production-readiness/phase-1-digest-migration.md": "f28b17c75e532520b9da8a5b08460e4fa00f4ed8ec473c4c32071d8c8fd9091a"
+  },
+  "artifact_sha256": {
+    ".unlazy/phase1-digest-provenance/check.py": "9c60cb626652e0acc3ea8606133dfd67f84ad83ef34d2343feb6ed493465ec43",
+    ".unlazy/phase1-digest-provenance/tests.xml": "23ba75065b7e4796a536533565b565f0ab0c2696242f6070c8c49bc118a22a76",
+    ".unlazy/phase1-digest-provenance/tests.log": "7f0024fab1cf1acc70e5d8a2a0945e4aa680e5a22356a53de3195e2e79bc4dc1",
+    ".unlazy/phase1-digest-provenance/report.json": "b31e03f06079e1162ecaa49c7fa06cae9b473fd6a1cf2f6d17e0ef6ef9778ad7",
+    ".unlazy/phase1-digest-provenance/gates-current.log": "81779fc3ce5715ece7d1848b3487f7cd345d690e377c2350567eb627602a8719",
+    ".unlazy/phase1-digest-provenance/qa_inventory.py": "d376ce0f32bdb0896841919f326118a58bf80a3aded0795c1aae85a4bcd93f48",
+    ".unlazy/phase1-digest-provenance/qa-state.json": "0920a6e63b9e3161f8f57faa1cf16272e50b28e039ed1eba509a19049ef8cec6",
+    ".unlazy/phase1-digest-provenance/qa-driver.log": "752725dd47fab62407991d49547a294505a7b0651669e74b206c0db61a70e690",
+    ".unlazy/phase1-digest-provenance/qa-inventory-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    ".unlazy/phase1-digest-provenance/qa-digest-inventory.ndjson": "7a994a691353077af2be214faff36ccaa5b3e5f9524892eec92dd096b50bec9d"
+  },
+  "phase_ledger": {
+    "requirements": 36,
+    "verified": 1,
+    "open": 35
+  }
+}

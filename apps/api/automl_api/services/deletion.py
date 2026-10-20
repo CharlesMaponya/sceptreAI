@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
+import math
 import uuid
 from datetime import UTC, datetime
 
 from fastapi import HTTPException
 from kubernetes.client.exceptions import ApiException
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from automl_api.db.base import Base
-from automl_api.models.datasets import DatasetUploadSession, ProfilingJob
+from automl_api.models.datasets import DatasetProviderImport, DatasetUploadSession, ProfilingJob
 from automl_api.models.enums import (
     AttemptStatus,
     CommandStatus,
@@ -31,9 +32,13 @@ from automl_api.models.workflows import (
     PromotionalScope,
     PromotionalScopeMember,
     WorkflowAttempt,
+    WorkflowAttemptCredentialGrant,
+    WorkflowCommand,
 )
+from automl_api.services.attempt_object_grants import revoke_attempt_grants
 from automl_api.services.projects import user_has_project_role
 from automl_api.services.workflow_state import begin_command, enqueue_outbox, replay_dead_outbox
+from automl_api.storage.contracts import DeletionPending
 from automl_api.storage.object_store import get_object_store
 
 STAGES = {
@@ -46,6 +51,26 @@ TERMINAL_RUNS = {RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.CANCELLED, Run
 
 
 def _require_stopped_workflows(db, project_id, run_ids=None):
+    if run_ids is None:
+        from automl_api.models.workflows import WorkflowEvent
+
+        unfinished = db.scalar(
+            select(WorkflowAttempt.id)
+            .join(
+                WorkflowEvent,
+                WorkflowEvent.attempt_id == WorkflowAttempt.id,
+            )
+            .where(
+                WorkflowAttempt.project_id == project_id,
+                WorkflowEvent.event_key == "provider_import.submission",
+                WorkflowAttempt.cleanup_state != "complete",
+            )
+            .limit(1)
+        )
+        if unfinished is not None:
+            raise HTTPException(
+                409, "Wait for provider verification resource cleanup before deletion."
+            )
     scopes = select(PromotionalScope.id).where(PromotionalScope.project_id == project_id)
     attempts = select(WorkflowAttempt.id).where(
         WorkflowAttempt.project_id == project_id,
@@ -173,6 +198,22 @@ def request_deletion(
         )
     if run_id is None:
         if db.scalar(
+            select(DatasetProviderImport.id)
+            .join(
+                WorkflowCommand,
+                (WorkflowCommand.id == DatasetProviderImport.command_id)
+                & (WorkflowCommand.project_id == DatasetProviderImport.project_id),
+            )
+            .where(
+                DatasetProviderImport.project_id == project_id,
+                WorkflowCommand.status.in_([CommandStatus.PENDING, CommandStatus.RUNNING]),
+            )
+            .limit(1)
+        ):
+            raise HTTPException(
+                409, detail="Finish or cancel provider import verification before deletion."
+            )
+        if db.scalar(
             select(ProfilingJob.id)
             .where(
                 ProfilingJob.project_id == project_id,
@@ -291,6 +332,7 @@ def reconcile_deletion(db: Session, entry: OutboxEntry, k8s) -> bool:
         raise LookupError("The project-scoped deletion tombstone is missing.")
     if tombstone.legal_hold:
         raise ValueError("A legal hold prevents deletion.")
+    _retire_deletion_grants(db, project_id, run_ids if entry.topic == "run.delete" else None)
     names = STAGES[tombstone.resource_type]
     stages = {
         stage.resource_class: stage
@@ -316,13 +358,22 @@ def reconcile_deletion(db: Session, entry: OutboxEntry, k8s) -> bool:
         _delete_runtime(db, project_id, runs, k8s)
     elif stage.resource_class == "object_store":
         store = get_object_store()
-        if entry.topic == "project.delete":
-            store.delete_prefix(f"projects/{project_id}")
-        else:
-            for run_id in run_ids:
-                store.delete_prefix(f"projects/{project_id}/runs/{run_id}")
+        from automl_api.services.provider_import import assert_provider_cleanup_safe
+
+        prefixes = (
+            [f"projects/{project_id}"]
+            if entry.topic == "project.delete"
+            else [f"projects/{project_id}/runs/{run_id}" for run_id in run_ids]
+        )
+        for prefix in prefixes:
+            assert_provider_cleanup_safe(db, store, prefix)
+            store.delete_prefix(prefix)
     elif stage.resource_class == "prepared_store":
-        get_object_store().delete_prefix(f"automl/projects/{project_id}")
+        from automl_api.services.provider_import import assert_provider_cleanup_safe
+
+        store = get_object_store()
+        assert_provider_cleanup_safe(db, store, f"automl/projects/{project_id}")
+        store.delete_prefix(f"automl/projects/{project_id}")
     else:
         _delete_metadata(db, entry, project, run_ids)
         tombstone.status = "complete"
@@ -332,6 +383,33 @@ def reconcile_deletion(db: Session, entry: OutboxEntry, k8s) -> bool:
     stage.heartbeat_at = datetime.now(UTC)
     db.flush()
     return stage.resource_class == "metadata"
+
+
+def _retire_deletion_grants(db, project_id, run_ids):
+    affected = select(WorkflowAttempt.id).where(WorkflowAttempt.project_id == project_id)
+    if run_ids is not None:
+        scopes = select(PromotionalScopeMember.scope_id).where(
+            PromotionalScopeMember.project_id == project_id,
+            PromotionalScopeMember.model_run_id.in_(run_ids),
+        )
+        affected = affected.where(
+            or_(WorkflowAttempt.model_run_id.in_(run_ids), WorkflowAttempt.scope_id.in_(scopes))
+        )
+    attempt_ids = list(db.scalars(affected.order_by(WorkflowAttempt.id).with_for_update()))
+    for attempt_id in attempt_ids:
+        revoke_attempt_grants(db, attempt_id)
+    now = datetime.now(UTC)
+    deadline = db.scalar(
+        select(func.max(WorkflowAttemptCredentialGrant.expires_at)).where(
+            WorkflowAttemptCredentialGrant.attempt_id.in_(attempt_ids),
+            WorkflowAttemptCredentialGrant.issuance_started_at.is_not(None),
+            WorkflowAttemptCredentialGrant.expires_at > now,
+        )
+    )
+    if deadline is not None:
+        pending = DeletionPending("Waiting for attempt object credentials to expire.")
+        pending.retry_after_seconds = max(1, math.ceil((deadline - now).total_seconds()))
+        raise pending
 
 
 def _delete_runtime(db, project_id, runs, k8s):
@@ -380,6 +458,15 @@ def _delete_metadata(db, entry, project, run_ids):
             delete(ModelRegistryEntry).where(
                 ModelRegistryEntry.project_id == project_id,
                 ModelRegistryEntry.model_run_id.in_(run_ids),
+            )
+        )
+        attempts = select(WorkflowAttempt.id).where(
+            WorkflowAttempt.project_id == project_id, WorkflowAttempt.model_run_id.in_(run_ids)
+        )
+        db.execute(
+            delete(WorkflowAttemptCredentialGrant).where(
+                WorkflowAttemptCredentialGrant.project_id == project_id,
+                WorkflowAttemptCredentialGrant.attempt_id.in_(attempts),
             )
         )
         db.execute(

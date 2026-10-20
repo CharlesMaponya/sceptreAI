@@ -1,0 +1,109 @@
+{
+  "verified_at": "2026-10-16T13:08:56.835418+00:00",
+  "status": "verified_increment",
+  "phase_complete": false,
+  "requirements": [
+    "P1-W16"
+  ],
+  "changes": [
+    "Extend existing object-store open_stream with optional keyword-only version; exact S3 VersionId, canonical positive GCS generation and Azure BlobClient version_id bind full/range requests. Reject invalid/unsupported versions and mismatched/missing returned S3/Azure identities; missing/denied versions have no unversioned fallback.",
+    "Azure returns a small RawIOBase adapter over native SDK incremental read instead of eagerly buffering readall. Supports readinto/BufferedReader/context close and releases downloader on close. Existing unversioned callers and requested range semantics remain compatible; no dependency/schema change."
+  ],
+  "verification": {
+    "focused": {
+      "tests": 46,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "regressions": {
+      "tests": 273,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "counts_overlap": true,
+  "regression_cases_by_module": {
+    "tests.test_versioned_streams": 46,
+    "tests.test_phase2_upload_drivers": 8,
+    "tests.test_object_store": 19,
+    "tests.test_dataset_digests": 34,
+    "tests.test_phase2_upload_services": 58,
+    "tests.test_phase1_reconciler": 90,
+    "tests.test_champion_refit_execution": 7,
+    "tests.test_champion_refit_control": 11
+  },
+  "native": {
+    "status": "passed",
+    "historical_full_and_range": true,
+    "missing_version_denied_while_current_readable": true,
+    "owned_neighbor_preserved": true,
+    "verified_tls": true,
+    "fixture_versions": 3,
+    "fixture_bytes_written": 51,
+    "fixture_cleanup": true,
+    "baseline_version_records": 16,
+    "metadata_fingerprint_before": "daa67b8081540a21a8163d5a5f9aa14a7dfe62e7c82af2593486c18723eb104c",
+    "metadata_fingerprint_after": "daa67b8081540a21a8163d5a5f9aa14a7dfe62e7c82af2593486c18723eb104c",
+    "preexisting_versions_unchanged": true
+  },
+  "native_source_sha256": {
+    "contracts": "1e016c9d24605f09897c9068d449beb87c3d5c56b88c1a302f80b27e9268e287",
+    "s3": "6d9a3c45920ed5b4a91a3281c01debab1e6e9e8b2e814e3537924aac2d0e4ee0"
+  },
+  "namespace_identities_unchanged": true,
+  "decisive_checks": [
+    "Real installed S3 SDK + botocore Stubber verifies exact VersionId/Range parameters and response handling. Actual GCS Blob and Azure BlobClient instances carry generation/version_id; provider transfers are injected so cloud credentials/network are not needed.",
+    "All three provider adapters reject malformed versions before provider calls; GCS rejects zero/negative/non-canonical/Unicode generations. Missing and denied versions raise after one exact request without current-data fallback. Embedded explicitly denies provider-version requests.",
+    "Azure bounded read/readinto delegates requested sizes without readall, supports standard buffering and clears downloader on normal close/read failure. Header mismatch does not expose current bytes; S3 mismatches close response bodies.",
+    "Actual local TLS S3-compatible probe loads current contracts/S3 modules in a separate existing QA Pod process, writes three fixture versions/51bytes, verifies historical full/range reads after replacement and missing-version denial between healthy current reads. All owned fixture versions are removed and16pre-existing version-record metadata fingerprints match; both namespace Pod/PVC snapshots are unchanged.",
+    "Seven changed Python files pass Ruff lint/format and diff checks; coverage.json is unchanged. Independent17-input source/artifact/XML/report/native/whole-ledger audit passes."
+  ],
+  "intermediate_runs": "First focused34pass/9setup errors and related261pass/9errors came from a boto3 test client lacking context-manager methods. Replaced the harness with contextlib.closing; added Azure returned-version/buffering/read-failure controls. Final46focused/273related all0fail/error/skip. Native handle22666 exited0; gate handle95727 exited1 only for manualG3/G4 pending audit, while both runnable checks exited0 and matched EXPECT.",
+  "limits": [
+    "Existing callers that omit version still read current objects. This primitive does not automatically pin raw/prepared/distributed readers or wire signed import/admission/early-registration/grants. W16 and other Phase1 requirements remain Open.",
+    "Azure bounded reads avoid eager whole-object buffering, but read()/read(None) deliberately request all remaining bytes and SDK initial/chunk caching remains. GCS byte-range requests still buffer their requested range. No45GB/memory/throughput qualification is claimed.",
+    "Native proof is current helper source in a separate process, not a rebuilt image or changed application runtime. It uses a local S3-compatible service with administrative test credentials; it does not qualify actual AWS/GCS/Azure signing, least-privilege IAM or provider conformance.",
+    "Native preservation compares all16existing version-record metadata and qa-refit/qa-phase1 Pod/PVC identities; it is not a new byte rescan of every historical object. Only unique owned fixture keys were written/deleted. No shared schema, existing object, stateful restart or rollout occurred.",
+    "No commit/public publication. Schemahead0012/W12 structure remain unchanged. Fullledger36requirements1VerifiedW12/35Open; production legacy/binary/current-image/Train/grant/failure/restore requirements and45GB capacity/reserve/row-count gap remain. Seven original QA objects and original preservationG7ABANDONED remain unresolved; no historic object/signature replacement."
+  ],
+  "source_sha256": {
+    ".unlazy/phase1-versioned-streams/check.py": "18804882febae2e33871ca181abbf220c26d79045e18cfa7fcb87b036ac5fcfa",
+    ".unlazy/phase1-versioned-streams/native_probe.py": "30ebe617ddaeb11b3ef25abf9618a16696e5e5ff7add0fdd92ca42e16aaa8ba8",
+    "apps/api/automl_api/storage/azure.py": "c707ef4fc0b6bfe8ba88104a7269ee9b1b0d985d399dc1e40a886fb507714be0",
+    "apps/api/automl_api/storage/contracts.py": "1e016c9d24605f09897c9068d449beb87c3d5c56b88c1a302f80b27e9268e287",
+    "apps/api/automl_api/storage/embedded.py": "73446b9acc476f97a5030168953a899d03ddc4dbb80058637b0c60f961bc36b1",
+    "apps/api/automl_api/storage/gcs.py": "8da17baf718ab24f5a8a8ef2233bd3cb26ee093f5c502bbca1c81925c2ef1d34",
+    "apps/api/automl_api/storage/s3.py": "6d9a3c45920ed5b4a91a3281c01debab1e6e9e8b2e814e3537924aac2d0e4ee0",
+    "apps/api/automl_api/training/champion_refit.py": "1ad0d11f8d664f833372f0c03d0c3e923d1ce6e9341d85aeb1c60e6cbe650b8f",
+    "docs/production-readiness/phase-1-digest-migration.md": "37d597a70f771a588699197b50244cbe88cd2196243b64e5151610441e41c548",
+    "tests/test_champion_refit_control.py": "e9f58328247da23e184319a33b0460c6ad69b0e87de8493297e53cd03173797c",
+    "tests/test_champion_refit_execution.py": "988af43ca9f4a891d2feedd3480bc75752b021a14f9b0a434c7cb1dfd911718c",
+    "tests/test_dataset_digests.py": "d51a6e257eb14be01f41840808471a4c43187892bcd05d1f093a5813aca6d5e1",
+    "tests/test_object_store.py": "e1d5e2e40c43f995a91cc70b371fe5d443a47d66592434a60a88463146b77842",
+    "tests/test_phase1_reconciler.py": "5219853a64b4751971b25da8fee709a14afea1dacf5c27530380d68793b3b896",
+    "tests/test_phase2_upload_drivers.py": "f1e136561f3b993453a0ca5c17aa08f7db010ffd2450da224e37caafcf3cb018",
+    "tests/test_phase2_upload_services.py": "320495836ee3d2e29ec4d5f58e18c36803697ec5239cc8b19df36d24530fa077",
+    "tests/test_versioned_streams.py": "6d3396b839228f659ca000f68b8ebbd53eeb71d430545af0b367fc32d8e40322"
+  },
+  "artifact_sha256": {
+    ".unlazy/phase1-versioned-streams/focused.log": "927c3413913c65586b1983f061b9a9c40043dd17980976725d9a8c11389d6a66",
+    ".unlazy/phase1-versioned-streams/lint.log": "0be7adce665690956090205e08186f7efd9939d7fe606e4a0d117c570ab71599",
+    ".unlazy/phase1-versioned-streams/regressions-report.json": "a8484177838f87e0cc2556bafedba1e794e85caaae6ac1e833eafb9c819b0540",
+    ".unlazy/phase1-versioned-streams/focused-report.json": "df17885474b606274ad52221be9c613bd30c8eda68a3e9ced2fdf56395f97382",
+    ".unlazy/phase1-versioned-streams/gates-initial.log": "38e44e0ea175319ea365d14eb3a21631201f0e6944ae239784fc12b519de15ae",
+    ".unlazy/phase1-versioned-streams/native-state.json": "d633e0e14c39a1489f507e5444bc5f2252b669929197799222f8133567bd849b",
+    ".unlazy/phase1-versioned-streams/gates-reviewed.log": "3d721692e5a91c1ac0d242a743e1b625ba5cd651e32b8dc1d53d07d56f9e6c07",
+    ".unlazy/phase1-versioned-streams/focused.xml": "ebf51de489f9e23c5debe2be8e00af6491b4013ac3ea64e771311e1a53eadcd8",
+    ".unlazy/phase1-versioned-streams/regressions.log": "42fd8e8858b39e09771224aa1d98d789dda188e4b49af7d325cfc8ca80fcf080",
+    ".unlazy/phase1-versioned-streams/native.log": "50c1530a3d0e709d4719907bf30536cc7b824b89720972763810a6f0801b44d4",
+    ".unlazy/phase1-versioned-streams/regressions.xml": "74ae1c29cfb8b84c97e477f1f46816fc6f25da803d47098edd40f573e07a7b44",
+    ".unlazy/phase1-versioned-streams/source-sha256.json": "c89ce85cb0b78b3048751230f355697f0cc14445030dbdb93a4c04283d816c25"
+  },
+  "phase_ledger": {
+    "requirements": 36,
+    "verified": 1,
+    "open": 35
+  }
+}

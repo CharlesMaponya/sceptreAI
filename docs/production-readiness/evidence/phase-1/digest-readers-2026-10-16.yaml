@@ -1,0 +1,159 @@
+{
+  "verified_at": "2026-10-16T05:42:20.667175+00:00",
+  "status": "verified_increment",
+  "phase_complete": false,
+  "requirement": "P1-W16",
+  "changes": [
+    "Shared raw DatasetVersion policy requires exact sha256/byte_stream, verified status, canonical64lowerhex digest, aware verification timestamp and known nonnegative integer byte size. Missing/legacy/unsupported provenance fails closed without rewriting historical rows.",
+    "Policy reaches training estimate/launch lookup, analysis admission, feature-contract creation, profiling/preview admission, local partitioned profile startup, training/analysis worker startup, raw splitting and prepared-profile lineage. Drift validates current and reference versions before sampling.",
+    "Local full-memory profiling/training-analysis readers compare actual content size and SHA256 before parsing. Digest failures escape the old empty-profile warning fallback. The splitter counts streamed bytes as well as comparing provider size and digest, including misleading-header/truncated-body controls.",
+    "Offline inference now requires a ready upload with canonical expected/observed SHA256, allowed scanner result, aware verification time and known size before storage or upstream work. Invalid workflow evidence yields409. The raw-dataset domain handler returns stable409 dataset_digest_unverified without object paths.",
+    "Inventory schema v2 reports sizes/scanner results and flags all new metadata prerequisites, including naive/missing verification times. Historical v1 reports are retained as prior evidence, not relabeled.",
+    "Valid synthetic fixtures now declare provenance explicitly; fixtures with actual stored bytes use matching hashes/sizes. No global policy bypass or local-environment exception was added. A preexisting gateway test assertion was corrected to require both legacy enum name and canonical value in the already-existing StoredEnum deployment filter."
+  ],
+  "verification": {
+    "focused": {
+      "tests": 101,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "regressions": {
+      "tests": 820,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "counts_overlap": true,
+  "regression_cases_by_module": {
+    "tests.test_dataset_digests": 34,
+    "tests.test_datasets_service": 4,
+    "tests.test_digest_inventory": 18,
+    "tests.test_inference_gateway": 49,
+    "tests.test_phase2_upload_services": 58,
+    "tests.test_project_management_integration": 29,
+    "tests.test_profiling": 24,
+    "tests.test_profiling_edge_contracts": 37,
+    "tests.test_profiling_jobs": 24,
+    "tests.test_local_profiling_delivery": 13,
+    "tests.test_phase3_preparation": 47,
+    "tests.test_training_pipeline_runtime": 29,
+    "tests.test_training_pipeline_edge_contracts": 10,
+    "tests.test_training_analysis_edge_contracts": 24,
+    "tests.test_training_service_runtime": 86,
+    "tests.test_validation": 22,
+    "tests.test_selected_identity": 44,
+    "tests.test_typed_feature_contracts": 71,
+    "tests.test_estimator_overrides": 63,
+    "tests.test_phase1_postgres_contracts": 38,
+    "tests.test_training_parent_lease": 20,
+    "tests.test_training_action_replay": 14,
+    "tests.test_catalog_binding": 37,
+    "tests.test_replay_authorization": 24,
+    "tests.test_api_import_boundary": 1
+  },
+  "native_metadata_policy": {
+    "accepted": 13,
+    "rejected_controls": 13,
+    "read_only": true
+  },
+  "native_scope": "The exact current helper source executed in a separate Python process in the existing QA API Pod against13 actual repaired records, with13 in-memory unverified copies as negative controls and read-only SQL. This is helper/runtime metadata qualification, not deployed HTTP endpoints or a newly built application image.",
+  "native_inventory": {
+    "header": {
+      "database": "refit",
+      "isolation": "repeatable read",
+      "read_only": "on",
+      "schema": "dataset-digest-inventory-v2",
+      "snapshot": "1850:1850:",
+      "type": "header"
+    },
+    "summary": {
+      "complete": true,
+      "counts": {
+        "dataset_version": 13,
+        "dataset_version_requires_review": 0,
+        "upload": 0,
+        "upload_requires_review": 0
+      },
+      "resource_records_sha256": "32828e7edcc339d53d7097cc85b57f7f136d6dcc5d00ff1b497b7d616715143e",
+      "review_reasons": {},
+      "type": "summary"
+    },
+    "qa_unchanged": true,
+    "report_sha256": "d3f9ac71b8157a252ae52b623a45f6305b907cc6309aaa111884c21e66806c36"
+  },
+  "qa_mutations": "No QA database row changes, object reads/writes/deletes, Pod restarts or rollouts in this scope; Pod/PVC UID/phase lists match before/after. Related tests use a separate local PostgreSQL test database and bounded local Ray/embedded fixtures.",
+  "review_findings": [
+    "The initial broader run exposed older fixtures that lacked valid provenance. Fixes establish explicit positive controls; legacy/unverified cases remain negative. Subsequent693-case base regression passed and is retained under before-inventory-and-gateway.",
+    "Consumer review found drift reference and ready-upload inference boundaries plus inventory size/scanner discrepancies; these were fixed before final qualification. A newly included gateway test assumed a single deployment enum bind, while existing compatibility logic uses both stored spellings. Its assertion now tests the exact intended set; production filtering was preserved.",
+    "Full object immutability/TOCTOU is not inferred from verified metadata or repeated stat calls. Distributed/prepared readers and prefix previews need separately qualified provider/version/grant bindings. Full-memory compatibility readers retain their existing buffering behavior."
+  ],
+  "limits": [
+    "No production legacy-manifest data was migrated or quarantined. QA has0 upload sessions. A controlled production inventory/rescan/new-version/quarantine migration and previous-release qualification remain required; immutable old hashes/snapshots are unchanged.",
+    "The latest source changes have local Python/PostgreSQL/Ray regression coverage and the stated helper-only QA execution. Prior normal immutable API/CPU runtime-image proof predates these changes; no new image build, shared deployment, full HTTP/DB/MLflow/provider journey or failure campaign is claimed.",
+    "Provider-native version pinning, protected delegated/child/predecessor grants, production Train/GPU and complete recovery remain open. Metadata verification alone cannot prove subsequent provider bytes immutable.",
+    "The45GB database migration target remains untested due storage capacity plus cluster reserve/overhead; largest-table row targets remain unspecified. Seven original QA objects and the original abandoned preservation gate remain unresolved. Phase1 stays1Verified/35Open."
+  ],
+  "source_sha256": {
+    "apps/api/automl_api/services/dataset_digests.py": "73e48cfe96c32442110009e1b1c98e29936fa313277705d70785f9b21a1fa302",
+    "apps/api/automl_api/main.py": "624ea14aef28a5bbdcf98b904237cc8d82ea26bc3d03d8d0954a710c4c0c4858",
+    "apps/api/automl_api/services/training.py": "ca989b1905b338cb7a5910c351c03217de94bd8577d93cc361cba138be91f668",
+    "apps/api/automl_api/services/profiling.py": "701c3ffd5484669079000695fe9609b26c4111d00f8051df3460af56d98182b9",
+    "apps/api/automl_api/services/profiling_jobs.py": "8cebe22972a06067af129df0291dcc0ee342629a5508a0b2d17299645e37251a",
+    "apps/api/automl_api/services/feature_contracts.py": "8883590c1bea73ae4985d78927f52294bb68eb3014a95db36d39454a65cf519b",
+    "apps/api/automl_api/services/validation.py": "21c7c3c095f3256378c064e8c7af058a104055fcc554dd1a8aef3f866b29ccfa",
+    "apps/api/automl_api/services/uploads.py": "b5b964eed03372ce3d4f23df395311af2970c0b8b23df19891b0b26a689080e6",
+    "apps/api/automl_api/services/inference_gateway.py": "14621b70e700a8c5b611b1bc213aff240cc1b115f3280bfe4fed723e8bfe7916",
+    "apps/api/automl_api/preparation_worker.py": "0c0c4c00dd16084a1fcfd0aadb16473a35858db02eaece929e1978bde4528d50",
+    "apps/api/automl_api/training/pipeline.py": "028aaf670d632d8c99ac25e079870131a73e5762f06a00aab217209b566a0e65",
+    "apps/api/automl_api/training/analysis.py": "05a2eb1eb8f455ed2e66bcd8ca9f4a52a311963487903fcf14477b6dc2ab1534",
+    "scripts/inventory_dataset_digests.py": "7864a7e49333dab39a3e3cda90751e6fb235ee43257490a5c62ffe5a47484d3f",
+    "tests/digest_fixtures.py": "9e9fbe0534c1f9166989c25d825d4b1a78dfcd5fa2bca1168bf4d3aaece808d1",
+    "tests/test_dataset_digests.py": "d51a6e257eb14be01f41840808471a4c43187892bcd05d1f093a5813aca6d5e1",
+    "tests/test_selected_identity.py": "1584fc355af23fba0df2485024411f6ddb7caa7c5e27e31811d535df2258cf7e",
+    "tests/test_local_profiling_delivery.py": "9712f74824d0cd9734c14920cc99e3fd83f27ab459d75edd2c4b0280bd84c786",
+    "tests/test_project_management_integration.py": "a748e98d0986c4b2fd428e5194379e8918865e338c4392d84cda918143516eb8",
+    "tests/test_training_service_runtime.py": "973562043faae91d0253753cad1c3dbcb68fb0ee6d0c038a1387a64bf4afe652",
+    "tests/test_profiling_jobs.py": "dafbef4dcb5f665167a81357a49491e4cf545935c5060be61ef1b715e13dec65",
+    "tests/test_training_pipeline_runtime.py": "2583375252a3e2f2334ed4b4a47eb219cbb1cdc55d9683d58329565c267d9842",
+    "tests/test_training_analysis_edge_contracts.py": "6c9c62a4fc30106550753e026737147ce3169335ef7d9b2f42cdaafc99584a2d",
+    "tests/test_profiling_edge_contracts.py": "e22fa9edce49b43cdcd10f7d27cff282ac8acfe03bacee7867cb15d2cf6112c8",
+    "tests/test_phase3_preparation.py": "0140afa7747b2bf07b0d1b4d8b14aa2de539f79ae4bea197199baf36dccef7c3",
+    "tests/test_validation.py": "95301332ea8af3b5b6e44a30236fa589437aa4b2253400e2c5521b52225b020a",
+    "tests/test_catalog_binding.py": "11c232368be33fa77d7d7e8496566b3254d6b44b66b2686a75103bac29d2195b",
+    "tests/test_digest_inventory.py": "ffe37b9befa5a6aa4f78e91374405aa9140c7c23b9272539fbb129644efd03e1",
+    "tests/test_inference_gateway.py": "79094175b0e63b33170303a3d11b6c17ed1870c88061e19632660a333db88735",
+    "docs/production-readiness/phase-1-digest-migration.md": "2dcb3e114ffd69f55e36eb23e9772ca96a70167dfabe00f50d4e0acb21b0522d",
+    ".unlazy/phase1-digest-readers/check.py": "62ba3d028fb856348d6a59a586ad14061c9be84a33c7154f05bcd2ac36cc4ccc",
+    ".unlazy/phase1-digest-readers/native_metadata.py": "0ba6a349d4f993b8c29d0a2368e013e532f549ba73923d240cc2775b2bbc7ff9",
+    ".unlazy/phase1-digest-readers/native_inventory_v2.py": "b6e77d63c9913ff246539648e60e70722ad8e14f4175a5c408eeaa5e052f60bf"
+  },
+  "artifact_sha256": {
+    ".unlazy/phase1-digest-readers/focused.log": "49531c3c596626ed59f6abacb801d6102872ab529fcac135f91030c67b1e9315",
+    ".unlazy/phase1-digest-readers/lint.log": "d8c5f0d6083c52c45dd04475559300a8c93fadf01c5e33d73716ac71a3f3b59e",
+    ".unlazy/phase1-digest-readers/regressions-report.json": "ab10f6fdddb9d2b9deb9958785b843d5cd3c9e521e44d968733b2440f144904b",
+    ".unlazy/phase1-digest-readers/focused-report.json": "2b8a106cdf3275f06abdb5cb22722817bd01b01931697b99692fae41233cf150",
+    ".unlazy/phase1-digest-readers/gates-reviewed-final.log": "4b26b9027133540e50409196875f095e068c75fefc71e1f02654c8c7c39e1ccf",
+    ".unlazy/phase1-digest-readers/qa-inventory-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    ".unlazy/phase1-digest-readers/gates-initial.log": "5c5195c8d9a42975d672a12ef5b624975fba27092bb69af21c1ad6375f630b9e",
+    ".unlazy/phase1-digest-readers/qa-state.json": "866740e7f1083844f9b88ee7d6f26fe4a209ab759cd9700b935078d73c3fffe4",
+    ".unlazy/phase1-digest-readers/gates-complete-consumers.log": "d95f4fdf1cc0358521693f0924861abccf73076dc5b880e1dd8115a7fb7374c5",
+    ".unlazy/phase1-digest-readers/focused.xml": "da47214f573679481d06530a20135677b428d7394601ee5103a6049df5b63f5a",
+    ".unlazy/phase1-digest-readers/native-metadata.log": "005231f4e49f6b707edf1b89dafc9d135ed0c0ba5f3185a0d95596c5dbc5bc07",
+    ".unlazy/phase1-digest-readers/native-metadata-driver.log": "d2632a258896847e71da95ca1bf7f24f17ac1f328cf167278973273c2330f3a0",
+    ".unlazy/phase1-digest-readers/regressions.log": "eb647dfed112ea02e444a1bf0825f1451afea777a13aa18d89e3f69bfbd3ccd1",
+    ".unlazy/phase1-digest-readers/native-metadata-state.json": "b87fecb4fa03874f40893bc775a367165dc9915dff0ecfb0fe94486a67e6d4b1",
+    ".unlazy/phase1-digest-readers/regressions.xml": "e56a3066124384c5ac8e5d7b2fff72c30509dda2f86fb29c553b50975ad5c1f7",
+    ".unlazy/phase1-digest-readers/native-inventory-driver.log": "29ec60647ac7b1173468a21765615064024ec6a253cd83d3ba72f204238e63b4",
+    ".unlazy/phase1-digest-readers/source-sha256.json": "ec93a8e43a1aa540f05d90aea8fc1712e9ecf6287967f28ec1a820a6df2b50df",
+    ".unlazy/phase1-digest-readers/gates-final.log": "00b31a044aa386ce852fc3ea82058e37029cb0a041fb3b950cd70f18d326100b",
+    ".unlazy/phase1-digest-readers/gates-fixtures.log": "0e421e7a70096c4c252f8c50b97d4e586b82c65e884f7cd23a9ddeb96bf2db30",
+    ".unlazy/phase1-digest-readers/native-metadata-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "phase_ledger": {
+    "requirements": 36,
+    "verified": 1,
+    "open": 35
+  }
+}

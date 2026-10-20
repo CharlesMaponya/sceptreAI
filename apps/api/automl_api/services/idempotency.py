@@ -21,6 +21,18 @@ from automl_api.services.workflow_state import (
 )
 
 
+def replay_response(command) -> dict[str, Any]:
+    if not command.response_payload and command.response_status is None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "idempotency_response_pending",
+                "message": "The original request has no durable response yet.",
+            },
+        )
+    return command.response_payload
+
+
 def durable_mutation[ResponseModel: BaseModel](
     db: Session,
     user: User,
@@ -65,8 +77,8 @@ def durable_mutation[ResponseModel: BaseModel](
             status_code=409,
             detail={"code": "idempotency_key_reused", "message": str(exc)},
         ) from exc
-    if replayed and command.response_payload:
-        return response_model.model_validate(command.response_payload)
+    if replayed:
+        return response_model.model_validate(replay_response(command))
 
     result = execute()
     command.response_status = response_status

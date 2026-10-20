@@ -1,0 +1,141 @@
+{
+  "status": "verified_scoped_command_replay_response_fix",
+  "phase_complete": false,
+  "verified_at": "2026-10-20T07:35:13.125983+00:00",
+  "connected_tests": 388,
+  "overlapping_focused_tests": 23,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "pre_fix_call_phase_failures": 3,
+  "two_connection_cached_command_refresh_verified": true,
+  "missing_response_replay_cannot_execute_callback": true,
+  "confirmed_empty_response_and_legacy_nonempty_response_replay": true,
+  "pending_response_can_recover_when_original_response_is_committed": true,
+  "identical_and_conflicting_real_postgres_insert_races_verified": true,
+  "shared_response_validation_callers": [
+    [
+      "apps/api/automl_api/services/idempotency.py",
+      "durable_mutation"
+    ],
+    [
+      "apps/api/automl_api/api/routes/contracts.py",
+      "_mutation"
+    ],
+    [
+      "apps/api/automl_api/api/routes/contracts.py",
+      "post_scope_member"
+    ],
+    [
+      "apps/api/automl_api/services/training.py",
+      "estimate_training_run"
+    ],
+    [
+      "apps/api/automl_api/services/training.py",
+      "launch_training_run"
+    ],
+    [
+      "apps/api/automl_api/services/training.py",
+      "_replay_derived_training_launch"
+    ]
+  ],
+  "route_family_header_and_dispatch_inventory": [
+    {
+      "family": "upload_completion",
+      "source": "apps/api/automl_api/api/routes/datasets.py",
+      "handler": "complete_resumable_upload",
+      "operation": "dataset.upload.complete.direct",
+      "required_bounded_header": true,
+      "dispatch_forwards_key": true
+    },
+    {
+      "family": "training_launch",
+      "source": "apps/api/automl_api/api/routes/training.py",
+      "handler": "launch",
+      "operation": "training.launch",
+      "required_bounded_header": true,
+      "dispatch_forwards_key": true
+    },
+    {
+      "family": "validation",
+      "source": "apps/api/automl_api/api/routes/validation.py",
+      "handler": "validate_model",
+      "operation": "validation.launch",
+      "required_bounded_header": true,
+      "dispatch_forwards_key": true
+    },
+    {
+      "family": "deployment",
+      "source": "apps/api/automl_api/api/routes/operations.py",
+      "handler": "deploy",
+      "operation": "deployment.launch",
+      "required_bounded_header": true,
+      "dispatch_forwards_key": true
+    },
+    {
+      "family": "governance",
+      "source": "apps/api/automl_api/api/routes/monitoring.py",
+      "handler": "create_governance_report",
+      "operation": "governance.report.generate",
+      "required_bounded_header": true,
+      "dispatch_forwards_key": true
+    },
+    {
+      "family": "monitoring_ingestion",
+      "source": "apps/api/automl_api/api/routes/monitoring.py",
+      "handler": "create_deployment_metric",
+      "operation": "monitoring.metric.ingest",
+      "required_bounded_header": true,
+      "dispatch_forwards_key": true
+    },
+    {
+      "family": "cleanup",
+      "source": "apps/api/automl_api/api/routes/operations.py",
+      "handler": "cleanup",
+      "operation": "cleanup.execute",
+      "required_bounded_header": true,
+      "dispatch_forwards_key": true
+    }
+  ],
+  "header_annotation_framework_cases": 22,
+  "business_callback_runtime_native_qualification": false,
+  "replay_response_branch_coverage": {
+    "covered": 2,
+    "missing": 0
+  },
+  "pre_fix_source_sha256": {
+    "apps/api/automl_api/services/workflow_state.py": "ae24c1f5154d0a3167be42cf1f6445571c25cb993269182fde74032bd704d8a1",
+    "apps/api/automl_api/services/idempotency.py": "504a522f23fe9c6647be0f1889e6868966798a597edcca0c687f7abeef0026a2",
+    "apps/api/automl_api/services/training.py": "c867b466a97cf27e473c91316a66b06dfc37958ca48141d49b2335c2238aa7cf",
+    "apps/api/automl_api/api/routes/contracts.py": "c53a1b517f606ca0b9c3a3cbad917f2e40709f0890913186bfe685d8433dd352"
+  },
+  "changed_source_sha256": {
+    "apps/api/automl_api/services/workflow_state.py": "54771ab8e2fbf229ad210bbde4c808b6466c569467e2a8f53c7b5e98164160bf",
+    "apps/api/automl_api/services/idempotency.py": "c923e202584c9884eebe30162e0933e5cdb8d1f6086d1d1b4b02d7f1fca3acf4",
+    "apps/api/automl_api/services/training.py": "6401202965733c1146e5db7956b158a9edae882d033b6950bef6f36a83d0691d",
+    "apps/api/automl_api/api/routes/contracts.py": "ff515ab980d831246a4835fcf3ebabd341cf51d8ecaabefbdedad888c9fc3fb6",
+    "tests/test_command_response_replay.py": "c4d5a442ee4ef65a5c3114043d8963ed96ed587a47b59e8dbdbcddc02725d4bc"
+  },
+  "tested_input_count": 491,
+  "artifact_sha256": {
+    ".unlazy/phase1-command-replay/source-sha256.json": "29ab251dbaf591f6168a798435db13f348caf6631abfda0ec7857b19bdb1062a",
+    ".unlazy/phase1-command-replay/connected.xml": "15040c70020186a2e7fdb816e100fcdc8810e41f6b15eb379b4135bad4cab201",
+    ".unlazy/phase1-command-replay/connected-state.json": "90f71a55349d1ea48605a491229752ef99093660df2e1531ab523ad436401c44",
+    ".unlazy/phase1-command-replay/coverage.json": "65c00a936f440b547c22006d1d283c55f14260e3d06e7a9e5fb85f9bc7c9df8b",
+    ".unlazy/phase1-command-replay/reproduction.xml": "0ba94c9c7b6a18f13bd94afe8c535f4075b1cb3b0a994b18c14c520960398722",
+    ".unlazy/phase1-command-replay/run.py": "94929b5dd7fea23dee2de40828b4e4af5ab8ddd1cf175c9e3587126893cdd388",
+    ".unlazy/phase1-command-replay/audit.py": "f026a55b116d5d3f295a530c458527beee0ef77d47273f4c50d48d46aa0e5af7",
+    ".unlazy/phase1-command-replay/lint.log": "cd7f41cf1ad5ba8b6263217889865f18d2b85df5ad631a05d6d321f51fd1b7b2"
+  },
+  "coverage_original_sha256": "d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9",
+  "whole_phase_verified": 2,
+  "whole_phase_open": 34,
+  "full_backend_suite_or_global_coverage_requalified": false,
+  "native_worker_or_complete_workflow_qualified": false,
+  "unknown_legacy_command_reconciliation_complete": false,
+  "production_sized_or_prior_binary_migration_qualified": false,
+  "migration_qualification_ceiling_bytes": 45000000000,
+  "shared_preservation_qualified": false,
+  "historical_missing_qa_objects": 7,
+  "abandoned_handoff": "phase1-deletion:G7"
+}

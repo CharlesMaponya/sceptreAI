@@ -10,6 +10,7 @@ import pandas as pd
 import pytest
 from automl_api.models.enums import RunKind, RunStatus, TaskType
 from automl_api.training import analysis
+from digest_fixtures import verified_raw_version
 
 
 class _Db:
@@ -57,7 +58,7 @@ def _run(kind: RunKind, **overrides: object) -> SimpleNamespace:
 
 def test_execute_analysis_run_dispatches_and_persists(monkeypatch: pytest.MonkeyPatch) -> None:
     run = _run(RunKind.VALIDATION)
-    version = SimpleNamespace()
+    version = verified_raw_version()
     db = _Db(
         {
             (analysis.ModelRun, run.id): run,
@@ -96,7 +97,7 @@ def test_execute_analysis_run_marks_unsupported_kind_failed(
     db = _Db(
         {
             (analysis.ModelRun, run.id): run,
-            (analysis.DatasetVersion, run.dataset_version_id): object(),
+            (analysis.DatasetVersion, run.dataset_version_id): verified_raw_version(),
         }
     )
     monkeypatch.setattr(analysis, "get_session_factory", lambda: lambda: db)
@@ -154,13 +155,13 @@ def test_drift_execution_validates_reference_and_common_features(
     run = _run(
         RunKind.DRIFT, params={"reference_dataset_version_id": str(reference_id), "max_rows": 1}
     )
-    current = SimpleNamespace(
+    current = verified_raw_version(
         id=uuid.uuid4(), object_uri="current.csv", original_filename="current.csv"
     )
     with pytest.raises(ValueError, match="required"):
         analysis._execute_drift(_run(RunKind.DRIFT), current)
 
-    reference = SimpleNamespace(id=reference_id, project_id=run.project_id)
+    reference = verified_raw_version(id=reference_id, project_id=run.project_id)
     db = _Db({(analysis.DatasetVersion, reference_id): reference})
     monkeypatch.setattr(analysis, "get_session_factory", lambda: lambda: db)
     frames = {
@@ -338,7 +339,7 @@ def test_execute_analysis_dispatches_remaining_kinds(
     monkeypatch: pytest.MonkeyPatch, kind: RunKind, handler: str
 ) -> None:
     run = _run(kind)
-    version = object()
+    version = verified_raw_version()
     db = _Db(
         {
             (analysis.ModelRun, run.id): run,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections import Counter
@@ -233,6 +234,103 @@ def _foreign_key_options(options) -> tuple:
     )
 
 
+def _trial_parent_trigger_differences(connection):
+    functions = {
+        "validate_trial_attempt_run_parent": (
+            "5add3220cf4dd5c5d5bafaeb701cee69ca9d0fc3866c08eda24b4a479ee12698"
+        ),
+        "preserve_trial_attempt_ownership": (
+            "ee4b165952ec230a92f52350fc878b9b140ff38e41e00396841eb80b59539b2f"
+        ),
+        "validate_attempt_predecessor": (
+            "a462b3fb2e448cdb0c87846ad6c2f3585deadfea3bab870f8bc9a9d6c802c0b0"
+        ),
+    }
+    expected = {
+        "trg_validate_attempt_predecessor": (
+            "workflow_attempts",
+            21,
+            {
+                "id",
+                "project_id",
+                "stage",
+                "logical_key",
+                "generation",
+                "dataset_version_id",
+                "model_run_id",
+                "trial_id",
+                "scope_id",
+                "conformance_campaign_id",
+                "predecessor_attempt_id",
+            },
+            "validate_attempt_predecessor",
+        ),
+        "trg_validate_trial_attempt_run_parent": (
+            "workflow_attempts",
+            23,
+            {"stage", "project_id", "model_run_id", "run_attempt_id", "trial_id"},
+            "validate_trial_attempt_run_parent",
+        ),
+        "trg_preserve_trial_attempt_ownership": (
+            "training_trials",
+            19,
+            {"project_id", "candidate_id"},
+            "preserve_trial_attempt_ownership",
+        ),
+        "trg_preserve_candidate_attempt_ownership": (
+            "training_candidates",
+            19,
+            {"project_id", "model_run_id"},
+            "preserve_trial_attempt_ownership",
+        ),
+    }
+    rows = (
+        connection.execute(
+            text("""
+        SELECT t.tgname, r.relname, t.tgtype, t.tgenabled, t.tgnargs,
+               t.tgqual IS NULL AS unconditional, p.proname, p.prosrc,
+               p.prosecdef, p.proconfig, p.pronargs, p.provolatile, l.lanname,
+               p.prorettype = 'pg_catalog.trigger'::regtype AS returns_trigger,
+               ARRAY(SELECT a.attname FROM pg_catalog.pg_attribute a
+                     WHERE a.attrelid = r.oid AND a.attnum = ANY(t.tgattr)) AS columns
+        FROM pg_catalog.pg_trigger t
+        JOIN pg_catalog.pg_class r ON r.oid = t.tgrelid
+        JOIN pg_catalog.pg_proc p ON p.oid = t.tgfoid
+        JOIN pg_catalog.pg_language l ON l.oid = p.prolang
+        WHERE NOT t.tgisinternal AND pg_catalog.pg_table_is_visible(r.oid)
+          AND t.tgname = ANY(:names)
+    """),
+            {"names": list(expected)},
+        )
+        .mappings()
+        .all()
+    )
+    found = {row["tgname"]: row for row in rows}
+    differences = []
+    for name, (table, events, columns, function) in expected.items():
+        row = found.get(name)
+        if row is None:
+            differences.append(f"{table}: missing critical trigger {name}")
+        elif (
+            row["relname"] != table
+            or row["tgtype"] != events
+            or row["tgenabled"] != "O"
+            or row["tgnargs"] != 0
+            or not row["unconditional"]
+            or set(row["columns"]) != columns
+            or row["proname"] != function
+            or row["prosecdef"]
+            or row["proconfig"] is not None
+            or row["pronargs"] != 0
+            or row["provolatile"] != "v"
+            or row["lanname"] != "plpgsql"
+            or not row["returns_trigger"]
+            or hashlib.sha256(row["prosrc"].encode()).hexdigest() != functions[function]
+        ):
+            differences.append(f"{table}: critical trigger {name} differs")
+    return differences
+
+
 def schema_differences(engine) -> list[str]:
     if isinstance(engine, Engine):
         with engine.connect() as connection:
@@ -454,6 +552,11 @@ def schema_differences(engine) -> list[str]:
                 f"found={actual_checks!r}"
             )
 
+    if (
+        engine.dialect.name == "postgresql"
+        and "workflow_attempts" in expected_tables & actual_tables
+    ):
+        differences.extend(_trial_parent_trigger_differences(engine))
     return differences
 
 

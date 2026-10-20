@@ -1,0 +1,58 @@
+{
+  "status": "audited_complete_backend_run",
+  "phase_complete": false,
+  "verified_at": "2026-10-20T13:45:36.785117+00:00",
+  "collected": 3953,
+  "passed": 3953,
+  "failures": [],
+  "errors": [],
+  "skipped": [],
+  "all_backend_tests_pass": true,
+  "independent_coverage_thresholds_pass": false,
+  "coverage": {
+    "statements": {
+      "covered": 21907,
+      "total": 23123,
+      "percent": 94.74116680361544
+    },
+    "branches": {
+      "covered": 5946,
+      "total": 6862,
+      "percent": 86.65112212183037
+    }
+  },
+  "required_each_dimension_percent": 90.01,
+  "schema_head_rechecked": "0017_upload_session_project",
+  "post_suite_schema_parity": true,
+  "repository_ruff_pass": true,
+  "tested_input_count": 491,
+  "coverage_original_sha256": "d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9",
+  "artifact_sha256": {
+    ".unlazy/phase1-fixture-backend/backend-state.json": "bbbcb9041f43fb5266a5c37f510f9e0125fc15bd4c7d44e9fb4ffd46c825628e",
+    ".unlazy/phase1-fixture-backend/source-sha256.json": "4444b6588b41a25af3aaf261ecfa0726e4253823a164a6f3acec1e8990efe373",
+    ".unlazy/phase1-fixture-backend/backend.log": "8e72001aa72f2f044b3f461810eea7263729a1d0ebc1df574d73ebcadf2420c4",
+    ".unlazy/phase1-fixture-backend/backend.xml": "fcec62b79472dad95349baae46b08d15549e4ecd2e1d7fc929825465085a38ae",
+    ".unlazy/phase1-fixture-backend/collect.log": "95993bcea604638f033cef4d5e32809582a19d8bb6a0de0a98c9cc4ea9bbd799",
+    ".unlazy/phase1-fixture-backend/coverage.json": "64d5b7119a94fd2b530d57914010118b0d7714f7b89c73f9c8d51562b6643223",
+    ".unlazy/phase1-fixture-backend/coverage-threshold.log": "fa7c23f4769a644bc771d21ba29022446898ada34565c12aa0f6b87cecaea658",
+    ".unlazy/phase1-fixture-backend/generate_production_task_index.log": "00c8dcf3b37f2eac6114a4c21f9f742c56e354ada6672f1b15189664820d92a5",
+    ".unlazy/phase1-fixture-backend/validate_phase2_evidence.log": "a414947a0f058a04ee8ca14e4023b0661f0892a6cb81c082ba87469dd71ed9e9",
+    ".unlazy/phase1-fixture-backend/check_no_dask_runtime.log": "dffd5dbca119ddf99cc5a088942e02d1127f7108463f4627161d74775ec7e554",
+    ".unlazy/phase1-fixture-backend/run.py": "fdef207cbdaaec771852e5191b44f94794337f1a2c0a6ad85dc4bf7640257385",
+    ".unlazy/phase1-fixture-backend/audit.py": "03ac0347338afe3512ef4faf812e88f1a1fb156b42829d2aa9d566005a8b5cea",
+    ".unlazy/phase1-fixture-backend/toolchain.json": "74326659b9422921066a1f6a462a53940a1b71f4a51e15a2640d2b1f5d57ff83",
+    ".unlazy/phase1-fixture-backend/lint.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+  },
+  "minimum_free_bytes": 45017645056,
+  "reserve_bytes": 43500000000,
+  "isolated_database": "automl_branch_0e6a232bc7_tests",
+  "live_provider_or_kubernetes_tests_enabled": false,
+  "whole_phase_verified": 2,
+  "whole_phase_open": 34,
+  "native_worker_release_image_or_complete_workflow_qualified": false,
+  "production_sized_or_prior_binary_migration_qualified": false,
+  "migration_qualification_ceiling_bytes": 45000000000,
+  "shared_preservation_qualified": false,
+  "historical_missing_qa_objects": 7,
+  "abandoned_handoff": "phase1-deletion:G7"
+}

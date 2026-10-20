@@ -18,6 +18,7 @@ from automl_api.services.champion_planning import plan_scope_refit
 from automl_api.services.evaluation_reconciler import reconcile_evaluation_jobs_once
 from automl_api.services.kubernetes_training import KubernetesTrainingClient
 from automl_api.services.profiling_jobs import resume_incomplete_profiling_jobs
+from automl_api.services.provider_import_jobs import reconcile_provider_imports_once
 from automl_api.services.reconciler import (
     observe_analysis_attempts,
     observe_analysis_jobs,
@@ -242,6 +243,12 @@ def main() -> None:
         except Exception as exc:
             LOGGER.error(
                 "evaluation observation unavailable", extra={"error_type": type(exc).__name__}
+            )
+        try:
+            reconcile_provider_imports_once(session_factory, k8s)
+        except Exception as exc:
+            LOGGER.error(
+                "provider verification unavailable", extra={"error_type": type(exc).__name__}
             )
         try:
             reconcile_tracking_once(session_factory)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import uuid
 from contextlib import contextmanager
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
@@ -53,17 +54,24 @@ class FakeKubernetes:
         if name in self.objects[kind]:
             raise ApiException(status=409)
         self.objects[kind][name] = deepcopy(body)
+        self.objects[kind][name]["metadata"].setdefault("namespace", namespace)
+        self.objects[kind][name]["metadata"].setdefault("uid", str(uuid.uuid4()))
         if kind == "job" and self.lose_job_reply:
             self.lose_job_reply = False
             raise ApiException(status=500, reason="Synthetic lost creation acknowledgement")
 
-    def read(self, kind, name, namespace):
-        if name not in self.objects[kind]:
+    def read(self, kind, name, namespace, **_kwargs):
+        if (
+            name not in self.objects[kind]
+            or self.objects[kind][name]["metadata"]["namespace"] != namespace
+        ):
             raise ApiException(status=404)
-        body = self.objects[kind][name]
+        body = deepcopy(self.objects[kind][name])
         return SimpleNamespace(
             metadata=SimpleNamespace(
                 name=name,
+                namespace=namespace,
+                uid=body["metadata"].get("uid"),
                 labels=body["metadata"].get("labels"),
                 annotations=body["metadata"].get("annotations"),
             ),
@@ -76,6 +84,9 @@ class FakeKubernetes:
     def delete(self, kind, name, namespace, **_kwargs):
         if name not in self.objects[kind]:
             raise ApiException(status=404)
+        body = _kwargs.get("body", {})
+        if body.get("preconditions", {}).get("uid") != self.objects[kind][name]["metadata"]["uid"]:
+            raise ApiException(status=409)
         del self.objects[kind][name]
 
     def list(self, kind, namespace, **_kwargs):
@@ -197,6 +208,11 @@ def test_lost_refit_fails_before_planner_creates_one_replacement(jobs_case, fail
     refit_jobs.reconcile_refit_jobs_once(factory, k8s)
     db.refresh(attempt)
     assert attempt.status == AttemptStatus.FAILED
+    assert plan_scope_refit(db, scope.id, store) is None
+    for _ in range(2):
+        refit_jobs.reconcile_refit_jobs_once(factory, k8s)
+    db.refresh(attempt)
+    assert attempt.cleanup_state == "complete"
     replacement = plan_scope_refit(db, scope.id, store)
     assert replacement.generation == 2 and replacement.predecessor_attempt_id == attempt.id
 
@@ -230,6 +246,54 @@ def test_late_resources_after_cleanup_are_swept(jobs_case):
     refit_jobs.sweep_refit_resources(factory, k8s)
     refit_jobs.sweep_refit_resources(factory, k8s)
     assert all(not resources for resources in k8s.objects.values())
+
+
+@pytest.mark.parametrize("kind", ["job", "secret", "network_policy"])
+def test_terminal_cleanup_preserves_foreign_same_name_resources(jobs_case, kind):
+    db, _, _, attempt, k8s, factory = jobs_case
+    refit_jobs.reconcile_refit_jobs_once(factory, k8s)
+    attempt.status = AttemptStatus.FAILED
+    db.flush()
+    name = f"refit-{attempt.id.hex}"
+    if kind != "job":
+        refit_jobs.reconcile_refit_jobs_once(factory, k8s)
+    labels = deepcopy(k8s.objects[kind][name]["metadata"]["labels"])
+    k8s.objects[kind][name]["metadata"]["labels"] = {refit_jobs.LABEL: str(uuid.uuid4())}
+    foreign = deepcopy(k8s.objects[kind][name])
+    refit_jobs.reconcile_refit_jobs_once(factory, k8s)
+    assert k8s.objects[kind][name] == foreign
+    db.refresh(attempt)
+    assert attempt.cleanup_state != "complete"
+    k8s.objects[kind][name]["metadata"]["labels"] = labels
+    for _ in range(2):
+        refit_jobs.reconcile_refit_jobs_once(factory, k8s)
+    db.refresh(attempt)
+    assert attempt.cleanup_state == "complete"
+
+
+def test_orphan_sweep_binds_deletion_to_listed_job_uid(jobs_case, monkeypatch):
+    from sqlalchemy import delete
+
+    db, _, _, attempt, k8s, factory = jobs_case
+    refit_jobs.reconcile_refit_jobs_once(factory, k8s)
+    name = f"refit-{attempt.id.hex}"
+    db.execute(delete(WorkflowAttempt).where(WorkflowAttempt.id == attempt.id))
+    db.flush()
+    original_read = k8s.batch.read_namespaced_job
+    replacement_uid = str(uuid.uuid4())
+
+    def replacement(**kwargs):
+        k8s.objects["job"][name]["metadata"]["uid"] = replacement_uid
+        return original_read(**kwargs)
+
+    monkeypatch.setattr(k8s.batch, "read_namespaced_job", replacement)
+    refit_jobs.sweep_refit_resources(factory, k8s)
+    assert k8s.objects["job"][name]["metadata"]["uid"] == replacement_uid
+    assert name in k8s.objects["secret"] and name in k8s.objects["network_policy"]
+    monkeypatch.setattr(k8s.batch, "read_namespaced_job", original_read)
+    for _ in range(2):
+        refit_jobs.sweep_refit_resources(factory, k8s)
+    assert not any(k8s.objects.values())
 
 
 def test_concurrent_worker_start_invalidates_stale_missing_observation(jobs_case):

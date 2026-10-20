@@ -1,8 +1,57 @@
 """Shared native isolation profile for the refit and evaluator workers."""
 
+from kubernetes.client import ApiException
+
 from automl_api.services.workflow_state import canonical_request_hash
 
 DIGEST = "automl.platform/manifest-digest"
+
+
+def delete_owned_resource(read, delete, metadata, *, foreground=False):
+    """Confirm absence, or delete only the observed identity and wait for its removal."""
+    name, namespace = metadata["name"], metadata["namespace"]
+    labels = metadata.get("labels") or {}
+    if not labels or any(not isinstance(value, str) or not value for value in labels.values()):
+        return False
+    try:
+        resource = read(name=name, namespace=namespace, _request_timeout=5)
+    except ApiException as error:
+        if error.status == 404:
+            return True
+        raise
+    actual = getattr(resource, "metadata", None)
+    uid = getattr(actual, "uid", None)
+    if (
+        not isinstance(uid, str)
+        or not uid
+        or getattr(actual, "name", None) != name
+        or getattr(actual, "namespace", None) != namespace
+        or ("uid" in metadata and metadata["uid"] != uid)
+        or any(
+            (getattr(actual, "labels", None) or {}).get(key) != value
+            for key, value in labels.items()
+        )
+    ):
+        return False
+    body = {"preconditions": {"uid": uid}}
+    if foreground:
+        body["propagationPolicy"] = "Foreground"
+    try:
+        delete(name=name, namespace=namespace, body=body, _request_timeout=5)
+    except ApiException as error:
+        if error.status == 409:
+            return False
+        if error.status != 404:
+            raise
+    if foreground:
+        return False
+    try:
+        read(name=name, namespace=namespace, _request_timeout=5)
+    except ApiException as error:
+        if error.status == 404:
+            return True
+        raise
+    return False
 
 
 def isolated_workload(

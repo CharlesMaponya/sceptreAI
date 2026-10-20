@@ -1,0 +1,146 @@
+{
+  "verified_at": "2026-10-15T12:38:43.788399+00:00",
+  "scope": "Typed feature/search/objective boundaries and immutable worker feature view",
+  "phase_complete": false,
+  "related_requirements": [
+    "P1-W13",
+    "P1-W14",
+    "P1-G06"
+  ],
+  "changes": [
+    "Replace public feature/search/objective specification dictionaries with closed nested schemas. Strict column/digest/UUID/family/role/budget fields reject code, imports, runtime/package settings, arbitrary search expressions, unknown fields and unsupported aggregation.",
+    "Validate source snapshot, exact source columns, sealed split, prepared artifact and project-scoped recipe lineage before revision creation. Validate metric names/directions and prevent incompatible objectives or cross-project graph references.",
+    "Public typed revisions use explicit v2 digest scopes and hashes of authoritative content, excluding request names and optimistic-version conditions. Revalidate known-scope contract/search/objective/registry hashes and the compiled recipe digest before admission; unknown legacy scopes fail closed.",
+    "Preparation publishes the same typed metadata and a concrete search-to-recipe UUID. Raw view publication rejects more than 500 approved inputs before publishing revisions. Named contracts/objectives remain usable with all four task types; binary label checks bind the same prepared split rather than a specific contract name.",
+    "Worker startup checks immutable experiment, data/task, all revision references, roles, metric, fold/iteration policy and exclusions before reading values or creating MLflow state. It projects approved raw columns into both train/validation Ray readers before Pandas materialization; final-test objects are never selected.",
+    "Reject tampered valid-looking metadata, unrecognized compiled execution fields, unsupported nonraw compiled recipes, entity-as-predictor reinterpretation and ignored output-count limits.",
+    "Declare training-features-v1 through TRAINING_PROTOCOL in Ray manifests and worker parsing. Reject training-catalog-v1 before session/admission; update actual worker entry callers. Analysis remains analysis-v1."
+  ],
+  "verification": {
+    "focused": {
+      "tests": 71,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "regressions": {
+      "tests": 930,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "regression_cases_by_module": {
+    "tests.test_typed_feature_contracts": 71,
+    "tests.test_selected_identity": 40,
+    "tests.test_phase1_public_contracts": 28,
+    "tests.test_phase1_postgres_contracts": 38,
+    "tests.test_phase3_preparation": 47,
+    "tests.test_training_pipeline_runtime": 29,
+    "tests.test_training_pipeline_edge_contracts": 10,
+    "tests.test_training_analysis_edge_contracts": 24,
+    "tests.test_training_service_runtime": 86,
+    "tests.test_catalog_binding": 37,
+    "tests.test_candidate_details": 37,
+    "tests.test_replay_authorization": 24,
+    "tests.test_training_action_replay": 14,
+    "tests.test_training_parent_lease": 20,
+    "tests.test_training_publication_postgres": 18,
+    "tests.test_model_catalog_edge_contracts": 18,
+    "tests.test_candidate_partitions": 21,
+    "tests.test_phase0_snapshots": 2,
+    "tests.test_admission_runtime": 20,
+    "tests.test_training_parent_expiry": 14,
+    "tests.test_phase1_reconciler": 75,
+    "tests.test_phase1_reconciler_worker": 11,
+    "tests.test_runtime_foundations": 21,
+    "tests.test_analysis_admission": 36,
+    "tests.test_analysis_migration": 57,
+    "tests.test_preparation_admission": 34,
+    "tests.test_validation": 22,
+    "tests.test_operations": 76
+  },
+  "predecessor_parser_probe": {
+    "worker_source_sha256": "d1bde2088a3e9ca799b13b1c74b18f291c242e34df075e693f94b76bc9b99c0f",
+    "run_id_supported": true,
+    "protocol_denied": true,
+    "namespace": "qa-refit",
+    "pod": "refit-api-84b7765d66-jsqmg",
+    "pod_uid": "a36e9bbe-b409-4885-adb9-aaef1b388f46",
+    "mode": "read-only source/parser inspection; worker main not executed",
+    "image": "k3d-sceptre-registry.localhost:5111/sceptreai@sha256:c0ae5a3ba688eda3c6be07ae2fad5e3740cc8dd5b059358e850964fdc30891cc"
+  },
+  "oracle_review": [
+    "Actual PostgreSQL/HTTP revision create/replay/version conflict and rollback checks; existing eight controlled two-connection revision races now use real prepared source bindings.",
+    "A real foreign project with a published graph cannot supply the current project contract. Source/role/recipe/objective inconsistencies leave no committed public command.",
+    "Four-task named typed revisions resolve through the real immutable graph, including a named contract with a configured positive class.",
+    "Actual fenced worker entry accepts a coherent spec and passes approved columns to the reader, and a malformed graph stops before data/tracking and status publication. Old protocol rejection occurs before session creation/admission.",
+    "Reader checks exercise both train and validation propagation, project before materialization, reject missing approved columns and never select a final-test URI. Ray data operations are mocked for this specific projection check.",
+    "A known-image QA predecessor source/parser is inspected with standard-library code only. Its supported run ID is a positive control; new protocol is denied; same Pod UID is checked after inspection. No worker main, SQL, data values or storage mutation is performed."
+  ],
+  "intermediate_runs": [
+    "Initial 106-case run: four revision-race assertions counted pre-existing preparation revisions; filtering the asserted name fixed the fixture.",
+    "Next 223-case run: one old fenced failure-reporting fixture lacked the new spec; the dedicated feature admission test covers the real boundary and the failure fixture now isolates it.",
+    "Next 166-case run: four new fixtures passed task strings where the preparation helper requires TaskType enums; corrected fixture inputs.",
+    "Next 170-case run: positive worker startup used expire_on_commit=True, unlike production. Fixture now uses the production session setting, and actual fenced startup passes.",
+    "Before protocol review: 926 regressions/67 focused passed without skips. Final gates rerun after the protocol guard and execution negative controls."
+  ],
+  "limits": [
+    "This increment does not close W14: complete discriminated estimator parameter overrides still need implementation and validation.",
+    "Runtime here supports the approved raw passthrough view. Eligibility metadata does not activate or qualify engineered feature families, joint feature/model search, point-in-time/stateful feature semantics, value-dependent engineering budgets, signed serving bundles or offline/online parity. Unsupported compiled nonraw recipes fail closed.",
+    "Old generic public v1 contracts/objectives and older prepared searches without a recipe UUID require controlled migration or fresh preparation/publication. No historical rows or recorded evidence are rewritten.",
+    "New manifests require a compatible training image. The native check proves only rejection by a known predecessor parser; it does not qualify a current-image training job, GPU/CPU variants or process-loss recovery.",
+    "No current-image rollout, QA database/storage mutation, full 45GB migration or 15x10GiB campaign occurred. Seven historical QA objects remain missing and the original preservation gate remains abandoned.",
+    "Provider/child/predecessor object grants, production Train, prior binaries and all other unfinished Phase 1 requirements remain required."
+  ],
+  "source_sha256": {
+    ".unlazy/phase1-typed-contracts/check.py": "9913739abd8de11068bb574b309cee5cd2ac41db3ecaf00af5f894a2e0a96fd8",
+    ".unlazy/phase1-typed-contracts/previous_worker_probe.py": "e7616c50643e37fafef3360e2af1b92ec9f28b33c7c59656f1b700e79b8f3238",
+    "apps/api/automl_api/api/routes/contracts.py": "c53a1b517f606ca0b9c3a3cbad917f2e40709f0890913186bfe685d8433dd352",
+    "apps/api/automl_api/preparation_worker.py": "187cb5f96d905e574e3a0612ffbba0791eea83c12684b286074dab0e78fb9e69",
+    "apps/api/automl_api/schemas/contracts.py": "7fde9bdb8507b682fc7555d6cb1feecde4ebc4ff3eaff227140db5bb6130daf1",
+    "apps/api/automl_api/schemas/feature_contracts.py": "68fb0d16a1e44744fd37c6273e75ce7362c3df80f6a59c1fc09397883c989bb9",
+    "apps/api/automl_api/services/contracts.py": "1bba16352013212f110fb4e733c805ccb0c8eaf5267d3c4e6c11d2617ef7810c",
+    "apps/api/automl_api/services/experiment_identity.py": "a979aaa3084876378f08d282bd5c0c2ebafeda577fd37675a81be81c0b501c4d",
+    "apps/api/automl_api/services/feature_contracts.py": "56becd198863fb71619e5b624447df1b4519591ff7e3f52d413b6ed65f64f009",
+    "apps/api/automl_api/services/operations.py": "56e910ddd5ab4dab4147b363ebee13d531fd4f815d03ef8fa4bda76e3baa0d51",
+    "apps/api/automl_api/services/reconciler.py": "f86045b8d19fe99869268ee1223e3de4dd299def30c060683dca3830c441c4db",
+    "apps/api/automl_api/services/training.py": "41a97a8134adb479cfe7052d24e0f4a94a6b236d48a9283ab9887fdedf536827",
+    "apps/api/automl_api/services/validation.py": "f9d755607d916d6f44eb0bfcb732334a7b987b30289a6752cbf82b44d0ab8d06",
+    "apps/api/automl_api/training/attempt_admission.py": "156b0e56bde80d6e766986d5cf76ac63f2d859784be239e98a28025058bb9f11",
+    "apps/api/automl_api/training/catalog_contract.py": "9283948c5e91dc0b1f0c2d113b21ef1cf02268bf03bb161e052c79922777c0ca",
+    "apps/api/automl_api/training/pipeline.py": "3a8f030777f1ea10227c9cbdc13411200a7246b7f59aa95f9446c805e22eedec",
+    "apps/api/automl_api/training/worker.py": "9f1355a2df5ae5959a379ce8bb2a2346d425b5d4bc511cafdc1eaa6bb8ecd407",
+    "tests/feature_contract_fixtures.py": "a42383fa0c857401ded75b5f1e5a60609394c16010c7046e2867d3497a160be1",
+    "tests/test_admission_runtime.py": "2a70bf976987193b5d54525a9b8ded7d6bae5a3226746f9dfe6f5985643f59ed",
+    "tests/test_analysis_admission.py": "c76e8fa3a564df201b00dfc6ee7a0c3343c216492982c7928bcabf858227f791",
+    "tests/test_catalog_binding.py": "75993a4a5ce567526c6ee7bc61a0fa2f11c4eb1f456c103588369446f609b825",
+    "tests/test_operations.py": "2e589d15fc4c2265b0741e4066876307614428baea9029685edd70c2eed005d8",
+    "tests/test_phase1_postgres_contracts.py": "498ada57ba5e4dee6a52ece923c205d29df388171dbdb8f20676b15f82a2ec4a",
+    "tests/test_phase1_public_contracts.py": "4656ddd8fd4991daf50f9e1fee96ef91986ab2eb4d94f1243a4a62d3b7a73b6b",
+    "tests/test_selected_identity.py": "84d3f960828e70608a74c00f5b9952b7c01b21684f2c6da052b96053d5ad55fc",
+    "tests/test_training_parent_lease.py": "f88a7cac3cd17bd08041c03a738dfc5cc9036c606b2bd8a9746f08266b03451a",
+    "tests/test_training_pipeline_runtime.py": "b43c77cec3649997038f9c1f14b227f22948cc92c9b2c7bc6ace6d60aa841966",
+    "tests/test_training_service_runtime.py": "ddf61acf1b1bd06b9f55365cd8cdcf1a0aace558a04ad07a075634494b12f499",
+    "tests/test_typed_feature_contracts.py": "dfa1a027e559f13879e8a32dc4178dec502d107a0915316dfc9f795bc1dc21a2",
+    "tests/test_validation.py": "f9e8432ac0d7cfb0e6da612d3ec41a67d1377f04a8aec4c594ec4914d33705d7"
+  },
+  "verification_artifact_sha256": {
+    ".unlazy/phase1-typed-contracts/check.py": "9913739abd8de11068bb574b309cee5cd2ac41db3ecaf00af5f894a2e0a96fd8",
+    ".unlazy/phase1-typed-contracts/previous_worker_probe.py": "e7616c50643e37fafef3360e2af1b92ec9f28b33c7c59656f1b700e79b8f3238",
+    ".unlazy/phase1-typed-contracts/previous-worker-report.json": "e3b2ec42d87f5b5612c303cc6e949ba085e77ab18711bbea6a7edc4a68b274be",
+    ".unlazy/phase1-typed-contracts/focused.xml": "9be936454b2693c513602d8ec6ecc895a8f974cb905dd14d9b5fd1fbc3f4f5ea",
+    ".unlazy/phase1-typed-contracts/regressions.xml": "1cd7f8edcecd433a7f7aaa9c3b1a6aefd6dca5e6ed39cd824ab409ae7f4033db",
+    ".unlazy/phase1-typed-contracts/regressions-before-protocol.xml": "dac77c034d24612f4f045d08bc2aca8eff0fb67dccacd689db3ce53e577e0ba4",
+    ".unlazy/phase1-typed-contracts/initial.xml": "7f04492487e1f80ac185274d4b455ada54a664caa7801e47b2039d4238c01390",
+    ".unlazy/phase1-typed-contracts/integration.xml": "80f2b51d017787b045661da49b261e6ae37fd1e9a1d0f4f8e07e3b27e35e73a5",
+    ".unlazy/phase1-typed-contracts/integration2.xml": "43c5e825b7b4c6d2a2ec9e3f5ae87d5a42fbb338a28360a9467bba98d8286410",
+    ".unlazy/phase1-typed-contracts/integration3.xml": "bb08071bdae0b5d4d02faae2f1ccf5ad9771fe41897c37e6e249d06c2d05f0b0",
+    ".unlazy/phase1-typed-contracts/lint.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+  },
+  "phase_ledger": {
+    "requirements": 36,
+    "verified": 1,
+    "open": 35
+  }
+}

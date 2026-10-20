@@ -15,7 +15,7 @@ from automl_api.models.workflows import WorkflowAttempt
 from automl_api.services.attempt_identity import attempt_audience
 from automl_api.services.workflow_state import StaleFence
 from automl_api.training import attempt_admission
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 from test_local_profiling_delivery import profile_source  # noqa: F401
 from test_phase1_postgres_contracts import committed_tenant, phase1_engine  # noqa: F401
 
@@ -270,8 +270,10 @@ def test_admission_server_denies_inactive_dataset_scope_before_token_review(
             }
         else:
             db.get(ProfilingJob, profile_id).status = "failed"
-    with pytest.raises(StaleFence), Session(engine) as db, db.begin():
-        attempt_identity.admit_attempt(db, attempt_id, "not-a-token", MagicMock())
+    with pytest.raises(StaleFence):
+        attempt_identity.admit_attempt(
+            sessionmaker(bind=engine), attempt_id, "not-a-token", MagicMock()
+        )
     review.assert_not_called()
 
 

@@ -524,7 +524,16 @@ class WorkflowAttempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "workflow_attempts"
     __table_args__ = (
         UniqueConstraint("project_id", "id", name="uq_workflow_attempts_project_id_id"),
+        UniqueConstraint(
+            "project_id", "id", "stage", "fencing_token", name="uq_attempt_grant_authority"
+        ),
         UniqueConstraint("project_id", "logical_key", "generation", name="uq_attempt_generation"),
+        ForeignKeyConstraint(
+            ["project_id", "predecessor_attempt_id"],
+            ["workflow_attempts.project_id", "workflow_attempts.id"],
+            ondelete="RESTRICT",
+            name="fk_attempt_predecessor_project",
+        ),
         ForeignKeyConstraint(
             ["project_id", "dataset_version_id"],
             ["dataset_versions.project_id", "dataset_versions.id"],
@@ -563,13 +572,29 @@ class WorkflowAttempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ),
         Index("ix_attempt_claim", "status", "available_at", "lease_expires_at"),
         Index(
+            "ix_attempt_run_parent",
+            "run_attempt_id",
+            "project_id",
+            postgresql_where=text("run_attempt_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_attempt_trial_parent",
+            "trial_id",
+            "project_id",
+            postgresql_where=text("trial_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_attempt_predecessor_project",
+            "predecessor_attempt_id",
+            "project_id",
+            postgresql_where=text("predecessor_attempt_id IS NOT NULL"),
+        ),
+        Index(
             "uq_attempt_active_logical",
             "project_id",
             "logical_key",
             unique=True,
-            postgresql_where=text(
-                "status IN ('pending', 'claimed', 'submitted', 'running')"
-            ),
+            postgresql_where=text("status IN ('pending', 'claimed', 'submitted', 'running')"),
         ),
         CheckConstraint("generation > 0 AND retry_count >= 0", name="attempt_generation_retry"),
         CheckConstraint(
@@ -674,6 +699,118 @@ class WorkflowCheckpoint(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     object_uri: Mapped[str] = mapped_column(String(1024), nullable=False)
     content_digest: Mapped[str] = mapped_column(String(128), nullable=False)
     event_sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class WorkflowAttemptCredentialGrant(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Durable capability intent and receipt; never credential or signed URL material."""
+
+    __tablename__ = "workflow_attempt_credential_grants"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["project_id", "attempt_id", "stage", "fencing_token"],
+            [
+                "workflow_attempts.project_id",
+                "workflow_attempts.id",
+                "workflow_attempts.stage",
+                "workflow_attempts.fencing_token",
+            ],
+            ondelete="RESTRICT",
+            name="fk_grant_attempt_authority",
+        ),
+        UniqueConstraint("attempt_id", "request_id", name="uq_grant_attempt_request"),
+        UniqueConstraint("project_id", "id", name="uq_grant_project_id_id"),
+        Index("ix_grant_attempt_expiry", "attempt_id", "expires_at"),
+        CheckConstraint("method IN ('GET', 'PUT')", name="grant_method"),
+        CheckConstraint(
+            (
+                "status IN ('pending', 'issuing', 'issued', 'failed', 'unknown', 'expired', "
+                "'revoked')"
+            ),
+            name="grant_status",
+        ),
+        CheckConstraint("byte_limit >= 0", name="grant_byte_limit"),
+        CheckConstraint(
+            "expires_at > created_at AND expires_at <= created_at + '00:15:00'::interval",
+            name="grant_expiry",
+        ),
+        CheckConstraint(
+            (
+                "(method = 'GET' AND object_version IS NOT NULL AND "
+                "length(object_version::text) > 0 "
+                "AND object_version::text <> 'null'::text) OR (method = 'PUT' AND "
+                "object_version IS NULL)"
+            ),
+            name="grant_version",
+        ),
+        CheckConstraint(
+            (
+                "(stage = 'splitter' AND ((method = 'GET' AND role = 'raw') OR (method = "
+                "'PUT' AND role IN ('train', 'validation', 'final_input', 'final_label', "
+                "'manifest')))) OR (stage = 'preparation' AND ((method = 'GET' AND role IN "
+                "('train', 'validation')) OR (method = 'PUT' AND role IN ('prepared', "
+                "'profile', 'features', 'checkpoint')))) OR (stage IN ('training_run', "
+                "'training_trial') AND ((method = 'GET' AND role IN ('train', 'validation',"
+                " 'prepared', 'features', 'checkpoint')) OR (method = 'PUT' AND role IN "
+                "('metrics', 'checkpoint', 'model', 'validation_evidence')))) OR (stage = "
+                "'champion_refit' AND ((method = 'GET' AND role IN ('candidate', 'train', "
+                "'validation')) OR (method = 'PUT' AND role IN ('pipeline', "
+                "'refit_evidence')))) OR (stage = 'champion_evaluation' AND ((method = "
+                "'GET' AND role IN ('pipeline', 'final_input', 'final_label')) OR (method ="
+                " 'PUT' AND role = 'result'))) OR (stage = 'provider_conformance' AND "
+                "((method = 'GET' AND role IN ('synthetic', 'parity', "
+                "'conformance_evidence')) OR (method = 'PUT' AND role = "
+                "'conformance_evidence')))"
+            ),
+            name="grant_stage_role",
+        ),
+        CheckConstraint(
+            (
+                "grant_digest::text ~ '^[0-9a-f]{64}$'::text AND authority_digest::text ~ "
+                "'^[0-9a-f]{64}$'::text AND content_sha256::text ~ '^[0-9a-f]{64}$'::text AND "
+                "token_sha256::text ~ '^[0-9a-f]{64}$'::text"
+            ),
+            name="grant_digests",
+        ),
+        CheckConstraint(
+            (
+                "(status = 'pending' AND issuance_owner IS NULL AND issuance_started_at IS NULL"
+                " AND issued_at IS NULL AND revoked_at IS NULL) OR (status = 'issuing' AND "
+                "issuance_owner IS NOT NULL AND issuance_started_at IS NOT NULL AND issued_at "
+                "IS NULL AND revoked_at IS NULL) OR (status = 'issued' AND issuance_owner IS "
+                "NOT NULL AND issuance_started_at IS NOT NULL AND issued_at IS NOT NULL AND "
+                "revoked_at IS NULL) OR (status IN ('failed', 'unknown') AND issuance_owner IS "
+                "NOT NULL AND issuance_started_at IS NOT NULL AND issued_at IS NULL AND "
+                "revoked_at IS NULL) OR (status = 'expired' AND revoked_at IS NULL) OR (status "
+                "= 'revoked' AND revoked_at IS NOT NULL)"
+            ),
+            name="grant_lifecycle",
+        ),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    attempt_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    stage: Mapped[str] = mapped_column(String(32), nullable=False)
+    fencing_token: Mapped[str] = mapped_column(String(128), nullable=False)
+    request_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    pod_uid: Mapped[str] = mapped_column(String(128), nullable=False)
+    token_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    authority_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    grant_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    method: Mapped[str] = mapped_column(String(8), nullable=False)
+    role: Mapped[str] = mapped_column(String(32), nullable=False)
+    object_uri: Mapped[str] = mapped_column(String(2048), nullable=False)
+    object_version: Mapped[str | None] = mapped_column(String(256))
+    byte_limit: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="pending", server_default="pending"
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    issuance_owner: Mapped[uuid.UUID | None] = mapped_column()
+    issuance_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failure_reason: Mapped[str | None] = mapped_column(String(255))
 
 
 class WorkflowEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):

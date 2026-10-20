@@ -25,6 +25,7 @@ from automl_api.schemas.profiling import (
     TaskInferenceRead,
 )
 from automl_api.schemas.profiling_jobs import ProfilingJobCreate
+from digest_fixtures import verified_digest_metadata
 from fastapi import HTTPException
 
 DELIVERY = jobs.ProfileDelivery(uuid.uuid4(), "unit-worker", 1, datetime.now(UTC))
@@ -62,6 +63,11 @@ class _Session(AbstractContextManager):
         }.get(model)
 
     def scalar(self, _statement: object) -> object | None:
+        if _statement.column_descriptions[0]["entity"].__name__ in {
+            "DatasetProviderImport",
+            "PromotionalScopeMember",
+        }:
+            return None
         return getattr(self.job, "status", None)
 
     def refresh(self, _instance: object) -> None:
@@ -254,6 +260,11 @@ class _CreateSession(_Session):
         self.added: list[object] = []
 
     def scalar(self, _statement: object) -> object | None:
+        if _statement.column_descriptions[0]["entity"].__name__ in {
+            "DatasetProviderImport",
+            "PromotionalScopeMember",
+        }:
+            return None
         return self.scalar_values.pop(0) if self.scalar_values else None
 
     def scalars(self, _statement: object) -> _ListResult:
@@ -270,6 +281,8 @@ class _CreateSession(_Session):
 
 def _version() -> SimpleNamespace:
     return SimpleNamespace(
+        **verified_digest_metadata(),
+        content_hash="a" * 64,
         id=uuid.uuid4(),
         project_id=uuid.uuid4(),
         dataset_id=uuid.uuid4(),
@@ -435,7 +448,7 @@ def test_enqueue_distributed_profile_creates_fenced_splitter_and_outbox(monkeypa
     assert isinstance(attempt, WorkflowAttempt)
     assert attempt.stage == WorkflowStage.SPLITTER
     assert attempt.dataset_version_id == version.id
-    assert attempt.workload_identity == "sceptre-dataset-splitter"
+    assert attempt.workload_identity == f"project-{job.project_id}-splitter"
     assert len(attempt.fencing_token) == 32
     assert command.status == CommandStatus.RUNNING
     assert job.overview_json["workflow_attempt_id"] == str(attempt.id)
@@ -656,7 +669,8 @@ def test_partitioned_ray_polars_stages_checkpoint_batches_and_complete(monkeypat
     job.row_count = None
     job.feature_profiles_json = {}
     job.artifact_uris_json = {}
-    version = SimpleNamespace(status=DatasetStatus.PROFILING, profile_artifact_uri=None)
+    version = _version()
+    version.status = DatasetStatus.PROFILING
     session = _Session(job, SimpleNamespace(), version)
     monkeypatch.setattr(jobs, "get_session_factory", lambda: lambda: session)
     dataset = MagicMock()

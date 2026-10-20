@@ -1,5 +1,6 @@
 """Run only against a dedicated PostgreSQL test database; every test rolls back."""
 
+import hashlib
 import os
 import uuid
 from types import SimpleNamespace
@@ -30,6 +31,7 @@ from automl_api.models.workflows import (
 from automl_api.schemas.projects import ProjectCreate, ProjectShareLinkCreate
 from automl_api.services import deletion, projects
 from automl_api.storage.embedded import EmbeddedObjectStoreDriver
+from digest_fixtures import verified_digest_metadata
 from fastapi import HTTPException
 from sqlalchemy import create_engine, select
 from sqlalchemy.engine import make_url
@@ -61,13 +63,15 @@ def workspace(tmp_path, monkeypatch):
         store = EmbeddedObjectStoreDriver(root=tmp_path, bucket="test")
         uri = store.put_bytes(f"projects/{project.id}/data/input.csv", b"x,y\n1,2").uri
         version = DatasetVersion(
+            **verified_digest_metadata(),
             project_id=project.id,
             dataset_id=dataset.id,
             created_by_id=user.id,
             version_number=1,
             format=DatasetFormat.CSV,
             object_uri=uri,
-            content_hash="a" * 64,
+            content_hash=hashlib.sha256(b"x,y\n1,2").hexdigest(),
+            byte_size=len(b"x,y\n1,2"),
         )
         db.add(version)
         db.flush()

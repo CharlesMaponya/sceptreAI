@@ -8,6 +8,7 @@ from automl_api.models.workflows import WorkflowAttempt, WorkflowCommand
 from automl_api.services import reconciler, training_trials
 from automl_api.services.workflow_state import StaleFence, transition_attempt
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from test_phase1_postgres_contracts import committed_tenant, phase1_engine  # noqa: F401
 from test_training_publication_postgres import publication  # noqa: F401
@@ -123,14 +124,12 @@ def test_concurrent_binding_of_replacement_stub_is_fenced(replaced, conflict):
     "invalid",
     [
         "wrong_workload",
-        "wrong_logical_key",
         "claimed",
         "used",
         "owner",
         "expiry",
         "cas",
         "missing_predecessor",
-        "wrong_predecessor",
         "wrong_parent",
         "prior_not_superseded",
         "budget",
@@ -150,8 +149,6 @@ def test_only_untouched_authorized_replacement_stub_can_bind(replaced, invalid):
         )
         if invalid == "wrong_workload":
             stub.workload_identity = "another-stage-worker"
-        elif invalid == "wrong_logical_key":
-            stub.logical_key = "another-trial"
         elif invalid == "claimed":
             stub.status = AttemptStatus.CLAIMED
         elif invalid == "used":
@@ -164,8 +161,6 @@ def test_only_untouched_authorized_replacement_stub_can_bind(replaced, invalid):
             stub.terminal_cas_version = 1
         elif invalid == "missing_predecessor":
             stub.predecessor_attempt_id = None
-        elif invalid == "wrong_predecessor":
-            stub.predecessor_attempt_id = old[1]["attempt_id"]
         elif invalid == "wrong_parent":
             db.get(WorkflowAttempt, parent_id).predecessor_attempt_id = None
         elif invalid == "prior_not_superseded":
@@ -175,6 +170,33 @@ def test_only_untouched_authorized_replacement_stub_can_bind(replaced, invalid):
     updated = (scope[0], scope[1], parent_id, fence, scope[4])
     with pytest.raises(StaleFence), Session(scope[0]) as db, db.begin():
         enroll(db, updated, execution_id="new")
+
+
+@pytest.mark.parametrize("invalid", ["logical_key", "predecessor"])
+def test_replacement_lineage_corruption_is_rejected_before_binding(replaced, invalid):
+    scope, old, parent_id, _ = replaced
+    with pytest.raises(IntegrityError, match="predecessor lineage"):
+        with Session(scope[0]) as db, db.begin():
+            stub = db.scalar(
+                select(WorkflowAttempt).where(
+                    WorkflowAttempt.run_attempt_id == parent_id,
+                    WorkflowAttempt.predecessor_attempt_id == old[0]["attempt_id"],
+                )
+            )
+            if invalid == "logical_key":
+                stub.logical_key = "another-trial"
+            else:
+                stub.predecessor_attempt_id = old[1]["attempt_id"]
+    with Session(scope[0]) as db:
+        stub = db.scalar(
+            select(WorkflowAttempt).where(
+                WorkflowAttempt.run_attempt_id == parent_id,
+                WorkflowAttempt.predecessor_attempt_id == old[0]["attempt_id"],
+            )
+        )
+        assert stub is not None and stub.status == AttemptStatus.PENDING
+        assert stub.ray_submission_id is None
+        assert stub.logical_key == db.get(WorkflowAttempt, old[0]["attempt_id"]).logical_key
 
 
 @pytest.mark.parametrize(

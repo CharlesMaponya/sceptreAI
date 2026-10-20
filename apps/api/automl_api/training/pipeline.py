@@ -2,12 +2,13 @@ import hashlib
 import hmac
 import io
 import json
+import math
 import os
 import re
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from importlib.metadata import distributions, version
 from typing import Any
@@ -20,7 +21,9 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import ray
+from fastapi import HTTPException
 from mlflow import MlflowClient
+from pydantic import ValidationError
 from sklearn.base import clone
 from sklearn.compose import ColumnTransformer, make_column_selector
 from sklearn.impute import SimpleImputer
@@ -63,6 +66,10 @@ from automl_api.models.workflows import (
     WorkflowAttempt,
     WorkflowCommand,
 )
+from automl_api.schemas.training import TrainingEstimateRequest
+from automl_api.services.dataset_digests import require_verified_digest, verify_dataset_bytes
+from automl_api.services.experiment_identity import BINDINGS, ROLES, resolve_training_identity
+from automl_api.services.feature_contracts import bound_row, validate_compiled_view
 from automl_api.services.leakage import detect_target_leakage
 from automl_api.services.ray_polars_profiling import _ensure_ray, _ray_source
 from automl_api.services.temporal import (
@@ -71,7 +78,14 @@ from automl_api.services.temporal import (
 from automl_api.services.temporal import (
     series_unix_timestamp_unit as _series_unix_timestamp_unit,
 )
-from automl_api.services.tracking_reconciliation import tracking_identity, validate_tracking_run
+from automl_api.services.tracking_reconciliation import (
+    LEASE_SECONDS,
+    _release_tracking,
+    _tracking_heartbeat,
+    _TrackingClaim,
+    tracking_identity,
+    validate_tracking_run,
+)
 from automl_api.services.workflow_state import (
     StaleFence,
     begin_command,
@@ -98,6 +112,12 @@ from automl_api.training.model_catalog import (
     candidate_catalog,
     configure_estimator_for_training,
     select_candidates,
+)
+from automl_api.training.parameter_overrides import (
+    fixed_candidate,
+    merge_fixed,
+    validate_bound_overrides,
+    validate_conditionals,
 )
 
 _TERMINAL_RUN_STATUSES = frozenset(
@@ -195,7 +215,10 @@ def _tracked_mlflow_run(run: ModelRun, *, role: str, run_name: str, parent_run_i
         "parent_run_id": parent_run_id,
         "tracking_backend_hash": hashlib.sha256(mlflow.get_tracking_uri().encode()).hexdigest(),
     }
-    with get_session_factory()() as db:
+    factory = get_session_factory()
+    claim = None
+
+    def live_run(db):
         current = _locked_run(db, run.id)
         if (
             current is None
@@ -203,98 +226,194 @@ def _tracked_mlflow_run(run: ModelRun, *, role: str, run_name: str, parent_run_i
             or _has_committed_training_result(current)
         ):
             raise StaleFence("This run no longer owns tracking creation.")
-        command, _ = begin_command(
-            db,
-            project_id=current.project_id,
-            actor_id=current.created_by_id,
-            operation="mlflow.run.ensure",
-            idempotency_key=canonical_request_hash(
-                {k: payload[k] for k in ("model_run_id", "attempt_id", "role")}
-            ),
-            payload=payload,
-        )
-        command.resource_type = "model_run"
-        command.resource_id = current.id
-        command_id = command.id
-        db.commit()
-    client = MlflowClient()
-    with get_session_factory()() as db:
-        current = _locked_run(db, run.id)
-        if (
-            current is None
-            or current.status in _TERMINAL_RUN_STATUSES
-            or _has_committed_training_result(current)
-        ):
-            raise StaleFence("This run no longer owns tracking creation.")
-        command = db.get(WorkflowCommand, command_id, with_for_update=True)
-        identity = tracking_identity(command, current)
-        known_id = (command.response_payload or {}).get("run_id")
-        if known_id:
-            tracked = client.get_run(known_id)
-        else:
-            experiment_name = f"automl-project-{current.project_id}"
-            experiment = client.get_experiment_by_name(experiment_name)
-            if experiment is None:
-                try:
-                    experiment_id = client.create_experiment(experiment_name)
-                except mlflow.exceptions.MlflowException:
-                    experiment = client.get_experiment_by_name(experiment_name)
-                    if experiment is None:
-                        raise
-                    experiment_id = experiment.experiment_id
-            else:
-                experiment_id = experiment.experiment_id
-            matches = client.search_runs(
-                [experiment_id],
-                filter_string=f"tags.automl_tracking_command = '{command.id}'",
-                run_view_type=mlflow.entities.ViewType.ALL,
-                max_results=2,
+        return current
+
+    try:
+        with factory() as db:
+            current = live_run(db)
+            command, replayed = begin_command(
+                db,
+                project_id=current.project_id,
+                actor_id=current.created_by_id,
+                operation="mlflow.run.ensure",
+                idempotency_key=canonical_request_hash(
+                    {key: payload[key] for key in ("model_run_id", "attempt_id", "role")}
+                ),
+                payload=payload,
             )
-            if len(matches) > 1:
-                raise ValueError("Multiple MLflow runs claim the same tracking command.")
-            if matches:
-                tracked = matches[0]
-            else:
-                if (command.response_payload or {}).get("creation_started"):
-                    raise TrackingCreationUnresolved(
-                        "MLflow creation is unresolved; refusing a duplicate request."
-                    )
-                command.response_payload = {"creation_started": True}
-                db.commit()
-                current = _locked_run(db, run.id)
-                if (
-                    current is None
-                    or current.status in _TERMINAL_RUN_STATUSES
-                    or _has_committed_training_result(current)
+            if not replayed:
+                command.resource_type, command.resource_id = "model_run", current.id
+            if (
+                command.resource_type != "model_run"
+                or command.resource_id != current.id
+                or command.status == CommandStatus.CANCELLED
+            ):
+                raise StaleFence("The tracking command scope no longer belongs to this run.")
+            identity = tracking_identity(command, current)
+            request_hash = command.request_hash
+            response = command.response_payload
+            if not isinstance(response, dict):
+                raise TrackingCreationUnresolved(
+                    "MLflow creation is unresolved; invalid stored state."
+                )
+            known_id = response.get("run_id")
+            known = set(response) == {"run_id"} and isinstance(known_id, str) and bool(known_id)
+            uncertain = (
+                set(response) == {"creation_started"} and response["creation_started"] is True
+            )
+            if not (known or uncertain or response == {}):
+                raise TrackingCreationUnresolved(
+                    "MLflow creation is unresolved; invalid stored state."
+                )
+            if not known:
+                now = datetime.now(UTC)
+                active = command.lease_expires_at is not None and command.lease_expires_at > now
+                owner = command.lease_owner or ""
+                # A live parent may supersede read-only recovery, never another writer.
+                if active and (
+                    not uncertain
+                    or not owner.startswith("tracking-")
+                    or owner.startswith("tracking-writer-")
                 ):
-                    raise StaleFence("This run no longer owns tracking creation.")
-                command = db.get(WorkflowCommand, command_id, with_for_update=True)
-                try:
-                    tracked = client.create_run(
-                        experiment_id,
-                        run_name=run_name,
-                        tags={**(tags or {}), **identity},
-                    )
-                except Exception as exc:
                     raise TrackingCreationUnresolved(
-                        "MLflow creation outcome is unknown; refusing an unverified retry."
-                    ) from exc
-        validate_tracking_run(tracked, identity)
-        command.resource_type = "model_run"
-        command.resource_id = current.id
-        command.response_payload = {"run_id": tracked.info.run_id}
-        command.response_status = 200
-        command.terminal_reason = None
-        if command.status != CommandStatus.SUCCEEDED:
-            if command.status == CommandStatus.FAILED:
-                transition_command(command, CommandStatus.PENDING)
-            transition_command(command, CommandStatus.RUNNING)
-            transition_command(command, CommandStatus.SUCCEEDED)
-        if role == "parent":
-            current.mlflow_run_id = tracked.info.run_id
-        db.commit()
-        tracking_id = tracked.info.run_id
-    return mlflow.start_run(run_id=tracking_id, nested=parent_run_id is not None)
+                        "MLflow creation is unresolved; another writer owns it."
+                    )
+                if command.status == CommandStatus.FAILED:
+                    transition_command(command, CommandStatus.PENDING)
+                transition_command(command, CommandStatus.RUNNING)
+                command.lease_owner = "tracking-writer-" + uuid.uuid4().hex
+                command.heartbeat_at = now
+                command.lease_expires_at = now + timedelta(seconds=LEASE_SECONDS)
+                claim = _TrackingClaim(
+                    command.id,
+                    command.project_id,
+                    command.resource_id,
+                    command.lease_owner,
+                    identity,
+                    dict(payload),
+                    request_hash,
+                    False,
+                    None,
+                )
+            command_id = command.id
+            db.commit()
+
+        def owned(db):
+            current = live_run(db)
+            command = db.get(
+                WorkflowCommand, command_id, with_for_update=True, populate_existing=True
+            )
+            if (
+                command is None
+                or command.project_id != current.project_id
+                or command.resource_type != "model_run"
+                or command.resource_id != current.id
+                or command.operation != "mlflow.run.ensure"
+                or command.request_hash != request_hash
+                or canonical_request_hash(command.request_payload)
+                != canonical_request_hash(payload)
+                or tracking_identity(command, current) != identity
+                or canonical_request_hash(command.response_payload)
+                != canonical_request_hash(response)
+            ):
+                raise StaleFence("The tracking command changed while remote I/O was in flight.")
+            if claim is not None:
+                if (
+                    command.status != CommandStatus.RUNNING
+                    or command.lease_owner != claim.owner
+                    or command.lease_expires_at is None
+                    or command.lease_expires_at <= datetime.now(UTC)
+                ):
+                    raise StaleFence("The tracking writer no longer owns its live lease.")
+            elif command.status == CommandStatus.CANCELLED:
+                raise StaleFence("The tracking command was cancelled during remote I/O.")
+            return current, command
+
+        client = MlflowClient()
+        if (
+            hashlib.sha256(client.tracking_uri.encode()).hexdigest()
+            != payload["tracking_backend_hash"]
+        ):
+            raise ValueError("Tracking backend differs from the committed intent.")
+        if known:
+            tracked = client.get_run(known_id)
+            validate_tracking_run(tracked, identity)
+        else:
+            with _tracking_heartbeat(factory, claim, lambda: datetime.now(UTC)):
+                experiment_name = f"automl-project-{identity['project_id']}"
+                experiment = client.get_experiment_by_name(experiment_name)
+                if experiment is None:
+                    if uncertain:
+                        raise TrackingCreationUnresolved(
+                            "MLflow creation is unresolved; its experiment is unavailable."
+                        )
+                    with factory() as db:
+                        owned(db)
+                        db.commit()
+                    try:
+                        experiment_id = client.create_experiment(experiment_name)
+                    except mlflow.exceptions.MlflowException:
+                        experiment = client.get_experiment_by_name(experiment_name)
+                        if experiment is None:
+                            raise
+                        experiment_id = experiment.experiment_id
+                else:
+                    experiment_id = experiment.experiment_id
+                matches = client.search_runs(
+                    [experiment_id],
+                    filter_string=f"tags.automl_tracking_command = '{command_id}'",
+                    run_view_type=mlflow.entities.ViewType.ALL,
+                    max_results=2,
+                )
+                if len(matches) > 1:
+                    raise ValueError("Multiple MLflow runs claim the same tracking command.")
+                if matches:
+                    tracked = matches[0]
+                else:
+                    if uncertain:
+                        raise TrackingCreationUnresolved(
+                            "MLflow creation is unresolved; refusing a duplicate request."
+                        )
+                    with factory() as db:
+                        _, command = owned(db)
+                        response = {"creation_started": True}
+                        command.response_payload = response
+                        db.commit()
+                    try:
+                        tracked = client.create_run(
+                            experiment_id, run_name=run_name, tags={**(tags or {}), **identity}
+                        )
+                    except Exception as exc:
+                        raise TrackingCreationUnresolved(
+                            "MLflow creation outcome is unknown; refusing an unverified retry."
+                        ) from exc
+                validate_tracking_run(tracked, identity)
+
+        with factory() as db:
+            current, command = owned(db)
+            command.response_payload = {"run_id": tracked.info.run_id}
+            command.response_status = 200
+            command.terminal_reason = None
+            command.lease_owner = None
+            command.lease_expires_at = None
+            if command.status != CommandStatus.SUCCEEDED:
+                if command.status == CommandStatus.FAILED:
+                    transition_command(command, CommandStatus.PENDING)
+                transition_command(command, CommandStatus.RUNNING)
+                transition_command(command, CommandStatus.SUCCEEDED)
+            if role == "parent":
+                current.mlflow_run_id = tracked.info.run_id
+            db.commit()
+            tracking_id = tracked.info.run_id
+        return mlflow.start_run(run_id=tracking_id, nested=parent_run_id is not None)
+    except Exception:
+        if claim is not None:
+            try:
+                _release_tracking(factory, claim)
+            except Exception:
+                # A lost database connection leaves the committed lease to expire.
+                pass
+        raise
 
 
 def execute_training_run(run_id: uuid.UUID) -> dict[str, float]:
@@ -306,10 +425,27 @@ def execute_training_run(run_id: uuid.UUID) -> dict[str, float]:
         if run.status in _TERMINAL_RUN_STATUSES or _has_committed_training_result(run):
             return {}
         _validate_bound_catalog(db, run)
+        approved_columns = _bound_feature_columns(db, run)
+        validate_bound_overrides(
+            db,
+            run,
+            select_candidates(
+                run.task_type,
+                run.params.get("candidate_models"),
+                int(run.params.get("candidate_limit") or 5),
+            ),
+        )
         version = db.get(DatasetVersion, run.dataset_version_id)
         if version is None:
             raise ValueError("Dataset version was not found.")
+        from automl_api.services.provider_source import (
+            reject_promotional_membership,
+            require_prepared_source,
+        )
+
         split = _bound_split_revision(db, run)
+        source_plan = require_prepared_source(db, version, split_revision_id=split.id)
+        reject_promotional_membership(db, run)
         run.status = RunStatus.RUNNING
         run.started_at = run.started_at or datetime.now(UTC)
         run.failure_code = None
@@ -324,6 +460,8 @@ def execute_training_run(run_id: uuid.UUID) -> dict[str, float]:
             sample_rows=int(run.params.get("sample_tier_rows") or 0),
             validation_sample_rows=int(run.params.get("validation_sample_rows") or 0),
             task_type=run.task_type,
+            approved_columns=approved_columns,
+            **({"source_plan": source_plan} if source_plan is not None else {}),
         )
         settings = get_settings()
         mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
@@ -364,7 +502,9 @@ def execute_training_run(run_id: uuid.UUID) -> dict[str, float]:
 
 
 def _load_dataframe(version: DatasetVersion) -> pd.DataFrame:
+    require_verified_digest(version)
     content = get_object_store().read_bytes(version.object_uri)
+    verify_dataset_bytes(version, content)
     filename = (version.original_filename or "").lower()
     if filename.endswith(".csv"):
         return pd.read_csv(io.BytesIO(content))
@@ -420,6 +560,57 @@ def _validate_bound_catalog(db: Session, run: ModelRun) -> None:
         raise ValueError("Training estimator selection differs from its bound catalog")
 
 
+def _bound_feature_columns(db: Session, run: ModelRun) -> list[str] | None:
+    identity = run.params.get("experiment_spec_revision_id")
+    if identity is None:
+        # shortcut: local unbound calls remain until their legacy migration is qualified.
+        if os.getenv("AUTOML_ATTEMPT_ID") or get_settings().environment in {
+            "production",
+            "staging",
+        }:
+            raise ValueError("Training requires an immutable experiment specification")
+        return None
+    try:
+        frozen = resolve_training_identity(
+            db, run.project_id, TrainingEstimateRequest(experiment_spec_revision_id=identity)
+        )
+        if (run.dataset_version_id, run.task_type, run.target_column) != (
+            frozen.dataset_version_id,
+            frozen.task_type,
+            frozen.target_column,
+        ):
+            raise ValueError("Training data or task differs from its immutable specification")
+        for key in (*BINDINGS, "search_objective_revision_id"):
+            stored = "estimator_catalog_revision_id" if key == "catalog_revision_id" else key
+            if run.params.get(stored) != str(getattr(frozen, key)):
+                raise ValueError("Training revision differs from its immutable specification")
+        for key in ("primary_metric", "optimization_iterations", "cv_folds", *ROLES):
+            expected = getattr(frozen, key)
+            if key == "positive_label" and expected is None:
+                continue  # The bound automatic-label policy records its chosen class after fitting.
+            if run.params.get(key) != expected:
+                raise ValueError("Training policy differs from its immutable specification")
+        if sorted(set(run.params.get("excluded_columns") or [])) != frozen.excluded_columns:
+            raise ValueError("Training exclusions differ from its immutable specification")
+        graph = {
+            key: bound_row(db, model, run.project_id, getattr(frozen, key))
+            for key, model in BINDINGS.items()
+        }
+        compiled = validate_compiled_view(
+            graph["feature_contract_revision_id"],
+            graph["feature_registry_revision_id"],
+            graph["feature_recipe_revision_id"],
+            graph["feature_search_space_revision_id"],
+        )
+    except (HTTPException, ValidationError) as exc:
+        raise ValueError("Training feature specification is unavailable or incompatible") from exc
+    columns = [column for column in compiled.input_columns if column not in frozen.excluded_columns]
+    for role in (frozen.target_column, frozen.evaluation_column):
+        if role is not None and role not in columns:
+            columns.append(role)
+    return columns
+
+
 def _bound_split_revision(db: Session, run: ModelRun) -> DatasetSplitRevision:
     value = (run.params or {}).get("split_revision_id")
     if not value:
@@ -451,11 +642,21 @@ def _bound_split_revision(db: Session, run: ModelRun) -> DatasetSplitRevision:
 def _load_prepared_training_frames(
     split: DatasetSplitRevision,
     *,
+    source_plan=None,
     sample_rows: int = 0,
     validation_sample_rows: int = 0,
     task_type: TaskType = TaskType.UNSPECIFIED,
+    approved_columns: list[str] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Load only the sealed train and validation roles; final-test stays unreachable."""
+    if split.specification.get("provider_import_id") and source_plan is None:
+        raise ValueError("Provider prepared roles require their approved versioned source plan")
+    if source_plan is not None and (
+        source_plan.split_revision_id != split.id
+        or source_plan.dataset_version_id != split.dataset_version_id
+        or source_plan.project_id != split.project_id
+    ):
+        raise ValueError("Provider source plan does not belong to this split")
     uris = split.specification["uris"]
     counts = split.specification.get("split_counts") or (
         (split.specification.get("identity") or {}).get("split_counts") or {}
@@ -470,22 +671,33 @@ def _load_prepared_training_frames(
         if task_type == TaskType.TIME_SERIES
         else "row_id"
     )
-    seed_material = f"{getattr(split, 'id', '')}:{split.specification.get('row_set_digest', '')}"
+    seed_material = (
+        f"provider-safe-sample-v1:{source_plan.manifest.split_digest}:"
+        f"{source_plan.manifest.safe_data.schema_digest}"
+        if source_plan is not None
+        else f"{getattr(split, 'id', '')}:{split.specification.get('row_set_digest', '')}"
+    )
     seed = int(hashlib.sha256(seed_material.encode()).hexdigest()[:8], 16)
     frames = (
         _load_prepared_role(
             str(uris["train"]),
+            source_plan=source_plan,
+            role="train",
             max_rows=sample_rows,
             source_rows=train_count,
             order_column=order_column,
             random_seed=seed,
+            approved_columns=approved_columns,
         ),
         _load_prepared_role(
             str(uris["validation"]),
+            source_plan=source_plan,
+            role="validation",
             max_rows=validation_rows,
             source_rows=validation_count,
             order_column=order_column,
             random_seed=seed + 1,
+            approved_columns=approved_columns,
         ),
     )
     return frames[0], frames[1]
@@ -494,15 +706,25 @@ def _load_prepared_training_frames(
 def _load_prepared_role(
     uri: str,
     *,
+    source_plan=None,
+    role=None,
     max_rows: int = 0,
     source_rows: int = 0,
     order_column: str = "row_id",
     random_seed: int = 42,
+    approved_columns: list[str] | None = None,
 ) -> pd.DataFrame:
     _ensure_ray()
-    descriptor = get_object_store().dataframe_source(uri)
-    path, filesystem = _ray_source(descriptor.path, descriptor.filesystem_options)
-    dataset = ray.data.read_parquet(path, filesystem=filesystem)
+    if source_plan is not None:
+        from automl_api.services.provider_reader import read_provider_role
+
+        dataset = read_provider_role(source_plan, role)
+    else:
+        if uri.startswith("provider-import:"):
+            raise ValueError("Provider prepared roles cannot fall back to prefix reads")
+        descriptor = get_object_store().dataframe_source(uri)
+        path, filesystem = _ray_source(descriptor.path, descriptor.filesystem_options)
+        dataset = ray.data.read_parquet(path, filesystem=filesystem)
     identity_columns = {
         "row_id",
         "source_ordinal",
@@ -531,11 +753,19 @@ def _load_prepared_role(
             .limit(max_rows)
         )
         names.add("__sceptre_sample_rank__")
+    elif source_plan is not None and "row_id" in names:
+        dataset = dataset.sort("row_id")
+        if max_rows > 0:
+            dataset = dataset.limit(max_rows)
     elif max_rows > 0:
         dataset = dataset.limit(max_rows)
     removable = sorted(identity_columns & names)
     if removable:
         dataset = dataset.drop_columns(removable)
+    if approved_columns is not None:
+        if not approved_columns or set(approved_columns) - (names - identity_columns):
+            raise ValueError("Prepared data is missing the approved feature view")
+        dataset = dataset.select_columns(approved_columns)
     return dataset.to_pandas()
 
 
@@ -858,6 +1088,22 @@ def _fit_candidate(
     started = time.monotonic()
     print(f"Training candidate {candidate.name}", flush=True)
     try:
+        candidate, fixed = fixed_candidate(
+            candidate,
+            run.params.get("parameter_overrides", []),
+            target_classes=int(train_y.nunique()) if task_type == TaskType.CLASSIFICATION else None,
+        )
+        if "model__n_neighbors" in fixed:
+            minimum_rows = (
+                min(len(indices) for indices, _ in cv.split(train_x, train_y))
+                if hasattr(cv, "split")
+                else len(train_x) - math.ceil(len(train_x) / int(cv))
+            )
+            validate_conditionals(
+                candidate.name,
+                {key.removeprefix("model__"): value for key, value in fixed.items()},
+                minimum_rows=minimum_rows,
+            )
         cpu_threads, detected_gpu_vendor, rapids_active = _runtime_training_resources()
         gpu_vendor = None if _force_cpu else detected_gpu_vendor
         estimator, accelerator = configure_estimator_for_training(
@@ -906,7 +1152,7 @@ def _fit_candidate(
                 base_parameters=_json_safe(estimator.get_params(deep=False)),
                 max_concurrent=max(1, int(os.getenv("AUTOML_TUNE_CONCURRENCY", "1"))),
             )
-            params = _json_safe(search_evidence["params"])
+            params = merge_fixed(_json_safe(search_evidence["params"]), fixed)
             cv_mean, cv_std = search_evidence["mean"], search_evidence["std"]
             _persist_candidate_phase(run.id, candidate.name, "fitting_final_model")
             fitted = clone(model).set_params(**params).fit(train_x, train_y)
@@ -931,7 +1177,7 @@ def _fit_candidate(
                     accelerator=accelerator,
                     fallback_from=_fallback_from,
                 )
-                params = _json_safe(search_evidence["params"])
+                params = merge_fixed(_json_safe(search_evidence["params"]), fixed)
                 cv_mean, cv_std = search_evidence["mean"], search_evidence["std"]
                 _persist_candidate_phase(run.id, candidate.name, "fitting_final_model")
                 fitted = clone(model).set_params(**params).fit(train_x, train_y)
@@ -948,7 +1194,7 @@ def _fit_candidate(
                 )
                 search.fit(train_x, train_y)
                 fitted = search.best_estimator_
-                params = _json_safe(search.best_params_)
+                params = merge_fixed(_json_safe(search.best_params_), fixed)
                 cv_mean = float(search.best_score_)
                 cv_std = float(search.cv_results_["std_test_score"][search.best_index_])
         else:
@@ -993,7 +1239,7 @@ def _fit_candidate(
             _persist_candidate_phase(run.id, candidate.name, "fitting_final_model")
             model.fit(train_x, train_y)
             fitted = model
-            params = {}
+            params = fixed
             cv_mean = float(np.mean(cv_scores))
             cv_std = float(np.std(cv_scores))
 
@@ -1231,6 +1477,12 @@ def _fit_clustering_candidate(
     started = time.monotonic()
     print(f"Training clustering candidate {candidate.name}", flush=True)
     try:
+        minimum_rows = len(features) - math.ceil(len(features) / splitter.n_splits)
+        if not hasattr(candidate.estimator, "predict"):
+            minimum_rows = min(minimum_rows, len(features) // splitter.n_splits)
+        candidate, fixed = fixed_candidate(
+            candidate, run.params.get("parameter_overrides", []), minimum_rows=minimum_rows
+        )
         cpu_threads, gpu_vendor, rapids_active = _runtime_training_resources()
         base_estimator, accelerator = configure_estimator_for_training(
             candidate,
@@ -1240,7 +1492,7 @@ def _fit_clustering_candidate(
         )
         parameter_options: list[dict[str, Any]] = [{}]
         available_parameters = base_estimator.get_params(deep=False)
-        if "n_clusters" in available_parameters:
+        if "n_clusters" in available_parameters and "model__n_clusters" not in fixed:
             maximum_clusters = min(8, max(2, len(features) - 1))
             parameter_options = [
                 {"n_clusters": cluster_count} for cluster_count in range(2, maximum_clusters + 1)
@@ -1350,7 +1602,9 @@ def _fit_clustering_candidate(
                 ("model", final_estimator),
             ]
         )
-        params = {f"model__{name}": value for name, value in best_params.items()}
+        params = merge_fixed(
+            {f"model__{name}": value for name, value in best_params.items()}, fixed
+        )
         duration = round(time.monotonic() - started, 3)
         parent_run = mlflow.active_run()
         parent_run_id = (

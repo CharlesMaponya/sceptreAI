@@ -1,0 +1,98 @@
+{
+  "verified_at": "2026-10-16T06:35:56.815374+00:00",
+  "status": "verified_increment",
+  "phase_complete": false,
+  "requirements": [
+    "P1-W03",
+    "P1-W07",
+    "P1-W10",
+    "P1-W19"
+  ],
+  "changes": [
+    "Tracking recovery claims existing model-run commands with FOR UPDATE SKIP LOCKED, records a fresh unique owner,90second lease,heartbeat and retry counter, then commits/closes the session before any remote lookup. It renews via separate short transactions every15seconds; renewal cannot revive an expired/stolen/changed command.",
+    "Publication reacquires current command/run rows and requires matching project/resource, operation/type, live owner/expiry, creation marker, request hash, exact typed JSON payload and tracking lineage. A valid result binds the command only; recovery never creates experiments/runs or resumes computation. Failed lookups release their lease, defer60seconds and exhaust budgets durably. Parent-writer success clears any superseded recovery lease.",
+    "Malformed legacy command payloads consume bounded claims and defer/fail without remote calls, allowing healthy work behind them. The creation marker predicate uses exact JSONB containment, avoiding unsafe boolean casts. JSON serialization preserves boolean/integer distinctions in the final snapshot comparison. Unexpected remote parent-run tags are rejected alongside existing lineage checks.",
+    "Heartbeat shutdown precedes publication, preventing the publishing worker from skipping its own in-flight heartbeat lock."
+  ],
+  "verification": {
+    "focused": {
+      "tests": 52,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "regressions": {
+      "tests": 297,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "counts_overlap": true,
+  "regression_cases_by_module": {
+    "tests.test_tracking_leases": 28,
+    "tests.test_training_tracking": 24,
+    "tests.test_training_tracking_http": 2,
+    "tests.test_training_publication_postgres": 18,
+    "tests.test_phase1_reconciler": 90,
+    "tests.test_phase1_reconciler_worker": 11,
+    "tests.test_training_pipeline_runtime": 29,
+    "tests.test_training_analysis_edge_contracts": 24,
+    "tests.test_outbox_delivery_fence": 17,
+    "tests.test_training_parent_lease": 20,
+    "tests.test_dataset_digests": 34
+  },
+  "decisive_checks": [
+    "Actual PostgreSQL shows engine pool checkedout0 at remote lookup entry; separate sessions can lock both command and run. Another recovery process skips the committed live lease. This proves the caller releases its transaction/connection; brief heartbeat transactions remain necessary.",
+    "A separate Python process claims/commits and kills itself with SIGKILL, leaving a durable lease. Independent recovery skips it while live and handles expiry with zero, exhausted and remaining budgets; no remote calls occur once budget is exhausted.",
+    "Expired/stolen owner, changed payload/hash/project-resource binding/type/creation state and dataset lineage cannot publish. Boolean-to-integer JSON mutation is rejected. Unknown marker types cannot break the SQL claim query; malformed intents cannot starve healthy work.",
+    "Real short heartbeat transactions advance during a slow lookup and reject stale owners/expiry. An intentionally held heartbeat row lock is released before publication; the concurrency control catches the former self-lock race.",
+    "Parent publication wins over in-flight recovery, clears the old lease and preserves the one remote ID. Existing HTTP503/dropped-response, lost database acknowledgement, remote tampering, nested identity, retry bounds, queue fairness and repeated recovery checks pass.",
+    "Scoped Ruff lint/format and diff checks pass; coverage.json remains unchanged."
+  ],
+  "intermediate_runs": "Initial36/281 and hardened49/294,51/296 passing cohorts preceded the final52/297 coverage. Review fixed malformed-claim poison behavior, exact marker/type handling and heartbeat/publication ordering. Intermediate harness failures from a missing test import and ORM bool/int dirty equality were corrected; explicit SQL now exercises an actual numeric JSON marker.",
+  "limits": [
+    "The inline _tracked_mlflow_run creation/replay path still holds its database transaction across network calls. This increment removes that issue from background recovery only; full pool/lock inventory and W03/W07/W10 closure remain required.",
+    "Qualification uses a separate local PostgreSQL test database, local MLflow SQLite fixtures and real local HTTP fault servers. The actual killed process is a local Python claimant, not a Kubernetes Pod/production service. No current-image/native deployment, PgBouncer failover, production MLflow outage or full journey is claimed.",
+    "Orphaned/missing-run history, unsupported legacy metadata/old binaries and permanent unknown outcomes still need controlled handling. Existing recovery has not become a general production legacy migration tool.",
+    "Production Train, protected child/provider/predecessor object grants and full native failure qualification remain open. Previous immutable runtime-image evidence predates these source changes.",
+    "No QA data/object mutation, shared rollout, schema migration, commit or public publication occurred.45GB migration remains untested due storage capacity plus reserve/overhead; largest-table targets are unspecified. Seven original QA objects and the original abandoned preservation gate remain unresolved. Phase1 stays1Verified/35Open."
+  ],
+  "source_sha256": {
+    "apps/api/automl_api/services/tracking_reconciliation.py": "feb2afcec24bbb85cc7b0b1ffd15d84bfbba55cba4d2c93c4195216424350a25",
+    "apps/api/automl_api/training/pipeline.py": "4ee23e1f8b8997b88b416d4fc4619a649b7fd81b660705739a04364eb86ec369",
+    "tests/test_tracking_leases.py": "a6a2a9fc6e0b3a18d7a649107b6eee693e819f815a4aee4de8709351a6e68e71",
+    "tests/test_training_tracking.py": "65fee4f8efe90fae120de0d794249d371694ebe1434ff4bd256782725d1728cf",
+    ".unlazy/phase1-tracking-leases/check.py": "aeecc99a732263f909bc504ca78121014ac519227f9c2ec68e7b0a5941561a45",
+    "tests/test_training_tracking_http.py": "7dd0347a8950487f8a4b2dafa2f16782495c5784f54d48577153c1d12ba41657",
+    "tests/test_training_publication_postgres.py": "9f025890c82d97fc77301133a97db999a1c4937f01ebbf8ee23ce7f1bb3a99c7",
+    "tests/test_phase1_reconciler.py": "5219853a64b4751971b25da8fee709a14afea1dacf5c27530380d68793b3b896",
+    "tests/test_phase1_reconciler_worker.py": "dc8131f724807887d3b10f4a7a229ee3371121c46f72d71ea54c0dbed3775139",
+    "tests/test_training_pipeline_runtime.py": "2583375252a3e2f2334ed4b4a47eb219cbb1cdc55d9683d58329565c267d9842",
+    "tests/test_training_analysis_edge_contracts.py": "6c9c62a4fc30106550753e026737147ce3169335ef7d9b2f42cdaafc99584a2d",
+    "tests/test_outbox_delivery_fence.py": "420eb906191a65e9ad687d3068078dd9ccf9727d0e760980846f077432d7d2bb",
+    "tests/test_training_parent_lease.py": "e3a25b70dee37a2c87a4cf5d962203d7cae70fc6c78098edde2ba67b27bbc2e1",
+    "tests/test_dataset_digests.py": "d51a6e257eb14be01f41840808471a4c43187892bcd05d1f093a5813aca6d5e1",
+    "tests/test_phase1_postgres_contracts.py": "498ada57ba5e4dee6a52ece923c205d29df388171dbdb8f20676b15f82a2ec4a"
+  },
+  "artifact_sha256": {
+    ".unlazy/phase1-tracking-leases/gates-final-reviewed.log": "e322fda5ea7788a18a34be089b3ca92a84a1a79c623cbdb1188870ae7b11edf9",
+    ".unlazy/phase1-tracking-leases/focused.log": "22046317d451692cdf6069efcec78ec655f6f6478f31ccaca9f5db028a307cca",
+    ".unlazy/phase1-tracking-leases/lint.log": "4bd8248f4985e327cd636d5b563aa46d1d34db2021498c8d8b37613b35f181d1",
+    ".unlazy/phase1-tracking-leases/regressions-report.json": "e8537aa23c9d0a87e005a835925d001e0823830c04ad2485b64df9afb8f185b7",
+    ".unlazy/phase1-tracking-leases/focused-report.json": "02ed6c4dc0bae1727c1a3d80f0352269a722aa9d92ac2c589f170c45273d7e8b",
+    ".unlazy/phase1-tracking-leases/gates-initial.log": "66fdd94944428f935f03072e239d42636f87a492741c6cf095ded35c5af89add",
+    ".unlazy/phase1-tracking-leases/gates-reviewed.log": "52f985420be9003e95f16055e0577043ad2264d8540a6969af6fa3128f2b8033",
+    ".unlazy/phase1-tracking-leases/focused.xml": "012f986a8f375e3559ac46d6f4a6e81eb9270d54ec283f8cb8461276528c3b02",
+    ".unlazy/phase1-tracking-leases/gates-hardened.log": "276f75a38e34eefc47208f25dcf9c3d2edd22c2b747e7582ee835a50e4123cf7",
+    ".unlazy/phase1-tracking-leases/regressions.log": "dc0521f1345b2bbd822b9be0e5c72e155348d7d0136dc03686ea8d5811a3e751",
+    ".unlazy/phase1-tracking-leases/regressions.xml": "3935de89ceb6acf994c36552a4d069c8773d8117ca5afbc389ce44d231bdd66d",
+    ".unlazy/phase1-tracking-leases/source-sha256.json": "e5ca7a1ea50b4c11f5285bf6ba082e2547b6be30e6b61c95c1938b5c0c934159",
+    ".unlazy/phase1-tracking-leases/gates-final.log": "6958d3aed2772d57f1540e80e346438838134df267c662d05691a0a4bc332d41"
+  },
+  "phase_ledger": {
+    "requirements": 36,
+    "verified": 1,
+    "open": 35
+  }
+}

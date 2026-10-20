@@ -1,8 +1,10 @@
+import os
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 from automl_api.training import candidate_runtime, pipeline
+from automl_api.training.attempt_admission import TRAINING_PROTOCOL
 
 
 def setup_runtime(monkeypatch):
@@ -80,6 +82,7 @@ def test_abandoning_tournament_cancels_unfinished_tasks(monkeypatch):
 
 @pytest.mark.parametrize("kind", ["supervised", "clustering"])
 def test_candidate_process_returns_artifact_metadata_without_fitted_model(monkeypatch, kind):
+    monkeypatch.setenv("TRAINING_EXECUTION_MODE", "ray")
     monkeypatch.setenv("AUTOML_CPU_THREADS", "2")
     monkeypatch.setenv("HOSTNAME", "dedicated-worker")
     monkeypatch.setattr(pipeline.mlflow, "set_tracking_uri", MagicMock())
@@ -102,12 +105,13 @@ def test_candidate_process_returns_artifact_metadata_without_fitted_model(monkey
             "id": "run",
             "tags": {"candidate_experiment_id": "experiment"},
         },
+        parameter_protocol=TRAINING_PROTOCOL,
     )
     assert entry["worker_pod"] == "dedicated-worker"
     assert entry["phase"] == "succeeded"
     assert "_model" not in entry
     fit.assert_called_once()
-    monkeypatch.delenv("TRAINING_EXECUTION_MODE")
+    assert os.environ["TRAINING_EXECUTION_MODE"] == "candidate"
 
 
 @pytest.mark.parametrize("kind", ["supervised", "clustering"])
@@ -125,8 +129,12 @@ def test_serialized_candidate_error_preserves_abort_semantics(monkeypatch, kind,
         "model": ValueError,
     }[failure]
     remote_error = candidate_runtime.ray.exceptions.RayTaskError(
-        "_execute", "remote candidate traceback", error_type("candidate stopped"),
-        proctitle="test-worker", pid=123, ip="127.0.0.1",
+        "_execute",
+        "remote candidate traceback",
+        error_type("candidate stopped"),
+        proctitle="test-worker",
+        pid=123,
+        ip="127.0.0.1",
     )
     remote_error = cloudpickle.loads(cloudpickle.dumps(remote_error))
 

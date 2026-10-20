@@ -92,7 +92,12 @@ class _DurableTuneSearch(DeterministicSkoptSearch):
         self.__dict__.update(restored.__dict__)
 
 
-def _cv_trial(config, *, model, features, target, cv, scoring, execution=None):
+def _cv_trial(config, *, model, features, target, cv, scoring, execution=None, parameter_protocol):
+    from automl_api.services.workflow_state import StaleFence
+    from automl_api.training.attempt_admission import TRAINING_PROTOCOL
+
+    if parameter_protocol != TRAINING_PROTOCOL:
+        raise StaleFence("Tune worker does not support the admitted parameter protocol.")
     from automl_api.training.trial_runtime import evaluate_trial, trial_parent_context
 
     def compute():
@@ -136,6 +141,7 @@ def search_candidate(
     base_parameters=None,
 ) -> dict[str, Any]:
     from automl_api.services.workflow_state import StaleFence
+    from automl_api.training.attempt_admission import TRAINING_PROTOCOL
     from automl_api.training.trial_runtime import trial_parent_context
 
     parent = trial_parent_context()
@@ -177,6 +183,7 @@ def search_candidate(
             cv=cv,
             scoring=scoring,
             execution=execution,
+            parameter_protocol=TRAINING_PROTOCOL,
         ),
         {"cpu": cpus_per_trial},
     )

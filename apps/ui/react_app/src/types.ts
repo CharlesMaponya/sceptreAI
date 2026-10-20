@@ -27,6 +27,7 @@ export interface Dataset {
 }
 export interface DatasetVersion {
   id: ID; dataset_id: ID; version_number: number; status: string; format: string;
+  source_kind?: "raw" | "provider_distribution";
   original_filename: string | null; content_hash: string; byte_size: number | null;
   row_count: number | null; column_count: number | null;
   schema_json?: { columns?: DatasetColumnPreview[] };
@@ -93,6 +94,7 @@ export interface Capacity {
   active_training_jobs: number; warnings: string[];
 }
 export interface TrainingEstimate {
+  experiment_spec_revision_id?: ID | null;
   capacity: Capacity; estimated_working_set_mb: number; cpu_request_cores: number;
   cpu_limit_cores: number; memory_request_mb: number; memory_limit_mb: number;
   gpu_requested: boolean; gpu_vendor?: "nvidia" | "intel" | null;

@@ -4,7 +4,17 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -22,10 +32,20 @@ class FinalTestAllocation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __table_args__ = (
         UniqueConstraint("split_digest", name="uq_final_test_split_digest"),
         UniqueConstraint("scope_id", name="uq_final_test_scope"),
+        UniqueConstraint("fixture_revision", "split_revision", name="uq_final_test_revision_pair"),
+        CheckConstraint(
+            "(fixture_revision IS NULL AND split_revision IS NULL) OR "
+            "(fixture_revision IS NOT NULL AND split_revision IS NOT NULL "
+            "AND fixture_revision::text ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'::text "
+            "AND split_revision::text ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'::text)",
+            name="allocation_revision_pair",
+        ),
         Index("ix_final_test_status", "status", "updated_at"),
     )
 
     split_digest: Mapped[str] = mapped_column(String(128), nullable=False)
+    fixture_revision: Mapped[str | None] = mapped_column(String(128))
+    split_revision: Mapped[str | None] = mapped_column(String(128))
     project_reference: Mapped[str] = mapped_column(String(255), nullable=False)
     scope_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
     canonical_provider: Mapped[str] = mapped_column(String(32), nullable=False)

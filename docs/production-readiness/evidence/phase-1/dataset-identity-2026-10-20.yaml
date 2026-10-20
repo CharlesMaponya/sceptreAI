@@ -1,0 +1,51 @@
+{
+  "status": "verified_scoped_dataset_identity_creation_fix",
+  "phase_complete": false,
+  "verified_at": "2026-10-20T06:00:25.171085+00:00",
+  "connected_tests": 229,
+  "overlapping_focused_tests": 3,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "pre_fix_assertion_failures": 3,
+  "new_raw_splitter_and_direct_preparation_project_stage_identity": true,
+  "committed_splitter_preparation_handoff_project_stage_identity": true,
+  "existing_identity_replay_preserved": true,
+  "prepared_source_creation_fixture_uses_stubbed_approved_source": true,
+  "pod_bound_admission_stubbed_in_handoff_identity_test": true,
+  "connected_admission_and_submission_regressions_included": true,
+  "pre_fix_source_sha256": {
+    "apps/api/automl_api/services/profiling_jobs.py": "ae87628912d069de8f43a9fd4e65ce6156b866fb1ad57f285fa4e68176cd19d7",
+    "apps/api/automl_api/preparation_worker.py": "27fe3e4b36a01a5fb4e14caeeea991963b87f850ff456e8fb0b9586021e2d639",
+    "tests/test_profiling_jobs.py": "8712522925da13671240c08e74be39128d6b35e87908c03e90e843f62bc41525"
+  },
+  "changed_source_sha256": {
+    "apps/api/automl_api/services/profiling_jobs.py": "7b094a302197fbbc2636380c8e47b18ba0fe39fa45bbac76a8e0044eece72eae",
+    "apps/api/automl_api/preparation_worker.py": "56ae1b0d88f7063a466d56841c542ef10d30c54c2f71c1a77407b08b5bc9820f",
+    "tests/test_profiling_jobs.py": "8ae84ec9644b13db62580b0b3218cbbd99237d321090e642c1e6dc2c7a914991",
+    "tests/test_dataset_workload_identity.py": "b45db83e2563782a79e329967eae1d3041d336a613d70a4c07f91add4a937507",
+    "tests/test_phase3_preparation.py": "10d7044d38b9bdcaa258fceb39588d94b92f0021e08b2615e7e024d6a536953a"
+  },
+  "tested_input_count": 485,
+  "artifact_sha256": {
+    ".unlazy/phase1-dataset-identity/source-sha256.json": "189f81b60693c00c4ce53885cdd0987cfe14edf0c4d00345858b243f5aa94323",
+    ".unlazy/phase1-dataset-identity/connected.xml": "72ba775ae918dd7983c010014281ef905151e344af854301dbe55b89a53a53fa",
+    ".unlazy/phase1-dataset-identity/connected-state.json": "41057046bb45452727d24c45cf9499f588e0db5c055a7dba89c3132e212aa1f1",
+    ".unlazy/phase1-dataset-identity/reproduction.xml": "04fe5671c2353ca659ad08b7f15d9f8a4cb78a492459849ddeed297005672ad4",
+    ".unlazy/phase1-dataset-identity/run.py": "17f8bfb8eefdf77975613c6943435d7006fabd38359f57e8165c583997c54df4",
+    ".unlazy/phase1-dataset-identity/audit.py": "f93d7bd626d43efb5c9db27af15d1dd8fb6c9a37dce5b56c511dc62a74b73504",
+    ".unlazy/phase1-dataset-identity/lint.log": "cd7f41cf1ad5ba8b6263217889865f18d2b85df5ad631a05d6d321f51fd1b7b2"
+  },
+  "coverage_original_sha256": "d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9",
+  "whole_phase_verified": 2,
+  "whole_phase_open": 34,
+  "native_worker_or_full_isolation_qualified": false,
+  "historical_identity_backfill_performed": false,
+  "other_stage_identity_boundaries_qualified": false,
+  "full_backend_suite_or_global_coverage_requalified": false,
+  "production_sized_or_prior_binary_migration_qualified": false,
+  "migration_qualification_ceiling_bytes": 45000000000,
+  "shared_preservation_qualified": false,
+  "historical_missing_qa_objects": 7,
+  "abandoned_handoff": "phase1-deletion:G7"
+}

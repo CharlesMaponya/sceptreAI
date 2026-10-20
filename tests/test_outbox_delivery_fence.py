@@ -128,6 +128,8 @@ def test_upload_cannot_renew_or_publish_after_lease_takeover(
             status="object_completed",
             expires_at=datetime.now(UTC) + timedelta(hours=1),
             completed_object_uri="embedded://test/object",
+            digest_algorithm="sha256",
+            digest_scope="byte_stream",
             expected_object_digest="a" * 64,
         )
         db.add(upload)
@@ -198,3 +200,57 @@ def test_upload_cannot_renew_or_publish_after_lease_takeover(
             assert current.status == OutboxStatus.DELIVERED
             assert upload.status == "ready"
             assert upload.observed_object_digest == "a" * 64
+
+
+@pytest.mark.parametrize(
+    "digest_scope,expected_digest",
+    [("multipart_manifest", None), ("multipart_manifest", "a" * 64), ("byte_stream", None)],
+)
+def test_persisted_unqualified_upload_is_blocked_without_deletion_or_hash_rewrite(
+    delivery, monkeypatch, digest_scope, expected_digest
+):
+    engine, user_id, project_id, entry_id = delivery
+    with Session(engine) as db, db.begin():
+        upload = DatasetUploadSession(
+            project_id=project_id,
+            created_by_id=user_id,
+            dataset_name="legacy",
+            original_filename="original.csv",
+            byte_size=4,
+            part_size=4,
+            total_parts=1,
+            object_key="legacy/original",
+            multipart_upload_id="legacy-provider-id",
+            resume_key=str(uuid.uuid4()),
+            status="completed",
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
+            completed_object_uri="embedded://legacy/original",
+            digest_algorithm="sha256",
+            digest_scope=digest_scope,
+            expected_object_digest=expected_digest,
+        )
+        db.add(upload)
+        db.flush()
+        upload_id = upload.id
+        entry = db.get(OutboxEntry, entry_id)
+        entry.topic = "upload.reconcile"
+        entry.payload = {"session_id": str(upload_id)}
+    store = MagicMock()
+    monkeypatch.setattr(reconciler, "get_object_store", store)
+    with Session(engine) as db:
+        entry = state.claim_outbox(db, worker_id="current", limit=1)[0]
+        assert entry.id == entry_id
+        db.commit()
+        with pytest.raises(ValueError, match="byte-stream SHA-256"):
+            reconciler.reconcile_entry(db, entry, worker_id="current")
+        db.rollback()
+    store.assert_not_called()
+    with Session(engine) as db:
+        upload = db.get(DatasetUploadSession, upload_id)
+        assert upload.status == "completed"
+        assert upload.digest_scope == digest_scope
+        assert upload.expected_object_digest == expected_digest
+        assert upload.observed_object_digest is None
+        assert upload.quarantine_delete_after is None
+        assert upload.completed_object_uri == "embedded://legacy/original"
+        assert db.get(OutboxEntry, entry_id).status != OutboxStatus.DELIVERED

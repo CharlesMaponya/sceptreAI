@@ -6,22 +6,36 @@ import hashlib
 import importlib.metadata
 import json
 import math
+import os
 import platform
+import sysconfig
 from collections.abc import Mapping
 from pathlib import Path
 
 import numpy as np
 from skopt.space import Categorical, Integer, Real
 
+from automl_api.core.config import get_settings
 from automl_api.models.enums import TaskType
+from automl_api.schemas import estimator_parameters
 from automl_api.training import model_catalog
+from automl_api.training.runtime_profiles import runtime_identity
 
 _DEFINITION_SHA256 = hashlib.sha256(Path(model_catalog.__file__).read_bytes()).hexdigest()
+_OVERRIDE_POLICY_SHA256 = hashlib.sha256(
+    Path(estimator_parameters.__file__).read_bytes()
+).hexdigest()
+# Ray adds vendored paths during import; inventory the interpreter installation instead.
 _RUNTIME_DEPENDENCIES = {
     "python": platform.python_version(),
+    "package_scope": "interpreter-site-packages-v1",
     "packages": sorted(
-        (distribution.metadata.get("Name", ""), distribution.version)
-        for distribution in importlib.metadata.distributions()
+        {
+            (distribution.metadata.get("Name", ""), distribution.version)
+            for distribution in importlib.metadata.distributions(
+                path=sorted({sysconfig.get_path("purelib"), sysconfig.get_path("platlib")})
+            )
+        }
     ),
 }
 
@@ -92,6 +106,7 @@ def catalog_specification(task_type: TaskType) -> dict:
                 "serializable": False,
                 "inference": hasattr(estimator, "predict"),
                 "deprecated": False,
+                "parameter_schema": estimator_parameters.parameter_schema(candidate.name),
             }
         )
     return {
@@ -100,8 +115,15 @@ def catalog_specification(task_type: TaskType) -> dict:
         "runtime_lock_digest": catalog_digest(
             {
                 "definitions": definitions,
-                "dependencies": _RUNTIME_DEPENDENCIES,
+                "dependencies": runtime_identity(
+                    _RUNTIME_DEPENDENCIES,
+                    profile=os.getenv("SCEPTRE_RUNTIME_PROFILE"),
+                    environment=get_settings().environment,
+                ),
                 "definition_source_sha256": _DEFINITION_SHA256,
+                "override_policy_revision": estimator_parameters.POLICY_REVISION,
+                "override_policy_source_sha256": _OVERRIDE_POLICY_SHA256,
+                "override_schemas": {row["name"]: row["parameter_schema"] for row in rows},
             }
         ),
         "estimators": rows,

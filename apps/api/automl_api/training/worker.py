@@ -20,7 +20,7 @@ from automl_api.services.workflow_state import (
 )
 from automl_api.training.attempt_admission import (
     ANALYSIS_PROTOCOL,
-    TRAINING_CATALOG_PROTOCOL,
+    TRAINING_PROTOCOL,
     admit_parent,
     proof_deadline,
 )
@@ -289,9 +289,7 @@ def main() -> None:
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-id", required=True)
-    parser.add_argument(
-        "--attempt-protocol", choices=[ANALYSIS_PROTOCOL, TRAINING_CATALOG_PROTOCOL]
-    )
+    parser.add_argument("--attempt-protocol", choices=[ANALYSIS_PROTOCOL, TRAINING_PROTOCOL])
     args = parser.parse_args()
     run_id = uuid.UUID(args.run_id)
     with get_session_factory()() as db:
@@ -304,7 +302,7 @@ def main() -> None:
         raise StaleFence("The declared worker protocol requires a durable attempt context.")
     if context is not None:
         expected_protocol = {
-            RunKind.TRAINING: TRAINING_CATALOG_PROTOCOL,
+            RunKind.TRAINING: TRAINING_PROTOCOL,
             RunKind.VALIDATION: ANALYSIS_PROTOCOL,
             RunKind.EXPLAINABILITY: ANALYSIS_PROTOCOL,
             RunKind.DRIFT: ANALYSIS_PROTOCOL,

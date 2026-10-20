@@ -20,16 +20,18 @@ from automl_api.models.workflows import OutboxEntry, WorkflowAttempt
 from automl_api.services import reconciler
 from automl_api.storage.contracts import ObjectMetadata, RayDataSourceDescriptor
 from automl_shared.data_identity import content_fingerprint, split_role, stable_row_id
+from digest_fixtures import verified_digest_metadata, verified_raw_version
 
 
 def _dataset_attempt(stage: WorkflowStage = WorkflowStage.SPLITTER) -> WorkflowAttempt:
     profile_id = uuid.uuid4()
+    project_id = uuid.uuid4()
     attempt = WorkflowAttempt(
-        project_id=uuid.uuid4(),
+        project_id=project_id,
         stage=stage,
         logical_key=f"profile:{profile_id}:{stage.value}",
         dataset_version_id=uuid.uuid4(),
-        workload_identity=f"sceptre-dataset-{stage.value}",
+        workload_identity=f"project-{project_id}-{stage.value}",
         generation=1,
         fencing_token="dataset-fence",
         status=AttemptStatus.PENDING,
@@ -56,6 +58,9 @@ def _profile_and_version(attempt: WorkflowAttempt) -> tuple[SimpleNamespace, Sim
         id=attempt.dataset_version_id,
         project_id=attempt.project_id,
         status="ready",
+        content_hash="a" * 64,
+        byte_size=1,
+        **verified_digest_metadata(),
     )
     return profile, version
 
@@ -82,8 +87,9 @@ def _dataset_entry(attempt: WorkflowAttempt, profile_id: uuid.UUID) -> OutboxEnt
     return entry
 
 
-def test_dataset_ray_manifest_is_stage_scoped_and_fenced(monkeypatch) -> None:
-    attempt = _dataset_attempt()
+@pytest.mark.parametrize("stage", [WorkflowStage.SPLITTER, WorkflowStage.PREPARATION])
+def test_dataset_ray_manifest_is_stage_scoped_and_fenced(monkeypatch, stage) -> None:
+    attempt = _dataset_attempt(stage)
     profile, version = _profile_and_version(attempt)
     monkeypatch.setattr(
         reconciler,
@@ -101,8 +107,8 @@ def test_dataset_ray_manifest_is_stage_scoped_and_fenced(monkeypatch) -> None:
     )
 
     assert manifest["metadata"]["namespace"] == "sceptre"
-    assert manifest["metadata"]["labels"]["automl.platform/workflow-stage"] == "splitter"
-    assert "--stage splitter" in manifest["spec"]["entrypoint"]
+    assert manifest["metadata"]["labels"]["automl.platform/workflow-stage"] == stage.value
+    assert f"--stage {stage.value}" in manifest["spec"]["entrypoint"]
     assert manifest["spec"]["backoffLimit"] == 0
     cluster = manifest["spec"]["rayClusterSpec"]
     assert cluster["workerGroupSpecs"][0]["minReplicas"] == 1
@@ -142,7 +148,13 @@ def test_dataset_submit_tracks_ray_identity_and_rejects_wrong_stage() -> None:
     profile, version = _profile_and_version(attempt)
     entry = _dataset_entry(attempt, profile.id)
     db = MagicMock()
-    db.scalar.side_effect = [attempt, profile, version]
+    values = iter([attempt, profile, version])
+    db.scalar.side_effect = lambda statement: (
+        None
+        if statement.column_descriptions[0]["entity"].__name__ == "DatasetProviderImport"
+        else next(values)
+    )
+    db.get.return_value = version
     k8s = MagicMock()
     k8s.create_ray_job.return_value = {
         "metadata": {"name": "created-split"},
@@ -187,7 +199,7 @@ def test_dataset_observer_marks_running_and_replaces_lost_generation(monkeypatch
     attempt = _dataset_attempt()
     attempt.status = AttemptStatus.SUBMITTED
     attempt.ray_job_name = "split-job"
-    profile, _ = _profile_and_version(attempt)
+    profile, version = _profile_and_version(attempt)
     db = MagicMock()
     db.scalars.return_value = [attempt]
     db.scalar.return_value = profile
@@ -203,7 +215,13 @@ def test_dataset_observer_marks_running_and_replaces_lost_generation(monkeypatch
     command = SimpleNamespace(id=uuid.uuid4())
     db = MagicMock()
     db.scalars.return_value = [attempt]
-    db.scalar.side_effect = [profile, profile, command]
+    values = iter([profile, profile, command])
+    db.scalar.side_effect = lambda statement: (
+        None
+        if statement.column_descriptions[0]["entity"].__name__ == "DatasetProviderImport"
+        else next(values)
+    )
+    db.get.return_value = version
     k8s.ray_job.side_effect = reconciler.ApiException(status=404)
     enqueue = MagicMock()
     monkeypatch.setattr(reconciler, "enqueue_outbox", enqueue)
@@ -246,11 +264,17 @@ def test_dataset_observer_retries_nested_image_pull_failure_after_grace(monkeypa
     attempt.status = AttemptStatus.SUBMITTED
     attempt.ray_job_name = "split-job"
     attempt.updated_at = datetime.now(UTC) - timedelta(minutes=10)
-    profile, _ = _profile_and_version(attempt)
+    profile, version = _profile_and_version(attempt)
     command = SimpleNamespace(id=uuid.uuid4())
     db = MagicMock()
     db.scalars.return_value = [attempt]
-    db.scalar.side_effect = [profile, profile, command]
+    values = iter([profile, profile, command])
+    db.scalar.side_effect = lambda statement: (
+        None
+        if statement.column_descriptions[0]["entity"].__name__ == "DatasetProviderImport"
+        else next(values)
+    )
+    db.get.return_value = version
     k8s = MagicMock()
     k8s.ray_job.return_value = {
         "status": {
@@ -416,7 +440,7 @@ def test_split_dataset_writes_role_isolated_parquet_locally(
         object_uri=str(raw),
         byte_size=len(content),
         content_hash=hashlib.sha256(content).hexdigest(),
-        content_hash_algorithm="sha256",
+        **verified_digest_metadata(),
         format=DatasetFormat.CSV,
     )
 
@@ -463,7 +487,7 @@ def test_raw_verification_rejects_size_digest_and_algorithm(monkeypatch) -> None
         object_uri="memory://raw",
         byte_size=len(content),
         content_hash=hashlib.sha256(content).hexdigest(),
-        content_hash_algorithm="sha256",
+        **verified_digest_metadata(),
     )
     assert worker._verify_raw(version) == version.content_hash
     version.byte_size += 1
@@ -474,7 +498,7 @@ def test_raw_verification_rejects_size_digest_and_algorithm(monkeypatch) -> None
     with pytest.raises(ValueError, match="SHA-256"):
         worker._verify_raw(version)
     version.content_hash_algorithm = "md5"
-    with pytest.raises(ValueError, match="only accepts SHA-256"):
+    with pytest.raises(ValueError, match="SHA-256"):
         worker._verify_raw(version)
 
 
@@ -938,11 +962,14 @@ def test_run_stage_dispatches_splitter_and_rejects_missing_source(monkeypatch) -
     profile = SimpleNamespace(
         dataset_version_id=uuid.uuid4(), target_column="target", overview_json={}
     )
-    version = SimpleNamespace()
-    attempt = SimpleNamespace(generation=3)
+    version = verified_raw_version(id=profile.dataset_version_id, project_id=uuid.uuid4())
+    attempt = SimpleNamespace(
+        generation=3, stage=WorkflowStage.SPLITTER, dataset_version_id=profile.dataset_version_id
+    )
     monkeypatch.setattr(worker, "_begin_attempt", lambda *_args, **_kwargs: (attempt_id, "fence"))
     db = MagicMock()
-    db.get.side_effect = [profile, version, attempt]
+    db.get.side_effect = [profile, version, attempt, version]
+    db.scalar.return_value = None
     _session_factory(monkeypatch, db)
     split = MagicMock(return_value={"result": True})
     persist = MagicMock()

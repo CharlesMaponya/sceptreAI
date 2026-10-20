@@ -1,3 +1,4 @@
+import hashlib
 import sys
 import time
 from datetime import UTC, datetime, timedelta
@@ -7,6 +8,7 @@ from unittest.mock import MagicMock
 import httpx
 import pytest
 from automl_api.core.config import Settings
+from automl_api.models.datasets import DatasetVersion
 from automl_api.models.enums import AttemptStatus, RunKind, RunStatus
 from automl_api.models.runs import Metric, ModelRun, RunArtifact
 from automl_api.models.workflows import WorkflowAttempt
@@ -16,6 +18,7 @@ from automl_api.services.kubernetes_training import KubernetesTrainingClient
 from automl_api.services.workflow_state import StaleFence
 from automl_api.storage.embedded import EmbeddedObjectStoreDriver
 from automl_api.training import analysis, attempt_admission, worker
+from digest_fixtures import verified_digest_metadata
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from test_phase1_postgres_contracts import committed_tenant, phase1_engine  # noqa: F401
@@ -25,8 +28,16 @@ from test_training_publication_postgres import publication  # noqa: F401
 @pytest.fixture(params=[RunKind.VALIDATION, RunKind.EXPLAINABILITY, RunKind.DRIFT])
 def analysis_scope(publication, monkeypatch, tmp_path, request):  # noqa: F811
     engine, run_id, attempt_id, fence, _ = publication
+    store = EmbeddedObjectStoreDriver(root=tmp_path / "store", bucket="analysis-test")
+    content = b"x,target\n1,0\n2,1\n"
+    source = store.put_bytes("admission-source.csv", content)
     with Session(engine) as db, db.begin():
         run = db.get(ModelRun, run_id)
+        version = db.get(DatasetVersion, run.dataset_version_id)
+        for key, value in verified_digest_metadata().items():
+            setattr(version, key, value)
+        version.object_uri, version.byte_size = source.uri, len(content)
+        version.content_hash = hashlib.sha256(content).hexdigest()
         run.run_kind = request.param
         run.status = RunStatus.QUEUED
         run.k8s_namespace = "analysis-test"
@@ -36,7 +47,6 @@ def analysis_scope(publication, monkeypatch, tmp_path, request):  # noqa: F811
         attempt.workload_identity = f"project-{run.project_id}-analysis"
         attempt.status = AttemptStatus.SUBMITTED
         project_id = run.project_id
-    store = EmbeddedObjectStoreDriver(root=tmp_path / "store", bucket="analysis-test")
     token_file = tmp_path / "identity-token"
     token_file.write_text("test-token")
     monkeypatch.setenv("AUTOML_IDENTITY_TOKEN_FILE", str(token_file))
@@ -232,7 +242,7 @@ def test_analysis_launch_creates_bound_attempt_with_manifest(analysis_scope, mon
     from test_validation import _estimate
 
     engine, run_id, _, _, _, _, _, _ = analysis_scope
-    monkeypatch.setattr(validation, "estimate_training_run", lambda *_: _estimate())
+    monkeypatch.setattr(validation, "estimate_analysis_resources", lambda *_: _estimate())
     k8s = KubernetesTrainingClient(Settings(training_namespace="analysis-test"))
     with Session(engine) as db, db.begin():
         source = db.get(ModelRun, run_id)

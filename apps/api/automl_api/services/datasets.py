@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -102,6 +103,10 @@ def upload_dataset_version(
         object_uri=stored_object.uri,
         original_filename=payload.filename,
         content_hash=content_hash,
+        content_hash_algorithm="sha256",
+        content_hash_scope="byte_stream",
+        content_hash_verification_status="verified",
+        content_hash_verified_at=datetime.now(UTC),
         byte_size=len(content),
         row_count=inspection.row_count,
         column_count=inspection.column_count,

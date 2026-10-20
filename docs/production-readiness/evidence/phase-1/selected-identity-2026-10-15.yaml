@@ -1,0 +1,141 @@
+{
+  "verified_at": "2026-10-15T12:03:11.657436+00:00",
+  "scope": "Selected-mode immutable experiment identity and caller integration",
+  "phase_complete": false,
+  "related_requirements": [
+    "P1-W04",
+    "P1-W05",
+    "P1-W13",
+    "P1-W14",
+    "P1-G01"
+  ],
+  "changes": [
+    "Resolve current prepared legacy selected requests into durable project-scoped experiment and objective revisions using natural request identities, unique inserts and exact coherent prepared graph bindings. Explicit spec references and compatibility assertions cannot override recorded identity. All mode requires an explicit spec.",
+    "Expose resolved experiment and launch bindings in estimates; persist experiment, objective and declared entity/time roles on runs. The UI carries the estimated experiment into launch; restart and add-model preserve recorded roles/objective.",
+    "Scoped launches require the exact experiment as well as split before capacity; a matching spec stays barrier-pending until complete membership. Public named experiment creation validates the graph and records opaque client metadata separately from authoritative identity. Internal compatibility name prefixes are reserved.",
+    "Reservation retries replay the original response before identity/capacity preflight. Canonical estimate digests omit the reserve operation flag and legacy execution alias and use resolved candidate count, allowing the same reservation to be consumed by launch.",
+    "Separate internal analysis resource assessment from training identity admission. Validation, explanation and drift do not invent training experiments or require training preparation for analysis uploads; project authorization and resource checks remain.",
+    "Fingerprint unique distribution/version pairs from interpreter site-packages with an explicit package scope. Duplicate search paths and Ray vendored imports cannot change the installed runtime identity."
+  ],
+  "verification": {
+    "focused": {
+      "tests": 40,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "regressions": {
+      "tests": 859,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "ui": {
+      "tests": 37,
+      "failures": 0,
+      "skipped": 0,
+      "typescript_build": true
+    }
+  },
+  "regression_cases_by_module": {
+    "tests.test_selected_identity": 40,
+    "tests.test_catalog_binding": 37,
+    "tests.test_candidate_details": 37,
+    "tests.test_training_service_runtime": 86,
+    "tests.test_training_pipeline_runtime": 29,
+    "tests.test_training_pipeline_edge_contracts": 10,
+    "tests.test_training_analysis_edge_contracts": 24,
+    "tests.test_phase3_preparation": 47,
+    "tests.test_phase1_public_contracts": 28,
+    "tests.test_phase1_postgres_contracts": 38,
+    "tests.test_replay_authorization": 24,
+    "tests.test_training_action_replay": 14,
+    "tests.test_training_parent_lease": 20,
+    "tests.test_training_publication_postgres": 18,
+    "tests.test_model_catalog_edge_contracts": 18,
+    "tests.test_candidate_partitions": 21,
+    "tests.test_phase0_snapshots": 2,
+    "tests.test_admission_runtime": 20,
+    "tests.test_training_parent_expiry": 14,
+    "tests.test_phase1_reconciler": 75,
+    "tests.test_phase1_reconciler_worker": 11,
+    "tests.test_runtime_foundations": 21,
+    "tests.test_analysis_admission": 36,
+    "tests.test_analysis_migration": 57,
+    "tests.test_preparation_admission": 34,
+    "tests.test_validation": 22,
+    "tests.test_operations": 76
+  },
+  "checks": [
+    "PostgreSQL-backed four-task compatibility, immutable reuse after later profiling, explicit assertion mismatch, tampered spec/column/binding rejection and public metadata isolation.",
+    "Four concurrent compatibility resolutions share one experiment/objective. Two concurrent reserved estimates return one response/reservation; changed bodies conflict.",
+    "Actual HTTP estimate and launch with real PostgreSQL and project-role checks consume one reservation or create one launch reservation, preserve identity on the run, create one outbox entry, and replay before capacity.",
+    "An actual PostgreSQL scope rejects a different experiment on the same split before capacity and permits the matching experiment without releasing its barrier. Missing/incomplete/coherence and incompatible alias/hint requests fail before capacity and execution intent. Positive-label policy and restart/add-model lineage are covered.",
+    "An unprepared analysis input passes internal capacity assessment without creating experiment/objective rows, while the public training estimator rejects that same missing preparation.",
+    "Independent interpreter catalog equality includes duplicate search paths and a Ray import followed by catalog reload. The UI request assertion verifies the returned experiment ID reaches launch."
+  ],
+  "negative_and_intermediate_runs": {
+    "initial_integration": "8 failures from a new test using the wrong outbox model name; two fixture teardown errors from deleting a dataset before its new prepared artifact. Corrected tests and cleanup; 72 integration cases then passed.",
+    "first_broad": "758 passed / 1 catalog process-identity failure; diagnostic comparison located differing discovered dependency inventories.",
+    "second_broad": "857 passed / 1 catalog process-identity failure after deduplicating entries. Collection probe isolated Ray vendored colorama metadata; interpreter-site inventory is now explicit.",
+    "qualification": "Intermediate runs are diagnostic only; final gates rerun after the source changes."
+  },
+  "migration_qualification": {
+    "user_maximum_bytes": 45000000000,
+    "largest_table_rows": null,
+    "host_free_bytes": 66976210944,
+    "existing_cluster_disk_reserve_approx_bytes": 37470000000,
+    "ran_45gb_rehearsal": false
+  },
+  "limits": [
+    "HTTP auth/session dependencies are supplied by fixtures; project-role checks and PostgreSQL state are real. Kubernetes capacity responses and object existence are stubbed. No current-image training, full Ray workload, real GPU or provider-object qualification is claimed.",
+    "Unknown/old experiment digest scopes and incomplete/legacy catalogs fail closed. Catalogs require fresh publication with a compatible runtime; existing rows are not rewritten. Historical request hashes/reservation protocols and previous-release binaries still require controlled migration qualification.",
+    "Installed package/version identity excludes cwd, user overlays and vendored distribution metadata; it is not signed image, platform, source-overlay or binary attestation. CPU/GPU variant qualification remains open.",
+    "Historical candidate/status migration, typed feature/search dictionaries, discriminated safe estimator parameters, provider/child/predecessor object grants and production Train/native failure coverage remain open.",
+    "No image build, QA rollout, QA data/storage mutation, 45GB rehearsal or 15x10GiB campaign occurred. Seven historical QA objects remain missing; prior original-preservation gate remains abandoned."
+  ],
+  "source_sha256": {
+    ".unlazy/phase1-selected-identity/check.py": "b1c125374063cbba95f5ac038d462fb0e677396474d2ed27816f21d846f83812",
+    ".unlazy/phase1-selected-identity/ui_check.py": "258e887683b20c86151261ea180bb7b73cae080b5f145981602478ce074c8e24",
+    "apps/api/automl_api/schemas/contracts.py": "304857594faed59e23b4a116b7cced51f3c0d8df18ebf41ec65ed79574641cdc",
+    "apps/api/automl_api/schemas/training.py": "aca1670b563798bd3d7251201b65b81bb8a2ad5a53826336c0f721f1545f08e3",
+    "apps/api/automl_api/services/contracts.py": "ebfadadc7dd896b7f59f16cc635c475826291274ed9192aa649a828d0caf61d9",
+    "apps/api/automl_api/services/experiment_identity.py": "eca065338f129deb02cc2db436b3797a31ea2d38282d651ea6bba3309967aa6e",
+    "apps/api/automl_api/services/operations.py": "56e910ddd5ab4dab4147b363ebee13d531fd4f815d03ef8fa4bda76e3baa0d51",
+    "apps/api/automl_api/services/training.py": "41a97a8134adb479cfe7052d24e0f4a94a6b236d48a9283ab9887fdedf536827",
+    "apps/api/automl_api/services/validation.py": "f9d755607d916d6f44eb0bfcb732334a7b987b30289a6752cbf82b44d0ab8d06",
+    "apps/api/automl_api/training/catalog_contract.py": "9283948c5e91dc0b1f0c2d113b21ef1cf02268bf03bb161e052c79922777c0ca",
+    "apps/ui/react_app/src/pages/TrainingPage.tsx": "da456ab8af4c7bf5b5a2d383d608e40b446ee8c761c1919cabb77d431680fe18",
+    "apps/ui/react_app/src/pages/training_states.test.tsx": "6005c2ca56d670941a830c3bc7735308c459c4c99f5b36d4339e1572b873174d",
+    "apps/ui/react_app/src/types.ts": "04e6373cbc022753630204ae89a825af192a40271505dca0464bced50b916c34",
+    "tests/test_analysis_admission.py": "c76e8fa3a564df201b00dfc6ee7a0c3343c216492982c7928bcabf858227f791",
+    "tests/test_catalog_binding.py": "f65f4bbe09452fd76238303105d359cde974e1b0ef4c2576e39cd948924b4b1c",
+    "tests/test_operations.py": "2e589d15fc4c2265b0741e4066876307614428baea9029685edd70c2eed005d8",
+    "tests/test_phase1_postgres_contracts.py": "60db836875c21105ddaff6b0d130d4df4d09e35ea7a5fbfb3359d2c3b28d3815",
+    "tests/test_phase1_public_contracts.py": "aa485c81af0e9d3a365f9114599dad82cb4c3256eecf967d8d58ed2ff2c5dbf8",
+    "tests/test_selected_identity.py": "2c12aa3183c2858362c9e3ed154451e92e05fcef0433ca975c36d8453fb5b12e",
+    "tests/test_training_service_runtime.py": "ddf61acf1b1bd06b9f55365cd8cdcf1a0aace558a04ad07a075634494b12f499",
+    "tests/test_validation.py": "f9e8432ac0d7cfb0e6da612d3ec41a67d1377f04a8aec4c594ec4914d33705d7"
+  },
+  "verification_artifact_sha256": {
+    ".unlazy/phase1-selected-identity/check.py": "b1c125374063cbba95f5ac038d462fb0e677396474d2ed27816f21d846f83812",
+    ".unlazy/phase1-selected-identity/ui_check.py": "258e887683b20c86151261ea180bb7b73cae080b5f145981602478ce074c8e24",
+    ".unlazy/phase1-selected-identity/focused.xml": "61102a43859c05b9eaf9bbd1863a6cdf3615ae21a4c882839020918996e287ae",
+    ".unlazy/phase1-selected-identity/regressions.xml": "03c107eef67b1c52587cad3680affacd6ac3ea0084646e741d4ac929d24995f6",
+    ".unlazy/phase1-selected-identity/ui-tests.json": "3f5ee921773c699f40bab99a1ea2cbcd9c80f8d63a8e4f451593ae02c178d189",
+    ".unlazy/phase1-selected-identity/ui.log": "3822c100064f051a9b73a8658dd0e8e5498e363f931ba03a1ed04431d4e4fe5e",
+    ".unlazy/phase1-selected-identity/lint-final.log": "c073436c7516d3857e1e885e37369cd064206ade7004e4107bbb314dfde697b4",
+    ".unlazy/phase1-selected-identity/regressions-first.xml": "0ada5ed237901ed38886dfec2d6c9eec4514d8da90e598d73a05e63d4e3faa42",
+    ".unlazy/phase1-selected-identity/regressions-second.xml": "119faf4452ba831f2397e69bbeb730ae9196bb65530c9ab1a7672f32a41ec3e2",
+    ".unlazy/phase1-selected-identity/regressions-before-scope.xml": "bb844d87bcae6fdcac16eb1948cbad9cb05c94717734da88b1f619c4545d0697",
+    ".unlazy/phase1-selected-identity/scope-binding.xml": "f7ab331e8ff8bc081e504587c72be26ed5d1ff139880966a1cd1daa9ec9c1080",
+    ".unlazy/phase1-selected-identity/collection-probe.log": "672bc21b9283b8f1b8f2f8fb5f544c220232a8cae7cb2e76945e4f5ab3941fa9",
+    ".unlazy/phase1-selected-identity/path-probe.log": "3050196d7101f3a050b8119e7168bddfb6f44c23b82fc99d59a1bed043097bfa",
+    ".unlazy/phase1-selected-identity/catalog-stable.log": "f7294f9d3a5371ca7b38d07262d0c5665347255c0703ccaa61f2983cba735693"
+  },
+  "phase_ledger": {
+    "requirements": 36,
+    "verified": 1,
+    "open": 35
+  }
+}

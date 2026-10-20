@@ -4,9 +4,13 @@ seaweedfs:
   enabled: false
 
 # Create these Secrets before installation. The platform Secret must contain
-# DATABASE_URL; the object-store Secret must contain ACCESS_KEY and SECRET_KEY.
+# DATABASE_URL and QUALIFICATION_DATABASE_URL. Provision WORKER_DATABASE_URL in
+# the separate worker Secret using its scoped login; the object-store Secret
+# must contain ACCESS_KEY and SECRET_KEY.
 platform:
   existingSecret: sceptre-external-database
+  workerDatabase:
+    existingSecret: sceptre-external-worker-database
 auth:
   existingSecret: sceptre-auth
 externalObjectStore:

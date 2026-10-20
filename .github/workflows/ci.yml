@@ -663,6 +663,12 @@ jobs:
         with:
           version: v4.2.2
 
+      - name: Verify API and CPU worker runtime compatibility
+        run: |
+          python3 scripts/validate_runtime_pair.py \
+            --api-image "${IMAGE}@$(cat "$RUNNER_TEMP/digests/api")" \
+            --cpu-image "${IMAGE}@$(cat "$RUNNER_TEMP/digests/training-cpu")"
+
       - name: Publish clean version tags
         env:
           VERSION: ${{ needs.release-preflight.outputs.version }}

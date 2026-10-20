@@ -197,7 +197,18 @@ def test_s3_grant_pins_versions_and_read_method(monkeypatch):
     import boto3
 
     client = Mock()
-    client.generate_presigned_url.return_value = "https://example.test/version"
+    from urllib.parse import urlencode
+
+    client.generate_presigned_url.side_effect = lambda *args, **kw: (
+        "https://example.test/version?"
+        + urlencode(
+            {
+                "X-Amz-Date": datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
+                "X-Amz-Expires": kw["ExpiresIn"],
+                "versionId": kw["Params"]["VersionId"],
+            }
+        )
+    )
     monkeypatch.setattr(boto3, "client", lambda *args, **kwargs: client)
     manifest = manifest_for(uuid.uuid4())
     assert len(mint_read_urls(manifest, datetime.now(UTC) + timedelta(minutes=5))) == 2
@@ -376,7 +387,18 @@ def test_gcp_workload_identity_uses_explicit_iam_signer_and_generation(monkeypat
     client = Mock()
     client._credentials.token = "short-lived-iam-token"
     blob = client.bucket.return_value.blob.return_value
-    blob.generate_signed_url.return_value = "https://storage.googleapis.com/test"
+    from urllib.parse import urlencode
+
+    blob.generate_signed_url.side_effect = lambda **kw: (
+        "https://storage.googleapis.com/test?"
+        + urlencode(
+            {
+                "X-Goog-Date": datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
+                "X-Goog-Expires": int((kw["expiration"] - datetime.now(UTC)).total_seconds()),
+                "generation": kw["generation"],
+            }
+        )
+    )
     monkeypatch.setattr(storage, "Client", lambda: client)
     monkeypatch.setenv(
         "QUALIFICATION_GCP_SIGNING_ACCOUNT", "broker@example.iam.gserviceaccount.com"
@@ -405,3 +427,50 @@ def test_broker_rejects_invalid_expiry_before_sdk_access(monkeypatch, seconds):
     with pytest.raises(ValueError, match="expiry"):
         mint_read_urls(manifest_for(uuid.uuid4()), datetime.now(UTC) + timedelta(seconds=seconds))
     client.assert_not_called()
+
+
+def test_native_deadline_overrun_consumes_final_grant_without_disclosure(
+    authority_api, monkeypatch
+):
+    from urllib.parse import urlencode
+
+    import boto3
+
+    _, scope, kwargs = authority_api
+    sdk = Mock()
+    sdk.generate_presigned_url.side_effect = lambda *args, **kw: (
+        "https://objects.test/final?secret=never-disclose&"
+        + urlencode(
+            {
+                "X-Amz-Date": (datetime.now(UTC) + timedelta(seconds=40)).strftime(
+                    "%Y%m%dT%H%M%SZ"
+                ),
+                "X-Amz-Expires": kw["ExpiresIn"],
+                "versionId": kw["Params"]["VersionId"],
+            }
+        )
+    )
+    monkeypatch.setattr(boto3, "client", lambda *args, **kw: sdk)
+    mint = Mock(wraps=mint_read_urls)
+    client, manifest, path = grant_client(scope, kwargs, mint)
+    payload = {"provider_manifest_digest": manifest.digest}
+    response = client.post(path + "/credentials", headers=headers("aws"), json=payload)
+    assert response.status_code == 503
+    assert "never-disclose" not in response.text and "urls" not in response.json()
+    assert (
+        client.post(path + "/credentials", headers=headers("aws"), json=payload).status_code == 409
+    )
+    mint.assert_called_once()
+    assert sdk.generate_presigned_url.call_count == len(manifest.objects)
+    with kwargs["session_factory"]() as db:
+        row = db.get(FinalTestAllocation, uuid.UUID(path.rsplit("/", 1)[1]))
+        assert row.status == FinalTestStatus.FAILED
+        receipts = list(
+            db.scalars(
+                select(FinalTestAuthorityReceipt).where(
+                    FinalTestAuthorityReceipt.allocation_id == row.id,
+                )
+            )
+        )
+        assert {r.operation for r in receipts} == {"open", "grant_claim", "fail"}
+        assert "never-disclose" not in str([r.payload for r in receipts])

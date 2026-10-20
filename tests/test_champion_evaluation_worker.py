@@ -84,20 +84,6 @@ def worker_case(policy_case, authority_api, tmp_path, monkeypatch):
     policy, digest = validate_evaluation_policy(db, scope)
     scope.comparison_policy = {**scope.comparison_policy, "evaluation_policy_digest": digest}
     scope.scope_deadline_at = datetime.now(UTC) + timedelta(minutes=5)
-    refit = plan_scope_refit(db, scope.id, store)
-    plan_event = db.scalar(
-        select(WorkflowEvent).where(
-            WorkflowEvent.attempt_id == refit.id, WorkflowEvent.event_key == "refit_plan"
-        )
-    )
-    refit_plan = RefitPlan.model_validate(plan_event.payload)
-    refit.status = AttemptStatus.RUNNING
-    refit.lease_expires_at = scope.scope_deadline_at
-    frozen = FrozenPipeline.model_validate(execute_refit(refit_plan, store))
-    publish_frozen_pipeline(db, refit_plan, frozen, fencing_token=refit.fencing_token)
-    db.flush()
-    with store.open_stream(frozen.frozen_pipeline_uri) as stream:
-        objects["/pipeline"] = stream.read()
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -171,6 +157,42 @@ def worker_case(policy_case, authority_api, tmp_path, monkeypatch):
                 settings=SimpleNamespace(training_namespace="qa-evaluation"),
                 core=SecretAPI(lambda: None),
             )
+            from automl_api.models.enums import ScopeStatus
+            from automl_api.models.runs import ModelRun
+            from automl_api.services.scope_allocation import (
+                reconcile_scope_allocation,
+                register_scope_allocation,
+            )
+
+            previous_status = scope.status
+            scope.status = ScopeStatus.OPEN
+            scope.membership_deadline_at = datetime.now(UTC) + timedelta(minutes=5)
+            register_scope_allocation(
+                db,
+                scope,
+                actor_id=db.scalar(
+                    select(ModelRun.created_by_id).where(ModelRun.project_id == scope.project_id)
+                ),
+            )
+            db.flush()
+            assert reconcile_scope_allocation(factory, scope.id, admin)
+            db.refresh(scope)
+            scope.status = previous_status
+            db.flush()
+            refit = plan_scope_refit(db, scope.id, store)
+            plan_event = db.scalar(
+                select(WorkflowEvent).where(
+                    WorkflowEvent.attempt_id == refit.id, WorkflowEvent.event_key == "refit_plan"
+                )
+            )
+            refit_plan = RefitPlan.model_validate(plan_event.payload)
+            refit.status = AttemptStatus.RUNNING
+            refit.lease_expires_at = scope.scope_deadline_at
+            frozen = FrozenPipeline.model_validate(execute_refit(refit_plan, store))
+            publish_frozen_pipeline(db, refit_plan, frozen, fencing_token=refit.fencing_token)
+            db.flush()
+            with store.open_stream(frozen.frozen_pipeline_uri) as stream:
+                objects["/pipeline"] = stream.read()
             public_key = authority_options["signing_secret"].public_key()
             plan, token, _ = prepare_evaluator_credentials(
                 factory, scope.id, k8s, admin, authority_public_key=public_key

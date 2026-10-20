@@ -99,7 +99,7 @@ def configure_main(publication_scope, monkeypatch):
             "--run-id",
             str(publication_scope[1]),
             "--attempt-protocol",
-            "training-catalog-v1",
+            "training-parameters-v1",
         ],
     )
     monkeypatch.setattr(worker, "_PARENT_HEARTBEAT_INTERVAL", 0.01)

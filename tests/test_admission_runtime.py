@@ -251,7 +251,7 @@ def test_actual_entrypoint_uses_admission_for_start_and_renewal(admission, monke
     monkeypatch.setattr(
         sys,
         "argv",
-        ["worker", "--run-id", str(run.id), "--attempt-protocol", "training-catalog-v1"],
+        ["worker", "--run-id", str(run.id), "--attempt-protocol", "training-parameters-v1"],
     )
     monkeypatch.setenv("TRAINING_EXECUTION_MODE", "direct")
     monkeypatch.setattr(worker, "_PARENT_HEARTBEAT_INTERVAL", 0.01)

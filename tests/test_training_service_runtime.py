@@ -19,6 +19,7 @@ from automl_api.schemas.training import (
 from automl_api.services import idempotency, training
 from automl_api.training.catalog_contract import catalog_digest, catalog_specification
 from automl_api.training.model_catalog import CandidateSpec
+from digest_fixtures import verified_digest_metadata
 from fastapi import HTTPException
 from kubernetes.client import ApiException
 
@@ -52,6 +53,11 @@ class _Session:
         self.bind = None
 
     def scalar(self, _statement: object) -> object | None:
+        if _statement.column_descriptions[0]["entity"].__name__ in {
+            "DatasetProviderImport",
+            "PromotionalScopeMember",
+        }:
+            return None
         return self.scalar_values.pop(0) if self.scalar_values else None
 
     def scalars(self, _statement: object) -> _ListResult:
@@ -123,6 +129,8 @@ def _estimate() -> TrainingEstimateRead:
 
 def _version() -> SimpleNamespace:
     return SimpleNamespace(
+        **verified_digest_metadata(),
+        content_hash="a" * 64,
         id=uuid.uuid4(),
         project_id=uuid.uuid4(),
         object_uri="minio://datasets/train.csv",
@@ -770,6 +778,7 @@ def test_launch_revision_resolution_accepts_scope_and_rejects_scope_state() -> N
     scope = SimpleNamespace(
         id=payload.promotional_scope_id,
         split_revision_id=payload.split_revision_id,
+        experiment_spec_revision_id=payload.experiment_spec_revision_id,
         status=ScopeStatus.OPEN,
     )
     resolved = training._resolve_launch_revisions(

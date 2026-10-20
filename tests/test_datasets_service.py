@@ -112,6 +112,11 @@ def test_upload_creates_immutable_dataset_version(monkeypatch) -> None:
     assert dataset.latest_version_number == 1
     assert version.version_number == 1
     assert version.content_hash == hashlib.sha256(content).hexdigest()
+    assert version.content_hash_algorithm == "sha256"
+    assert version.content_hash_scope == "byte_stream"
+    assert version.content_hash_verification_status == "verified"
+    assert version.content_hash_verified_at is not None
+    assert version.content_hash_verified_at.utcoffset().total_seconds() == 0
     assert version.object_store_type == ObjectStoreType.AWS_S3
     assert version.object_uri == "s3://datasets/object.csv"
     key, stored_content = store.put_bytes.call_args.args

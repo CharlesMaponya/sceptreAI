@@ -1,0 +1,125 @@
+{
+  "verified_at": "2026-10-16T12:49:29.377278+00:00",
+  "status": "verified_increment",
+  "phase_complete": false,
+  "requirements": [
+    "P1-W09"
+  ],
+  "changes": [
+    "Controller authority credentials are selected by persisted local project UUID, then require exact protected project_reference agreement. Policy text cannot choose a different record. Closed UUID-keyed records contain project_reference/token; legacy maps, missing/invalid records and non-printable/non-ASCII/whitespace tokens fail before TLS/transport creation with generic errors.",
+    "Controller selection query includes project IDs; injectable factories and all maintained native probe callers now take(project_id,project_reference). Existing HTTPS/CA/timeout/no-redirect settings and worker credential isolation remain unchanged.",
+    "Operator/Helm documentation and values comment require independently approved UUID bindings, no inference from policies and a coordinated suspend/Secret-format/binary/resume rollout. No live credential or shared environment mutation."
+  ],
+  "verification": {
+    "focused": {
+      "tests": 18,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "regressions": {
+      "tests": 118,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "counts_overlap": true,
+  "regression_cases_by_module": {
+    "tests.test_authority_project_binding": 18,
+    "tests.test_champion_evaluation_reconciler": 13,
+    "tests.test_champion_registration_abort": 22,
+    "tests.test_champion_evaluation_authority": 4,
+    "tests.test_champion_evaluation_keys": 8,
+    "tests.test_champion_credentials": 14,
+    "tests.test_champion_evaluation_worker": 8,
+    "tests.test_helm_chart_contracts": 31
+  },
+  "direct_caller_audit": [
+    {
+      "path": "scripts/validate_evaluator_commit_recovery.py",
+      "line": 113
+    },
+    {
+      "path": "scripts/validate_evaluator_failure.py",
+      "line": 185
+    },
+    {
+      "path": "scripts/validate_evaluator_failure.py",
+      "line": 94
+    },
+    {
+      "path": "scripts/validate_evaluator_workload.py",
+      "line": 119
+    },
+    {
+      "path": "tests/test_authority_project_binding.py",
+      "line": 36
+    },
+    {
+      "path": "tests/test_authority_project_binding.py",
+      "line": 103
+    },
+    {
+      "path": "tests/test_authority_project_binding.py",
+      "line": 116
+    }
+  ],
+  "decisive_checks": [
+    "Valid binding sends only its own Bearer token with expected HTTPS, trusted CA, connect10/read30 limits and redirects disabled. Foreign project/reference cannot construct even a TLS context/client; legacy/invalid JSON/root/record/token states expose only a generic error.",
+    "Explicitly shared authority references still select credentials by distinct local UUIDs. A real PostgreSQL controller query selects two independently persisted projects/scopes and sends their own protected tokens with caller pool checkedout0. Downstream reconcile_scope is stubbed solely in this selector integration test.",
+    "Existing full local evaluator worker/authority recovery, failed-handoff abort, key custody, one-shot credential and Helm isolation regressions pass. New code does not place allocator tokens in workflow events or worker configurations.",
+    "Final regression oracle parses maintained repository Python and checks every direct configured_authority call takes both project and reference. Native Kubernetes probe scripts are syntax/lint/interface checked, not executed against old live Secrets/images.",
+    "Seven changed Python files pass Ruff lint; six pass full formatting while unrelated pre-existing reconciler-test formatting is preserved. Diff/coverage checks pass. Independent22-input source/artifact/XML/report/caller/whole-ledger audit passes."
+  ],
+  "intermediate_runs": "Initial18focused/118related passed. Final repeat includes repository-wide caller oracle and final documented Helm comment/configuration snapshot;18/118 pass with0fail/error/skip. Both gate runs exited1 only for manualG3 pending final audit; both runnable checks exited0 and matched EXPECT.",
+  "limits": [
+    "Existing live reference-keyed Secrets are intentionally incompatible with this source. Coordinate a protected Secret-format and controller rollout before deploying. Do not infer approved bindings from user-supplied policies or automatically convert unknown mappings. No shared Secret/token was modified.",
+    "Focused transport settings/negative controls use injected client/TLS constructors. Selector integration uses actual PostgreSQL and real configuration parsing but a fake transport/downstream controller. Existing related tests exercise local HTTPS workers/authority; no new native/cloud/TLS-handshake/production IAM qualification is claimed.",
+    "Automatic signed dataset-import/admission and early-campaign central registration remain unfinished. This increment secures their prerequisite credential selection; W09/wholePhase1 remain Open. Full provider/grant/Train/failure/restore requirements persist.",
+    "No schema migration, QA database/object/Pod/PVC mutation, rollout, commit or public publication. Head0012 and W12 structure remain unchanged; older runtime-image evidence predates these source changes.",
+    "Fullledger36requirements1VerifiedW12/35Open.45GB capacity/reserve/row-count gap, seven original QA objects and original preservationG7ABANDONED remain unresolved. No historical object/signature replacement."
+  ],
+  "source_sha256": {
+    ".unlazy/phase1-authority-project-binding/check.py": "8aefce4954d6472e768d3cefd8477a9d51174a92187a3f2cda9e3ec13b16a76d",
+    "apps/api/automl_api/models/workflows.py": "ce9a3ca3608a722dc13e7ccee57f30d80f43343aea475bfc1dafdc67a2f914ea",
+    "apps/api/automl_api/services/evaluation_authority.py": "4123f056be727a0b253de1f4d62402ec769d33fb4aa9a80e079e8864b4d34223",
+    "apps/api/automl_api/services/evaluation_jobs.py": "148d73b22d298184e23174b7383aa5c614f8932298721e9a972e0c7006583432",
+    "apps/api/automl_api/services/evaluation_keys.py": "c44cf519ba684f73e36748b3c88514118a181fb7a5c476f5ae860d64652d4b7e",
+    "apps/api/automl_api/services/evaluation_publication.py": "442c35f8a019d04a5a0c0443f2879eb48863720044b3795283e9cc38d6cbfc15",
+    "apps/api/automl_api/services/evaluation_reconciler.py": "2d8b8818c23c8093b0083c25734ed3115385913af4d89588dfa81c700ee5171f",
+    "infra/helm/sceptre/README.md": "3e81fe36f655fefc0ac3caf4d2eaa9d2297818a0c4c24de986c29bb45663fd2e",
+    "infra/helm/sceptre/values.yaml": "abec48c04600b9ad5f61e5e5ecb773dcff1e570674bbdf05a2ac0b353994f493",
+    "scripts/validate_evaluator_commit_recovery.py": "292ab1a20e8feaf1b709290d88c2605a9541e13c6e9d7a33ec5802a49b2c2852",
+    "scripts/validate_evaluator_failure.py": "a62c7f1510e22e312833616031f1c8ac2cb1d05e502a593b761fddba40a48ca4",
+    "scripts/validate_evaluator_workload.py": "0cc75dd7db9ca668954ab156ad5664f98358d05f8b11d235ad749c4fbe31a0be",
+    "services/qualification-control/README.md": "1889bd2b41366081f203e9de1bbf8134ed56bbf13c8d1c6e0aef4789e00d9937",
+    "tests/test_authority_project_binding.py": "6ea713fe80d8ae3d7b06ff793ccb72dcb4aa3094b12ad4d5609fb5c100f2e162",
+    "tests/test_champion_credentials.py": "d1ffd59e6e2e55aed70518e7d343fc48f7abdd1a93abd8e9cb7273b1ba957f34",
+    "tests/test_champion_evaluation_authority.py": "262bb889d1c9db7561e0c0d4c8202eb6176771b3368065f7f8750e0f0c4547e4",
+    "tests/test_champion_evaluation_keys.py": "c4e0249216df257911dd5bce135cd8bae8ea82879eaee09b3598a33004b2eaef",
+    "tests/test_champion_evaluation_reconciler.py": "eddfae2941397d8542abddf7398022b19b7ef70c30931ba98c42d2a083c03f60",
+    "tests/test_champion_evaluation_worker.py": "19744b8a71712fa75b15074be704294c8aae37ddec089153f944126846614fa5",
+    "tests/test_champion_registration_abort.py": "129f1131ae5238fd5c9c94e8bcc18bbb3973495558ccceef2ddeaeec1a5dcb5e",
+    "tests/test_helm_chart_contracts.py": "799f25f5530c79ea0af3ec538d9cb0ac88739e4253689a27a09d0b5f3fe5662b",
+    "tests/test_phase1_postgres_contracts.py": "498ada57ba5e4dee6a52ece923c205d29df388171dbdb8f20676b15f82a2ec4a"
+  },
+  "artifact_sha256": {
+    ".unlazy/phase1-authority-project-binding/focused.log": "ab0012d3dc8601556385c8278f1248247b6ab2d62ff2b970cbebd26034a16a75",
+    ".unlazy/phase1-authority-project-binding/lint.log": "899431ded41f52f0e596057b046dea82d3c0e3557b51b29f591e62f24ab0c713",
+    ".unlazy/phase1-authority-project-binding/regressions-report.json": "0ba625b70026a0cda9af6e8fcab8dcf2b0da1f3c5848cb599a150a6285f37b28",
+    ".unlazy/phase1-authority-project-binding/focused-report.json": "ed95164bd30fddae8b6d9b024c5fef0af64a3612d23f75f445c1691c50b98257",
+    ".unlazy/phase1-authority-project-binding/caller-audit.json": "9cef3587da4c0bdaed09f811e65374ef82a191d9f7a03fa0c77c1dcb9688280d",
+    ".unlazy/phase1-authority-project-binding/gates-initial.log": "61fcfa06ea5a237f64a812bf5368f0d4ef9bb23de209392c101e3b62f895538c",
+    ".unlazy/phase1-authority-project-binding/focused.xml": "0708bcbdac189593eca8babb61e071945d8e9f739ec463f36bce4e03888ee236",
+    ".unlazy/phase1-authority-project-binding/regressions.log": "bac09a1483e4fbbcd55ed0c642c6a4ca0d57d0af5fe7cd95076275391e6cd618",
+    ".unlazy/phase1-authority-project-binding/regressions.xml": "d2b1f3dba63552bc98926eebe439fae9ec1fc3be2eefcdf448c48cd26de37cca",
+    ".unlazy/phase1-authority-project-binding/source-sha256.json": "6e7da46fbab330e8a1726a1f84aa67ca9b3e6e42e11bbe003b32707df3eb039c",
+    ".unlazy/phase1-authority-project-binding/gates-final.log": "acf312a47ed6869ade1b1c3d61d3a453b1df112876ed6b56378f05f6c8e0de68"
+  },
+  "phase_ledger": {
+    "requirements": 36,
+    "verified": 1,
+    "open": 35
+  }
+}

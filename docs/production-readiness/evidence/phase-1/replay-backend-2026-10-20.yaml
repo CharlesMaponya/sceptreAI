@@ -1,0 +1,63 @@
+{
+  "status": "audited_complete_backend_run",
+  "phase_complete": false,
+  "verified_at": "2026-10-20T13:21:41.076885+00:00",
+  "collected": 3953,
+  "passed": 3952,
+  "failures": [
+    {
+      "class": "tests.test_object_store",
+      "name": "test_embedded_driver_upload_contract_and_streaming"
+    }
+  ],
+  "errors": [],
+  "skipped": [],
+  "all_backend_tests_pass": false,
+  "independent_coverage_thresholds_pass": false,
+  "coverage": {
+    "statements": {
+      "covered": 21894,
+      "total": 23123,
+      "percent": 94.68494572503567
+    },
+    "branches": {
+      "covered": 5939,
+      "total": 6862,
+      "percent": 86.54911104634218
+    }
+  },
+  "required_each_dimension_percent": 90.01,
+  "schema_head_rechecked": "0017_upload_session_project",
+  "post_suite_schema_parity": true,
+  "repository_ruff_pass": true,
+  "tested_input_count": 491,
+  "coverage_original_sha256": "d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9",
+  "artifact_sha256": {
+    ".unlazy/phase1-replay-backend/backend-state.json": "61a92dcfbe18343c771caa20786abbbf98cc08daf2d68b127f1b187c45ad82be",
+    ".unlazy/phase1-replay-backend/source-sha256.json": "29ab251dbaf591f6168a798435db13f348caf6631abfda0ec7857b19bdb1062a",
+    ".unlazy/phase1-replay-backend/backend.log": "a857decf020679928bc42bffa85a14f5cd4f10bf4a6b709d3d905d42fe20be59",
+    ".unlazy/phase1-replay-backend/backend.xml": "69aa903df3b5383994b67a76f4b38bd502bd3913733b816ed90cdfff060f48d5",
+    ".unlazy/phase1-replay-backend/collect.log": "1010a536cd9699c00ccdfdeb679c71a3851014cf6374fe912dc6e1005b1dec77",
+    ".unlazy/phase1-replay-backend/coverage.json": "253188b11ae791ec6486a5a8fba74b1ce4dfe2533149877e66ebe8638bc7cb00",
+    ".unlazy/phase1-replay-backend/coverage-threshold.log": "ab1c54e1e68f03552ae8e6834bb2748089151551fd9841d9712348a67776ac5f",
+    ".unlazy/phase1-replay-backend/generate_production_task_index.log": "00c8dcf3b37f2eac6114a4c21f9f742c56e354ada6672f1b15189664820d92a5",
+    ".unlazy/phase1-replay-backend/validate_phase2_evidence.log": "a414947a0f058a04ee8ca14e4023b0661f0892a6cb81c082ba87469dd71ed9e9",
+    ".unlazy/phase1-replay-backend/check_no_dask_runtime.log": "dffd5dbca119ddf99cc5a088942e02d1127f7108463f4627161d74775ec7e554",
+    ".unlazy/phase1-replay-backend/run.py": "bcd3cd98b8e4af851f64a7d2879b00ef8426fa348b6a3774bf749962933dfbcd",
+    ".unlazy/phase1-replay-backend/audit.py": "790ebc42ea0a12b86d7fbbbc1ff0bc1e133527c664f98ea7a2174013b84c0c8e",
+    ".unlazy/phase1-replay-backend/toolchain.json": "74326659b9422921066a1f6a462a53940a1b71f4a51e15a2640d2b1f5d57ff83",
+    ".unlazy/phase1-replay-backend/lint.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+  },
+  "minimum_free_bytes": 45039747072,
+  "reserve_bytes": 43500000000,
+  "isolated_database": "automl_branch_0e6a232bc7_tests",
+  "live_provider_or_kubernetes_tests_enabled": false,
+  "whole_phase_verified": 2,
+  "whole_phase_open": 34,
+  "native_worker_release_image_or_complete_workflow_qualified": false,
+  "production_sized_or_prior_binary_migration_qualified": false,
+  "migration_qualification_ceiling_bytes": 45000000000,
+  "shared_preservation_qualified": false,
+  "historical_missing_qa_objects": 7,
+  "abandoned_handoff": "phase1-deletion:G7"
+}

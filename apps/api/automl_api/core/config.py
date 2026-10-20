@@ -181,10 +181,11 @@ class Settings:
 def get_settings() -> Settings:
     dotenv = _read_dotenv()
     return Settings(
-        attempt_control_base_url=str(_get_env(
-            "ATTEMPT_CONTROL_BASE_URL", Settings.attempt_control_base_url, dotenv)),
+        attempt_control_base_url=str(
+            _get_env("ATTEMPT_CONTROL_BASE_URL", Settings.attempt_control_base_url, dotenv)
+        ),
         internal_api_url=str(_get_env("INTERNAL_API_URL", Settings.internal_api_url, dotenv)),
-        environment=str(_get_env("ENVIRONMENT", Settings.environment, dotenv)),
+        environment=str(_get_env("ENVIRONMENT", Settings.environment, dotenv)).strip().lower(),
         database_url=str(_get_env("DATABASE_URL", Settings.database_url, dotenv)),
         qualification_database_url=(
             str(value) if (value := _get_env("QUALIFICATION_DATABASE_URL", None, dotenv)) else None

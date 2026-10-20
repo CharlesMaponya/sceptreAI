@@ -20,6 +20,9 @@ def failed(case):
     case.attempt.terminal_reason = "Submission failed before final-data grant"
     case.attempt.finished_at = datetime.now(UTC)
     case.db.flush()
+    from automl_api.services.evaluation_reconciler import _cleanup_attempt
+
+    assert _cleanup_attempt(case.factory, case.k8s, case.attempt.id)
 
     def before_create():
         assert not case.db.get_bind().in_nested_transaction()

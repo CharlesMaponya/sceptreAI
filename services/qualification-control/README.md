@@ -85,6 +85,22 @@ and `QUALIFICATION_SIGNING_SECRET_FILE`. Staging/production also require
 to a credential-free reference to the provider application database solely for
 the isolation guard. The authority never connects to that reference URL.
 
+Before starting this authority binary, expand its dedicated database. For an
+empty store apply `migrations/0001_authority.sql`, then
+`migrations/0002_allocation_revisions.sql`, each with `psql -1 -v ON_ERROR_STOP=1`.
+For an existing store at the first schema, apply only the second script. It adds
+nullable paired references and their unique/check constraints in one transaction;
+existing allocation and receipt values are preserved. Readiness selects all
+columns of both tables and returns 503 if expansion is missing. This is not a
+substitute for constraint/schema qualification.
+
+Application-schema rehearsal uses Alembic head `0012_final_test_revision_pair`;
+do not apply the dedicated-store SQL scripts again to a database already upgraded
+with Alembic. Deploy expansion before application/authority code, retain the
+expanded schema during application rollback and avoid schema downgrade. The new
+Alembic downgrade refuses to discard any bound revision evidence. Qualification
+of actual previous-release binaries and production-sized migration remains open.
+
 The separate Helm chart requires an immutable image digest containing the new
 entrypoint, existing database/identity/TLS/CA Secret names, and either the narrow
 PostgreSQL destination CIDR or `databasePodSelector` labels for a database in
@@ -129,18 +145,270 @@ failed: retry the exact request to recover its committed receipt.
 
 ## Credential issuance and remaining integration
 
-An open receipt **is not an object credential**. This service never mints one.
-Replaying an open returns the original receipt even after a terminal result;
-the broker must not interpret replay as permission to issue another grant.
-The dedicated broker's durable one-grant ledger, actual refit-pipeline CAS
-publication, failed-mint evidence and provider-local reference validation remain
-unimplemented. Do not connect this endpoint directly to generic object signing.
+An open receipt **is not an object credential**. The separate `/credentials`
+path commits one durable grant claim before native signing, then records its
+issued receipt before disclosure. Replaying an open cannot authorize a second
+mint. Separate refit/evaluator jobs, frozen-pipeline CAS publication and signed
+result recovery are implemented in the current source; the sections below
+record their contracts and qualification limits.
 
-Separate refit/evaluator jobs and their least-privilege roles are also still
-required. No new path gives candidate workers final-test access. The chart
-accepts an existing application image containing this module; it is not yet the
-minimal hermetic authority image or protected deployment pipeline required by
-Phase 8. Deployment of this component alone does not qualify Phase 1.
+The chart accepts an existing application image containing this module; it is
+not yet the minimal hermetic authority image or protected deployment pipeline
+required by Phase 8. Deployment of this component alone does not qualify Phase 1.
+
+## Register a promotional scope before training
+
+Creating a promotional scope now writes a `scope.authority.allocate` command in
+that same application transaction. Its closed payload binds the local project,
+scope, split revision, experiment revision, evaluation policy digest and central
+allocation request. The evaluator controller uses the independently approved
+project UUID credential binding to register the allocation while the scope is
+open. HTTP runs between short SQL transactions, under a 90-second command lease;
+publication rechecks current scope, policy, owner and expiry. A lost response
+replays the same central allocation request. Delivery uses the command's retry
+budget (five attempts by default) and a 60-second retry delay. Invalid controller
+configuration also backs off so another scope can make progress.
+
+Training launch and member admission return HTTP 409 with
+`scope_authority_not_ready` until registration succeeds. The sealing transaction
+checks the completed server command again before releasing any member. Later
+evaluator handoff reads that allocation ID; it cannot allocate after refit.
+A stopped scope with no refit gets bounded cleanup through the same controller:
+replay creation when its reply was lost, verify the signed central abort receipt,
+and retain it on the cancelled command. No final-data grant is requested. The
+combined delivery/cleanup budget is at most `max_retries + 5` claimed attempts;
+exhausted cleanup requires operator investigation. A never-sent command is
+cancelled locally. HTTP/RPC timeouts and lease expiry still require process-level
+bounds for a complete workload qualification.
+
+Deploy the matching API and controller together after configuring approved
+project bindings. Existing scopes without this command do not have evidence of
+pre-training registration and fail closed at new sealing/handoff. Do not
+manufacture a successful command from a post-refit allocation or rewrite old
+receipts. Drain or separately review legacy campaigns before upgrading; previous
+binary compatibility and this current image remain unqualified. The synthetic
+QA evaluator seed now leaves an open scope with pending registration and no refit
+attempt; its runner waits for registration before planning the synthetic refit.
+Synthetic training remains fixture setup, not proof of production training order.
+
+This registration closes the allocation timing gap in the existing canonical
+scope flow. It does not supply trusted fixture/split revision references for an
+imported campaign, issue provider distributions, verify imported dataset bytes,
+or enforce signed `validation_only` source admission. Those integrations remain
+required before claiming release campaign or Phase 1 readiness. Legacy unbound
+allocation requests cannot be used as evidence of revision-bound distribution.
+
+## Attempt object grants: integration unfinished
+
+Application head `0014_attempt_object_grants` adds typed grant intent and lifecycle
+records. Apply the application expansion before current models; the dedicated
+authority store still uses SQL `0002_allocation_revisions.sql`. Structural tests
+cover all 13 prior application schemas and preserve seeded data. This is not a
+45 GB rehearsal or previous-binary qualification. QA remains on its older schema
+and images; no production or QA rollout is qualified by this checkpoint.
+
+Do not enable the partial read issuer for production. Its current scope is
+registered safe inputs for preparation and training parents. Other stages,
+child/predecessor access, bounded outputs, worker credential removal and native
+access denials remain unfinished. Native read URLs keep their original expiry
+after logical revocation. Cleanup and replacement must await physical retirement.
+Grant foreign keys deliberately prevent deleting a referenced attempt or rewriting
+its fence; recovery must append a new generation rather than mutate that evidence.
+Downgrade refuses to discard any grant rows. Retain the expanded schema during
+application rollback; do not delete grant evidence to force a downgrade.
+
+## Provider dataset import: integration unfinished
+
+The application expansion `0013_provider_dataset_import` adds an explicit raw
+versus manifest source kind and protected project-bound import provenance.
+Apply it through application Alembic before running current application models;
+it does not add tables to the separately protected authority database, whose
+SQL expansion remains `0002_allocation_revisions.sql`. Only the dedicated local
+test database has been upgraded; existing QA workloads have not been rolled out.
+
+The operator library verifies a trusted authority key and independently approved
+project/provider/allocation/scope/revision references, verifies safe copy bytes,
+and publishes an actual JSON descriptor with its own verified byte hash. It
+never treats that descriptor as raw rows or invents final row identities. The
+library accepts only signed non-canonical `validation_only` manifests. Its
+trusted policy/key must come from protected operator/server configuration;
+public API clients must not be allowed to supply a key or bless a policy.
+
+This path remains unqualified for production. The implementation includes exact
+version preparation/training readers, source-aware profiling/feature contracts,
+promotion guards and operator cancellation/deletion. Native stage capability
+denials and the final integration audit remain required. The reader still uses
+the configured object-store identity: its approved-object checks do not remove
+that identity's other permissions. Do not provision a broad raw/final credential
+to an imported-source worker and call the import isolated.
+See `docs/production-readiness/evidence/phase-1/provider-import-2026-10-16.yaml`
+for the measured gate status and limits.
+
+Configure `PROVIDER_IMPORT_POLICIES_FILE` as a protected, read-only JSON file with
+exactly one `policies` array. Each entry has `project_id`,
+`authority_key_digest` (SHA-256 of the raw 32-byte Ed25519 public key), and
+`references`. The references are exactly `allocation_id`, `project_reference`,
+`scope_id`, `provider`, `canonical_provider`, `fixture_revision`,
+`split_revision` and `split_digest`. Approve the local-project association and
+all central references independently of the receipt or public client. Configure
+`EVALUATION_AUTHORITY_PUBLIC_KEY_FILE` with the authority's public PEM key. A
+missing, duplicate, changed or invalid binding fails closed; there is no raw or
+broad-prefix fallback. Changing an approved policy can make existing imports
+unreadable, so coordinate configuration and application upgrades.
+
+Using the application Python environment and database configuration, invoke:
+
+```sh
+python scripts/import_provider_dataset.py receipt.json \
+  --project-id LOCAL_PROJECT_UUID --allocation-id ALLOCATION_UUID \
+  --provider gcp --actor-id ACTIVE_ADMIN_UUID --name 'Approved safe copy' \
+  --budget verification-budget.json
+```
+
+The budget is a closed JSON object containing positive integer
+`max_temporary_bytes`, `max_decoded_group_bytes`, `timeout_seconds`, and a
+nonnegative `min_free_bytes` reserve. Temporary capacity must cover the largest
+object plus the verifier's identity index. Choose real host, process and provider
+RPC limits too; the between-call deadline does not terminate a blocked SDK call
+or impose a hard decoder RSS limit. The command prints verified IDs only after
+publication. Pending registration now exits successfully with `verified: false`,
+`status: queued` and the dataset-version ID; the workflow reconciler owns native
+verification. The CLI does not read copy bytes or construct storage. Repeating
+the command reports the same registration or verified result and never resets an
+exhausted/cancelled command. `--cancel` fences a tracked managed verifier and
+requests cleanup, including a live Job. Legacy untracked live execution still
+requires a controlled stop; completed imports cannot be cancelled as pending work.
+
+Keep safe copies outside every application-owned `projects/` prefix (including
+an embedded store's `automl/projects/` prefix). Deleting a project removes its
+owned descriptor, never the external safe-copy objects. Pending/running imports
+block deletion until settled; conflicting storage configuration blocks cleanup.
+The signed source is validation-only even if a caller forges a raw source flag
+or promotional scope. Final object commitments are opaque commitments, not
+fabricated final row counts. Use distributed profiling jobs for imported sources;
+the raw preview, synchronous raw profiling and raw validation endpoints reject
+manifest descriptors before reading storage. Existing raw sources retain their
+verified byte provenance requirements.
+
+## Signed provider distribution
+
+Before training a release campaign, the allocator calls
+`POST /allocations/{allocation_id}/distributions`. The closed request contains
+`fixture_revision`, `split_revision` and exactly three `copies`, one for each of
+`aws`, `gcp` and `azure`. Each copy declares `schema_digest` and versioned object
+metadata (`role`, `uri`, `version`, `sha256`, `byte_size`, `rows`, `row_digest`,
+`row_digest_revision`). Only train/validation roles are accepted, under matching
+`/roles/split_role=train/` or `/roles/split_role=validation/` paths. URIs must use
+the provider's object-store scheme and contain no credentials, query, fragment
+or traversal. GCS versions must be numeric generations. Logical schema and
+per-role row count/XOR digest must match across copies; physical partition
+boundaries and byte digests may differ.
+
+The final manifest is read from the authority's trusted
+`QUALIFICATION_FINAL_MANIFESTS_FILE` registry using the allocation's bound
+digest. The caller cannot override it in this request. Known final object URIs
+and byte digests cannot appear as safe copies. Under the allocation lock, the
+authority atomically signs and stores one receipt per provider in its existing
+receipt table. The canonical manifest includes the registered final objects;
+other manifests are `validation_only` and contain opaque final-role digests
+without those locations. Only the allocator receives the three-receipt response;
+it must deliver each receipt solely to its named provider. Provider/evaluator
+identities cannot call this endpoint.
+
+For a release allocation, `/allocations` must receive both `fixture_revision`
+and `split_revision` before distribution. The central database enforces global
+uniqueness of that pair, in addition to existing split-digest and scope uniqueness.
+Changing a bound revision, project, provider, scope or digest conflicts rather
+than allocating another authority. `/allocations/{id}` reports both references.
+Canonical revision identifiers use 1–128 ASCII letters/digits plus `.`, `_`, `:`
+or `-`, beginning with a letter/digit.
+
+First distribution issuance is rejected after any authority refit/evaluation
+receipt or an allocation state change. Exact replay returns the same three
+signatures, including after evaluation terminates; it never mints access or
+alters the allocation. Changed requests, partial histories and invalid stored
+signatures fail closed. Distribution must match the allocation's stored revision
+pair. Historical allocations remain unbound (both fields NULL): old requests
+can replay them, but adding references by replay or issuing a new distribution
+for them is rejected. A controlled legacy-reference migration remains required;
+never infer these references from old digests or rewrite signed history.
+
+Providers validate their received receipt against independently trusted local
+references and an authority public key before using the declaration:
+
+```sh
+PYTHONPATH=apps/api python3 scripts/validate_provider_distribution.py distribution.json \
+  --public-key trusted-authority.pem \
+  --allocation-id <central-allocation-uuid> --scope-id <canonical-scope-uuid> \
+  --project-reference <campaign-project> --provider gcp --canonical-provider aws \
+  --fixture-revision <fixture-revision> --split-revision <split-revision> \
+  --split-digest <registered-split-sha256>
+```
+
+The command requires every reference explicitly and emits only verification
+status, protocol revision, provider, mode and safe-object count. It reads at
+most 32 MiB, rejects unknown fields, coercions, altered defaults, signatures or
+references, and prints a generic failure without object locations. The library
+entrypoint is `services.provider_distribution.verify_distribution`.
+
+The default command performs offline signature/reference validation. To also
+check the local provider's declared objects, configure its approved object-store
+identity and add `--verify-objects --verification-budget budget.json`. The budget
+file is a closed declaration containing four integer fields. This budget was
+used by the tiny native fixture:
+
+```json
+{
+  "max_temporary_bytes": 8388608,
+  "max_decoded_group_bytes": 8388608,
+  "min_free_bytes": 33554432,
+  "timeout_seconds": 30
+}
+```
+
+Production budgets must come from an approved capacity profile. Temporary work
+contains one downloaded object at a time plus a capped SQLite identity index;
+the declared object bytes plus index-page budget are bounded by
+`max_temporary_bytes`. Allow filesystem overhead in the outer worker allocation.
+Verification rejects
+objects that cannot fit alongside the index and retains `min_free_bytes` on the
+working filesystem. It checks Parquet footer/row-group/batch decode sizes before
+converting batches to Python rows. The decoded-group budget does not cap process
+RSS: worker memory limits must also allow parser/Python overhead and SDK buffers.
+The deadline is cooperative between calls; provider RPC timeouts and the outer
+worker/process deadline must bound blocked I/O. Interrupted work cannot return a
+successful proof; SIGKILL cleanup and durable import recovery remain integration
+work.
+
+Object checking reads only signed train/validation locations at their exact
+provider versions. It verifies whole-object SHA/size, Parquet row counts,
+canonical row IDs/ordinals, recomputed content fingerprints, declared safe roles
+and per-object `xor-sha256-row-id-v1` digests. A capped disk index rejects repeated
+row IDs across files and identical content crossing safe roles; duplicates with
+distinct IDs within one role remain valid. A Parquet file may omit its Hive
+partition `split_role` column; when present it must match the signed object role.
+Final objects are never read. Original raw-row derivation and final-role overlap
+cannot be independently checked from this safe-copy manifest alone.
+
+`schema_digest` uses `arrow-logical-schema-v1`: SHA-256 over canonical JSON with
+that revision and name-sorted data fields (`name`, Arrow type string, `nullable`),
+excluding `row_id`, `source_ordinal`, `content_fingerprint` and `split_role`.
+Column order and writer metadata do not affect the digest. Field types and
+nullability must match. Existing declarations that fail this definition are
+rejected; do not rewrite their digests or signatures to force acceptance.
+
+Success adds `objects_verified`, `verified_bytes`, `verified_rows` and
+`manifest_digest` to the existing safe CLI summary. Failed object/budget checks
+print only the generic verification failure. No object locations or credentials
+are emitted, and temporary work is removed on normal/error exit.
+
+The copy verifier alone does not prove IAM isolation, check live allocation
+state, register a dataset or issue credentials. Use the protected import path
+above for durable registration and source-aware admission. Native capability
+denials, controlled legacy-reference migration, provider copying/conformance,
+coordinated key rotation and deployed qualification remain required. Existing allocation/evaluator interfaces are retained; the verifier's
+output alone grants no permission to open final data or promote a
+`validation_only` import.
 
 ## Recovery checks
 
@@ -427,7 +695,35 @@ resource cleanup; this helper alone does not schedule evaluations.
 
 The workflow reconciler now invokes `reconcile_evaluation_jobs_once` when
 `EVALUATION_ALLOCATOR_TOKENS_FILE` is configured. That controller-only JSON file
-maps each manifest `project_reference` to its allocator token. Connections use
+is keyed by the canonical local application project UUID. Each value is a closed
+record containing `project_reference` and `token`, for example:
+
+```json
+{
+  "<local-project-uuid>": {
+    "project_reference": "campaign-project",
+    "token": "<project-scoped-allocator-token>"
+  }
+}
+```
+
+The controller takes the project UUID from its persisted scope row and requires
+the policy's authority reference to match that protected record before creating
+a transport. A policy reference cannot select another project's token. Different
+local projects may share a reference only through explicit records in this file.
+Missing/malformed records and the older reference-to-token format fail closed;
+there is no legacy fallback. Tokens must be nonempty printable ASCII without
+whitespace. Never generate these bindings from user-controlled scope policies.
+The operator must independently approve the local-project/reference association.
+
+Before deploying this source, suspend evaluator reconciliation, replace the
+controller-only Secret with approved UUID bindings, deploy the updated controller
+and then resume reconciliation. Do not change any existing raw token or authority
+allocation merely to change the file structure. Old and new parsers reject each
+other's formats, so a mixed rollout can temporarily defer reconciliation. Existing
+shared test Secrets have not been converted by the source change.
+
+Connections use
 `EVALUATION_AUTHORITY_URL`, verified TLS (optional `EVALUATION_CA_FILE`), bounded
 timeouts and no redirects; `EVALUATION_AUTHORITY_PUBLIC_KEY_FILE` verifies receipts.
 Allocator credentials never enter evaluator Jobs or workflow events.
@@ -459,3 +755,90 @@ handoff closure, and clean result-key Secrets. Replaying allocation before abort
 also prevents an earlier delayed allocation request from creating fresh access
 after cleanup. Registered evaluators continue through the existing fenced recovery
 operations.
+
+
+### Brokered provider reads: managed verifier integration unfinished
+
+Current preparation/training provider readers require the HTTPS internal attempt
+broker and projected pod identity. They no longer use an object-store SDK or
+recover ambient credentials when broker configuration is missing. Configure
+ATTEMPT_CONTROL_BASE_URL, AUTOML_ATTEMPT_ID and AUTOML_IDENTITY_TOKEN_FILE on
+managed pods; ATTEMPT_CONTROL_CA_FILE may add trusted roots for local/private TLS.
+Keep the API and CPU sources together. Old images and new endpoints have not been
+qualified as a deployed pair by this checkpoint.
+
+The maintained operator CLI now queues verification through the workflow
+reconciler. Its isolated verifier uses the broker and pod-bound control endpoints.
+Native raw/final/cross-scope denials and current-image/process-loss qualification
+remain unfinished. Other workload paths still retain ambient credentials; this
+checkpoint does not establish isolation across the application.
+
+The pending verifier entrypoint now consumes bounded start/heartbeat/result/receipt/failure
+control endpoints and brokered reads. Start durably binds the publishing pod to
+the exact execution. Shared publication validates the proof, caps heartbeat
+leases at identity expiry, and rechecks pod authority around descriptor I/O.
+HTTP integration tests cover real fixture Parquet, bad bytes and a lost committed
+result acknowledgement. The maintained CLI/controller now launches this
+entrypoint. Permanent unknown outcomes and deployed cleanup qualification
+remain open. The checkpoint passes 586 distinct tests on 88 frozen source inputs,
+including two local Ray cases; Kubernetes/provider transports are doubled.
+
+Publication records the exact verification proof and response with READY in one
+database transaction. If the worker loses the result acknowledgement, it makes
+one metadata-only receipt lookup using its original proof and current projected
+token. It does not repost an uncertain publication. Only the original pod can
+recover a complete receipt, under current policy/project/operator and latest
+attempt checks. Receipt recovery grants no data access and performs no storage
+I/O. Incomplete publication still needs controller recovery; a lost receipt reply
+ends the bounded worker handoff without undoing READY.
+
+
+### Managed verifier deployment and recovery
+
+Configure `PROVIDER_IMPORT_IMAGE` with the current CPU image digest,
+`ATTEMPT_CONTROL_BASE_URL` with the trusted HTTPS attempt base path, and
+`PROVIDER_IMPORT_EGRESS_RULES` with explicit control and storage endpoint peers.
+Helm exposes these as `providerImports.image`, `attemptIdentity.controlBaseUrl`
+and `providerImports.egressRules`. Enabled policies require a pinned image, HTTPS
+and nonempty egress configuration. `providerImports.cpuCores` and `memoryMiB`
+(default 1 and 2048) bound the process; a decoded group may consume at most one
+quarter of that memory allowance. Scratch reserves the approved temporary budget
+plus 64 MiB. Startup has a 600-second lease; work renews a 90-second lease capped
+at current identity expiry. The Job has no Kubernetes retry and a deadline of
+startup allowance plus the verification budget.
+
+Egress rules require explicit namespace/pod label peers or single public endpoint
+IP addresses, with TCP ports 443, 8443 or 8334. Broad CIDRs and implicit peers fail
+closed. DNS is separately restricted to cluster DNS. Another selected policy may
+not broaden access. Configure `providerImports.caSecret` (environment
+`ATTEMPT_CONTROL_CA_SECRET`) for a public `ca.crt` when necessary; only that key
+is mounted. The worker receives a dedicated per-attempt service account and a
+projected 600-second custom-audience token, without database/provider credentials,
+allocator tokens or the default Kubernetes API token. Source policy/key files
+remain in the API/reconciler; the verifier obtains its approved work from control.
+
+Upgrade API and CPU sources together: `provider-import-verifier-v1` is required
+before any copy read. The API checks actual observed resource UIDs, Job ownership,
+pod/container security fields and effective network policies before admission.
+A changed UID, injected authority or a broader selected network policy fails
+closed. Source-only and server-dry-run checks do not qualify a deployed image pair
+or native IAM/TLS/token rotation.
+
+Resource create intent commits before each Kubernetes request. A lost committed
+acknowledgement is adopted only from the original desired body and observed UID;
+a missing uncertain outcome is not created again. Cleanup uses UID preconditions,
+keeps network isolation while Pods remain, and waits for original issued read
+deadlines before retiring the service account and network policy. Replacement
+cannot consume a new generation before this cleanup completes. Project deletion
+also waits for managed cleanup.
+
+`resource_unknown` means an issued create still lacks authoritative outcome;
+`publication_unknown` means descriptor publication started without a committed
+result receipt. Neither state means cleanup is complete. Preserve its intent,
+original resource identities and logs; do not delete history, reset the retry
+budget or reissue the write to make it disappear. A qualified permanent-outcome
+resolver/operator workflow and actual process-loss/native tests remain required.
+Legacy attempts without durable submission identity are not adopted or silently
+migrated. Stop/retire those producers and qualify their controlled migration before
+production rollout. The older privileged library verifier remains unqualified as
+a workload path; the maintained CLI does not call it.

@@ -147,6 +147,12 @@ def test_seed_batches_cover_requested_count(migrated_case, monkeypatch):
             "users": 1,
             "projects": 1,
             "dataset_upload_sessions": 1001,
+            "final_test_allocations": 1,
+            "final_test_authority_receipts": 1,
+            "datasets": 1,
+            "dataset_versions": 1,
+            "workflow_commands": 1,
+            "dataset_provider_imports": 1,
         }
         rehearsal._verify_seeded_rows(target, expected)
         with engine.connect() as connection:
@@ -343,7 +349,7 @@ def test_deletion_evidence_upgrade_and_guarded_downgrade(migrated_case):
         )
         with engine.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-                "0011_preserve_deletion_evidence"
+                ScriptDirectory.from_config(Config("alembic.ini")).get_current_head()
             )
             assert [
                 connection.execute(select(t).where(t.c.project_id == project_id)).all()

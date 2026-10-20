@@ -10,6 +10,7 @@ from automl_api.models.enums import AttemptStatus
 from automl_api.models.workflows import TrainingTrial, WorkflowAttempt, WorkflowEvent
 from automl_api.services.workflow_state import StaleFence
 from automl_api.training import trial_runtime, tune_runtime
+from automl_api.training.attempt_admission import TRAINING_PROTOCOL
 from sklearn.linear_model import Ridge
 from skopt.space import Real
 from sqlalchemy import select
@@ -93,6 +94,7 @@ def test_superseded_parent_blocks_dispatched_worker(runtime, monkeypatch):  # no
             cv=3,
             scoring="r2",
             execution=search.execution,
+            parameter_protocol=TRAINING_PROTOCOL,
         )
     compute.assert_not_called()
 
@@ -173,6 +175,7 @@ def test_real_tune_workers_commit_and_replay_trials(runtime, tmp_path, monkeypat
             cv=3,
             scoring="unused",
             execution=search.execution,
+            parameter_protocol=TRAINING_PROTOCOL,
         )
         tune_runtime._cv_result.assert_not_called()
     finally:
@@ -225,7 +228,10 @@ def test_corrupt_dispatch_evidence_rejects_replay(runtime):  # noqa: F811
 
 @pytest.mark.parametrize("wrapped", [False, True])
 def test_tune_ownership_errors_are_not_ranked_as_model_failures(
-    runtime, monkeypatch, tmp_path, wrapped  # noqa: F811
+    runtime,  # noqa: F811
+    monkeypatch,
+    tmp_path,
+    wrapped,  # noqa: F811
 ):
     error = StaleFence("worker lost ownership")
     if wrapped:

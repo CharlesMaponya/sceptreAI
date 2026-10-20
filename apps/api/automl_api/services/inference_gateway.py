@@ -21,7 +21,8 @@ from automl_api.models.iam import User
 from automl_api.models.runs import ModelRun
 from automl_api.security.deployments import deployment_token
 from automl_api.services.projects import require_project_role
-from automl_api.services.uploads import get_upload_session
+from automl_api.services.uploads import get_upload_session, require_verified_upload_digest
+from automl_api.storage.contracts import UploadContractError
 from automl_api.storage.object_store import get_object_store
 
 _DNS_LABEL = re.compile(r"^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$")
@@ -212,6 +213,12 @@ async def proxy_object_backed_offline_inference(
             status_code=status.HTTP_409_CONFLICT,
             detail="The offline-scoring upload has not passed object verification.",
         )
+    try:
+        require_verified_upload_digest(upload)
+    except UploadContractError as exc:
+        raise HTTPException(
+            status_code=409, detail="The offline-scoring upload lacks verified digest evidence."
+        ) from exc
     store = get_object_store()
     if upload.provider_driver != store.driver_name:
         raise HTTPException(

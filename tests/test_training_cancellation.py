@@ -9,9 +9,10 @@ import automl_api.services.training as training_service
 import automl_api.training.pipeline as training_pipeline
 import pytest
 from automl_api.models.datasets import DatasetVersion
-from automl_api.models.enums import RunStatus
+from automl_api.models.enums import RunStatus, TaskType
 from automl_api.models.workflows import DatasetSplitRevision
 from automl_api.training.pipeline import TournamentResult
+from digest_fixtures import verified_raw_version
 from kubernetes.client import ApiException
 
 
@@ -642,7 +643,22 @@ def test_terminal_run_cannot_be_overwritten_by_late_success(
 
 def test_worker_returns_no_metrics_when_success_persistence_is_rejected(monkeypatch) -> None:
     run = _run(status=RunStatus.QUEUED)
-    db = FakeSession(run, version=SimpleNamespace())
+    run.task_type = TaskType.REGRESSION
+    db = FakeSession(
+        run,
+        version=verified_raw_version(
+            id=run.dataset_version_id, project_id=run.project_id, source_kind="raw"
+        ),
+    )
+    db.split.id = uuid.UUID(run.params["split_revision_id"])
+    locked_scalar = db.scalar
+    monkeypatch.setattr(
+        db,
+        "scalar",
+        lambda statement: (
+            locked_scalar(statement) if statement._for_update_arg is not None else None
+        ),
+    )
     result = TournamentResult(
         metrics={"rmse": 0.9},
         model=object(),
@@ -671,7 +687,7 @@ def test_worker_returns_no_metrics_when_success_persistence_is_rejected(monkeypa
     monkeypatch.setattr(
         training_pipeline,
         "get_settings",
-        lambda: SimpleNamespace(mlflow_tracking_uri="http://mlflow.test"),
+        lambda: SimpleNamespace(environment="test", mlflow_tracking_uri="http://mlflow.test"),
     )
     monkeypatch.setattr(training_pipeline.mlflow, "set_tracking_uri", lambda *args: None)
     monkeypatch.setattr(training_pipeline.mlflow, "set_experiment", lambda *args: None)

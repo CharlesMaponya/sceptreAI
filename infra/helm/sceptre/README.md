@@ -287,9 +287,14 @@ bound the worker resources.
 
 Provision these existing Secrets in the release namespace:
 
-- `allocatorSecret`: `tokens.json`, a JSON object mapping each manifest's
-  `project_reference` to its project-scoped allocator token. Only the reconciler
-  mounts this Secret; no token material belongs in Helm values.
+- `allocatorSecret`: `tokens.json`, a JSON object keyed by local application
+  project UUID. Each value is exactly `{"project_reference": "<authority-reference>",
+  "token": "<allocator-token>"}`. The controller validates both the persisted local
+  project and policy reference before selecting credentials. Approve these
+  associations independently; never derive them from user-controlled policies.
+  The older reference-to-token map is rejected. Suspend evaluator reconciliation
+  while migrating the Secret and controller binary, then resume it. Only the
+  reconciler mounts this Secret; no token material belongs in Helm values.
 - `authorityPublicKeySecret`: `public-key.pem`, the authority's public Ed25519
   key. The API and reconciler mount it; evaluator Jobs reference the same Secret.
 - Optional `caSecret`: `ca.crt`, the trust bundle for controller and evaluator
@@ -307,8 +312,66 @@ Scrape each API Pod's `/metrics` endpoint on its application port through the pr
 
 The UI reverse proxy does not forward `/metrics`; keep this endpoint internal and preserve the deployment's TLS verification when configuring a scraper. No ServiceMonitor, scraper, monitoring ingress exception or dashboard is installed by this change. Reconciler, worker and qualification-control pool export and PgBouncer transaction-mode qualification remain open. The implementation uses the already-locked [Prometheus Python client](https://prometheus.github.io/client_python/).
 
+The shared PostgreSQL engine configuration also validates direct environment
+settings before either application or qualification-control engine construction.
+Pool size, pool/connect timeouts and all three transaction timeouts must be
+strict integers of at least one; maximum overflow must be a strict nonnegative
+integer. Zero overflow is supported. A zero pool size, negative overflow or zero
+timeout cannot disable the configured resource bounds outside Helm.
+
 ### PgBouncer transaction mode
 
 Set `platform.database.pgbouncerTransactionMode: true` only when the configured database endpoint uses transaction pooling. Both application and qualification-control engine factories omit timeout startup options in that mode and apply statement, lock and idle-transaction limits with transaction-local `set_config` calls at each SQLAlchemy transaction begin. Direct PostgreSQL mode retains its startup timeout options. Psycopg automatic prepared statements remain disabled in pooler mode. Autocommit is rejected because it would bypass the transaction-local limits; migrations and administrative autocommit operations need a separate direct connection.
 
 Configure client TLS and pooler-to-PostgreSQL certificate verification independently. Do not work around startup rejection with `ignore_startup_parameters=options`: discarding those options would discard timeout protection. Local PgBouncer 1.25.1 testing verified one-backend reuse between differently configured clients, all three timeouts, rollback/reconnect, prepared-statement behavior, application names and TLS rejection controls. Production deployment, concurrent workflow claims and failover remain unqualified. See the [PgBouncer startup-parameter documentation](https://www.pgbouncer.org/config.html#ignore_startup_parameters) and [local evidence](../../../docs/production-readiness/evidence/phase-1/pgbouncer-2026-10-05.yaml).
+
+### Signed validation-only provider imports
+
+Set `providerImports.policiesConfigMap` to an independently approved ConfigMap
+containing `policies.json`, and set
+`championEvaluation.authorityPublicKeySecret` to the public-key Secret containing
+`public-key.pem`. Imports can be configured with champion evaluation disabled on
+a non-canonical provider. The API and reconciler receive read-only public files;
+the allocator token remains restricted to the evaluator-enabled reconciler.
+
+Provision the same approved ConfigMap and public-key Secret in every worker
+namespace. Standard Jobs and all Ray submitter/head/worker pods mount those
+files read-only when the reconciler's `PROVIDER_IMPORT_POLICIES_CONFIG_MAP` is
+configured. A missing public-key reference stops manifest construction. Follow
+[the operator instructions](../../../services/qualification-control/README.md)
+for the policy schema and current application head `0014_attempt_object_grants`. This configuration does
+not narrow object-store credentials; native raw/final access-denial qualification
+and current-image qualification remain open.
+
+
+Provider import verification now runs through the reconciler as an isolated Job.
+With `providerImports.policiesConfigMap` enabled, also configure a digest-pinned
+`providerImports.image`, HTTPS `attemptIdentity.controlBaseUrl` and explicit
+`providerImports.egressRules`. `providerImports.caSecret` optionally names a public
+`ca.crt`; CPU/memory defaults are 1 core/2048 MiB. The API requires read access to
+service accounts and network policies to verify actual workload authority; the
+reconciler requires UID-scoped service-account deletion for cleanup. These roles
+are not bound to the dynamically created verifier account.
+
+Set `providerImports.nodeSelector` to the approved verifier node labels, such as
+`{"kubernetes.io/hostname": "approved-worker"}`. It is delivered to trusted control
+as `PROVIDER_IMPORT_NODE_SELECTOR` and becomes part of the committed Job digest.
+The empty default preserves ordinary scheduling. A configured selector stays
+pending when no node matches; it does not fall back to another pool. Node labels
+must be controlled by trusted cluster operators. Selector changes apply only to
+new attempts; do not modify a running Job or rewrite its submission evidence.
+Admission rejects a changed selector or scheduler, and a preassigned Job nodeName;
+the ordinary nodeName assigned to a real Pod by the scheduler remains allowed.
+
+Before bounded local qualification, verify that every selected node has the pinned
+image cached and sufficient disk reserve. Cancelling a Job does not synchronously
+stop an in-progress image pull. Placement does not replace disk monitoring or
+qualify the failed native reserve test recorded in the readiness evidence.
+
+The verifier mounts only bounded scratch, its custom-audience identity and the
+optional public CA. It obtains approved source metadata through control and does
+not receive the policy registry, allocator token, database credentials or provider
+credentials. Later preparation/profile RayJobs retain their existing configuration
+until their separate credential-removal gates pass. Server-side dry runs validate
+resource declarations only; current-image native permission, process-loss and
+permanent unknown-outcome qualification remain open.

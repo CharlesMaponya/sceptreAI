@@ -33,6 +33,7 @@ from automl_api.schemas.contracts import (
     ExperimentSpecCreate,
     FeatureContractCreate,
     RevisionCreate,
+    SearchObjectiveCreate,
     SearchSpaceCreate,
 )
 from automl_api.schemas.training import TrainingEstimateRequest
@@ -41,6 +42,12 @@ from automl_api.services.experiment_identity import (
     SPEC_PREFIX,
     build_identity,
     specification_values,
+)
+from automl_api.services.feature_contracts import (
+    bound_row,
+    validate_contract,
+    validate_objective,
+    validate_search,
 )
 from automl_api.services.projects import require_project_role
 from automl_api.services.workflow_state import (
@@ -117,18 +124,46 @@ def create_revision(
                 "current_revision": current,
             },
         )
+    if isinstance(payload, FeatureContractCreate):
+        validate_contract(
+            db, project_id, payload.specification, payload.task_type, payload.target_column
+        )
+    elif isinstance(payload, SearchSpaceCreate):
+        validate_search(
+            db, project_id, payload.specification, payload.metric_name, payload.metric_direction
+        )
+    elif isinstance(payload, SearchObjectiveCreate):
+        objective = validate_objective(
+            payload.specification, payload.metric_name, payload.metric_direction
+        )
+        if objective.feature_search_space_revision_id is not None:
+            search = bound_row(
+                db,
+                FeatureSearchSpaceRevision,
+                project_id,
+                objective.feature_search_space_revision_id,
+            )
+            if (search.metric_name, search.metric_direction) != (
+                payload.metric_name,
+                payload.metric_direction,
+            ):
+                raise HTTPException(status_code=409, detail={"code": "search_objective_changed"})
+    else:
+        raise HTTPException(status_code=422, detail={"code": "typed_revision_required"})
     values: dict[str, Any] = {
         "project_id": project_id,
         "name": payload.name,
         "revision": current + 1,
         "digest_algorithm": "sha256",
-        "digest_scope": f"{kind}-v1",
-        "content_digest": canonical_request_hash(payload.model_dump(mode="json")),
-        "specification": payload.specification,
+        "digest_scope": f"{kind}-v2",
+        "content_digest": canonical_request_hash(
+            payload.model_dump(mode="json", exclude={"name", "expected_revision"})
+        ),
+        "specification": payload.specification.model_dump(mode="json"),
     }
     if isinstance(payload, FeatureContractCreate):
         values.update(task_type=payload.task_type.value, target_column=payload.target_column)
-    if isinstance(payload, SearchSpaceCreate):
+    if isinstance(payload, (SearchSpaceCreate, SearchObjectiveCreate)):
         values.update(
             metric_name=payload.metric_name,
             metric_direction=payload.metric_direction,
@@ -236,6 +271,11 @@ def create_scope(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Promotional scopes require a final-threshold revision.",
         )
+    if payload.mode == "promotional":
+        from automl_api.services.provider_source import reject_provider_promotion
+
+        split = db.get(DatasetSplitRevision, payload.split_revision_id)
+        reject_provider_promotion(db, split.dataset_version_id)
     scope = PromotionalScope(
         id=uuid.uuid4(),
         project_id=project_id,
@@ -275,6 +315,10 @@ def create_scope(
         }
     db.add(scope)
     db.flush()
+    if scope.mode == "promotional":
+        from automl_api.services.scope_allocation import register_scope_allocation
+
+        register_scope_allocation(db, scope, actor_id=user.id)
     return scope
 
 
@@ -290,6 +334,7 @@ def add_scope_member(
         select(PromotionalScope)
         .where(PromotionalScope.project_id == project_id, PromotionalScope.id == scope_id)
         .with_for_update()
+        .execution_options(populate_existing=True)
     )
     if scope is None:
         raise HTTPException(status_code=404, detail="Evaluation scope not found.")
@@ -310,6 +355,10 @@ def add_scope_member(
     )
     if run is None:
         raise HTTPException(status_code=404, detail="Training run not found.")
+    if scope.mode == "promotional":
+        from automl_api.services.provider_source import reject_provider_promotion
+
+        reject_provider_promotion(db, run.dataset_version_id)
     count = int(
         db.scalar(
             select(func.count())
@@ -318,6 +367,13 @@ def add_scope_member(
         )
         or 0
     )
+    if scope.mode == "promotional":
+        from automl_api.services.scope_allocation import require_scope_allocation
+
+        try:
+            require_scope_allocation(db, scope)
+        except ValueError as exc:
+            raise HTTPException(409, detail={"code": "scope_authority_not_ready"}) from exc
     if count >= scope.expected_members:
         raise HTTPException(status_code=409, detail={"code": "scope_membership_full"})
     member = PromotionalScopeMember(

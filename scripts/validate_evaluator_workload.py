@@ -6,11 +6,13 @@ import logging
 import os
 import time
 import uuid
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from automl_api.db.session import get_session_factory
 from automl_api.models.enums import AttemptStatus, ScopeStatus, WorkflowStage
 from automl_api.models.workflows import PromotionalScope, WorkflowAttempt, WorkflowCheckpoint
+from automl_api.services.champion_planning import plan_scope_refit
 from automl_api.services.evaluation_planning import validate_evaluation_policy
 from automl_api.services.evaluation_publication import _event
 from automl_api.services.evaluation_reconciler import (
@@ -20,6 +22,7 @@ from automl_api.services.evaluation_reconciler import (
 from automl_api.services.final_test_credentials import FinalDataManifest
 from automl_api.services.kubernetes_training import KubernetesTrainingClient
 from automl_api.services.refit_jobs import reconcile_refit_jobs_once
+from automl_api.services.scope_allocation import require_scope_allocation
 from automl_api.storage.object_store import get_object_store
 from automl_api.training.champion_evaluation import EvaluationPlan, verify_result
 from kubernetes.client import ApiException
@@ -52,7 +55,7 @@ def main():
             json.dumps(
                 dict(
                     scope_id=str(scope_id),
-                    refit_attempt_id=str(attempt_id),
+                    refit_attempt_id=str(attempt_id) if attempt_id else None,
                     refit_rows=rows,
                     manifest=manifest.model_dump(mode="json"),
                 )
@@ -81,6 +84,25 @@ def main():
         k8s.batch.create_namespaced_job = lose_reply
     deadline = time.monotonic() + 420
     while time.monotonic() < deadline:
+        # Seeded training is synthetic. This transition is only fixture setup;
+        # real members must pass seal_promotional_scope before they execute.
+        reconcile_evaluation_jobs_once(factory, k8s)
+        with factory() as db, db.begin():
+            scope = db.scalar(
+                select(PromotionalScope).where(PromotionalScope.id == scope_id).with_for_update()
+            )
+            if scope is not None and scope.status == ScopeStatus.OPEN:
+                if scope.scope_key != f"synthetic:{scope.id}":
+                    raise RuntimeError("Expected the owned synthetic evaluator fixture")
+                try:
+                    require_scope_allocation(db, scope)
+                except ValueError:
+                    pass
+                else:
+                    scope.status = ScopeStatus.SEALED
+                    scope.sealed_at = scope.scope_started_at = datetime.now(UTC)
+                    scope.scope_deadline_at = datetime.now(UTC) + timedelta(minutes=10)
+                    plan_scope_refit(db, scope.id, store)
         reconcile_refit_jobs_once(factory, k8s)
         reconcile_evaluation_jobs_once(factory, k8s)
         with factory() as db:
@@ -116,7 +138,9 @@ def main():
                     stream.read(), plan, expected_digest=checkpoint.content_digest
                 )
             assert result.metrics["rmse"] < 1e-8
-            with configured_authority(plan.final_manifest.project_reference) as authority:
+            with configured_authority(
+                plan.project_id, plan.final_manifest.project_reference
+            ) as authority:
                 response = authority.get(f"allocations/{plan.allocation_id}")
                 response.raise_for_status()
                 state = response.json()

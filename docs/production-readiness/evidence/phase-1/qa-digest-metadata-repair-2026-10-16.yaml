@@ -1,0 +1,102 @@
+{
+  "verified_at": "2026-10-16T05:04:34.128794+00:00",
+  "status": "verified_local_qa_repair",
+  "phase_complete": false,
+  "requirement": "P1-W16",
+  "qualified_input": "The exact13 QA versions from the prior read-only inventory and byte rescan. All13 SHA256 byte hashes matched; observed total280788 bytes; all persisted byte_size fields were absent and verification pending.",
+  "repair": "One locked transaction compares complete pre-observation row fingerprints, exact project/version/hash/scope bindings and existing digest evidence before any mutation. It inserts13 DigestVerification rows, fills observed byte sizes and sets verified status/time from the actual observation. All content hashes/scopes/algorithms, immutable consumers and object contents remain unchanged. No new schemas, object writes/deletes, migration rollout or release occurred.",
+  "native_controls": {
+    "controls": [
+      "changed_digest",
+      "changed_project",
+      "stale_row",
+      "existing_proof",
+      "complete_repair_rollback"
+    ],
+    "dry_run": {
+      "repaired": 13,
+      "replayed": 0
+    },
+    "rollback_unchanged": true
+  },
+  "commit_and_replay": {
+    "result": {
+      "repaired": 13,
+      "replayed": 0
+    },
+    "replay": {
+      "repaired": 0,
+      "replayed": 13
+    },
+    "proof_count": 13,
+    "hashes_and_other_fields_unchanged": true,
+    "before_sha256": "2a46a72614f472e6c67b71a0ae68d1c214f1c242f9d1e4069d2a094f6d1cf0d9",
+    "after_sha256": "46836bd2b4dc09f3785901238af0e3c29f30e62c451dd624bf1908c581eab186"
+  },
+  "followup_inventory": {
+    "header": {
+      "database": "refit",
+      "isolation": "repeatable read",
+      "read_only": "on",
+      "schema": "dataset-digest-inventory-v1",
+      "snapshot": "1850:1850:",
+      "type": "header"
+    },
+    "summary": {
+      "complete": true,
+      "counts": {
+        "dataset_version": 13,
+        "dataset_version_requires_review": 0,
+        "upload": 0,
+        "upload_requires_review": 0
+      },
+      "resource_records_sha256": "91bea7cdf36e89c9f351fdb89f05082b4edb2d3f4498da48ab011e2b684fd120",
+      "review_reasons": {},
+      "type": "summary"
+    },
+    "resource_count": 13,
+    "report_sha256": "0397f4ad82e0c5f7437701932ba59168ea0e8bb3baafd3611812ae7e76f407b7",
+    "qa_unchanged": true
+  },
+  "scope_binding": {
+    "source_sha256": {
+      "repair.py": "a1d2accf377abf31745d81cbb9f6eaa4a526335f002c74685b9a709cccecd025",
+      "remote.py": "9eedc798fdedf1f0e4dabd2417af9ace769209e0e75ad396af966a187e4b596f"
+    },
+    "plan_sha256": "27d0a8e3d846a23e85560aec68f861b82624e259b6a0487890a772da855e1ab3"
+  },
+  "known_limits": [
+    "This is a trusted, exactly13-row local QA fixture repair, retained under.unlazy. It is not a general production migration tool, public repair API or new admission credential. Its complete metadata plan and controls are frozen in local artifacts. No application source changed in this repair scope.",
+    "QA has0 persisted upload sessions. No historical multipart-manifest record was relabeled or promoted. Full production legacy inventory, controlled migration/new versions, consuming-reader safeguards, old binaries and full P1-W16 acceptance remain unqualified.",
+    "Verification records attest the observed matching bytes at their recorded time. Later object replacement still requires enforcement by consuming readers. Read-only stat-before/after comparisons are not provider version-pinned authorization or proof against all concurrent mutation/ABA cases.",
+    "Latest application source changes from prior increments still require their current-image workflow qualification. This standalone metadata repair does not qualify full HTTP/DB/MLflow/provider, Train/GPU or recovery flows.",
+    "The45GB migration campaign remains untested due available disk plus cluster reserve/overhead; largest-table counts are unspecified. Seven original QA models/results and the original abandoned preservation gate remain unresolved. Phase1 stays1Verified/35Open."
+  ],
+  "artifact_sha256": {
+    ".unlazy/phase1-qa-digest-repair/controls-state.json": "4b14eccdb34f5a6d37bb22c9abd9eea792a93710a6d033682ee02fb6935b2f88",
+    ".unlazy/phase1-qa-digest-repair/validate_artifacts.py": "ebbb005f84e9a575142cfa18259ee406a40810170ddbdaa1baabf39640def054",
+    ".unlazy/phase1-qa-digest-repair/qa-inventory-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    ".unlazy/phase1-qa-digest-repair/qa-state.json": "eae3bf2ffc8e02bbd130d0c46d70ef5b0f2a5c794b29995162a9b015a753243a",
+    ".unlazy/phase1-qa-digest-repair/controls-driver.log": "c41d999a6102121a87f575bf7f4346d135456e2687bee61eb01515f608393ce1",
+    ".unlazy/phase1-qa-digest-repair/run_native.py": "a3e2d642b62b7107c6758d3d618daf226303cb3b0f9cff764fbb36eafe46d7c6",
+    ".unlazy/phase1-qa-digest-repair/commit-state.json": "900e5b78eb5245bdd94ba68ac4b9ca6e3dcd6006454fab4e7021f1ea4c1cf49a",
+    ".unlazy/phase1-qa-digest-repair/artifact-gates.log": "8c54dc8a38df7f5a6c615c17f1234ae6c1d548ff00df9bfcc5e8d5da2d603c62",
+    ".unlazy/phase1-qa-digest-repair/controls-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    ".unlazy/phase1-qa-digest-repair/followup_inventory.py": "4578b39bb4eb20c5092ca073cafc21aca4c73eb3abeebbb74aca0af34615fe94",
+    ".unlazy/phase1-qa-digest-repair/controls-output.log": "2f9e6bb8404af78d907dc0bada2fd4e4dcb2c7a11a3db4f4b6f0b44070217558",
+    ".unlazy/phase1-qa-digest-repair/qa-digest-inventory.ndjson": "0397f4ad82e0c5f7437701932ba59168ea0e8bb3baafd3611812ae7e76f407b7",
+    ".unlazy/phase1-qa-digest-repair/commit-driver.log": "0a1407c34e8aaaffd7808b2ecd5c820be6b046c5a8ccb8473124ab3c68ff2142",
+    ".unlazy/phase1-qa-digest-repair/remote.py": "9eedc798fdedf1f0e4dabd2417af9ace769209e0e75ad396af966a187e4b596f",
+    ".unlazy/phase1-qa-digest-repair/commit-stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    ".unlazy/phase1-qa-digest-repair/repair.py": "a1d2accf377abf31745d81cbb9f6eaa4a526335f002c74685b9a709cccecd025",
+    ".unlazy/phase1-qa-digest-repair/followup-driver.log": "1296582ea164757167b34638184f3ab0b2a3f0de59f3b3589344e9cf22b3a751",
+    ".unlazy/phase1-qa-digest-repair/freeze.json": "c6edd9f7df8e225359dbea3d05baffa0d6a2388f6ea1130772e267254a8a6b18",
+    ".unlazy/phase1-qa-digest-repair/commit-output.log": "c6c61483acc2e3432f4340f31401e06da40f5af89b3895257f194f764406123a"
+  },
+  "phase_ledger": {
+    "requirements": 36,
+    "verified": 1,
+    "open": 35
+  },
+  "qa_neighbors_unchanged": true
+}

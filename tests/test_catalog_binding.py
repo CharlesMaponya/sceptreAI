@@ -14,6 +14,7 @@ from automl_api.models.workflows import EstimatorCatalogRevision
 from automl_api.services import training
 from automl_api.training import catalog_contract as catalog
 from automl_api.training import pipeline
+from digest_fixtures import verified_raw_version
 from fastapi import HTTPException
 from test_phase1_postgres_contracts import phase1_db, tenant  # noqa: F401
 
@@ -215,10 +216,19 @@ def test_actual_training_startup_validates_before_data_or_tracking(monkeypatch, 
     )
     db = MagicMock()
     db.__enter__.return_value = db
-    db.scalar.return_value = row if valid else None
+    db.scalar.side_effect = lambda statement: (
+        row
+        if valid and statement.column_descriptions[0].get("entity") is EstimatorCatalogRevision
+        else None
+    )
+    db.get.return_value = verified_raw_version(
+        id=run.dataset_version_id, project_id=run.project_id, source_kind="raw"
+    )
     monkeypatch.setattr(pipeline, "get_session_factory", lambda: lambda: db)
     monkeypatch.setattr(pipeline, "_locked_run", lambda *_: run)
-    monkeypatch.setattr(pipeline, "_bound_split_revision", lambda *_: SimpleNamespace())
+    monkeypatch.setattr(
+        pipeline, "_bound_split_revision", lambda *_: SimpleNamespace(id=uuid.uuid4())
+    )
     data = MagicMock(side_effect=RuntimeError("stop after catalog admission"))
     monkeypatch.setattr(pipeline, "_load_prepared_training_frames", data)
     tracking = MagicMock()
@@ -326,14 +336,17 @@ def test_catalog_identity_matches_an_independent_worker_process():
     import subprocess
     import sys
 
-    expected = {
-        task.value: catalog.catalog_digest(catalog.catalog_specification(task)) for task in TASKS
-    }
-    code = """import json
-from automl_api.training.catalog_contract import catalog_digest,catalog_specification
+    expected = {task.value: catalog.catalog_specification(task) for task in TASKS}
+    code = """import importlib,json,os,sys
+from automl_api.training import catalog_contract as catalog
 from automl_api.models.enums import TaskType
 tasks=['classification','regression','time_series','clustering']
-print(json.dumps({task:catalog_digest(catalog_specification(TaskType(task))) for task in tasks}))
+original={task:catalog.catalog_specification(TaskType(task)) for task in tasks}
+sys.path[:0]=[os.getcwd(),os.getcwd()]
+import ray
+importlib.reload(catalog)
+assert original=={task:catalog.catalog_specification(TaskType(task)) for task in tasks}
+print(json.dumps({'catalogs':original,'dependencies':catalog._RUNTIME_DEPENDENCIES}))
 """
     result = subprocess.run(
         [sys.executable, "-c", code],
@@ -343,7 +356,9 @@ print(json.dumps({task:catalog_digest(catalog_specification(TaskType(task))) for
         check=True,
         timeout=30,
     )
-    assert json.loads(result.stdout) == expected
+    actual = json.loads(result.stdout)
+    assert actual["dependencies"] == json.loads(json.dumps(catalog._RUNTIME_DEPENDENCIES))
+    assert actual["catalogs"] == expected
 
 
 @pytest.mark.parametrize(
@@ -351,9 +366,9 @@ print(json.dumps({task:catalog_digest(catalog_specification(TaskType(task))) for
     [
         ("training", None),
         ("training", "analysis-v1"),
-        ("validation", "training-catalog-v1"),
+        ("validation", "training-parameters-v1"),
         ("deployment", "analysis-v1"),
-        ("training", "training-catalog-v1"),
+        ("training", "training-parameters-v1"),
     ],
 )
 def test_worker_protocol_matches_durable_kind_before_admission(monkeypatch, kind, protocol):
@@ -376,7 +391,7 @@ def test_worker_protocol_matches_durable_kind_before_admission(monkeypatch, kind
     if protocol:
         argv += ["--attempt-protocol", protocol]
     monkeypatch.setattr(sys, "argv", argv)
-    if kind == "training" and protocol == "training-catalog-v1":
+    if kind == "training" and protocol == "training-parameters-v1":
         with pytest.raises(RuntimeError, match="admission boundary"):
             worker.main()
         begin.assert_called_once()
@@ -387,7 +402,7 @@ def test_worker_protocol_matches_durable_kind_before_admission(monkeypatch, kind
     db.commit.assert_not_called()
 
 
-def test_ray_training_command_declares_catalog_protocol(monkeypatch):
+def test_ray_training_command_declares_feature_protocol(monkeypatch):
     import shlex
 
     from automl_api.core.config import Settings
@@ -404,5 +419,5 @@ def test_ray_training_command_declares_catalog_protocol(monkeypatch):
         "--run-id",
         str(run.id),
         "--attempt-protocol",
-        "training-catalog-v1",
+        "training-parameters-v1",
     ]

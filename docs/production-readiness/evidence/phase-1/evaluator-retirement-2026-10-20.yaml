@@ -1,0 +1,78 @@
+{
+  "status": "verified_scoped_evaluator_recorded_capability_retirement",
+  "phase_complete": false,
+  "verified_at": "2026-10-20T07:13:48.366017+00:00",
+  "connected_tests": 184,
+  "overlapping_focused_tests": 44,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "pre_fix_missing_barrier_failures": 5,
+  "key_preparation_and_nonterminal_publication_control_require_retired_predecessor": true,
+  "already_registered_replacement_cannot_bypass_retirement": true,
+  "completed_terminal_identity_lookup_replay_preserved": true,
+  "registered_legacy_replacement_resumes_after_predecessor_retirement": true,
+  "recorded_started_get_and_put_deadlines_preserved_and_awaited": true,
+  "terminal_cleanup_and_key_only_sweeps_revoke_recorded_grants": true,
+  "token_policy_and_signing_key_retained_until_recorded_expiry": true,
+  "active_evaluator_key_preserved_in_stopped_scope": true,
+  "missing_custody_keeps_cleanup_pending_after_logical_revocation": true,
+  "other_stage_grants_preserved_and_excluded_from_key_retirement": true,
+  "critical_branch_coverage": {
+    "validate_replacement:first.cleanup_state": {
+      "critical_decision_covered_branches": 2,
+      "critical_decision_missing_branches": 0
+    },
+    "_locked:attempt.generation == 2 and": {
+      "critical_decision_covered_branches": 2,
+      "critical_decision_missing_branches": 0
+    },
+    "sweep_evaluation_resources:any((attempt.status in ACTIVE_ATTEMPTS": {
+      "critical_decision_covered_branches": 2,
+      "critical_decision_missing_branches": 0
+    },
+    "sweep_evaluation_resources:retiring": {
+      "critical_decision_covered_branches": 2,
+      "critical_decision_missing_branches": 0
+    },
+    "reconcile_scope:generation == 2 and (not _cleanup_attempt": {
+      "critical_decision_covered_branches": 2,
+      "critical_decision_missing_branches": 0
+    }
+  },
+  "pre_fix_source_sha256": {
+    "apps/api/automl_api/services/evaluation_planning.py": "e82a6ee78c8e069387d500299c6c987151a4b4ad45d096c417e818175fe23fa3",
+    "apps/api/automl_api/services/evaluation_publication.py": "5763b5412607041d674cb61e4c4a3d452dc6d52494af108b04d5b91196bda49f",
+    "apps/api/automl_api/services/evaluation_reconciler.py": "a6f1f20d24451bf989047f177b650cde46a500bc669a2c39feaf99fed65de5ad"
+  },
+  "changed_source_sha256": {
+    "apps/api/automl_api/services/evaluation_planning.py": "b375c8f98103bcdedc2d0bfa8f22a5099adcd52c8eaaaedf6185b74cade57e81",
+    "apps/api/automl_api/services/evaluation_publication.py": "55a1fa96b847755a012b4017cc739bffc80a2aa55d29219cb283af00b977ca34",
+    "apps/api/automl_api/services/evaluation_reconciler.py": "dff55e851b3901f7b911d374dae6964be43eae86f3c498dba33c2126a43748b6",
+    "tests/test_champion_evaluation_replacement.py": "5ba10e1bd675eb8ea8c8a5178faaced759f6d7aa466b81fcb48e62d71b224c8f",
+    "tests/test_evaluator_retirement.py": "c32b1033f72714ed0ce3f2be906992fc88a7cc1b0300f78198c5b79cb4c4728e"
+  },
+  "tested_input_count": 490,
+  "artifact_sha256": {
+    ".unlazy/phase1-evaluator-retirement/source-sha256.json": "16d31ba41d4e6824cd4f792a6849abc191400f98d682d53a09b5fc7c693dbbbc",
+    ".unlazy/phase1-evaluator-retirement/connected.xml": "7a6d2d7ff1a3c60ece98bc77f564f1e59985be2c1f85cb20205855e5eff20176",
+    ".unlazy/phase1-evaluator-retirement/connected-state.json": "66f8b4e2455c9d9b8766dfc35472c29209951ee387df7c1df3fa21b88c68e241",
+    ".unlazy/phase1-evaluator-retirement/coverage.json": "7e1db2b2bb5d88ea703fa3ec051976223ceb9069daa2af4c787d07eafe5c1c14",
+    ".unlazy/phase1-evaluator-retirement/reproduction.xml": "89e3381be1f16cac6595564fb64f50ac9fcf080bb555edf8c25cecde9aace1c0",
+    ".unlazy/phase1-evaluator-retirement/run.py": "ed52f6ec2bb974ff64473d22840092f62a91d7d63afa58325783afea51cae6dd",
+    ".unlazy/phase1-evaluator-retirement/audit.py": "a174de5a174806c788c1bfc294a7f0aca23215ef1dbf22fdfb72719ac812080a",
+    ".unlazy/phase1-evaluator-retirement/lint.log": "cd7f41cf1ad5ba8b6263217889865f18d2b85df5ad631a05d6d321f51fd1b7b2"
+  },
+  "coverage_original_sha256": "d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9",
+  "whole_phase_verified": 2,
+  "whole_phase_open": 34,
+  "full_backend_suite_or_global_coverage_requalified": false,
+  "native_pod_or_provider_enforced_expiry_qualified": false,
+  "unjournaled_legacy_capabilities_retired": false,
+  "all_stage_replacement_retirement_qualified": false,
+  "production_sized_or_prior_binary_migration_qualified": false,
+  "migration_qualification_ceiling_bytes": 45000000000,
+  "shared_preservation_qualified": false,
+  "historical_missing_qa_objects": 7,
+  "abandoned_handoff": "phase1-deletion:G7"
+}

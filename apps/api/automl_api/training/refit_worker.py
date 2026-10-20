@@ -8,7 +8,7 @@ import signal
 import ssl
 from threading import Event, Thread
 from urllib.parse import urlsplit
-from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler, HTTPSHandler, ProxyHandler, Request, build_opener
 
 import httpx
 
@@ -40,7 +40,7 @@ class RefitCapabilityStore:
         if not separator:
             raise ValueError("Candidate storage lineage is invalid")
         self.opener = build_opener(
-            _NoRedirect(), HTTPSHandler(context=_tls_context(ca_file)),
+            ProxyHandler({}), _NoRedirect(), HTTPSHandler(context=_tls_context(ca_file)),
         )
 
     def uri_for_key(self, key):
@@ -141,7 +141,7 @@ def main():
     with httpx.Client(
         base_url=base_url.rstrip("/") + "/",
         headers={"Authorization": f"Bearer {os.environ['REFIT_CONTROL_TOKEN']}"},
-        verify=_tls_context(ca_file), follow_redirects=False,
+        verify=_tls_context(ca_file), follow_redirects=False, trust_env=False,
         timeout=httpx.Timeout(60, connect=10),
     ) as control:
         run(control, ca_file=ca_file)

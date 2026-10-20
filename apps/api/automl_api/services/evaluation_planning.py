@@ -14,6 +14,7 @@ from automl_api.models.workflows import (
     WorkflowCheckpoint,
     WorkflowEvent,
 )
+from automl_api.services.attempt_object_grants import unretired_grant_deadline
 from automl_api.services.final_test_credentials import FinalDataManifest
 from automl_api.services.workflow_state import InvalidTransition, canonical_request_hash
 from automl_api.training.champion_evaluation import EvaluationDataPolicy, EvaluationPlan, _final_uri
@@ -26,6 +27,10 @@ def validate_evaluation_policy(db, scope):
     )
     split = db.get(DatasetSplitRevision, scope.split_revision_id)
     experiment = db.get(ExperimentSpecRevision, scope.experiment_spec_revision_id)
+    if split is not None:
+        from automl_api.services.provider_source import reject_provider_promotion
+
+        reject_provider_promotion(db, split.dataset_version_id)
     if (
         split is None
         or experiment is None
@@ -233,4 +238,8 @@ def validate_replacement(db, scope_id):
         is not None
     ):
         raise InvalidTransition("Evaluator replacement requires a failed attempt without output")
+    if first.cleanup_state != "complete" or unretired_grant_deadline(db, first.id) is not None:
+        raise InvalidTransition(
+            "Evaluator replacement requires retired predecessor resources and capabilities"
+        )
     return first
