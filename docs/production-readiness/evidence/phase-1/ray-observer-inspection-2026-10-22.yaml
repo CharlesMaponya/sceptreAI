@@ -1,0 +1,42 @@
+{
+  "status": "verified_training_and_dataset_ray_read_boundaries_only",
+  "phase_complete": false,
+  "native_cleanup_custody_qualified": false,
+  "regression_passed": 441,
+  "focused_cases": 32,
+  "baseline_failed": 25,
+  "baseline_passed": 5,
+  "initial_regression_failed": 2,
+  "initial_regression_passed": 437,
+  "source_inputs": 516,
+  "source_manifest": ".unlazy/phase1-ray-observer-inspection/source-sha256.json",
+  "minimum_free_bytes": 45621407744,
+  "reserve_bytes": 43500000000,
+  "schema_head": "0018_attempt_predecessor_lineage",
+  "gates_at_snapshot": {
+    "met": 4,
+    "unmet": 0,
+    "abandoned": 0
+  },
+  "phase1_requirements": {
+    "verified": 2,
+    "open": 34
+  },
+  "local_ray_version": "2.56.1",
+  "locked_ray_version": "2.58.0",
+  "change": "Training and dataset Ray observers commit SQL selection before native reads and reload only the observed attempt under fresh locks. Publication requires the original attempt and complete run/profile snapshot. SQL-only lease/receipt recovery retains authority; canceled terminal runs cannot be revived by native observations. Retry constructors retain typed dataset/run/trial/scope/campaign lineage. Native Ray GETs receive an explicit request timeout.",
+  "checks": [
+    "Real PostgreSQL controls see zero planning connections checked out and obtain independent attempt/resource row locks during training, splitter and preparation reads.",
+    "Fence/lease/resource ownership/cancellation/job-name changes and committed results defeat stale missing observations.",
+    "Competing observers create one successor; unavailable reads leave current work intact and can retry.",
+    "Expired leases recover without a native read; a non-null dataset identifier survives retry for one parent and both active trial children.",
+    "Old assertions remain unchanged except the worker wrapper expectation now verifies required read injection and three independent commit boundaries. Other mock/rollback setup explicitly injects its own read and is not SQL-boundary qualification."
+  ],
+  "remaining": [
+    "The managed and legacy analysis observers still hold SQL across native reads; the legacy observer can also DELETE a Job and needs durable native mutation custody.",
+    "Upload cleanup ownership, uncertain native producer/operation custody, native outbox transaction boundaries, full observer lease/fairness and native UID/namespace qualification remain required. These read-only observations are not exclusive native mutation leases.",
+    "Fresh whole-backend and independent 90.01% coverage qualification remain required after these source changes. Local Ray differs from the lock, so this is fixture evidence, not release/runtime qualification.",
+    "Cloud/release, actual prior-binary and physical 45GB migration qualification remain open.",
+    "Original phase1-deletion:G7 remains abandoned: seven missing historical QA objects require handoff."
+  ]
+}

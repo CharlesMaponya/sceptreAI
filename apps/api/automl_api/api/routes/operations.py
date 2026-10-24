@@ -31,9 +31,11 @@ from automl_api.services.inference_gateway import (
     resolve_deployment_inference_target,
 )
 from automl_api.services.operations import (
+    RegistrationInspection,
     cleanup_model_deployment,
     cleanup_project_resources,
     deploy_registered_model,
+    inspect_model_registration,
     launch_drift_check,
     list_drift_runs,
     list_model_deployments,
@@ -82,6 +84,11 @@ def create_registry_entry(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> RegistryEntryRead:
     entry = register_model(db, current_user, project_id, payload)
+    if isinstance(entry, RegistrationInspection):
+        db.commit()
+        inspected = inspect_model_registration(entry)
+        db.expire_all()
+        entry = register_model(db, current_user, project_id, payload, inspection=inspected)
     db.commit()
     db.refresh(entry)
     return registry_entry_read(entry)

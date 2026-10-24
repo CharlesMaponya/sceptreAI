@@ -13,7 +13,7 @@ import pytest
 from automl_api.models.enums import AttemptStatus, ScopeStatus
 from automl_api.models.workflows import WorkflowAttempt, WorkflowEvent
 from automl_api.services import refit_access, refit_jobs
-from automl_api.services.champion_planning import plan_scope_refit
+from champion_planning_fixture import plan_scope_refit
 from kubernetes.client import ApiException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -27,9 +27,11 @@ class FakeKubernetes:
             training_namespace="qa-refit",
             training_image="registry/image@sha256:" + "a" * 64,
             workload_image_pull_secrets=(),
+            attempt_control_base_url="https://api.test/api/v1/internal/attempts",
         )
         self.objects = {kind: {} for kind in ("job", "secret", "network_policy")}
         self.states = {}
+        self.service_accounts = []
         self.before_create = lambda: None
         self.lose_job_reply = False
         for attribute, kind in (
@@ -44,8 +46,8 @@ class FakeKubernetes:
                 )
             setattr(self, attribute, api)
 
-    def ensure_service_account(self, name):
-        assert name == "sceptre-champion-refit"
+    def ensure_service_account(self, name, namespace=None):
+        self.service_accounts.append((namespace or self.settings.training_namespace, name))
 
     def create(self, kind, namespace, body):
         assert namespace == "qa-refit"

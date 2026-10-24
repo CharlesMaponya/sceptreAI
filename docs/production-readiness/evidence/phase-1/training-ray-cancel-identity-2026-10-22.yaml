@@ -1,0 +1,49 @@
+{
+  "status": "verified_scoped_identity_safety",
+  "phase_complete": false,
+  "summary": {
+    "passed": 355,
+    "focused": 35,
+    "failures": 0,
+    "errors": 0,
+    "skips": 0,
+    "phase_complete": false
+  },
+  "baseline": {
+    "cases": 35,
+    "failures": 34,
+    "errors": 0,
+    "skips": 0
+  },
+  "gates": {
+    "met": 4,
+    "unmet": 0,
+    "abandoned": 0
+  },
+  "native": {
+    "status": "terminal_pass",
+    "context": "k3d-sceptre",
+    "namespace": "phase1-ray-cancel-58f5e1ec81ee",
+    "sql_was_test_double": true,
+    "suspended": true,
+    "shared_qa_mutated": false,
+    "namespace_uid": "0686a66b-1a00-4a8d-b723-795b1efc0ae7",
+    "foreign_identity_preserved": true,
+    "original_uid": "00dacfa7-bc6f-4246-84a3-22db2d866196",
+    "replacement_uid": "455cec00-151b-4159-ad17-f05a3a97b39d",
+    "replacement_race_status": 409,
+    "replacement_preserved": true,
+    "owned_uid_deleted": true,
+    "absent_replay_safe": true,
+    "no_pods_or_rayclusters": true,
+    "namespace_retired": true
+  },
+  "source_manifest": ".unlazy/phase1-ray-cancel-identity/source-sha256.json",
+  "limitations": [
+    "Native probe used SQL test doubles and actual suspended RayJobs; connected expiry tests used the owned PostgreSQL fixture.",
+    "No training workloads or maintained images ran; native SQL custody and physical producer/credential retirement remain unqualified.",
+    "Existing job names remain unchanged for replay compatibility; foreign submission conflict adoption is the next separate fix.",
+    "The preceding4862-pass full backend checkpoint is historical after this increment; branch coverage86.86784% remains below90.01%.",
+    "All36 Phase1 requirements remain:2 Verified/34 Open;45 GB migration rehearsal and original abandoned phase1-deletion:G7 remain unfinished."
+  ]
+}

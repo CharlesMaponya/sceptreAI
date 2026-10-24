@@ -4,6 +4,7 @@ import math
 import uuid
 from collections.abc import Callable
 from copy import deepcopy
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -24,7 +25,7 @@ from automl_api.models.enums import (
     RunStatus,
     WorkflowStage,
 )
-from automl_api.models.runs import ModelRegistryEntry, ModelRun, RunArtifact
+from automl_api.models.runs import ModelRun, RunArtifact
 from automl_api.models.workflows import (
     DeletionStage,
     DeletionTombstone,
@@ -42,6 +43,16 @@ from automl_api.services.kubernetes_training import (
 from automl_api.services.upload_policy import inspect_and_scan_stream
 from automl_api.services.uploads import require_upload_byte_digest
 from automl_api.services.workflow_state import (
+    RAY_CREDENTIAL_PROTOCOL,
+    RAY_MINIMAL_CREDENTIAL_PROTOCOL,
+    RAY_MODEL_OUTPUT_PROTOCOL,
+    RAY_PARENT_CONTROL_PROTOCOL,
+    RAY_TRAINING_CONTEXT_PROTOCOL,
+    RAY_TRAINING_METADATA_PROTOCOL,
+    RAY_TRAINING_PROGRESS_PROTOCOL,
+    RAY_TRAINING_RESULT_PROTOCOL,
+    RAY_TRAINING_TRACKING_PROTOCOL,
+    RAY_TRIAL_CONTROL_PROTOCOL,
     StaleFence,
     canonical_request_hash,
     cas_register_terminal_artifact,
@@ -152,6 +163,7 @@ RETRY_OWNER = {
     "ray.training.cancel": "workflow-reconciler",
     "kubernetes.analysis.submit": "workflow-reconciler",
     "kubernetes.analysis.cancel": "workflow-reconciler",
+    "kubernetes.analysis.legacy.cancel": "workflow-reconciler",
     "upload.reconcile": "workflow-reconciler",
     "registry.reconcile": "workflow-reconciler",
     "deployment.reconcile": "workflow-reconciler",
@@ -188,6 +200,8 @@ def reconcile_entry(
     entry = _lock_outbox_delivery(db, entry.id, worker_id)
     if entry is None:
         return
+    if entry.topic in {"kubernetes.analysis.legacy.cancel", "registry.reconcile"}:
+        raise RuntimeError("This topic requires the factory-owned dispatcher.")
     try:
         if entry.topic == "dataset.profile.local":
             from automl_api.services.profiling_jobs import run_local_profile
@@ -209,8 +223,6 @@ def reconcile_entry(
             cancel_analysis_job(db, entry, k8s or KubernetesTrainingClient())
         elif entry.topic == "upload.reconcile":
             reconcile_upload_session(db, entry)
-        elif entry.topic == "registry.reconcile":
-            reconcile_registry_artifact(db, entry)
         elif entry.topic == "deployment.reconcile":
             reconcile_deployment(db, entry, k8s or KubernetesTrainingClient())
         elif entry.topic == "governance.reconcile":
@@ -736,43 +748,6 @@ def _quarantine_upload(
         version.status = DatasetStatus.FAILED
 
 
-def reconcile_registry_artifact(db: Session, entry: OutboxEntry) -> ModelRegistryEntry:
-    registry_entry = db.scalar(
-        select(ModelRegistryEntry)
-        .where(
-            ModelRegistryEntry.project_id == entry.project_id,
-            ModelRegistryEntry.id == uuid.UUID(str(entry.payload["registry_entry_id"])),
-        )
-        .with_for_update()
-    )
-    if registry_entry is None:
-        raise LookupError("The tracked registry entry no longer exists.")
-    if registry_entry.registry_metadata.get("desired_state") == "artifact_verified":
-        return registry_entry
-    artifact = db.scalar(
-        select(RunArtifact).where(
-            RunArtifact.project_id == registry_entry.project_id,
-            RunArtifact.id == registry_entry.model_artifact_id,
-        )
-    )
-    if artifact is None:
-        raise LookupError("The registry model artifact no longer exists.")
-    store = get_object_store()
-    if not store.exists(artifact.object_uri):
-        raise OSError("The registry model artifact is not visible in durable storage.")
-    observed_size = store.size(artifact.object_uri)
-    if artifact.byte_size is not None and observed_size != artifact.byte_size:
-        raise ValueError("The registry model artifact byte size does not match its manifest.")
-    registry_entry.registry_metadata = {
-        **registry_entry.registry_metadata,
-        "desired_state": "artifact_verified",
-        "verified_byte_size": observed_size,
-        "verified_at": datetime.now(UTC).isoformat(),
-    }
-    db.flush()
-    return registry_entry
-
-
 def reconcile_deployment(
     db: Session, entry: OutboxEntry, k8s: KubernetesTrainingClient
 ) -> ModelRun:
@@ -906,18 +881,50 @@ def reconcile_cleanup(
     return completed
 
 
+def _ray_credential_protocol(entry):
+    if "credential_protocol" not in entry.payload:
+        return None
+    if entry.payload["credential_protocol"] not in (
+        RAY_MINIMAL_CREDENTIAL_PROTOCOL,
+        RAY_PARENT_CONTROL_PROTOCOL,
+        RAY_TRIAL_CONTROL_PROTOCOL,
+        RAY_TRAINING_CONTEXT_PROTOCOL,
+        RAY_TRAINING_TRACKING_PROTOCOL,
+        RAY_TRAINING_METADATA_PROTOCOL,
+        RAY_CREDENTIAL_PROTOCOL,
+        RAY_TRAINING_PROGRESS_PROTOCOL,
+        RAY_TRAINING_RESULT_PROTOCOL,
+        RAY_MODEL_OUTPUT_PROTOCOL,
+    ):
+        raise StaleFence("Ray submission has an unknown credential protocol.")
+    return entry.payload["credential_protocol"]
+
+
 def submit_training_ray_job(
     db: Session, entry: OutboxEntry, k8s: KubernetesTrainingClient
 ) -> WorkflowAttempt:
     attempt_id = uuid.UUID(str(entry.payload["attempt_id"]))
     fencing_token = str(entry.payload["fencing_token"])
     attempt = db.scalar(
-        select(WorkflowAttempt).where(WorkflowAttempt.id == attempt_id).with_for_update()
+        select(WorkflowAttempt)
+        .where(WorkflowAttempt.id == attempt_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     if attempt is None:
         raise LookupError("The tracked Ray attempt no longer exists.")
     if attempt.fencing_token != fencing_token:
         raise ValueError("The submitted Ray attempt fence does not match the outbox command.")
+    if (
+        entry.topic != "ray.training.submit"
+        or attempt.stage != WorkflowStage.TRAINING_RUN
+        or attempt.project_id != entry.project_id
+        or entry.aggregate_type != "model_run"
+        or attempt.model_run_id != entry.aggregate_id
+        or attempt.logical_key != f"training-run:{entry.aggregate_id}"
+    ):
+        raise StaleFence("Training submission scope differs from its attempt.")
+    credential_protocol = _ray_credential_protocol(entry)
     if attempt.status in {
         AttemptStatus.SUBMITTED,
         AttemptStatus.RUNNING,
@@ -942,8 +949,10 @@ def submit_training_ray_job(
     if attempt.status == AttemptStatus.PENDING:
         transition_attempt(attempt, AttemptStatus.CLAIMED, fencing_token=fencing_token)
     name = f"sceptre-run-{str(run.id)[:8]}-g{attempt.generation}"
+    manifest = build_ray_job_manifest(
+        run, attempt, name=name, credential_protocol=credential_protocol
+    )
     k8s.ensure_service_account(attempt.workload_identity)
-    manifest = build_ray_job_manifest(run, attempt, name=name)
     created = k8s.create_ray_job(manifest)
     metadata = created.get("metadata", {})
     status = created.get("status", {})
@@ -994,6 +1003,7 @@ def submit_dataset_ray_job(
         or attempt.logical_key != f"profile:{profile_job_id}:{expected_stage.value}"
     ):
         raise StaleFence("Dataset submission scope differs from its attempt.")
+    credential_protocol = _ray_credential_protocol(entry)
     if attempt.status not in {AttemptStatus.PENDING, AttemptStatus.CLAIMED}:
         return attempt
     job = db.scalar(
@@ -1028,7 +1038,9 @@ def submit_dataset_ray_job(
     stage_name = expected_stage.value
     name = f"sceptre-{stage_name}-{str(job.id)[:8]}-g{attempt.generation}"
     k8s.ensure_service_account(attempt.workload_identity)
-    manifest = build_dataset_ray_job_manifest(job, version, attempt, name=name)
+    manifest = build_dataset_ray_job_manifest(
+        job, version, attempt, name=name, credential_protocol=credential_protocol
+    )
     created = k8s.create_ray_job(manifest)
     metadata = created.get("metadata", {})
     ray_status = created.get("status", {})
@@ -1129,7 +1141,32 @@ def cancel_training_ray_job(
         run = db.get(ModelRun, attempt.model_run_id, populate_existing=True)
         if run is None or run.project_id != attempt.project_id or not run.k8s_namespace:
             raise StaleFence("The Ray cancellation run namespace is missing or inconsistent.")
-        k8s.delete_ray_job(attempt.ray_job_name, namespace=run.k8s_namespace)
+        try:
+            job = k8s.ray_job(attempt.ray_job_name, namespace=run.k8s_namespace)
+        except ApiException as exc:
+            if exc.status != 404:
+                raise
+        else:
+            metadata = job.get("metadata") if isinstance(job, dict) else None
+            metadata = metadata if isinstance(metadata, dict) else {}
+            labels = metadata.get("labels")
+            uid = metadata.get("uid")
+            expected = {
+                "automl.platform/project-id": str(attempt.project_id),
+                "automl.platform/run-id": str(run.id),
+                "automl.platform/attempt-id": str(attempt.id),
+                "automl.platform/generation": str(attempt.generation),
+            }
+            if (
+                not isinstance(uid, str)
+                or not uid.strip()
+                or metadata.get("name") != attempt.ray_job_name
+                or metadata.get("namespace") != run.k8s_namespace
+                or not isinstance(labels, dict)
+                or any(labels.get(key) != value for key, value in expected.items())
+            ):
+                raise StaleFence("Training cancellation RayJob identity differs from its attempt.")
+            k8s.delete_ray_job(attempt.ray_job_name, namespace=run.k8s_namespace, uid=uid)
     if attempt.status not in {
         AttemptStatus.SUCCEEDED,
         AttemptStatus.FAILED,
@@ -1146,13 +1183,110 @@ def cancel_training_ray_job(
     return attempt
 
 
+@dataclass(frozen=True)
+class JobObservation:
+    attempt_id: uuid.UUID
+    snapshot_digest: str
+    job_name: str
+    namespace: str | None
+    result: Any | None = None
+
+
+def _job_observation(attempt, resource, model, job_name, namespace, *, evidence=None):
+    return JobObservation(
+        attempt_id=attempt.id,
+        snapshot_digest=canonical_request_hash(
+            {
+                "rows": [
+                    {column.key: getattr(row, column.key, None) for column in table.columns}
+                    for row, table in (
+                        (attempt, WorkflowAttempt.__table__),
+                        (resource, model.__table__),
+                    )
+                ],
+                "evidence": evidence,
+            }
+        ),
+        job_name=job_name,
+        namespace=namespace,
+    )
+
+
+def inspect_ray_observation(k8s, request: JobObservation) -> JobObservation:
+    try:
+        result = k8s.ray_job(request.job_name, namespace=request.namespace)
+    except ApiException as exc:
+        if exc.status != 404:
+            raise
+        result = None
+    return replace(request, result=deepcopy(result))
+
+
+def _verify_ray_observation(job, attempt, resource_id, namespace):
+    metadata = job.get("metadata") if isinstance(job, dict) else None
+    metadata = metadata if isinstance(metadata, dict) else {}
+    labels, uid = metadata.get("labels"), metadata.get("uid")
+    spec = job.get("spec") if isinstance(job, dict) else None
+    expected = {
+        "automl.platform/project-id": str(attempt.project_id),
+        "automl.platform/attempt-id": str(attempt.id),
+        "automl.platform/generation": str(attempt.generation),
+    }
+    if attempt.stage == WorkflowStage.TRAINING_RUN:
+        expected["automl.platform/run-id"] = str(resource_id)
+    else:
+        expected.update(
+            {
+                "automl.platform/profile-job-id": str(resource_id),
+                "automl.platform/workflow-stage": attempt.stage.value,
+                "automl.platform/dataset-version-id": str(attempt.dataset_version_id),
+            }
+        )
+    if (
+        not isinstance(namespace, str)
+        or not namespace
+        or not isinstance(attempt.ray_job_name, str)
+        or not attempt.ray_job_name.strip()
+        or metadata.get("namespace") != namespace
+        or metadata.get("name") != attempt.ray_job_name
+        or not isinstance(uid, str)
+        or not uid.strip()
+        or not isinstance(labels, dict)
+        or any(labels.get(key) != value for key, value in expected.items())
+        or not isinstance(spec, dict)
+        or spec.get("jobId") != f"sceptre-{attempt.fencing_token[:16]}"
+    ):
+        raise StaleFence("Ray observation identity differs from its current attempt.")
+    try:
+        pod = spec["submitterPodTemplate"]["spec"]
+        env = pod["containers"][0]["env"]
+        expected_env = {
+            "AUTOML_FENCING_TOKEN": attempt.fencing_token,
+            "AUTOML_PROJECT_ID": str(attempt.project_id),
+            "AUTOML_ATTEMPT_ID": str(attempt.id),
+        }
+        if (
+            pod["serviceAccountName"] != attempt.workload_identity
+            or len(pod["containers"]) != 1
+            or not isinstance(env, list)
+            or any(
+                [item.get("value") for item in env if item.get("name") == name] != [value]
+                for name, value in expected_env.items()
+            )
+        ):
+            raise StaleFence("Ray submitter fence or stage identity differs from its attempt.")
+    except (KeyError, IndexError, TypeError, AttributeError) as exc:
+        raise StaleFence("Ray submitter identity is missing or malformed.") from exc
+
+
 def observe_training_ray_jobs(
     db: Session,
-    k8s: KubernetesTrainingClient,
     *,
+    read: Callable[[JobObservation], JobObservation | None],
     limit: int = 25,
+    attempt_id: uuid.UUID | None = None,
 ) -> int:
-    """Observe active RayJobs under a database row lock and replace lost generations."""
+    """Collect native read requests or publish an unchanged, freshly locked observation."""
     attempts = list(
         db.scalars(
             select(WorkflowAttempt)
@@ -1161,6 +1295,7 @@ def observe_training_ray_jobs(
                 WorkflowAttempt.status.in_({AttemptStatus.SUBMITTED, AttemptStatus.RUNNING}),
                 WorkflowAttempt.ray_job_name.is_not(None),
             )
+            .where(WorkflowAttempt.id == attempt_id if attempt_id is not None else True)
             .order_by(WorkflowAttempt.updated_at, WorkflowAttempt.id)
             .limit(limit)
             .with_for_update(skip_locked=True)
@@ -1174,6 +1309,12 @@ def observe_training_ray_jobs(
             .with_for_update()
             .execution_options(populate_existing=True)
         )
+        if run is None:
+            raise LookupError("The lost Ray attempt has no tracked training run.")
+        if run.project_id != attempt.project_id:
+            raise StaleFence("Ray observation run scope differs from its attempt.")
+        if run.run_kind != RunKind.TRAINING:
+            continue
         receipt = (run.tags or {}).get("training_result_receipt") if run is not None else None
         if (
             run is not None
@@ -1182,6 +1323,9 @@ def observe_training_ray_jobs(
             and receipt.get("attempt_id") == str(attempt.id)
             and run.tags.get("winner_model_artifact_uri")
         ):
+            from automl_api.services.training_result import require_training_result_receipt
+
+            require_training_result_receipt(db, attempt, run)
             # The result transaction is authoritative even if its worker lost the commit response.
             if not cas_register_terminal_artifact(
                 db,
@@ -1193,6 +1337,12 @@ def observe_training_ray_jobs(
                 raise StaleFence("The recovered training result no longer owns this attempt.")
             run.status = RunStatus.SUCCEEDED
             run.finished_at = datetime.now(UTC)
+            continue
+        if run is not None and run.status in {
+            RunStatus.CANCELLED,
+            RunStatus.FAILED,
+            RunStatus.SUCCEEDED,
+        }:
             continue
         expires = getattr(attempt, "lease_expires_at", None)
         if expires is not None and expires <= datetime.now(UTC):
@@ -1208,14 +1358,22 @@ def observe_training_ray_jobs(
             )
             _replace_lost_ray_attempt(db, attempt, reason="Training parent lease expired")
             continue
-        try:
-            ray_job = k8s.ray_job(str(attempt.ray_job_name))
-        except ApiException as exc:
-            if exc.status != 404:
-                raise
+        request = _job_observation(
+            attempt,
+            run,
+            ModelRun,
+            str(attempt.ray_job_name),
+            getattr(run, "k8s_namespace", None),
+        )
+        observed = read(request)
+        if observed is None or replace(observed, result=None) != request:
+            continue
+        ray_job = observed.result
+        if ray_job is None:
             _replace_lost_ray_attempt(db, attempt, reason="RayJob disappeared before terminal CAS")
             continue
 
+        _verify_ray_observation(ray_job, attempt, run.id, request.namespace)
         status = ray_job.get("status") or {}
         cluster_name = status.get("rayClusterName")
         submission_id = status.get("jobId")
@@ -1419,7 +1577,7 @@ def _replace_analysis_attempt(db, attempt, run, source, k8s, reason):
         return
     replacement = WorkflowAttempt(
         project_id=attempt.project_id,
-        model_run_id=run.id,
+        **_retry_lineage(attempt),
         stage=attempt.stage,
         logical_key=attempt.logical_key,
         workload_identity=attempt.workload_identity,
@@ -1452,7 +1610,28 @@ def _replace_analysis_attempt(db, attempt, run, source, k8s, reason):
     }
 
 
-def observe_analysis_attempts(db, k8s, *, limit=25):
+def inspect_analysis_observation(k8s, request: JobObservation) -> JobObservation:
+    try:
+        result = k8s.batch.read_namespaced_job(
+            name=request.job_name,
+            namespace=request.namespace,
+            _request_timeout=5,
+        )
+    except ApiException as exc:
+        if exc.status != 404:
+            raise
+        result = None
+    return replace(request, result=deepcopy(result))
+
+
+def observe_analysis_attempts(
+    db,
+    k8s,
+    *,
+    read: Callable[[JobObservation], JobObservation | None],
+    limit=25,
+    attempt_id: uuid.UUID | None = None,
+):
     attempts = list(
         db.scalars(
             select(WorkflowAttempt)
@@ -1479,6 +1658,7 @@ def observe_analysis_attempts(db, k8s, *, limit=25):
                     & (WorkflowAttempt.cleanup_state == "pending")
                 ),
             )
+            .where(WorkflowAttempt.id == attempt_id if attempt_id is not None else True)
             .order_by(WorkflowAttempt.updated_at, WorkflowAttempt.id)
             .limit(limit)
             .with_for_update(of=WorkflowAttempt, skip_locked=True)
@@ -1534,13 +1714,25 @@ def observe_analysis_attempts(db, k8s, *, limit=25):
         ):
             reason = "Analysis worker did not claim its startup lease"
         if reason is None:
-            try:
-                job = k8s.batch.read_namespaced_job(
-                    name=identity["job_name"], namespace=identity["namespace"], _request_timeout=5
-                )
-            except ApiException as exc:
-                if exc.status != 404:
-                    raise
+            request = _job_observation(
+                attempt,
+                run,
+                ModelRun,
+                identity["job_name"],
+                identity["namespace"],
+                evidence={
+                    "submission": identity,
+                    "source": {
+                        column.key: getattr(source, column.key)
+                        for column in OutboxEntry.__table__.columns
+                    },
+                },
+            )
+            observed = read(request)
+            if observed is None or replace(observed, result=None) != request:
+                continue
+            job = observed.result
+            if job is None:
                 reason = "Analysis Job disappeared before report CAS"
             else:
                 _verify_analysis_job(job, attempt, identity)
@@ -1556,33 +1748,18 @@ def observe_analysis_attempts(db, k8s, *, limit=25):
     return len(attempts)
 
 
-def observe_analysis_jobs(db: Session, k8s: KubernetesTrainingClient, *, limit: int = 25) -> int:
-    from automl_api.services.training import _sync_run_status
+def observe_analysis_jobs(db: Session, *, read, limit: int = 25, run_id=None) -> int:
+    from automl_api.services.legacy_analysis import observe_jobs
 
-    runs = list(
-        db.scalars(
-            select(ModelRun)
-            .where(
-                ModelRun.run_kind.in_({RunKind.EXPLAINABILITY, RunKind.VALIDATION, RunKind.DRIFT}),
-                ModelRun.status.in_({RunStatus.QUEUED, RunStatus.RUNNING}),
-                ModelRun.tags["desired_state"].astext == "kubernetes_submitted",
-                ModelRun.tags["workflow_attempt_id"].astext.is_(None),
-            )
-            .order_by(ModelRun.updated_at, ModelRun.id)
-            .limit(limit)
-            .with_for_update(skip_locked=True)
-        )
-    )
-    for run in runs:
-        _sync_run_status(db, run, k8s, observe_managed=True)
-    return len(runs)
+    return observe_jobs(db, read=read, limit=limit, run_id=run_id)
 
 
 def observe_dataset_ray_jobs(
     db: Session,
-    k8s: KubernetesTrainingClient,
     *,
+    read: Callable[[JobObservation], JobObservation | None],
     limit: int = 25,
+    attempt_id: uuid.UUID | None = None,
 ) -> int:
     attempts = list(
         db.scalars(
@@ -1592,6 +1769,7 @@ def observe_dataset_ray_jobs(
                 WorkflowAttempt.status.in_({AttemptStatus.SUBMITTED, AttemptStatus.RUNNING}),
                 WorkflowAttempt.ray_job_name.is_not(None),
             )
+            .where(WorkflowAttempt.id == attempt_id if attempt_id is not None else True)
             .order_by(WorkflowAttempt.updated_at, WorkflowAttempt.id)
             .limit(limit)
             .with_for_update(skip_locked=True)
@@ -1626,15 +1804,19 @@ def observe_dataset_ray_jobs(
             )
             _replace_lost_dataset_attempt(db, attempt, reason="Dataset worker lease expired")
             continue
-        try:
-            ray_job = k8s.ray_job(str(attempt.ray_job_name), namespace=namespace)
-        except ApiException as exc:
-            if exc.status != 404:
-                raise
+        request = _job_observation(
+            attempt, profile, ProfilingJob, str(attempt.ray_job_name), namespace
+        )
+        observed = read(request)
+        if observed is None or replace(observed, result=None) != request:
+            continue
+        ray_job = observed.result
+        if ray_job is None:
             _replace_lost_dataset_attempt(
                 db, attempt, reason="Dataset RayJob disappeared before terminal CAS"
             )
             continue
+        _verify_ray_observation(ray_job, attempt, profile.id, namespace)
         ray_status = ray_job.get("status") or {}
         if ray_status.get("rayClusterName"):
             attempt.ray_cluster_name = str(ray_status["rayClusterName"])
@@ -1758,7 +1940,7 @@ def _replace_lost_dataset_attempt(
         project_id=attempt.project_id,
         stage=attempt.stage,
         logical_key=attempt.logical_key,
-        dataset_version_id=attempt.dataset_version_id,
+        **_retry_lineage(attempt),
         workload_identity=attempt.workload_identity,
         generation=attempt.generation + 1,
         fencing_token=uuid.uuid4().hex,
@@ -1835,6 +2017,19 @@ def _training_launch_command(db, attempt):
     if command is None:
         raise LookupError("The lost Ray attempt has no durable launch command.")
     return command
+
+
+def _retry_lineage(attempt):
+    return {
+        name: getattr(attempt, name, None)
+        for name in (
+            "dataset_version_id",
+            "model_run_id",
+            "trial_id",
+            "scope_id",
+            "conformance_campaign_id",
+        )
+    }
 
 
 def _replace_lost_ray_attempt(
@@ -1945,6 +2140,9 @@ def _replace_lost_ray_attempt(
         for child in trial_attempts
         if child.status in {AttemptStatus.SUCCEEDED, AttemptStatus.FAILED}
     ]
+    from automl_api.services.training_model_output import training_model_allowlist
+
+    model_allowlist = training_model_allowlist(db, attempt, run)
     authorized_trials = {reference["trial_id"] for reference in result_allowlist}
     for reference in attempt.predecessor_checkpoint_allowlist or []:
         if not isinstance(reference, dict) or reference.get("kind") != "trial_result":
@@ -1964,13 +2162,15 @@ def _replace_lost_ray_attempt(
         project_id=attempt.project_id,
         stage=attempt.stage,
         logical_key=attempt.logical_key,
-        model_run_id=attempt.model_run_id,
+        **_retry_lineage(attempt),
         workload_identity=attempt.workload_identity,
         generation=attempt.generation + 1,
         fencing_token=uuid.uuid4().hex,
         predecessor_attempt_id=attempt.id,
         predecessor_checkpoint_allowlist=(
-            ([attempt.checkpoint_uri] if attempt.checkpoint_uri else []) + result_allowlist
+            ([attempt.checkpoint_uri] if attempt.checkpoint_uri else [])
+            + result_allowlist
+            + model_allowlist
         ),
         retry_budget=attempt.retry_budget,
     )
@@ -1982,8 +2182,7 @@ def _replace_lost_ray_attempt(
                 project_id=trial_attempt.project_id,
                 stage=trial_attempt.stage,
                 logical_key=trial_attempt.logical_key,
-                model_run_id=trial_attempt.model_run_id,
-                trial_id=trial_attempt.trial_id,
+                **_retry_lineage(trial_attempt),
                 run_attempt_id=replacement.id,
                 workload_identity=trial_attempt.workload_identity,
                 generation=trial_attempt.generation + 1,
@@ -2016,7 +2215,9 @@ def _replace_lost_ray_attempt(
     return replacement
 
 
-def build_ray_job_manifest(run: ModelRun, attempt: WorkflowAttempt, *, name: str) -> dict[str, Any]:
+def build_ray_job_manifest(
+    run: ModelRun, attempt: WorkflowAttempt, *, name: str, credential_protocol: str | None = None
+) -> dict[str, Any]:
     from automl_api.training.attempt_admission import TRAINING_PROTOCOL
 
     settings = get_settings()
@@ -2063,6 +2264,7 @@ def build_ray_job_manifest(run: ModelRun, attempt: WorkflowAttempt, *, name: str
         environment=environment,
         labels=labels,
         worker_resources=worker_resources,
+        credential_protocol=credential_protocol,
     )
     cluster = manifest["spec"]["rayClusterSpec"]
     cluster["headGroupSpec"]["rayStartParams"]["num-cpus"] = "0"
@@ -2107,6 +2309,7 @@ def build_dataset_ray_job_manifest(
     attempt: WorkflowAttempt,
     *,
     name: str,
+    credential_protocol: str | None = None,
 ) -> dict[str, Any]:
     stage = attempt.stage.value
     environment = [
@@ -2133,6 +2336,7 @@ def build_dataset_ray_job_manifest(
             "requests": {"cpu": "1", "memory": "4Gi"},
             "limits": {"cpu": "2", "memory": "5Gi"},
         },
+        credential_protocol=credential_protocol,
     )
 
 
@@ -2146,7 +2350,22 @@ def _build_ephemeral_ray_job_manifest(
     environment: list[dict[str, Any]],
     labels: dict[str, str],
     worker_resources: dict[str, dict[str, str]],
+    credential_protocol: str | None = None,
 ) -> dict[str, Any]:
+    if credential_protocol not in (
+        None,
+        RAY_MINIMAL_CREDENTIAL_PROTOCOL,
+        RAY_PARENT_CONTROL_PROTOCOL,
+        RAY_TRIAL_CONTROL_PROTOCOL,
+        RAY_TRAINING_CONTEXT_PROTOCOL,
+        RAY_TRAINING_TRACKING_PROTOCOL,
+        RAY_TRAINING_METADATA_PROTOCOL,
+        RAY_CREDENTIAL_PROTOCOL,
+        RAY_TRAINING_PROGRESS_PROTOCOL,
+        RAY_TRAINING_RESULT_PROTOCOL,
+        RAY_MODEL_OUTPUT_PROTOCOL,
+    ):
+        raise ValueError("Ray submission has an unknown credential protocol.")
     settings = get_settings()
     from automl_api.services.attempt_identity import attempt_audience
     from automl_api.training.attempt_admission import TOKEN_PATH, control_base_url
@@ -2156,6 +2375,19 @@ def _build_ephemeral_ray_job_manifest(
         admission_url = control_base_url(admission_url)
     elif settings.environment in {"production", "staging"}:
         raise ValueError("Production Ray workloads require an HTTPS attempt admission URL.")
+    if (
+        credential_protocol
+        in (
+            RAY_TRAINING_RESULT_PROTOCOL,
+            RAY_TRAINING_PROGRESS_PROTOCOL,
+            RAY_TRAINING_TRACKING_PROTOCOL,
+            RAY_TRAINING_METADATA_PROTOCOL,
+            RAY_CREDENTIAL_PROTOCOL,
+        )
+        and attempt.stage == WorkflowStage.TRAINING_RUN
+        and not admission_url
+    ):
+        raise ValueError("Declared training result publication requires an HTTPS control URL")
     workload_labels = {
         "app.kubernetes.io/name": "sceptre",
         "automl.platform/project-id": str(project_id),
@@ -2167,6 +2399,7 @@ def _build_ephemeral_ray_job_manifest(
         WorkflowStage.SPLITTER,
         WorkflowStage.PREPARATION,
     }
+    storage_environment = object_store_workload_environment(settings)
     common_environment = [
         # Each Ray Data task reserves one CPU; avoid nested Polars thread pools.
         {"name": "POLARS_MAX_THREADS", "value": "1"},
@@ -2182,7 +2415,7 @@ def _build_ephemeral_ray_job_manifest(
                 }
             },
         },
-        *object_store_workload_environment(settings),
+        *storage_environment,
         *environment,
     ]
     common_environment.extend(
@@ -2227,6 +2460,25 @@ def _build_ephemeral_ray_job_manifest(
     )
 
     def pod_spec(container_name: str, resources: dict[str, dict[str, str]]) -> dict[str, Any]:
+        excluded = set()
+        if credential_protocol in (
+            RAY_MINIMAL_CREDENTIAL_PROTOCOL,
+            RAY_PARENT_CONTROL_PROTOCOL,
+            RAY_TRIAL_CONTROL_PROTOCOL,
+            RAY_TRAINING_CONTEXT_PROTOCOL,
+            RAY_TRAINING_TRACKING_PROTOCOL,
+            RAY_TRAINING_METADATA_PROTOCOL,
+            RAY_CREDENTIAL_PROTOCOL,
+            RAY_TRAINING_PROGRESS_PROTOCOL,
+            RAY_TRAINING_RESULT_PROTOCOL,
+            RAY_MODEL_OUTPUT_PROTOCOL,
+        ):
+            if container_name == "ray-job-submitter":
+                excluded = {"DATABASE_URL", "MLFLOW_TRACKING_URI"} | {
+                    item["name"] for item in storage_environment
+                }
+            elif is_dataset_workload and container_name == "ray-worker":
+                excluded = {"DATABASE_URL"}
         spec = {
             "serviceAccountName": attempt.workload_identity,
             "automountServiceAccountToken": False,
@@ -2235,7 +2487,11 @@ def _build_ephemeral_ray_job_manifest(
                     "name": container_name,
                     "image": settings.training_image,
                     "imagePullPolicy": settings.training_image_pull_policy,
-                    "env": deepcopy(common_environment),
+                    "env": [
+                        deepcopy(item)
+                        for item in common_environment
+                        if item["name"] not in excluded
+                    ],
                     "resources": resources,
                     "securityContext": {
                         "runAsNonRoot": True,
@@ -2256,6 +2512,164 @@ def _build_ephemeral_ray_job_manifest(
             ],
             "volumes": deepcopy(volumes),
         }
+        if (
+            credential_protocol
+            in (
+                RAY_PARENT_CONTROL_PROTOCOL,
+                RAY_TRIAL_CONTROL_PROTOCOL,
+                RAY_TRAINING_CONTEXT_PROTOCOL,
+                RAY_TRAINING_TRACKING_PROTOCOL,
+                RAY_TRAINING_METADATA_PROTOCOL,
+                RAY_CREDENTIAL_PROTOCOL,
+                RAY_TRAINING_PROGRESS_PROTOCOL,
+                RAY_TRAINING_RESULT_PROTOCOL,
+                RAY_MODEL_OUTPUT_PROTOCOL,
+            )
+            and attempt.stage == WorkflowStage.TRAINING_RUN
+            and container_name == "ray-head"
+            and admission_url
+        ):
+            from automl_api.schemas.parent_control import PARENT_CONTROL_PROTOCOL
+
+            spec["containers"][0]["env"].append(
+                {"name": "AUTOML_PARENT_CONTROL_PROTOCOL", "value": PARENT_CONTROL_PROTOCOL}
+            )
+        if (
+            credential_protocol
+            in (
+                RAY_TRIAL_CONTROL_PROTOCOL,
+                RAY_TRAINING_CONTEXT_PROTOCOL,
+                RAY_MODEL_OUTPUT_PROTOCOL,
+                RAY_TRAINING_TRACKING_PROTOCOL,
+                RAY_TRAINING_METADATA_PROTOCOL,
+                RAY_CREDENTIAL_PROTOCOL,
+                RAY_TRAINING_PROGRESS_PROTOCOL,
+                RAY_TRAINING_RESULT_PROTOCOL,
+            )
+            and attempt.stage == WorkflowStage.TRAINING_RUN
+            and container_name in {"ray-head", "ray-worker"}
+            and admission_url
+        ):
+            from automl_api.schemas.trial_control import TRIAL_CONTROL_PROTOCOL
+
+            spec["containers"][0]["env"].append(
+                {"name": "AUTOML_TRIAL_CONTROL_PROTOCOL", "value": TRIAL_CONTROL_PROTOCOL}
+            )
+        if (
+            credential_protocol
+            in (
+                RAY_TRAINING_CONTEXT_PROTOCOL,
+                RAY_MODEL_OUTPUT_PROTOCOL,
+                RAY_TRAINING_RESULT_PROTOCOL,
+                RAY_TRAINING_TRACKING_PROTOCOL,
+                RAY_TRAINING_METADATA_PROTOCOL,
+                RAY_CREDENTIAL_PROTOCOL,
+                RAY_TRAINING_PROGRESS_PROTOCOL,
+            )
+            and attempt.stage == WorkflowStage.TRAINING_RUN
+            and container_name == "ray-head"
+            and admission_url
+        ):
+            from automl_api.schemas.training_context import TRAINING_CONTEXT_PROTOCOL
+
+            spec["containers"][0]["env"].append(
+                {"name": "AUTOML_TRAINING_CONTEXT_PROTOCOL", "value": TRAINING_CONTEXT_PROTOCOL}
+            )
+        if (
+            credential_protocol
+            in (
+                RAY_MODEL_OUTPUT_PROTOCOL,
+                RAY_TRAINING_RESULT_PROTOCOL,
+                RAY_TRAINING_PROGRESS_PROTOCOL,
+                RAY_TRAINING_TRACKING_PROTOCOL,
+                RAY_TRAINING_METADATA_PROTOCOL,
+                RAY_CREDENTIAL_PROTOCOL,
+            )
+            and attempt.stage == WorkflowStage.TRAINING_RUN
+            and container_name in {"ray-head", "ray-worker"}
+            and admission_url
+        ):
+            from automl_api.training.model_output import MODEL_OUTPUT_PROTOCOL
+
+            spec["containers"][0]["env"].append(
+                {"name": "AUTOML_MODEL_OUTPUT_PROTOCOL", "value": MODEL_OUTPUT_PROTOCOL}
+            )
+        if (
+            credential_protocol
+            in (
+                RAY_TRAINING_RESULT_PROTOCOL,
+                RAY_TRAINING_PROGRESS_PROTOCOL,
+                RAY_TRAINING_TRACKING_PROTOCOL,
+                RAY_TRAINING_METADATA_PROTOCOL,
+                RAY_CREDENTIAL_PROTOCOL,
+            )
+            and attempt.stage == WorkflowStage.TRAINING_RUN
+            and container_name == "ray-head"
+            and admission_url
+        ):
+            from automl_api.schemas.training_result import TRAINING_RESULT_PROTOCOL
+
+            spec["containers"][0]["env"].append(
+                {"name": "AUTOML_TRAINING_RESULT_PROTOCOL", "value": TRAINING_RESULT_PROTOCOL}
+            )
+        if (
+            credential_protocol
+            in (
+                RAY_TRAINING_PROGRESS_PROTOCOL,
+                RAY_TRAINING_TRACKING_PROTOCOL,
+                RAY_TRAINING_METADATA_PROTOCOL,
+                RAY_CREDENTIAL_PROTOCOL,
+            )
+            and attempt.stage == WorkflowStage.TRAINING_RUN
+            and container_name in {"ray-head", "ray-worker"}
+            and admission_url
+        ):
+            from automl_api.schemas.training_progress import TRAINING_PROGRESS_PROTOCOL
+
+            spec["containers"][0]["env"].append(
+                {"name": "AUTOML_TRAINING_PROGRESS_PROTOCOL", "value": TRAINING_PROGRESS_PROTOCOL}
+            )
+        if (
+            credential_protocol
+            in (
+                RAY_TRAINING_TRACKING_PROTOCOL,
+                RAY_TRAINING_METADATA_PROTOCOL,
+                RAY_CREDENTIAL_PROTOCOL,
+            )
+            and attempt.stage == WorkflowStage.TRAINING_RUN
+            and container_name in {"ray-head", "ray-worker"}
+            and admission_url
+        ):
+            from automl_api.schemas.training_tracking import TRAINING_TRACKING_PROTOCOL
+
+            spec["containers"][0]["env"].append(
+                {"name": "AUTOML_TRAINING_TRACKING_PROTOCOL", "value": TRAINING_TRACKING_PROTOCOL}
+            )
+        if (
+            credential_protocol in (RAY_TRAINING_METADATA_PROTOCOL, RAY_CREDENTIAL_PROTOCOL)
+            and attempt.stage == WorkflowStage.TRAINING_RUN
+            and container_name in {"ray-head", "ray-worker"}
+            and admission_url
+        ):
+            from automl_api.schemas.training_metadata import TRAINING_METADATA_PROTOCOL
+
+            spec["containers"][0]["env"].append(
+                {"name": "AUTOML_TRAINING_METADATA_PROTOCOL", "value": TRAINING_METADATA_PROTOCOL}
+            )
+        if (
+            credential_protocol == RAY_CREDENTIAL_PROTOCOL
+            and attempt.stage == WorkflowStage.TRAINING_RUN
+            and container_name == "ray-head"
+            and admission_url
+        ):
+            from automl_api.schemas.training_model_read import TRAINING_MODEL_READ_PROTOCOL
+
+            spec["containers"][0]["env"].append(
+                {
+                    "name": "AUTOML_TRAINING_MODEL_READ_PROTOCOL",
+                    "value": TRAINING_MODEL_READ_PROTOCOL,
+                }
+            )
         mount_provider_source_configuration(spec)
         if container_name == "ray-head":
             # KubeRay creates a cluster-specific autoscaler identity and RBAC.
@@ -2342,6 +2756,7 @@ def _build_ephemeral_ray_job_manifest(
                 "workerGroupSpecs": [
                     {
                         "groupName": "workers",
+                        "numOfHosts": 1,
                         "replicas": 1,
                         "minReplicas": 1,
                         "maxReplicas": max(1, settings.ray_max_workers),

@@ -12,7 +12,7 @@ from automl_api.models.datasets import DatasetVersion
 from automl_api.models.enums import AttemptStatus, RunKind, RunStatus
 from automl_api.models.runs import Metric, ModelRun, RunArtifact
 from automl_api.models.workflows import WorkflowAttempt
-from automl_api.services import reconciler
+from automl_api.services import reconciler, training_parent
 from automl_api.services.attempt_identity import attempt_audience
 from automl_api.services.kubernetes_training import KubernetesTrainingClient
 from automl_api.services.workflow_state import StaleFence
@@ -170,6 +170,7 @@ def test_analysis_manifest_projects_bound_identity(analysis_scope):
         pod = manifest["spec"]["template"]["spec"]
         env = {e["name"]: e.get("value") for e in pod["containers"][0]["env"]}
         assert env["ENVIRONMENT"] == "production" and env["AUTOML_FENCING_TOKEN"] == fence
+        assert env["AUTOML_PARENT_CONTROL_PROTOCOL"] == "parent-control-v1"
         assert env["AUTOML_ATTEMPT_ID"] == str(attempt_id)
         assert (
             pod["serviceAccountName"] == attempt.workload_identity
@@ -296,7 +297,7 @@ def test_analysis_expiry_during_upload_cannot_publish(analysis_scope, monkeypatc
 
     def put(*args):
         value = store.put_bytes(*args)
-        monkeypatch.setattr(worker, "datetime", SimpleNamespace(now=lambda *_: future))
+        monkeypatch.setattr(training_parent, "datetime", SimpleNamespace(now=lambda *_: future))
         return value
 
     wrapped.put_bytes.side_effect = put

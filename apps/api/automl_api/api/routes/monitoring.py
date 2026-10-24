@@ -31,6 +31,7 @@ from automl_api.services.monitoring import (
     monitoring_dashboard,
     record_monitoring_metric,
     update_monitoring_configuration,
+    validate_metric_response,
 )
 
 router = APIRouter(tags=["model monitoring and governance"])
@@ -144,6 +145,7 @@ def create_deployment_metric(
         response_model=MonitoringMetricPointRead,
         response_status=status.HTTP_201_CREATED,
     )
+    validate_metric_response(payload, result, deployment_run_id)
     db.commit()
     return result
 
@@ -188,9 +190,7 @@ def create_governance_report(
         operation="governance.report.generate",
         idempotency_key=idempotency_key,
         payload={"deployment_run_id": str(deployment_run_id)},
-        execute=lambda: generate_governance_report(
-            db, current_user, project_id, deployment_run_id, defer_external=True
-        ),
+        execute=lambda: generate_governance_report(db, current_user, project_id, deployment_run_id),
         response_model=GovernanceReportRead,
         response_status=status.HTTP_201_CREATED,
         outbox_topic="governance.reconcile",

@@ -1,0 +1,64 @@
+{
+  "status": "terminal_runtime_fixture_failures_and_branch_coverage_unmet",
+  "phase_complete": false,
+  "observed_at": "2026-10-21T21:46:23.591479+00:00",
+  "source_inputs": 510,
+  "source_manifest": ".unlazy/phase1-current-backend-generic-revocation/source-sha256.json",
+  "collected": 4561,
+  "preflight_returncodes": {
+    "generate_production_task_index.log": 0,
+    "validate_phase2_evidence.log": 0,
+    "check_no_dask_runtime.log": 0
+  },
+  "reserve_bytes": 43500000000,
+  "root_coverage_sha256": "d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9",
+  "generic_revocation_evidence": "generic-attempt-revocation-2026-10-21.yaml",
+  "previous_full_backend": "current-backend-fixture-isolation-2026-10-21.yaml",
+  "runtime_boundary": "Local Ray2.56.1 versus CPU lock2.58.0; no fresh release/runtime/image qualification.",
+  "phase1_requirements": {
+    "verified": 2,
+    "open": 34
+  },
+  "remaining": [
+    "All three runtime-foundation session-double failures must pass; independent90.01% branch coverage remains unmet at86.779%, requiring228 further covered outcomes at that denominator.",
+    "All-stage brokers, native credential removal, direct native writes and SQL-spanning native I/O remain unfinished.",
+    "Native/release/HA/process-loss, actual prior-binary and45GB physical migration qualification remain open.",
+    "Original phase1-deletion:G7 remains abandoned because seven historical QA objects are missing."
+  ],
+  "verified_at": "2026-10-22T04:36:00.113350+00:00",
+  "source_state": "Frozen510-input snapshot before the runtime-foundation session-double correction; later source-current qualification remains required.",
+  "passed": 4558,
+  "outcomes": {
+    "failure": [
+      "tests.test_runtime_foundations.test_worker_begins_only_the_matching_submitted_attempt",
+      "tests.test_runtime_foundations.test_worker_terminal_cas_publishes_once_and_rejects_missing_artifact",
+      "tests.test_runtime_foundations.test_worker_failure_is_fenced_and_cannot_overwrite_a_successor"
+    ],
+    "error": [],
+    "skipped": []
+  },
+  "coverage": {
+    "statements": {
+      "covered": 22396,
+      "total": 23601,
+      "percent": 94.89428414050252,
+      "additional_covered_outcomes_for_current_denominator": 0
+    },
+    "branches": {
+      "covered": 6111,
+      "total": 7042,
+      "percent": 86.77932405566601,
+      "additional_covered_outcomes_for_current_denominator": 228
+    }
+  },
+  "tests_pass": false,
+  "independent_coverage_pass": false,
+  "pytest_returncode": 1,
+  "coverage_returncode": 1,
+  "gates_at_snapshot": {
+    "met": 1,
+    "unmet": 2,
+    "abandoned": 0
+  },
+  "minimum_free_bytes": 45668061184
+}

@@ -18,9 +18,6 @@ pytest_plugins = ["test_champion_evaluation_planning", "test_qualification_contr
 
 
 class EvaluatorKubernetes(FakeKubernetes):
-    def ensure_service_account(self, name):
-        assert name == "sceptre-champion-evaluation"
-
     def read(self, kind, name, namespace, **kwargs):
         result = super().read(kind, name, namespace, **kwargs)
         result.metadata.namespace = namespace

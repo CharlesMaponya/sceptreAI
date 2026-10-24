@@ -1,0 +1,39 @@
+{
+  "status": "verified_managed_analysis_observation_only",
+  "phase_complete": false,
+  "native_cleanup_custody_qualified": false,
+  "regression_passed": 365,
+  "focused_cases": 45,
+  "baseline_failed": 33,
+  "baseline_passed": 12,
+  "source_inputs": 518,
+  "source_manifest": ".unlazy/phase1-analysis-observer-inspection/source-sha256.json",
+  "minimum_free_bytes": 45619597312,
+  "reserve_bytes": 43500000000,
+  "schema_head": "0018_attempt_predecessor_lineage",
+  "gates_at_snapshot": {
+    "met": 4,
+    "unmet": 0,
+    "abandoned": 0
+  },
+  "phase1_requirements": {
+    "verified": 2,
+    "open": 34
+  },
+  "change": "Managed validation/explainability/drift observation now commits SQL selection and releases connections/attempt/run locks before native Job GET. Fresh publication compares current attempt/run, recorded submission identity and complete source outbox evidence, then verifies physical UID/namespace/name/labels. Analysis retry constructors reuse typed lineage preservation. The Ray and analysis paths share one immutable observation record and factory driver.",
+  "checks": [
+    "All three analysis kinds observe zero checked-out SQL connections and acquire independent attempt/run locks while the native read is in progress.",
+    "Concurrent fence/lease/owner/cancellation/submission UID/source-manifest changes reject stale missing observations.",
+    "Actual analysis report publication commits while inspection is in flight and wins over the old missing Job observation.",
+    "Foreign UID/namespace/labels cannot cause cleanup/replacement; competing observers produce one successor.",
+    "Missing Job and SQL-only expiry preserve non-null dataset lineage; unavailable reads preserve work and can retry.",
+    "All 32 existing focused Ray controls also pass after sharing the observation protocol. Old recovery assertions are preserved; the worker mock now accepts required read injection and verifies four independent commit boundaries."
+  ],
+  "remaining": [
+    "The legacy analysis observer still spans SQL across native job-state reads and can DELETE a Job. It requires native mutation custody before its transaction boundary can be closed.",
+    "Analysis cancel delivery, upload cleanup, other native outbox mutations, uncertain producer/operation custody and full observer lease/fairness/physical-native qualification remain open. Read-only inspection duplication is permitted; these changes are not exclusive mutation leases.",
+    "Fresh whole-backend and independent 90.01% coverage qualification remain required. Local Ray 2.56.1 differs from locked 2.58.0; existing fixture evidence is not release/runtime qualification.",
+    "Cloud/release, actual prior-binary and physical 45GB migration qualification remain open.",
+    "Original phase1-deletion:G7 remains abandoned: seven missing historical QA objects require handoff."
+  ]
+}

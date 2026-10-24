@@ -1,0 +1,124 @@
+date: '2026-10-24'
+scope: training-model-read
+phase: 1
+phase_complete: false
+source_inputs: 575
+source_manifest_sha256: 2f49ffcf03535862844d13aa83d57be3dcc7de89d0efe0dcba72e3eac721bc6e
+checks:
+  passed: 868
+  worker: 41
+  api: 26
+  failures: 0
+  errors: 0
+  skips: 0
+  phase_complete: false
+  original_negative_control_failures: 1
+  strict_schema: 0018_attempt_predecessor_lineage
+  repository_ruff: pass
+  changed_hunk_format: pass
+  ci_preflights: 3
+  legacy_through_v9_templates_unchanged: 30
+  scoped_gates_reverified: 4
+behavior:
+- New saved ray-training-model-read-v10 adds training-model-read-v1 only to training heads;
+  legacy/v1-v9 templates retain their original behavior.
+- The admitted current parent Pod can request only a selected published successful candidate.
+  The server chooses original input-bound model custody and immutable output-completion version;
+  clients cannot select URI, version or object role.
+- Replacement reads require the exact predecessor allowlist and lineage, original tracking/metadata
+  receipts and unchanged current input digest.
+- The shared GET broker commits a checkpoint read intent before one native mint, releases
+  SQL for signing, reauthorizes afterward and never remints the same nonce or persists the
+  URL. Original deadlines still block retirement.
+- The worker uses the shared strict HTTPS/version/encoding/size reader, spools bounded chunks
+  and verifies full SHA-256 before worker-only joblib deserialization. Declared reads never
+  fall back to storage credentials or retry a lost URL acknowledgement.
+- Existing training checkpoint grant roles are reused; no migration, dependency, coverage
+  threshold or broad credential withdrawal is introduced.
+native:
+  context: k3d-sceptre
+  verified_tls: true
+  real_pod_bound_token_review: true
+  distinct_parent_writer_pods: true
+  distinct_tokens: 5
+  model_read_mints: 1
+  model_read_streams: 1
+  model_read_exact_version: fixture-v1
+  worker_storage_and_sql_disabled: true
+  nonpublisher_read_rejected: true
+  pending_identity_pods_never_executed: true
+  owned_namespace_sql_store_and_secrets_retired: true
+  model_backend: In-memory conditional write fixture and owned HTTPS read fixture; native
+    provider SDK not exercised
+  tracking_backend: Real MLflow SQLAlchemy SDK with owned SQLite store
+  maintained_image_tested: false
+  full_worker_isolation: false
+retained_failures:
+- Original-body negative control reached disabled worker storage before conversion; its unchanged
+  body passes in the current regression.
+- 'First authority draft: five failures and fourteen passes. The database correctly refused
+  candidate as a training GET role; implementation now reuses the existing checkpoint role.'
+- 'Second authority run: all 23 behaviors passed, with one teardown error for a replacement
+  GET grant. Fixture cleanup now retires its own project GET grants; exact leftover expired
+  test grant/project/user were retired and read back absent.'
+- A diagnostic run initially had an import error. An accidentally broad diagnostic selection
+  was interrupted and retained; a later one-case diagnostic failed before the role fix. None
+  count as passing evidence.
+- First local TLS/k3d probe passed before a final missing-receipt guard and test additions;
+  it is retained separately. The current probe uses the final frozen inputs.
+- The first gate invocation used a ledger-relative working directory and all four commands
+  exited 127 before running. Explicit repository CWD fixed the harness; all four gates then
+  passed and were reverified.
+limits:
+  requirements:
+    total: 36
+    verified: 2
+    open: 34
+  remaining:
+  - Native MLflow context/resume, diagnostic/model artifacts and registry operations before
+    broad credential withdrawal
+  - Training dataset readers, Ray Tune search checkpoint storage and all-stage IAM/network/native
+    permission boundaries
+  - Remaining native producer custody, physical retirement and controlled recovery of unresolved
+    metadata without a completion marker
+  - Current full backend/release, independent 90.01 percent branch coverage, maintained images,
+    mixed versions, native providers and complete-pipeline process loss
+  - 45 GB migration rehearsal with largest-table row targets and 15 users each uploading 10
+    GiB on suitable infrastructure
+  user_database_ceiling_bytes: 45000000000
+  largest_table_rows: not supplied
+  free_disk_reserve_bytes: 43500000000
+  minimum_free_bytes_during_regression: 43906031616
+  scale_qualified: false
+  required_handoff: 'Original phase1-deletion:G7 remains abandoned: seven missing original
+    historical QA objects (2 models, 5 signed results); do not reconstruct or re-sign them'
+evidence_hashes:
+  source-sha256.json: 2f49ffcf03535862844d13aa83d57be3dcc7de89d0efe0dcba72e3eac721bc6e
+  regression.log: c81bf14e8fe0f688537e03d24e99c636ef64249897945cf5ac2dceeb8879af98
+  regression.xml: 0658ca8d0a32ba05d27845c01fbb132e46aa55759e3ea9916717b5aab54315af
+  regression-state.json: 38b40cb27faef71fdf74799ce987f6a5dff4006bb1878733897c0259ca496768
+  native.log: 6df5e2f41becca3a964cd0ae78d186cea01dd6da02f315e7e24b29bb011a7d6a
+  native.xml: 4a58761d823e2f5b2b9529c16a164df8332829064a590a3866606073b393ec04
+  native-state.json: 1c31a1dd75b2cf43ad2a1288d1e310ca34d0f2fadcb259ad804db3abbcaf6d7d
+  native-probe-state.json: f8608c210dad88d7f5e20cec0afd75ec7a9337ef3d26d601a1be785c44ceea3d
+  test_native_model_read.py: f849d13e1692765c23f927e7b2ca01b98a3d3c8235a7de038e41f9ac38333318
+  baseline.log: b78debbfd917fcd65eb7b47af19cd9d342bc475037b90c69a798c919dbc67a07
+  baseline.xml: 6a504f4c651e3a3f9a9ee4ebb70e532d745f19ea7416f046bbe1c7890541891f
+  first-authority.log: 6a9d63047fe41f169a33c22a8d16a6337b5e2c2d59054515dadd7fc0c9149486
+  first-authority.xml: b899266e10aea5ba931d48b05751fd8605b69054cc3b8590004a03b27c9e76b7
+  second-authority.log: 7b09a2988ecc1f738d841fe4c0063bf4f6616edbb3e7e19c81f239e92227aaa0
+  second-authority.xml: 09bbf335bcb6620b1ea4732ce5a3c0d6c1056b16824646abb8d47c919ffa1e7d
+  failed-fixture-retirement.json: 4e8fe55b036a14b4da0ecbe15d893f17af58b083e2eee7108c22b078e10d2a91
+  first-debug.log: cf45cf5ea4c0bd991956bd1c699c86d2bdbf7b25edf697d2b20df1e601ddab0d
+  interrupted-debug.log: b0a672688d9426732a704d9e0a3bc33e3398e06e550847a96653255ce9344fbf
+  debug.log: 0308b0ead8e3575ef127e2c6c08da695ed33f5246f51f6f03dc1a12f9342a86b
+  first-native.log: 469126464463383323112715cdebb48f6588f5609d129831ca748ce3aa81b847
+  first-native-probe-state.json: 08cb38527a523c91e957f508fd043c06865e449089212570e57b95c280e10aeb
+  first-native-source-sha256.json: 221159be069d86be5e1ec769dbf2d556c7254c1631a315d5f7ba08f8a2556b16
+  legacy-reference.json: 23814ff7b0e7501d0d6ca7c934807e78ad28b9b7b93919a1175a31ba782a596c
+  legacy-current.json: 23814ff7b0e7501d0d6ca7c934807e78ad28b9b7b93919a1175a31ba782a596c
+  lint.log: 82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18
+  preflight-0.log: 00c8dcf3b37f2eac6114a4c21f9f742c56e354ada6672f1b15189664820d92a5
+  preflight-1.log: a414947a0f058a04ee8ca14e4023b0661f0892a6cb81c082ba87469dd71ed9e9
+  preflight-2.log: dffd5dbca119ddf99cc5a088942e02d1127f7108463f4627161d74775ec7e554
+  gate-cwd-failure.json: 003ec61368bdef10ec6becfad820e581c6afa67e4caa97907a72f710b0a2037e

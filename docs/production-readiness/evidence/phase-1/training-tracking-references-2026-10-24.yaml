@@ -1,0 +1,98 @@
+date: '2026-10-24'
+scope: training-tracking-references
+phase: 1
+phase_complete: false
+source_inputs: 564
+source_manifest_sha256: 31ceb829f4fb7bf7774e458688d8c81764f152aee793e17f11ccabb03cb0dbd1
+checks:
+  passed: 1897
+  tracking_reference_cases: 25
+  failures: 0
+  errors: 0
+  skips: 0
+  phase_complete: false
+  original_negative_control_failures: 3
+  scoped_gates_reverified: 5
+  strict_schema: 0018_attempt_predecessor_lineage
+  repository_ruff: pass
+  changed_hunk_format: pass
+  ci_preflights: 3
+  legacy_through_v8_templates_unchanged: 27
+behavior:
+- Saved v8 model reservations bind the exact original candidate tracking command,
+  owner and publication digests; the native model producer must be the same Pod.
+- Partial/final API and SQL publication verify the original selected candidate tracking
+  receipt and exact parent ID without repairing missing historical ownership.
+- Incoming non-successful entries cannot hide a tracking ID through saved pending
+  or terminal snapshot restoration.
+- Stored-result replay and explicit predecessor model recovery revalidate original
+  tracking custody; valid input-bound allowlisted predecessors remain usable.
+- No schema, protocol version, configuration, dependency or coverage threshold changes.
+native:
+  context: k3d-sceptre
+  verified_tls: true
+  real_pod_bound_token_review: true
+  distinct_parent_writer_pods: true
+  distinct_tokens: 3
+  worker_sql_disabled: true
+  native_tracking_runs: 2
+  tracking_backend: real MLflow SQLAlchemy SDK with an owned SQLite store
+  model_backend: in-memory conditional fixture; native provider SDK not exercised
+  model_writes: 1
+  terminal_cas: 1
+  missing_and_forged_tracking_rejected: true
+  lost_model_progress_and_result_ack_recovery: GET only
+  owned_namespace_sql_store_and_secrets_retired: true
+  pending_identity_pods_never_executed: true
+  maintained_image_tested: false
+  full_worker_isolation: false
+  worker_logging_resume_isolated: false
+retained_failures:
+- Original code accepted two final results after their parent/candidate tracking acknowledgement
+  was removed and one model write without candidate tracking.
+- 'The first 176-case authority run had 173 passes and three failures: pending/running
+  snapshot merging hid invalid incoming IDs; the complete-tournament fixture omitted
+  the second candidate tracking ID. Shared guards and the real prerequisite fixture
+  were corrected without weakening assertions.'
+limits:
+  requirements:
+    total: 36
+    verified: 2
+    open: 34
+  remaining:
+  - Direct MLflow logging/resume/model registry artifacts and data/model readers before
+    broad credential withdrawal
+  - All-stage credential/network/native permission qualification and maintained images
+  - Remaining native producer intent/custody/physical retirement
+  - Current full backend, release and independent 90.01 percent branch coverage
+  - Mixed-version/process-loss qualification for the complete current pipeline
+  - 45 GB migration rehearsal and largest-table row targets
+  - 15 users each uploading 10 GiB on suitable infrastructure
+  user_database_ceiling_bytes: 45000000000
+  largest_table_rows: not supplied
+  free_disk_reserve_bytes: 43500000000
+  minimum_free_bytes_during_regression: 43795034112
+  scale_qualified: false
+  required_handoff: 'phase1-deletion:G7 remains abandoned: seven missing original
+    historical QA objects (2 models, 5 signed results); do not reconstruct or re-sign
+    them'
+evidence_hashes:
+  regression.log: 5dca77fb72e18a0937f5f19f21a1dd8cd43d16199b5bd7ca6bc6216295e36f37
+  regression.xml: 446a490e60c09845b37685c3850674672d266d32a57bc0ea91ab48658b6a223f
+  regression-state.json: 26be1cd0707e10ec753f73f3e29a95ac02245ea75b59b052ce76037647b76f14
+  collection.log: 0bb0ba3a083c4e246b0fde19ab0154c217923145fa2d54b94dc67430f6b1b328
+  native.log: 192f15ead0df626944d3c5dfa3e4ac9df0e7fec2c7222d0baa6500626917d47b
+  native.xml: 133b3297b0c501dd41622a8c0282e5d04eefc4a9e9a7a3487a8c82bcb79afb09
+  native-probe-state.json: 7c382ce185186fdda8136b18780eb057b2daf79027abd0c01a803c42eca9955b
+  test_native_references.py: fec8b07bf52a4b46b6ff0b4893fbbb60cd2b3fbc2139bbed2e24502747a9974b
+  baseline.log: e6b70af58e7fec92e41f8c863f861bef8112dfeae0443c768fcb2f657f4e9c2a
+  baseline.xml: 9841ed2192e0a58fa4078a814d98c7004fb41a0e2b13b6233c334ee34f5a3d24
+  first-authority.log: 1caf2ef40b9dc5fc3f3dfc012cf3bada6a681f740b04eb77294b8024895626f9
+  first-authority.xml: 83c532a30c91085d0a907d47a8fe9ee19ca2460ba615a7501b9928c271ac1fe0
+  lint.log: 82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18
+  legacy-reference.json: 8c186b110bd788e07fabedfbf2d6537fc82a663eb636b3c141ae5eb9ee4adf2a
+  legacy-current.json: 8c186b110bd788e07fabedfbf2d6537fc82a663eb636b3c141ae5eb9ee4adf2a
+  preflight-0.log: 00c8dcf3b37f2eac6114a4c21f9f742c56e354ada6672f1b15189664820d92a5
+  preflight-1.log: a414947a0f058a04ee8ca14e4023b0661f0892a6cb81c082ba87469dd71ed9e9
+  preflight-2.log: dffd5dbca119ddf99cc5a088942e02d1127f7108463f4627161d74775ec7e554
+  GATES.md: e848bad121f06e49e00beeed88f42cb5c5981b397bafbd9d014f89a057cfb558

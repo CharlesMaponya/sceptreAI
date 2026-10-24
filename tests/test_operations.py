@@ -876,7 +876,7 @@ def test_register_model_persists_selected_nonwinning_artifact_and_version(
     monkeypatch, parent_status
 ) -> None:
     project_id = uuid.uuid4()
-    user = SimpleNamespace(id=uuid.uuid4())
+    user = SimpleNamespace(id=uuid.uuid4(), token_version=1, auth_provider="simple")
     parent = SimpleNamespace(
         id=uuid.uuid4(),
         status=parent_status,
@@ -884,8 +884,9 @@ def test_register_model_persists_selected_nonwinning_artifact_and_version(
         target_column="target",
         task_type=TaskType.CLASSIFICATION,
         params={},
+        dataset_version_id=uuid.uuid4(),
         dataset_version=SimpleNamespace(
-            schema_json={"columns": [{"name": "x"}, {"name": "target"}]}
+            content_hash="a" * 64, schema_json={"columns": [{"name": "x"}, {"name": "target"}]}
         ),
     )
     parent.tags = {
@@ -928,8 +929,22 @@ def test_register_model_persists_selected_nonwinning_artifact_and_version(
             pass
 
     db = DB()
+    monkeypatch.setattr(
+        operations_service,
+        "registration_model_custody",
+        lambda *_: {
+            "completion": {"byte_size": 123},
+            "reference": {"unit_persistence_only": True},
+        },
+    )
+    monkeypatch.setattr(
+        operations_service,
+        "verify_model_custody",
+        lambda _store, custody: operations_service.canonical_request_hash(custody),
+    )
     monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
     monkeypatch.setattr(operations_service, "_lock_training_admission", lambda *_: None)
+    monkeypatch.setattr(operations_service, "_lock_registration_source", lambda _db, user, *_: user)
     monkeypatch.setattr(operations_service, "_training_run", lambda *_: parent)
     monkeypatch.setattr(operations_service, "_leaderboard_parent", lambda *_: parent)
     monkeypatch.setattr(operations_service, "_candidate_run", lambda *_: parent)
@@ -939,11 +954,22 @@ def test_register_model_persists_selected_nonwinning_artifact_and_version(
         lambda: SimpleNamespace(size=lambda _: 123),
     )
 
+    selection = operations_service.register_model(
+        db,
+        user,
+        project_id,
+        RegistryCreateRequest(training_run_id=parent.id, model_name="LogisticRegression"),
+    )
+
+    assert isinstance(selection, operations_service.RegistrationInspection)
+    assert db.added == []
+    db.calls = 0
     entry = operations_service.register_model(
         db,
         user,
         project_id,
         RegistryCreateRequest(training_run_id=parent.id, model_name="LogisticRegression"),
+        inspection=operations_service.inspect_model_registration(selection),
     )
 
     assert entry.version == 3
@@ -982,6 +1008,7 @@ def test_register_model_rejects_invalid_source(
     parent = SimpleNamespace(status=parent_status, tags={"leaderboard": leaderboard})
     monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
     monkeypatch.setattr(operations_service, "_lock_training_admission", lambda *_: None)
+    monkeypatch.setattr(operations_service, "_lock_registration_source", lambda _db, user, *_: user)
     monkeypatch.setattr(operations_service, "_training_run", lambda *_: parent)
     monkeypatch.setattr(operations_service, "_leaderboard_parent", lambda *_: parent)
     monkeypatch.setattr(

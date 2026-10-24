@@ -1,0 +1,93 @@
+schema_version: 1
+recorded_at: '2026-10-23'
+scope: training result control RPC
+phase_complete: false
+requirements:
+  total: 36
+  verified: 2
+  open: 34
+source_inputs: 551
+checks:
+  passed: 1629
+  worker: 21
+  authority: 52
+  failures: 0
+  errors: 0
+  skips: 0
+  phase_complete: false
+baseline:
+  body_failures: 3
+  reason: declared final publication opened worker-local SQL
+  original_test_and_fixture_bodies_preserved: true
+behavior:
+- New declared training heads publish final metadata through Pod-authenticated control
+  RPC without worker-local SQL.
+- The finite closed result requires every selected candidate to be terminal, server-ranked
+  winner metrics and exact verified model custody.
+- Public leaderboard field types, row counts, scalar labels, finite representable
+  metrics and derived duplicate bounds are validated.
+- The original SQL persistence path is shared with an explicit trusted fence; metrics,
+  metadata and a request-bound receipt commit atomically.
+- Lost acknowledgements use receipt lookup only. Exact stored-result replay may recover
+  after parent lease expiry without new work.
+- Stored metric values/directions/steps, leaderboard, tracking pointer and typed derived
+  parameters are checked against the trusted receipt.
+- API, legacy-worker and observer completion paths all enforce the saved RPC receipt
+  policy.
+- V6 training submission requires a valid HTTPS control URL before service-account
+  creation; old saved manifests remain exact.
+protocols:
+  new_saved_policy: ray-training-result-v6
+  head_result_protocol: training-result-v1
+  unchanged_legacy_through_v5_templates: 18
+  metadata_budget_bytes: 16777216
+  result_control_timeout_seconds: 60
+  other_rpc_timeouts_unchanged: true
+native_probe:
+  context: k3d-sceptre
+  namespace: phase1-result-e2b5fd962d7a
+  namespace_uid: 1f8835df-d333-46e7-aaf1-d8b156fb4c3d
+  namespace_retired: true
+  probe_sha256: 478d44410cb1d9d0aa44cf6bea94cc525bc27bdc92a2bc5c946fab7905abd0f0
+  distinct_writer_pod: true
+  nonpublisher_pod_rejected: true
+  model_serialized: true
+  verified_completion: true
+  result_ack_lost: true
+  result_receipt_recovered: true
+  final_result_worker_sql_disabled: true
+  forged_receipt_rejected: true
+  parent_completion_once: true
+  terminal_cas: 1
+  native_writes: 1
+  storage_backend: in-memory conditional fixture; native provider SDK not exercised
+  real_token_review: true
+  verified_tls: true
+  maintained_image_tested: false
+  full_worker_isolation: false
+hygiene:
+- repository Ruff
+- new-hunk formatting
+- strict schema0018
+- three CI preflights
+- root coverage preserved
+- all36 statuses preserved
+qualification_limits:
+- This qualifies final result control. Progress/failure/tracking SQL and training
+  data/model readers still require conversion before worker database/storage credentials
+  can be removed.
+- Native probe uses real verified local TLS and Kubernetes Pod-bound tokens with conditional
+  in-memory storage; live provider SDKs/permissions are not qualified.
+- Identity Pods remain pending and never execute containers; maintained images, complete
+  pipeline isolation and mixed-version/process-loss qualification remain open.
+- Current full backend and independent branch coverage, release qualification and
+  45 GB physical database rehearsal remain pending; the 43.5 GB free-byte reserve
+  is preserved.
+- Original abandoned phase1-deletion:G7 requires seven missing historical QA objects;
+  none were reconstructed or re-signed.
+remaining_work:
+- Move remaining progress/failure/tracking and data/model paths to control brokers
+  before withdrawing ambient credentials
+- Redact shared candidate exception messages before console/tracking/result metadata
+- Finish remaining native producer/custody/retirement boundaries
+- Full/release/coverage, maintained images and 45 GB migration qualification

@@ -14,6 +14,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 import ray
+import ray_observer_fixture
 from automl_api.core.config import Settings
 from automl_api.models.enums import AttemptStatus, DatasetFormat, WorkflowStage
 from automl_api.models.workflows import OutboxEntry, WorkflowAttempt
@@ -208,7 +209,7 @@ def test_dataset_observer_marks_running_and_replaces_lost_generation(monkeypatch
         "status": {"jobStatus": "RUNNING", "rayClusterName": "cluster", "jobId": "job"}
     }
 
-    assert reconciler.observe_dataset_ray_jobs(db, k8s) == 1
+    assert ray_observer_fixture.observe_dataset_ray_jobs(db, k8s) == 1
     assert attempt.status == AttemptStatus.RUNNING
     assert profile.heartbeat_at is not None
 
@@ -226,7 +227,7 @@ def test_dataset_observer_marks_running_and_replaces_lost_generation(monkeypatch
     enqueue = MagicMock()
     monkeypatch.setattr(reconciler, "enqueue_outbox", enqueue)
 
-    reconciler.observe_dataset_ray_jobs(db, k8s)
+    ray_observer_fixture.observe_dataset_ray_jobs(db, k8s)
 
     assert attempt.status == AttemptStatus.SUPERSEDED
     replacement = next(
@@ -251,7 +252,7 @@ def test_dataset_observer_fails_profile_closed_at_retry_budget() -> None:
     k8s = MagicMock()
     k8s.ray_job.return_value = {"status": {"jobStatus": "FAILED"}}
 
-    reconciler.observe_dataset_ray_jobs(db, k8s)
+    ray_observer_fixture.observe_dataset_ray_jobs(db, k8s)
 
     assert attempt.status == AttemptStatus.FAILED
     assert profile.status == "failed"
@@ -285,7 +286,7 @@ def test_dataset_observer_retries_nested_image_pull_failure_after_grace(monkeypa
     enqueue = MagicMock()
     monkeypatch.setattr(reconciler, "enqueue_outbox", enqueue)
 
-    reconciler.observe_dataset_ray_jobs(db, k8s)
+    ray_observer_fixture.observe_dataset_ray_jobs(db, k8s)
 
     assert attempt.status == AttemptStatus.SUPERSEDED
     replacement = next(

@@ -1,0 +1,68 @@
+{
+  "status": "terminal_tests_pass_coverage_gate_unmet",
+  "phase_complete": false,
+  "recorded_at": "2026-10-22T21:02:46.858724+00:00",
+  "collected": 4862,
+  "source_inputs": 521,
+  "source_manifest": ".unlazy/phase1-current-backend-legacy-custody/source-sha256.json",
+  "preflight_returncodes": {
+    "generate_production_task_index.log": 0,
+    "validate_phase2_evidence.log": 0,
+    "check_no_dask_runtime.log": 0
+  },
+  "reserve_bytes": 43500000000,
+  "coverage_status": "Statement coverage passes; branch coverage86.86784% fails the independent90.01% gate. At the current denominator225 more branch outcomes must be covered.",
+  "source_state": "Historical frozen521-input checkpoint; gates re-executed before the next production change.",
+  "full_run_state": ".unlazy/phase1-current-backend-legacy-custody/backend-state.json",
+  "remaining": [
+    "All36 Phase1 requirements remain in scope; 2 Verified /34 Open.",
+    "Read-only source triage found Ray training cancellation without a UID precondition and unvalidated same-name RayJob conflict replay. These remain required fixes after this frozen run.",
+    "Native credential/producer retirement, other native operations, release/prior-binary and physical45GB qualification remain unfinished.",
+    "Original abandoned phase1-deletion:G7 remains a required handoff for seven missing historical QA objects."
+  ],
+  "summary": {
+    "collected": 4862,
+    "passed": 4862,
+    "outcomes": {
+      "failure": [],
+      "error": [],
+      "skipped": []
+    },
+    "coverage": {
+      "statements": {
+        "covered": 22703,
+        "total": 23917,
+        "percent": 94.92411255592256,
+        "additional_covered_outcomes_for_current_denominator": 0
+      },
+      "branches": {
+        "covered": 6218,
+        "total": 7158,
+        "percent": 86.8678401788209,
+        "additional_covered_outcomes_for_current_denominator": 225
+      }
+    },
+    "tests_pass": true,
+    "phase_records": 4862,
+    "phase_counts": {
+      "failure": 0,
+      "error": 0,
+      "skipped": 0
+    },
+    "nonpassing_unique": 0,
+    "independent_coverage_pass": false,
+    "source_inputs": 521
+  },
+  "gates": {
+    "met": 2,
+    "unmet": 1,
+    "abandoned": 0
+  },
+  "minimum_free_bytes": 45328527360,
+  "subsequent_scoped_evidence": [
+    "training-ray-cancel-identity-2026-10-22.yaml",
+    "ray-submission-identity-2026-10-23.yaml",
+    "ray-observer-identity-2026-10-23.yaml"
+  ],
+  "subsequent_source_state": "The cancellation/submission identity implementation gaps found at this frozen checkpoint are fixed and scoped regressions/native probes pass. This full-run result remains historical; native custody and all whole-Phase1 gates remain required."
+}

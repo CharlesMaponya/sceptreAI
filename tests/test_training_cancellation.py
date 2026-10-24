@@ -10,7 +10,8 @@ import automl_api.training.pipeline as training_pipeline
 import pytest
 from automl_api.models.datasets import DatasetVersion
 from automl_api.models.enums import RunStatus, TaskType
-from automl_api.models.workflows import DatasetSplitRevision
+from automl_api.models.projects import Project
+from automl_api.models.workflows import DatasetSplitRevision, WorkflowAttempt
 from automl_api.training.pipeline import TournamentResult
 from digest_fixtures import verified_raw_version
 from kubernetes.client import ApiException
@@ -35,7 +36,7 @@ def test_api_reads_do_not_fail_managed_analysis_before_the_outbox_job_exists(des
 def test_reconciler_observes_submitted_analysis_jobs():
     from unittest.mock import MagicMock
 
-    from automl_api.services.reconciler import observe_analysis_jobs
+    from legacy_analysis_observer_fixture import observe_analysis_jobs
 
     run = _run()
     run.status = RunStatus.QUEUED
@@ -158,7 +159,13 @@ class FakeSession(AbstractContextManager):
             return self.split
         return self.run
 
+    def execute(self, statement):
+        assert statement.column_descriptions[0]["entity"] is Project
+        assert statement._for_update_arg.read
+
     def scalar(self, statement: object) -> SimpleNamespace:
+        if statement.column_descriptions[0]["entity"] is WorkflowAttempt:
+            return None
         assert getattr(statement, "_for_update_arg", None) is not None
         self.locked_reads += 1
         return self.run

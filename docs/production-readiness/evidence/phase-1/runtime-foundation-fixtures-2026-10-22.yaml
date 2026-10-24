@@ -1,0 +1,47 @@
+{
+  "status": "verified_session_doubles_only",
+  "phase_complete": false,
+  "production_inputs_changed": false,
+  "assertions_changed": false,
+  "expected_exceptions_changed": false,
+  "verified_at": "2026-10-22T04:43:19.226608+00:00",
+  "source_inputs": 510,
+  "source_manifest": ".unlazy/phase1-runtime-foundation-fixtures/source-sha256.json",
+  "regression_passed": 105,
+  "regression_modules": 4,
+  "minimum_free_bytes": 45665308672,
+  "reserve_bytes": 43500000000,
+  "change": "Make the three worker session doubles answer the revocation-event query with no row; retain all original test assertions and exception expectations.",
+  "baseline_full_backend": "current-backend-generic-revocation-2026-10-21.yaml",
+  "baseline_full_outcomes": {
+    "collected": 4561,
+    "passed": 4558,
+    "failed": 3,
+    "errors": 0,
+    "skipped": 0
+  },
+  "format_boundary": "Existing unrelated formatting is retained. The gate verifies no formatter edits overlap the new setup hunks.",
+  "phase1_requirements": {
+    "verified": 2,
+    "open": 34
+  },
+  "remaining": [
+    "A fresh full backend and independent90.01% coverage remain required; the previous snapshot measured86.779% branches and needed228 further covered outcomes at that denominator.",
+    "Native credential/broker and transaction-bound I/O implementation remain unfinished.",
+    "Native/release/runtime, actual prior-binary and45GB physical migration qualification remain open.",
+    "Original phase1-deletion:G7 remains abandoned because seven historical QA objects are missing."
+  ],
+  "gates_at_snapshot": {
+    "met": 3,
+    "unmet": 0,
+    "abandoned": 0
+  },
+  "strict_schema_parity": true,
+  "schema_head": "0018_attempt_predecessor_lineage",
+  "repository_ruff_passed": true,
+  "format_policy": {
+    "pre_existing_layout_preserved": true,
+    "new_hunks_need_formatting": false,
+    "unrelated_formatter_hunks": 6
+  }
+}

@@ -36,6 +36,7 @@ from automl_api.schemas.monitoring import (
 )
 from automl_api.services.model_audit import _audit_html, model_audit_report
 from automl_api.services.projects import list_visible_projects, require_project_role
+from automl_api.services.workflow_state import canonical_request_hash
 from automl_api.storage.object_store import get_object_store
 
 DEFAULT_MONITORING = {
@@ -54,6 +55,7 @@ DEFAULT_MONITORING = {
     "updated_at": None,
     "updated_by_id": None,
 }
+METRIC_REQUEST_HASH = "_ingestion_request_hash"
 
 
 def _now() -> datetime:
@@ -64,14 +66,17 @@ def deployment_run(
     db: Session,
     project_id: uuid.UUID,
     deployment_run_id: uuid.UUID,
+    *,
+    for_update: bool = False,
 ) -> ModelRun:
-    run = db.scalar(
-        select(ModelRun).where(
-            ModelRun.project_id == project_id,
-            ModelRun.id == deployment_run_id,
-            ModelRun.run_kind == RunKind.DEPLOYMENT,
-        )
+    query = select(ModelRun).where(
+        ModelRun.project_id == project_id,
+        ModelRun.id == deployment_run_id,
+        ModelRun.run_kind == RunKind.DEPLOYMENT,
     )
+    if for_update:
+        query = query.with_for_update().execution_options(populate_existing=True)
+    run = db.scalar(query)
     if run is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -83,6 +88,8 @@ def deployment_run(
 def deployment_registry_entry(
     db: Session,
     run: ModelRun,
+    *,
+    for_update: bool = False,
 ) -> ModelRegistryEntry | None:
     raw_id = run.tags.get("registry_entry_id") or run.params.get("registry_entry_id")
     if not raw_id:
@@ -91,12 +98,13 @@ def deployment_registry_entry(
         entry_id = uuid.UUID(str(raw_id))
     except ValueError:
         return None
-    return db.scalar(
-        select(ModelRegistryEntry).where(
-            ModelRegistryEntry.project_id == run.project_id,
-            ModelRegistryEntry.id == entry_id,
-        )
+    query = select(ModelRegistryEntry).where(
+        ModelRegistryEntry.project_id == run.project_id,
+        ModelRegistryEntry.id == entry_id,
     )
+    if for_update:
+        query = query.with_for_update().execution_options(populate_existing=True)
+    return db.scalar(query)
 
 
 def _configuration(run: ModelRun) -> MonitoringConfigurationRead:
@@ -123,7 +131,7 @@ def update_monitoring_configuration(
     payload: MonitoringConfigurationUpdate,
 ) -> MonitoringConfigurationRead:
     require_project_role(db, user, project_id, ProjectRole.ADMIN)
-    run = deployment_run(db, project_id, deployment_run_id)
+    run = deployment_run(db, project_id, deployment_run_id, for_update=True)
     current = _configuration(run)
     updated = MonitoringConfigurationRead(
         **payload.model_dump(mode="json"),
@@ -141,6 +149,7 @@ def update_monitoring_configuration(
 
 def _metric_point(metric: Metric) -> MonitoringMetricPointRead:
     metadata = dict(metric.value_json or {})
+    metadata.pop(METRIC_REQUEST_HASH, None)
     return MonitoringMetricPointRead(
         id=metric.id,
         name=metric.name,
@@ -154,6 +163,48 @@ def _metric_point(metric: Metric) -> MonitoringMetricPointRead:
     )
 
 
+def validate_metric_response(
+    payload: MonitoringMetricPointCreate,
+    response: MonitoringMetricPointRead,
+    deployment_run_id: uuid.UUID,
+) -> MonitoringMetricPointRead:
+    recorded_at = response.recorded_at
+    if payload.recorded_at is not None and payload.recorded_at.tzinfo is None:
+        recorded_at = recorded_at.replace(tzinfo=None)
+    reserved = {
+        "sample_count",
+        "status",
+        "idempotency_key",
+        "deployment_run_id",
+        "recorded_by_id",
+        METRIC_REQUEST_HASH,
+    }
+    if (
+        response.name != payload.name
+        or response.kind != payload.kind
+        or response.value != payload.value
+        or response.sample_count != payload.sample_count
+        or response.status != payload.status
+        or response.higher_is_better != payload.higher_is_better
+        or (payload.recorded_at is not None and recorded_at != payload.recorded_at)
+        or response.metadata.get("idempotency_key") != payload.idempotency_key
+        or response.metadata.get("deployment_run_id") != str(deployment_run_id)
+        or any(
+            key not in response.metadata or response.metadata[key] != value
+            for key, value in payload.metadata.items()
+            if key not in reserved
+        )
+    ):
+        raise HTTPException(
+            409,
+            detail={
+                "code": "monitoring_response_mismatch",
+                "message": "The stored observation does not match the original request.",
+            },
+        )
+    return response
+
+
 def record_monitoring_metric(
     db: Session,
     user: User,
@@ -162,28 +213,48 @@ def record_monitoring_metric(
     payload: MonitoringMetricPointCreate,
 ) -> MonitoringMetricPointRead:
     require_project_role(db, user, project_id, ProjectRole.ADMIN)
-    run = deployment_run(db, project_id, deployment_run_id)
-    existing = list(
-        db.scalars(
-            select(Metric).where(
-                Metric.project_id == project_id,
-                Metric.model_run_id == run.id,
-                Metric.name == payload.name,
-                Metric.split == MetricSplit.PRODUCTION,
-            )
-        ).all()
+    run = deployment_run(db, project_id, deployment_run_id, for_update=True)
+    series = (
+        Metric.project_id == project_id,
+        Metric.model_run_id == run.id,
+        Metric.name == payload.name,
+        Metric.split == MetricSplit.PRODUCTION,
     )
+    request_hash = canonical_request_hash(payload.model_dump(mode="json"))
     if payload.idempotency_key:
-        duplicate = next(
-            (
-                metric
-                for metric in existing
-                if metric.value_json.get("idempotency_key") == payload.idempotency_key
-            ),
-            None,
+        duplicates = list(
+            db.scalars(
+                select(Metric)
+                .where(
+                    *series, Metric.value_json["idempotency_key"].astext == payload.idempotency_key
+                )
+                .limit(2)
+                .execution_options(populate_existing=True)
+            )
         )
-        if duplicate is not None:
-            return _metric_point(duplicate)
+        if duplicates:
+            if len(duplicates) != 1 or not duplicates[0].value_json.get(METRIC_REQUEST_HASH):
+                raise HTTPException(
+                    409,
+                    detail={
+                        "code": "monitoring_idempotency_evidence_missing",
+                        "message": (
+                            "This older observation cannot be safely replayed with this key. "
+                            "Retry using its original Idempotency-Key header."
+                        ),
+                    },
+                )
+            duplicate = duplicates[0]
+            if duplicate.value_json[METRIC_REQUEST_HASH] != request_hash:
+                raise HTTPException(
+                    409,
+                    detail={
+                        "code": "idempotency_key_reused",
+                        "message": "The observation key was used with a different request.",
+                    },
+                )
+            return validate_metric_response(payload, _metric_point(duplicate), run.id)
+    previous_step = db.scalar(select(func.max(Metric.step)).where(*series))
     point = Metric(
         project_id=project_id,
         model_run_id=run.id,
@@ -192,7 +263,7 @@ def record_monitoring_metric(
         split=MetricSplit.PRODUCTION,
         value=payload.value,
         higher_is_better=payload.higher_is_better,
-        step=max((metric.step for metric in existing), default=-1) + 1,
+        step=0 if previous_step is None else previous_step + 1,
         recorded_at=payload.recorded_at or _now(),
         value_json={
             **payload.metadata,
@@ -201,6 +272,7 @@ def record_monitoring_metric(
             "idempotency_key": payload.idempotency_key,
             "deployment_run_id": str(run.id),
             "recorded_by_id": str(user.id),
+            METRIC_REQUEST_HASH: request_hash,
         },
     )
     db.add(point)
@@ -548,8 +620,6 @@ def generate_governance_report(
     user: User,
     project_id: uuid.UUID,
     deployment_run_id: uuid.UUID,
-    *,
-    defer_external: bool = False,
 ) -> GovernanceReportRead:
     require_project_role(db, user, project_id, ProjectRole.EDITOR)
     deployment = deployment_run(db, project_id, deployment_run_id)
@@ -560,15 +630,8 @@ def generate_governance_report(
             detail="The deployment is not linked to a registered model version.",
         )
     source = entry.model_run
+    identity = (entry.id, source.id, entry.model_name)
     evidence_cutoff = _now()
-    reports = _governance_artifacts(db, project_id, deployment.id)
-    version = (
-        max(
-            (int(item.artifact_metadata.get("version", 0)) for item in reports),
-            default=0,
-        )
-        + 1
-    )
     report, _ = model_audit_report(
         db,
         user,
@@ -578,22 +641,32 @@ def generate_governance_report(
     )
     json_bytes = json.dumps(report, indent=2, sort_keys=True, default=str).encode("utf-8")
     content_hash = hashlib.sha256(json_bytes).hexdigest()
+    html_bytes = _audit_html(report).encode("utf-8")
+    html_hash = hashlib.sha256(html_bytes).hexdigest()
+    # Audit collection can read remote objects; lock only after that work finishes.
+    deployment = deployment_run(db, project_id, deployment_run_id, for_update=True)
+    entry = deployment_registry_entry(db, deployment, for_update=True)
+    if entry is None or (entry.id, entry.model_run_id, entry.model_name) != identity:
+        raise HTTPException(
+            409,
+            detail={
+                "code": "governance_binding_changed",
+                "message": "The deployment model changed during audit collection. Retry.",
+            },
+        )
+    reports = _governance_artifacts(db, project_id, deployment.id)
+    version = (
+        max((int(item.artifact_metadata.get("version", 0)) for item in reports), default=0) + 1
+    )
     json_key = (
         f"projects/{project_id}/deployments/{deployment.id}/governance/report-v{version}.json"
     )
     html_key = (
         f"projects/{project_id}/deployments/{deployment.id}/governance/report-v{version}.html"
     )
-    if defer_external:
-        bucket = get_settings().object_store_bucket
-        json_uri = f"pending://{bucket}/{json_key}"
-        html_uri = f"pending://{bucket}/{html_key}"
-    else:
-        json_uri = get_object_store().put_bytes(json_key, json_bytes).uri
-    html_bytes = _audit_html(report).encode("utf-8")
-    html_hash = hashlib.sha256(html_bytes).hexdigest()
-    if not defer_external:
-        html_uri = get_object_store().put_bytes(html_key, html_bytes).uri
+    bucket = get_settings().object_store_bucket
+    json_uri = f"pending://{bucket}/{json_key}"
+    html_uri = f"pending://{bucket}/{html_key}"
     artifact = RunArtifact(
         project_id=project_id,
         model_run_id=deployment.id,
@@ -609,15 +682,9 @@ def generate_governance_report(
             "evidence_cutoff_at": evidence_cutoff.isoformat(),
             "html_uri": html_uri,
             "html_hash": html_hash,
-            **(
-                {
-                    "desired_state": "object_write_pending",
-                    "pending_json": json_bytes.decode("utf-8"),
-                    "pending_html": html_bytes.decode("utf-8"),
-                }
-                if defer_external
-                else {}
-            ),
+            "desired_state": "object_write_pending",
+            "pending_json": json_bytes.decode("utf-8"),
+            "pending_html": html_bytes.decode("utf-8"),
         },
     )
     db.add(artifact)

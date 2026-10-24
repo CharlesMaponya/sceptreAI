@@ -9,7 +9,6 @@ import pytest
 from automl_api.models.enums import AttemptStatus
 from automl_api.models.runs import ModelRun
 from automl_api.models.workflows import WorkflowAttempt, WorkflowEvent
-from automl_api.services.champion_planning import plan_scope_refit
 from automl_api.services.evaluation_planning import (
     register_evaluation_plan,
     validate_evaluation_policy,
@@ -22,6 +21,7 @@ from automl_api.training.champion_refit import (
     execute_refit,
     publish_frozen_pipeline,
 )
+from champion_planning_fixture import plan_scope_refit
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from sqlalchemy import func, select
 from test_champion_planning import install_evaluation_policy

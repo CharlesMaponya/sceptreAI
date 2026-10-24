@@ -17,7 +17,7 @@ import pandas as pd
 import pyarrow.parquet as pq
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, model_validator
+from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, model_serializer, model_validator
 
 from automl_api.models.enums import TaskType
 from automl_api.services.final_test_authority import verify_receipt
@@ -72,6 +72,14 @@ class EvaluationPlan(EvaluationPolicy):
     frozen_pipeline: RefitObject
     final_manifest: FinalDataManifest
     result_public_key: Digest  # Raw 32-byte Ed25519 public key, registered before execution.
+    credential_protocol: Literal["pod-bound-read-v1", "pod-bound-object-v2"] | None = None
+
+    @model_serializer(mode="wrap")
+    def serialize_plan(self, handler):
+        value = handler(self)
+        if self.credential_protocol is None:
+            value.pop("credential_protocol", None)
+        return value
 
     @model_validator(mode="after")
     def validate_execution(self):

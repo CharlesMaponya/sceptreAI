@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+import ray_observer_fixture
 from automl_api.models.datasets import ProfilingJob
 from automl_api.models.enums import AttemptStatus, OutboxStatus, WorkflowStage
 from automl_api.models.workflows import OutboxEntry, WorkflowAttempt, WorkflowCommand
@@ -73,7 +74,7 @@ def test_expiry_atomically_queues_cleanup_and_one_replacement(expired_dataset):
     engine, profile_id, old_id, fence, stage = expired_dataset
     k8s = MagicMock()
     with Session(engine) as db, db.begin():
-        assert reconciler.observe_dataset_ray_jobs(db, k8s) == 1
+        assert ray_observer_fixture.observe_dataset_ray_jobs(db, k8s) == 1
     k8s.ray_job.assert_not_called()
     k8s.delete_ray_job.assert_not_called()
     with Session(engine) as db:
@@ -102,7 +103,7 @@ def test_expiry_atomically_queues_cleanup_and_one_replacement(expired_dataset):
             "namespace": "dataset-expiry-test",
         }
     with Session(engine) as db, db.begin():
-        assert reconciler.observe_dataset_ray_jobs(db, k8s) == 0
+        assert ray_observer_fixture.observe_dataset_ray_jobs(db, k8s) == 0
 
 
 def test_expiry_at_budget_still_cleans_up(expired_dataset):
@@ -110,7 +111,7 @@ def test_expiry_at_budget_still_cleans_up(expired_dataset):
     with Session(engine) as db, db.begin():
         db.get(WorkflowAttempt, old_id).retry_budget = 1
     with Session(engine) as db, db.begin():
-        reconciler.observe_dataset_ray_jobs(db, MagicMock())
+        ray_observer_fixture.observe_dataset_ray_jobs(db, MagicMock())
     with Session(engine) as db:
         assert db.get(WorkflowAttempt, old_id).status == AttemptStatus.FAILED
         assert db.get(ProfilingJob, profile_id).status == "failed"
@@ -126,7 +127,7 @@ def test_expiry_at_budget_still_cleans_up(expired_dataset):
 def test_replacement_and_cancel_intent_roll_back_together(expired_dataset):
     engine, profile_id, old_id, _, _ = expired_dataset
     with Session(engine) as db:
-        reconciler.observe_dataset_ray_jobs(db, MagicMock())
+        ray_observer_fixture.observe_dataset_ray_jobs(db, MagicMock())
         db.rollback()
     with Session(engine) as db:
         assert db.get(WorkflowAttempt, old_id).status == AttemptStatus.RUNNING
@@ -162,7 +163,7 @@ def test_observer_preserves_live_legacy_and_inactive_scope(expired_dataset, stat
     k8s = MagicMock()
     k8s.ray_job.return_value = {"status": {"jobStatus": "RUNNING"}}
     with Session(engine) as db, db.begin():
-        reconciler.observe_dataset_ray_jobs(db, k8s)
+        ray_observer_fixture.observe_dataset_ray_jobs(db, k8s)
     with Session(engine) as db:
         assert cancellation(db, profile_id) is None
         assert db.get(WorkflowAttempt, old_id).status == (
@@ -185,14 +186,14 @@ def test_observer_refreshes_cached_attempt_and_profile(expired_dataset):
             db.get(WorkflowAttempt, old_id).status = AttemptStatus.SUPERSEDED
             db.get(ProfilingJob, profile_id).status = "failed"
         # SQL selection excludes a committed terminal attempt despite an old identity map.
-        assert reconciler.observe_dataset_ray_jobs(cached, MagicMock()) == 0
+        assert ray_observer_fixture.observe_dataset_ray_jobs(cached, MagicMock()) == 0
         cached.rollback()
     with Session(engine) as cached:
         profile = cached.get(ProfilingJob, profile_id)
         with Session(engine) as db, db.begin():
             db.get(WorkflowAttempt, old_id).status = AttemptStatus.RUNNING
         k8s = MagicMock()
-        assert reconciler.observe_dataset_ray_jobs(cached, k8s) == 1
+        assert ray_observer_fixture.observe_dataset_ray_jobs(cached, k8s) == 1
         assert profile.status == "failed"
         assert cancellation(cached, profile_id) is None
         k8s.ray_job.assert_not_called()
@@ -205,7 +206,7 @@ def test_observer_refreshes_cached_attempt_and_profile(expired_dataset):
 def test_cancel_rejects_wrong_scope_before_deletion(expired_dataset, invalid):
     engine, profile_id, old_id, _, _ = expired_dataset
     with Session(engine) as db, db.begin():
-        reconciler.observe_dataset_ray_jobs(db, MagicMock())
+        ray_observer_fixture.observe_dataset_ray_jobs(db, MagicMock())
     with Session(engine) as db:
         saved = cancellation(db, profile_id)
         entry = SimpleNamespace(
@@ -249,7 +250,7 @@ def test_cancel_rejects_wrong_scope_before_deletion(expired_dataset, invalid):
 def test_cancellation_delivery_replays_after_lost_delete_ack(expired_dataset):
     engine, profile_id, old_id, _, _ = expired_dataset
     with Session(engine) as db, db.begin():
-        reconciler.observe_dataset_ray_jobs(db, MagicMock())
+        ray_observer_fixture.observe_dataset_ray_jobs(db, MagicMock())
     k8s = MagicMock()
     with Session(engine) as db:
         old = db.get(WorkflowAttempt, old_id)
@@ -297,7 +298,7 @@ def test_expiry_refreshes_cached_live_lease_before_decision(expired_dataset):
                 seconds=1
             )
         k8s = MagicMock()
-        assert reconciler.observe_dataset_ray_jobs(cached, k8s) == 1
+        assert ray_observer_fixture.observe_dataset_ray_jobs(cached, k8s) == 1
         assert old.status == AttemptStatus.SUPERSEDED
         assert cancellation(cached, profile_id) is not None
         k8s.ray_job.assert_not_called()
@@ -311,7 +312,7 @@ def test_concurrent_expiry_observers_create_one_generation(expired_dataset):
 
     def observe():
         with Session(engine) as db, db.begin():
-            return reconciler.observe_dataset_ray_jobs(db, MagicMock())
+            return ray_observer_fixture.observe_dataset_ray_jobs(db, MagicMock())
 
     with ThreadPoolExecutor(max_workers=2) as workers:
         assert sum(workers.map(lambda _: observe(), range(2))) == 1
@@ -331,7 +332,7 @@ def test_concurrent_expiry_observers_create_one_generation(expired_dataset):
 def test_delete_uid_conflict_keeps_cleanup_pending(expired_dataset):
     engine, profile_id, old_id, _, _ = expired_dataset
     with Session(engine) as db, db.begin():
-        reconciler.observe_dataset_ray_jobs(db, MagicMock())
+        ray_observer_fixture.observe_dataset_ray_jobs(db, MagicMock())
     k8s = MagicMock()
     with Session(engine) as db:
         old = db.get(WorkflowAttempt, old_id)

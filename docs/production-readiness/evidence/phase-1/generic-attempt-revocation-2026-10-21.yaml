@@ -1,0 +1,48 @@
+{
+  "status": "verified_logical_revocation_guards_only",
+  "phase_complete": false,
+  "native_credentials_removed": false,
+  "verified_at": "2026-10-21T21:45:02.015987+00:00",
+  "change": "Reuse the durable revocation marker at generic admission, training/analysis mutation guards, and trial enrollment/execution. Preserve verified terminal receipt lookup and explicit predecessor adoption.",
+  "source_inputs": 510,
+  "source_manifest": ".unlazy/phase1-generic-revocation/source-sha256.json",
+  "baseline": {
+    "cases": 55,
+    "passed": 18,
+    "failed": 37,
+    "missing_typed_revocation_denial": 36,
+    "pending_child_finish_sequence_collision": 1
+  },
+  "focused_passed": 58,
+  "connected_expected": 1647,
+  "connected_passed": 1647,
+  "connected_modules": 63,
+  "denial_stage_regression": "The prior pending-grant test now rejects at generic admission, before the object-grant check. Only its expected diagnostic text changed; native-signer and zero-grant assertions remain intact.",
+  "previous_full_backend": "current-backend-fixture-isolation-2026-10-21.yaml",
+  "full_backend_current_sources_qualified": false,
+  "phase1_requirements": {
+    "verified": 2,
+    "open": 34
+  },
+  "qualification_boundary": "Real owned PostgreSQL transactions, including independent committed revocation during mocked TokenReview. Kubernetes review, projected identity and native cloud operations are fixture doubles; no k3d/release/native-cloud qualification.",
+  "root_coverage_sha256": "d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9",
+  "migration_target_bytes": 45000000000,
+  "remaining": [
+    "Source-current full backend and independent90.01% statement/branch coverage; the previous snapshot needed221 further covered branch outcomes.",
+    "All-stage brokers, native credential removal, SQL-spanning native I/O and direct candidate/analysis/MLflow/Tune writes remain unfinished.",
+    "Native/release/runtime, HA/process-loss, actual prior-binary and45GB physical migration qualification remain open.",
+    "Original phase1-deletion:G7 remains abandoned because seven historical QA objects are missing."
+  ],
+  "runtime_fixture_regression": "The retained previous connected run had1645 passes/2 failures from a session double missing the attempt ID and revocation-query/flush interface. Only that shared double changed; all original test assertions are preserved. The new1647-case run passes in full.",
+  "minimum_free_bytes": 45685989376,
+  "reserve_bytes": 43500000000,
+  "gates_at_snapshot": {
+    "met": 4,
+    "unmet": 0,
+    "abandoned": 0
+  },
+  "schema_head": "0018_attempt_predecessor_lineage",
+  "strict_schema_parity": true,
+  "repository_ruff_passed": true,
+  "formatted_changed_files": 8
+}

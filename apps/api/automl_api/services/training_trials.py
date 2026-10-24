@@ -20,6 +20,7 @@ from automl_api.models.workflows import (
 )
 from automl_api.services.workflow_state import (
     StaleFence,
+    attempt_credentials_revoked,
     canonical_request_hash,
     transition_attempt,
 )
@@ -41,6 +42,8 @@ def enroll_trial(
     json.dumps(parameters, allow_nan=False)
     digest = canonical_request_hash(parameters)
     parent, run = _locked_parent_run(db, run_attempt_id, run_fencing_token)
+    if attempt_credentials_revoked(db, parent.id):
+        raise StaleFence("The training parent no longer accepts trial enrollment.")
     candidate = db.scalar(
         select(TrainingCandidate).where(
             TrainingCandidate.id == candidate_id,
@@ -88,6 +91,11 @@ def enroll_trial(
         .execution_options(populate_existing=True)
     )
     if previous is not None and previous.run_attempt_id == parent.id:
+        if previous.status not in {
+            AttemptStatus.SUCCEEDED,
+            AttemptStatus.FAILED,
+        } and attempt_credentials_revoked(db, previous.id):
+            raise StaleFence("The trial execution credentials have been revoked.")
         if previous.ray_submission_id is None:
             predecessor = (
                 db.get(
@@ -266,6 +274,10 @@ def _locked_execution(db, attempt_id, fencing_token, run_fencing_token):
         )
     ):
         raise StaleFence("The trial execution lineage or fence is stale.")
+    if attempt.status not in {AttemptStatus.SUCCEEDED, AttemptStatus.FAILED} and (
+        attempt_credentials_revoked(db, parent.id) or attempt_credentials_revoked(db, attempt.id)
+    ):
+        raise StaleFence("The trial or parent execution credentials have been revoked.")
     return trial, attempt
 
 
@@ -280,6 +292,7 @@ def _terminal_evidence(db, trial, attempt):
     )
     if (
         event is None
+        or attempt.terminal_cas_version != 1
         or event.event_type != "trial.terminal"
         or event.payload.get("status") != attempt.status.value
         or trial.status != attempt.status.value
@@ -491,3 +504,87 @@ def finish_trial(
     )
     db.flush()
     return payload
+
+
+def enroll_candidate_evaluation(
+    db,
+    *,
+    run_id,
+    project_id,
+    candidate_name,
+    suggestion_id,
+    parameters,
+    parent,
+    dispatch_id=None,
+):
+    candidates = list(
+        db.scalars(
+            select(TrainingCandidate.id)
+            .where(
+                TrainingCandidate.project_id == project_id,
+                TrainingCandidate.model_run_id == run_id,
+                TrainingCandidate.estimator_key == candidate_name,
+            )
+            .limit(2)
+        )
+    )
+    if len(candidates) != 1:
+        raise StaleFence("A trial requires exactly one durable candidate identity.")
+    attempt = enroll_trial(
+        db,
+        run_attempt_id=parent[0],
+        run_fencing_token=parent[1],
+        candidate_id=candidates[0],
+        suggestion_id=suggestion_id,
+        parameters=parameters,
+        execution_id=canonical_request_hash(
+            {
+                "parent": str(parent[0]),
+                "candidate": str(candidates[0]),
+                "suggestion": suggestion_id,
+            }
+        ),
+    )
+    context = dict(
+        attempt_id=attempt.id,
+        fencing_token=attempt.fencing_token,
+        run_fencing_token=parent[1],
+    )
+    if dispatch_id is not None:
+        if not dispatch_id.strip() or len(dispatch_id) > 200:
+            raise ValueError("Tune dispatch identity must contain 1 to 200 characters.")
+        payload = {"ray_trial_id": dispatch_id, "suggestion_id": suggestion_id}
+        digest = canonical_request_hash(payload)
+        key = f"trial.dispatch:{dispatch_id}"
+        event = db.scalar(
+            select(WorkflowEvent)
+            .where(
+                WorkflowEvent.attempt_id == attempt.id,
+                WorkflowEvent.event_key == key,
+            )
+            .execution_options(populate_existing=True)
+        )
+        if event is not None:
+            if event.result_digest != digest or canonical_request_hash(event.payload) != digest:
+                raise StaleFence("Tune dispatch evidence conflicts with its identity.")
+        else:
+            sequence = (
+                db.scalar(
+                    select(func.max(WorkflowEvent.sequence)).where(
+                        WorkflowEvent.attempt_id == attempt.id,
+                    )
+                )
+                or 0
+            ) + 1
+            db.add(
+                WorkflowEvent(
+                    project_id=attempt.project_id,
+                    attempt_id=attempt.id,
+                    sequence=sequence,
+                    event_key=key,
+                    event_type="trial.dispatch",
+                    payload=payload,
+                    result_digest=digest,
+                )
+            )
+    return context

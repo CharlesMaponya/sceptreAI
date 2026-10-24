@@ -1,0 +1,95 @@
+schema_version: 1
+recorded_at: '2026-10-23'
+scope: training publication custody
+phase_complete: false
+requirements:
+  total: 36
+  verified: 2
+  open: 34
+source_inputs: 546
+checks:
+  passed: 1509
+  retained_connected: 1509
+  current_affected: 156
+  superseded_fixture_failures: 32
+  publication: 27
+  failures: 0
+  errors: 0
+  skips: 0
+  phase_complete: false
+provenance: Retained connected run plus current rerun of every changed legacy fixture
+  consumer. Production sources are byte-identical; all old test assertions and test
+  logic are preserved. The 32 initial fake-session failures are retained and superseded
+  by corrected fixture results.
+baseline:
+  body_failures: 2
+  reason: partial and final publication accepted a model URI without verified native
+    custody
+  original_test_and_fixture_bodies_preserved: true
+behavior:
+- The shared candidate-status boundary requires verified original native model completion
+  for declared broker runs before partial or final publication.
+- Project locking precedes attempt/run locks. Sealed source/candidate authority is
+  revalidated under SQL locks without provider I/O.
+- Server-selected parent declarations cannot be bypassed by missing worker identity,
+  closed parents, mismatched fences, unknown policies or duplicate declarations.
+- New model slots record immutable input/candidate digests while retaining the closed
+  worker receipt wire format.
+- The reconciler carries explicit verified-model references; predecessor publication
+  requires each authorized generation and an identical input binding.
+- Verified result replay precedes candidate mutation, so acknowledgement loss and
+  competing identical publication retain one metric commit.
+native_probe:
+  context: k3d-sceptre
+  namespace: phase1-publish-ae437efad75e
+  namespace_uid: fda52b46-a846-4778-b0c8-8817c78ac7d1
+  namespace_retired: true
+  distinct_writer_pod: true
+  model_serialized: true
+  verified_completion: true
+  receipt_only_recovery: true
+  native_writes: 1
+  storage_backend: in-memory conditional fixture; native provider SDK not exercised
+  partial_publication: true
+  final_publication: true
+  forged_receipt_rejected: true
+  parent_completion_once: true
+  terminal_cas: 1
+  publication_worker_sql_required: true
+  real_token_review: true
+  verified_tls: true
+  maintained_image_tested: false
+  full_worker_isolation: false
+compatibility:
+  unchanged_saved_manifests: 18
+  new_schema_or_protocol: false
+  legacy_publication_behavior_retained: true
+  old_slot_limit: Slots without recorded immutable input binding remain usable in
+    their original attempt; predecessor adoption requires controlled qualification.
+hygiene:
+- repository Ruff
+- new-hunk formatting
+- strict schema0018
+- three CI preflights
+- root coverage digest preserved
+- all36 status rows preserved
+qualification_limits:
+- Publication still uses worker SQL. This increment does not qualify closed result/progress
+  RPCs, complete tournament validation or database credential withdrawal.
+- Real TLS/k3d identity joins model output to actual SQL publication and parent completion;
+  storage is a conditional in-memory fixture, not native provider SDK or permission
+  qualification.
+- Pending identity Pods never execute containers. Maintained-image, mixed-version,
+  full-worker and process-loss qualification remains open.
+- Current full backend and independent branch-coverage qualification remain open;
+  no existing coverage threshold or scope was changed.
+- 45 GB physical database qualification remains pending with table-row targets unspecified;
+  the 43.5 GB free-byte reserve remains unchanged.
+- Original abandoned phase1-deletion:G7 requires seven missing historical QA objects;
+  none were reconstructed or re-signed.
+remaining_work:
+- Closed training progress/result publication and tracking control; full worker SQL
+  withdrawal
+- Training data/model readers and remaining analysis/dataset brokers
+- Remaining native producer identity, upload custody and physical retirement
+- Full/release/coverage and 45 GB migration qualification

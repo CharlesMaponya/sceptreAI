@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
+import ray_observer_fixture
 from automl_api.models.enums import AttemptStatus, RunStatus
 from automl_api.models.runs import ModelRun
 from automl_api.models.workflows import OutboxEntry, WorkflowAttempt, WorkflowCommand
@@ -13,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from test_phase1_postgres_contracts import committed_tenant, phase1_engine  # noqa: F401
 from test_training_publication_postgres import publication  # noqa: F401
+from test_training_ray_cancel_identity import ray_job_identity
 from test_training_trial_enrollment import enroll, trial_scope  # noqa: F401
 
 
@@ -56,7 +58,7 @@ def test_expired_parent_queues_cleanup_and_replacement_without_native_side_effec
     engine, run_id, parent_id, _, _ = expired
     k8s = MagicMock()
     with Session(engine) as db, db.begin():
-        assert reconciler.observe_training_ray_jobs(db, k8s) == 1
+        assert ray_observer_fixture.observe_training_ray_jobs(db, k8s) == 1
     k8s.ray_job.assert_not_called()
     k8s.delete_ray_job.assert_not_called()
     with Session(engine) as db:
@@ -74,13 +76,16 @@ def test_expired_parent_queues_cleanup_and_replacement_without_native_side_effec
         cancel_id = next(e.id for e in entries if e.topic == "ray.training.cancel")
     for _ in range(2):
         with Session(engine) as db, db.begin():
-            assert reconciler.observe_training_ray_jobs(db, k8s) == 0
+            assert ray_observer_fixture.observe_training_ray_jobs(db, k8s) == 0
     with Session(engine) as db, db.begin():
         entry = db.get(OutboxEntry, cancel_id)
         old = db.get(WorkflowAttempt, parent_id)
+        k8s.ray_job.return_value = ray_job_identity(db.get(ModelRun, run_id), old)
         reconciler.cancel_training_ray_job(db, entry, k8s)
         k8s.delete_ray_job.assert_called_once_with(
-            old.ray_job_name, namespace="isolated-expiry-test"
+            old.ray_job_name,
+            namespace="isolated-expiry-test",
+            uid=k8s.ray_job.return_value["metadata"]["uid"],
         )
         assert old.status == AttemptStatus.SUPERSEDED
 
@@ -142,7 +147,7 @@ def test_expiry_at_retry_budget_still_queues_cleanup(expired):
         db.get(WorkflowAttempt, parent_id).retry_budget = 1
     k8s = MagicMock()
     with Session(engine) as db, db.begin():
-        reconciler.observe_training_ray_jobs(db, k8s)
+        ray_observer_fixture.observe_training_ray_jobs(db, k8s)
     with Session(engine) as db:
         assert db.get(ModelRun, run_id).status == RunStatus.FAILED
         assert db.get(WorkflowAttempt, parent_id).status == AttemptStatus.FAILED
@@ -159,7 +164,7 @@ def test_expiry_at_retry_budget_still_queues_cleanup(expired):
 def test_expiry_replacement_and_cleanup_intent_roll_back_together(expired):
     engine, run_id, parent_id, _, _ = expired
     with pytest.raises(RuntimeError), Session(engine) as db, db.begin():
-        reconciler.observe_training_ray_jobs(db, MagicMock())
+        ray_observer_fixture.observe_training_ray_jobs(db, MagicMock())
         raise RuntimeError("before reconciliation commit")
     with Session(engine) as db:
         assert db.get(WorkflowAttempt, parent_id).status == AttemptStatus.RUNNING
@@ -181,7 +186,7 @@ def test_live_and_legacy_parent_do_not_expire(expired, lease):
     k8s = MagicMock()
     k8s.ray_job.return_value = {"status": {"jobStatus": "RUNNING"}}
     with Session(engine) as db, db.begin():
-        reconciler.observe_training_ray_jobs(db, k8s)
+        ray_observer_fixture.observe_training_ray_jobs(db, k8s)
     k8s.ray_job.assert_called_once()
     with Session(engine) as db:
         assert db.get(WorkflowAttempt, parent_id).status == AttemptStatus.RUNNING
@@ -197,7 +202,7 @@ def test_committed_result_wins_over_expired_lease(publication):  # noqa: F811
         parent.lease_expires_at = datetime.now(UTC) - timedelta(seconds=1)
     k8s = MagicMock()
     with Session(engine) as db, db.begin():
-        reconciler.observe_training_ray_jobs(db, k8s)
+        ray_observer_fixture.observe_training_ray_jobs(db, k8s)
     k8s.ray_job.assert_not_called()
     k8s.delete_ray_job.assert_not_called()
     with Session(engine) as db:
@@ -216,7 +221,7 @@ def test_concurrent_expiry_observers_queue_one_cleanup_and_replacement(expired):
     def observe(_):
         barrier.wait(timeout=3)
         with Session(engine) as db, db.begin():
-            return reconciler.observe_training_ray_jobs(db, MagicMock())
+            return ray_observer_fixture.observe_training_ray_jobs(db, MagicMock())
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         assert sorted(pool.map(observe, range(2))) == [0, 1]
@@ -228,7 +233,7 @@ def test_concurrent_expiry_observers_queue_one_cleanup_and_replacement(expired):
 def test_lost_delete_ack_replays_without_changing_old_terminal_fence(expired):
     engine, run_id, parent_id, _, _ = expired
     with Session(engine) as db, db.begin():
-        reconciler.observe_training_ray_jobs(db, MagicMock())
+        ray_observer_fixture.observe_training_ray_jobs(db, MagicMock())
     k8s = MagicMock()
     k8s.delete_ray_job.side_effect = [ConnectionError("lost delete ack"), None]
     with pytest.raises(ConnectionError), Session(engine) as db, db.begin():
@@ -236,6 +241,9 @@ def test_lost_delete_ack_replays_without_changing_old_terminal_fence(expired):
             select(OutboxEntry).where(
                 OutboxEntry.aggregate_id == run_id, OutboxEntry.topic == "ray.training.cancel"
             )
+        )
+        k8s.ray_job.return_value = ray_job_identity(
+            db.get(ModelRun, run_id), db.get(WorkflowAttempt, parent_id)
         )
         reconciler.cancel_training_ray_job(db, entry, k8s)
     with Session(engine) as db, db.begin():

@@ -27,6 +27,7 @@ from automl_api.models.workflows import (
     TrainingTrial,
     WorkflowAttempt,
     WorkflowCommand,
+    WorkflowEvent,
 )
 
 
@@ -40,6 +41,32 @@ class InvalidTransition(ValueError):
 
 class StaleFence(ValueError):
     pass
+
+
+RAY_MINIMAL_CREDENTIAL_PROTOCOL = "ray-pod-env-v1"
+RAY_PARENT_CONTROL_PROTOCOL = "ray-parent-control-v2"
+RAY_TRIAL_CONTROL_PROTOCOL = "ray-trial-control-v3"
+RAY_TRAINING_CONTEXT_PROTOCOL = "ray-training-context-v4"
+RAY_MODEL_OUTPUT_PROTOCOL = "ray-model-output-v5"
+RAY_TRAINING_RESULT_PROTOCOL = "ray-training-result-v6"
+RAY_TRAINING_PROGRESS_PROTOCOL = "ray-training-progress-v7"
+RAY_TRAINING_TRACKING_PROTOCOL = "ray-training-tracking-v8"
+RAY_TRAINING_METADATA_PROTOCOL = "ray-training-metadata-v9"
+RAY_CREDENTIAL_PROTOCOL = "ray-training-model-read-v10"
+
+
+def attempt_credentials_revoked(db: Session, attempt_id: uuid.UUID) -> bool:
+    # Production sessions disable autoflush; pending revocations must block access too.
+    db.flush()
+    return (
+        db.scalar(
+            select(WorkflowEvent.id).where(
+                WorkflowEvent.attempt_id == attempt_id,
+                WorkflowEvent.event_key == "attempt.credentials.revoked",
+            )
+        )
+        is not None
+    )
 
 
 COMMAND_TRANSITIONS = {
@@ -174,6 +201,8 @@ def enqueue_outbox(
     if existing is not None:
         return existing
 
+    if topic in {"ray.training.submit", "ray.dataset.split.submit", "ray.dataset.prepare.submit"}:
+        payload = {**payload, "credential_protocol": RAY_CREDENTIAL_PROTOCOL}
     entry = OutboxEntry(
         project_id=command.project_id,
         command_id=command.id,

@@ -1,17 +1,18 @@
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from automl_api.models.enums import MetricKind, RunStatus, TaskType
 
 
 class MonitoringThreshold(BaseModel):
-    warning: float
-    critical: float
+    warning: float = Field(allow_inf_nan=False)
+    critical: float = Field(allow_inf_nan=False)
     direction: Literal["above", "below"] = "below"
 
 
@@ -34,13 +35,22 @@ class MonitoringConfigurationRead(MonitoringConfigurationUpdate):
 class MonitoringMetricPointCreate(BaseModel):
     name: str = Field(min_length=1, max_length=160, pattern=r"^[A-Za-z0-9_.-]+$")
     kind: MetricKind = MetricKind.PERFORMANCE
-    value: float
+    value: float = Field(allow_inf_nan=False)
     recorded_at: datetime | None = None
     sample_count: int | None = Field(default=None, ge=0)
     higher_is_better: bool | None = None
     status: Literal["healthy", "warning", "critical", "unknown"] = "unknown"
     idempotency_key: str | None = Field(default=None, max_length=160)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("metadata")
+    @classmethod
+    def json_metadata(cls, value):
+        try:
+            json.dumps(value, allow_nan=False)
+        except (ValueError, TypeError) as exc:
+            raise ValueError("Metric metadata must contain finite JSON values") from exc
+        return value
 
 
 class MonitoringMetricPointRead(BaseModel):

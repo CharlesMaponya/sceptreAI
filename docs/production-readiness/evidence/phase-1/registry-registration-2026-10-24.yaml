@@ -1,0 +1,88 @@
+date: '2026-10-24'
+scope: registry-registration
+phase: 1
+phase_complete: false
+source_inputs: 578
+source_manifest_sha256: ad006a390d350b123f853294bb518921cb7874c662e83d297d8dab9f2c9ac8bc
+checks:
+  passed: 288
+  focused: 26
+  failures: 0
+  errors: 0
+  skips: 0
+  phase_complete: false
+  original_negative_control_failures: 1
+  strict_schema: 0018_attempt_predecessor_lineage
+  repository_ruff: pass
+  changed_hunk_format: pass
+  ci_preflights: 3
+  background_registry_cases: 27
+  scoped_gates_reverified: 3
+behavior:
+- HTTP model registration selects a successful candidate under SQL, commits its read-only
+  selection and releases the admission mutex/connection before inspecting storage size.
+- The final short transaction refreshes the active user and original token version, current
+  project/membership, parent/candidate/schema and deletion barriers before inserting anything.
+  Selected artifact, digest, metrics, parameters and dataset identity/hash/schema must match
+  the original inspection.
+- Concurrent requests for the same canonical registration share one registry entry, artifact
+  and version. Existing authorized registration replay performs no native storage read.
+- Unavailable or invalid storage sizes cannot leave partial rows. Actual backend termination
+  rolls back artifact and registration together; a lost committed acknowledgement recovers
+  the existing row without a second read.
+- Sibling progress and parent completion/failure do not invalidate an unchanged successful
+  selected candidate. Every original selected-model persistence assertion is retained.
+- The only HTTP caller and direct service consumers use the two-stage result; no migration,
+  dependency, credential protocol or public request schema changed.
+retained_failures:
+- The retained original HTTP test body observed one checked-out caller connection at the native
+  size read. Its unchanged body now observes zero.
+- A drafting lint check reported B008 for Depends in the new test fixture default. That diagnostic
+  remains in the tool transcript, not a retained automatic negative-control log. Annotated
+  corrected the fixture; a fresh final connected run and repository lint pass. The first passing
+  regression inputs are kept separately.
+limits:
+  requirements:
+    total: 36
+    verified: 2
+    open: 34
+  native_provider_tested: false
+  content_hash_or_immutable_version_qualified: false
+  producer_custody_qualified: false
+  remaining:
+  - Registration and background artifact visibility/size checks do not attest native content
+    hash, immutable object version or original producer custody.
+  - Training dataset readers, Ray Tune search checkpoints, native MLflow lifecycle/artifacts/registry
+    and all-stage IAM/network permissions before broad worker credential withdrawal
+  - Remaining native mutation custody and physical retirement; current full backend/release
+    and independent branch coverage >=90.01 percent
+  - Maintained images, native providers, mixed versions and complete-pipeline process loss
+  - 45 GB migration rehearsal and 15 users each uploading 10 GiB on suitable infrastructure
+  user_database_ceiling_bytes: 45000000000
+  largest_table_rows: not supplied
+  free_disk_reserve_bytes: 43500000000
+  minimum_free_bytes_during_regression: 43881271296
+  scale_qualified: false
+  required_handoff: Original phase1-deletion:G7 remains abandoned for seven missing original
+    historical QA objects (2 models, 5 signed results); do not reconstruct or re-sign.
+evidence_hashes:
+  source-sha256.json: ad006a390d350b123f853294bb518921cb7874c662e83d297d8dab9f2c9ac8bc
+  baseline.log: e25d113ab48e4e617b89de44617b68af0bb7d83c6acbf3a9609fc0e76460de94
+  baseline.xml: 3c74dd48f03e05e5966fe2a23bd89442f28b469fdd7dd2827af019c3c7b1619d
+  baseline-state.json: 5ecea566c46e59567da69e481e689505c2f06f248d670313ac8097359de8d8bb
+  baseline-test.py: 8c9b7a46d5cd61e7b23ddb127c443050499fa4be10fdb4c4afcf5ba06c8f6bdf
+  first-authority.log: a6a07e0edf28ba233f7ca147d98b1cb6f8f1e2bbf8affd66d72b1b9a7bc414a8
+  first-authority.xml: 49bdfc4d8947f37981b5c506c77385e54a72f1738f420a576d50bc7665600fd7
+  authority.log: 5dcfcaec1047024ef7a2270ddf9afe8927015f87b48c36fcdd505ac709f872e4
+  authority.xml: a72857ada240d6d7776d1daab25c3dad1966713f426b8e8342054caafc91e7ca
+  authority-state.json: 2aa088ca1cd51246f0cf6fcbb61ca0e37a3e092664985d3146ca99445dca3af7
+  first-regression.log: 6e5034c45b81f6ff5160a5af48dc85ce100e30ba6eaef24924c5c3ee62b3c461
+  first-regression.xml: 9b6e8aa54ff2c39d6d7485750373c271761d9bbdf866e85e190e5ee7efc168ed
+  before-lint-fix-source-sha256.json: 2f0e9e7c837afff0ad8f9a90be3f0ece9da602d3a7b1ec766681bef3d38f229b
+  regression.log: 55babde298ae23bc2821b85b267b1521dd23f0aa971ef1bb49b1803b29a9129d
+  regression.xml: 08f9b2194f91f1d6d1fa32e42a7ac50fa608d0e447b0c0ecd3303d048c44c15f
+  regression-state.json: 817d1adf51c228c91debaa57a940fcdbdc4a9c0954eff48e51369ad44bca1ad0
+  lint.log: 82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18
+  preflight-0.log: 00c8dcf3b37f2eac6114a4c21f9f742c56e354ada6672f1b15189664820d92a5
+  preflight-1.log: a414947a0f058a04ee8ca14e4023b0661f0892a6cb81c082ba87469dd71ed9e9
+  preflight-2.log: dffd5dbca119ddf99cc5a088942e02d1127f7108463f4627161d74775ec7e554

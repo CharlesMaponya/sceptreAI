@@ -5,6 +5,7 @@ import json
 import logging
 import math
 import uuid
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -19,11 +20,12 @@ from automl_api.models.enums import (
     ArtifactKind,
     ModelStage,
     ProjectRole,
+    ProjectStatus,
     RunKind,
     RunStatus,
 )
 from automl_api.models.iam import User
-from automl_api.models.projects import Project
+from automl_api.models.projects import Project, ProjectMembership
 from automl_api.models.runs import ModelRegistryEntry, ModelRun, RunArtifact
 from automl_api.models.workflows import DeletionStage, DeletionTombstone
 from automl_api.schemas.operations import (
@@ -40,6 +42,14 @@ from automl_api.schemas.operations import (
 )
 from automl_api.schemas.training import ModelRunRead, TrainingEstimateRequest
 from automl_api.services.kubernetes_training import KubernetesTrainingClient
+from automl_api.services.model_custody import (
+    PROTOCOL as MODEL_CUSTODY_PROTOCOL,
+)
+from automl_api.services.model_custody import (
+    registered_model_custody,
+    registration_model_custody,
+    verify_model_custody,
+)
 from automl_api.services.projects import require_project_role
 from automl_api.services.training import (
     _leaderboard_parent,
@@ -47,6 +57,7 @@ from automl_api.services.training import (
     _sync_run_status,
     estimate_analysis_resources,
 )
+from automl_api.services.workflow_state import StaleFence, canonical_request_hash
 from automl_api.storage.object_store import get_object_store
 
 logger = logging.getLogger(__name__)
@@ -71,16 +82,89 @@ _MONITORING_RESOURCE_FLOORS = {
 }
 
 
+@dataclass(frozen=True)
+class RegistrationInspection:
+    selection_digest: str
+    object_uri: str
+    token_version: int
+    custody: dict
+    byte_size: int | None = None
+    native_digest: str | None = None
+
+
+def _lock_registration_source(db, user, project_id, selected, parent, inspection):
+    expected_version = user.token_version if inspection is None else inspection.token_version
+    project = db.get(Project, project_id, with_for_update={"read": True}, populate_existing=True)
+    current = db.get(User, user.id, with_for_update={"read": True}, populate_existing=True)
+    if current is None or not current.is_active or current.token_version != expected_version:
+        raise HTTPException(401, "Registration authentication changed")
+    if project is None or project.status != ProjectStatus.ACTIVE:
+        raise HTTPException(409, "Registration project is inactive or missing")
+    db.scalar(
+        select(ProjectMembership)
+        .where(
+            ProjectMembership.project_id == project_id,
+            ProjectMembership.user_id == current.id,
+        )
+        .with_for_update(read=True)
+        .execution_options(populate_existing=True)
+    )
+    require_project_role(db, current, project_id, ProjectRole.EDITOR)
+    db.refresh(parent, with_for_update={"read": True})
+    if selected.id != parent.id:
+        db.refresh(selected, with_for_update={"read": True})
+        if _leaderboard_parent(db, selected).id != parent.id:
+            raise HTTPException(409, "Registration source parent changed")
+    version = db.get(
+        DatasetVersion,
+        parent.dataset_version_id,
+        with_for_update={"read": True},
+        populate_existing=True,
+    )
+    if version is None or version.project_id != project_id:
+        raise HTTPException(409, "Registration source schema changed")
+    deleting = db.scalar(
+        select(DeletionTombstone.id)
+        .where(
+            DeletionTombstone.project_id == project_id,
+            (DeletionTombstone.resource_type == "project")
+            | (
+                (DeletionTombstone.resource_type == "run")
+                & DeletionTombstone.resource_id.in_([selected.id, parent.id])
+            ),
+        )
+        .limit(1)
+    )
+    if deleting is not None:
+        raise HTTPException(409, "Registration source is being deleted")
+    return current
+
+
+def inspect_model_registration(selection):
+    try:
+        digest = verify_model_custody(get_object_store(), selection.custody)
+        return replace(
+            selection, byte_size=selection.custody["completion"]["byte_size"], native_digest=digest
+        )
+    except Exception:
+        raise HTTPException(
+            409, "The selected model artifact could not verify its original custody."
+        ) from None
+
+
 def register_model(
     db: Session,
     user: User,
     project_id: uuid.UUID,
     request: RegistryCreateRequest,
-) -> ModelRegistryEntry:
+    *,
+    inspection: RegistrationInspection | None = None,
+) -> ModelRegistryEntry | RegistrationInspection:
     require_project_role(db, user, project_id, ProjectRole.EDITOR)
     _lock_training_admission(db)
     selected_run = _training_run(db, project_id, request.training_run_id)
     parent = _leaderboard_parent(db, selected_run)
+    user = _lock_registration_source(db, user, project_id, selected_run, parent, inspection)
     # Candidates publish their durable artifact before reporting success. A sibling
     # still training (or failing) must not block registration of a completed model.
     candidate = next(
@@ -104,9 +188,6 @@ def register_model(
             ModelRegistryEntry.model_name == request.model_name,
         )
     )
-    if existing is not None:
-        return existing
-
     model_uri = str(candidate.get("model_artifact_uri") or "")
     if not model_uri:
         raise HTTPException(
@@ -121,14 +202,88 @@ def register_model(
                 "This model predates integrity verification. Train a new model before registration."
             ),
         )
-    store = get_object_store()
+    if artifact_run.id != parent.id:
+        db.refresh(artifact_run, with_for_update={"read": True})
+        if (
+            artifact_run.project_id != project_id
+            or db.scalar(
+                select(DeletionTombstone.id)
+                .where(
+                    DeletionTombstone.project_id == project_id,
+                    DeletionTombstone.resource_type == "run",
+                    DeletionTombstone.resource_id == artifact_run.id,
+                )
+                .limit(1)
+            )
+            is not None
+        ):
+            raise HTTPException(409, "Registration candidate source changed or is being deleted")
     try:
-        artifact_size = store.size(model_uri)
-    except Exception as exc:
+        custody = registration_model_custody(db, artifact_run, candidate)
+        if existing is not None and inspection is None:
+            stored_artifact = db.get(
+                RunArtifact, existing.model_artifact_id, populate_existing=True
+            )
+            if (
+                stored_artifact is None
+                or registered_model_custody(db, existing, stored_artifact) != custody
+                or existing.registry_metadata.get("native_custody_digest")
+                != canonical_request_hash(custody)
+            ):
+                raise StaleFence("Existing registration belongs to another original model")
+            return existing
+    except (StaleFence, ValueError, KeyError, TypeError, LookupError):
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="The selected model artifact is unavailable.",
-        ) from exc
+            409, "Original model custody is missing or changed; controlled qualification required."
+        ) from None
+    feature_hash = _feature_space_hash(parent)
+    selection = RegistrationInspection(
+        canonical_request_hash(
+            {
+                "project_id": project_id,
+                "actor_id": user.id,
+                "auth_provider": user.auth_provider,
+                "request": request.model_dump(mode="json"),
+                "selected_run_id": selected_run.id,
+                "parent_id": parent.id,
+                "artifact_run_id": artifact_run.id,
+                "candidate": candidate,
+                "feature_space_hash": feature_hash,
+                "input": parent.params,
+                "primary_metric": parent.tags.get("leaderboard_primary_metric"),
+                "dataset_version_id": parent.dataset_version_id,
+                "dataset_content_hash": parent.dataset_version.content_hash,
+            }
+        ),
+        model_uri,
+        user.token_version,
+        custody,
+    )
+    if inspection is None:
+        return selection
+    if (
+        replace(inspection, byte_size=None, native_digest=None) != selection
+        or inspection.native_digest != canonical_request_hash(custody)
+        or type(inspection.byte_size) is not int
+        or not 0 <= inspection.byte_size <= 2**63 - 1
+    ):
+        raise HTTPException(409, "The selected model changed during registration. Retry selection.")
+    if existing is not None:
+        stored_artifact = db.get(RunArtifact, existing.model_artifact_id, populate_existing=True)
+        try:
+            if (
+                stored_artifact is None
+                or registered_model_custody(db, existing, stored_artifact) != custody
+                or existing.registry_metadata.get("native_custody_digest")
+                != inspection.native_digest
+            ):
+                raise StaleFence("Concurrent registration has no matching verified custody")
+        except (StaleFence, ValueError, KeyError, TypeError, LookupError):
+            raise HTTPException(
+                409, "Existing registration requires controlled qualification."
+            ) from None
+        return existing
+    artifact_size = inspection.byte_size
     artifact = RunArtifact(
         project_id=project_id,
         model_run_id=artifact_run.id,
@@ -140,6 +295,7 @@ def register_model(
         artifact_metadata={
             "model_name": request.model_name,
             "mlflow_run_id": candidate.get("mlflow_run_id"),
+            "model_custody": custody,
         },
     )
     db.add(artifact)
@@ -166,10 +322,15 @@ def register_model(
         stage=ModelStage.CANDIDATE,
         model_name=request.model_name,
         version=version_number,
-        feature_space_hash=_feature_space_hash(parent),
+        feature_space_hash=feature_hash,
         champion_metric_name=primary_metric,
         champion_metric_value=metric_value,
         registry_metadata={
+            "artifact_policy": MODEL_CUSTODY_PROTOCOL,
+            "native_custody_digest": inspection.native_digest,
+            "desired_state": "artifact_verified",
+            "verified_byte_size": artifact_size,
+            "verified_at": datetime.now(UTC).isoformat(),
             "registered_by_id": str(user.id),
             "source_training_run_id": str(parent.id),
             "mlflow_run_id": candidate.get("mlflow_run_id"),

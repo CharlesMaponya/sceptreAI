@@ -1,0 +1,37 @@
+{
+  "status": "verified_planner_inspection_boundary_only",
+  "phase_complete": false,
+  "native_cleanup_custody_qualified": false,
+  "regression_passed": 138,
+  "focused_cases": 15,
+  "baseline_failed": 10,
+  "baseline_passed": 3,
+  "source_inputs": 514,
+  "source_manifest": ".unlazy/phase1-planner-inspection/source-sha256.json",
+  "minimum_free_bytes": 45617750016,
+  "reserve_bytes": 43500000000,
+  "schema_head": "0018_attempt_predecessor_lineage",
+  "gates_at_snapshot": {
+    "met": 4,
+    "unmet": 0,
+    "abandoned": 0
+  },
+  "phase1_requirements": {
+    "verified": 2,
+    "open": 34
+  },
+  "change": "Champion planner commits and ends SQL selection before candidate stat. A fresh locked re-selection compares scope/experiment/membership/policy, terminal training lineage and complete ranked run inputs before recording the inspected candidate. Wrong-object metadata is rejected; storage inspection errors remain retryable.",
+  "checks": [
+    "Independent PostgreSQL sessions acquire scope, run and training locks while stat observes zero checked-out planning connections.",
+    "Changed scope cancellation/deadline/policy/membership, candidate hash/winner and active training prevent stale publication.",
+    "Nested competing planners commit one plan; existing-plan replay does not stat again.",
+    "Actual fixture-owned subprocess is killed while its inspection is paused, then another planner commits one plan. Native inspection is doubled; this is not cloud qualification.",
+    "Eight existing fixture modules retain their test bodies and assertions; explicit two-step fixture setup is not transaction-boundary evidence."
+  ],
+  "remaining": [
+    "Upload cleanup ownership, uncertain native producer/operation custody, observer/native outbox SQL separation and other W03/W10 requirements remain open. This read-only planner protocol permits duplicate concurrent inspections and is not a native mutation lease.",
+    "Current-source whole-backend and independent 90.01% coverage qualification remain required; preceding 4561-case snapshot passed all tests at 86.879% branches.",
+    "Cloud/release, actual previous-binary and physical 45GB migration qualification remain open.",
+    "Original phase1-deletion:G7 remains abandoned: seven missing historical QA objects require handoff."
+  ]
+}

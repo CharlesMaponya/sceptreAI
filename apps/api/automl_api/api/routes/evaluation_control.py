@@ -8,7 +8,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from sqlalchemy.orm import Session
-from starlette.concurrency import run_in_threadpool
 
 from automl_api.db.session import get_db, get_session_factory
 from automl_api.models.enums import AttemptStatus
@@ -16,11 +15,8 @@ from automl_api.services.evaluation_access import evaluation_claims, locked_eval
 from automl_api.services.evaluation_publication import (
     _append,
     _event,
-    _read_result,
-    persist_evaluation_result,
     recover_evaluation_result,
 )
-from automl_api.services.refit_access import mint_refit_read_url
 from automl_api.services.workflow_state import transition_attempt
 from automl_api.storage.object_store import get_object_store
 
@@ -57,6 +53,7 @@ def start(attempt_id: uuid.UUID, claims: Principal, db: DB, response: Response):
     with db.begin():
         scope, attempt, plan = active(db, attempt_id, claims, (AttemptStatus.SUBMITTED,))
         transition_attempt(attempt, AttemptStatus.RUNNING, fencing_token=claims["fence"])
+        attempt.lease_owner = f"evaluation:{attempt_id}"
         attempt.heartbeat_at = datetime.now(UTC)
         attempt.lease_expires_at = min(
             scope.scope_deadline_at, attempt.heartbeat_at + timedelta(seconds=90)
@@ -78,50 +75,26 @@ def heartbeat(attempt_id: uuid.UUID, claims: Principal, db: DB):
 
 @router.get("/{attempt_id}/pipeline")
 def pipeline(attempt_id: uuid.UUID, claims: Principal, db: DB, response: Response):
-    with db.begin():
-        scope, attempt, plan = active(db, attempt_id, claims)
-        deadline = min(scope.scope_deadline_at, attempt.lease_expires_at)
-    try:
-        grant = mint_refit_read_url(get_object_store(), plan.frozen_pipeline, deadline)
-    except Exception as error:
-        raise HTTPException(503, "Frozen pipeline capability unavailable") from error
-    db.expire_all()
-    with db.begin():
-        scope, attempt, current = active(db, attempt_id, claims)
-        if (
-            current.digest != plan.digest
-            or deadline <= datetime.now(UTC)
-            or min(scope.scope_deadline_at, attempt.lease_expires_at) < deadline
-        ):
-            raise HTTPException(409, "Frozen pipeline authorization changed during mint")
-    response.headers["Cache-Control"] = "no-store"
-    return grant
+    raise HTTPException(
+        410,
+        detail={
+            "code": "pod_bound_grants_required",
+            "message": "Use pod-bound attempt object grants.",
+        },
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.put("/{attempt_id}/result")
 async def result(attempt_id: uuid.UUID, claims: Principal, db: DB, request: Request):
-    with db.begin():
-        _, _, plan = active(db, attempt_id, claims)
-    payload = bytearray()
-    async for chunk in request.stream():
-        if len(payload) + len(chunk) > 65536:
-            raise HTTPException(413, "Evaluator result exceeds its byte budget")
-        payload.extend(chunk)
-
-    def persist():
-        store = get_object_store()
-        intent = persist_evaluation_result(
-            get_session_factory(), plan, claims["fence"], bytes(payload), store
-        )
-        _read_result(store, intent, plan)
-        return intent
-
-    try:
-        return await run_in_threadpool(persist)
-    except ValueError as error:
-        raise HTTPException(409, "Evaluator signed result was rejected") from error
-    except Exception as error:
-        raise HTTPException(503, "Evaluator result storage unavailable") from error
+    raise HTTPException(
+        410,
+        detail={
+            "code": "pod_bound_grants_required",
+            "message": "Use pod-bound attempt object uploads.",
+        },
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.post("/{attempt_id}/publish")
@@ -144,6 +117,7 @@ def publish(attempt_id: uuid.UUID, receipt: dict, claims: Principal, db: DB):
             get_object_store(),
             commit=lambda _digest: receipt,
             authority_public_key=authority_public_key(),
+            worker=True,
         )
     except ValueError as error:
         raise HTTPException(409, "Evaluator publication was rejected") from error

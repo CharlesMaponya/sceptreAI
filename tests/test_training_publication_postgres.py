@@ -152,7 +152,7 @@ def test_worker_recovers_committed_result_without_retraining(publication):
 def test_observer_finalizes_committed_result_after_worker_disappears(publication):
     from unittest.mock import MagicMock
 
-    from automl_api.services.reconciler import observe_training_ray_jobs
+    from ray_observer_fixture import observe_training_ray_jobs
 
     engine, run_id, attempt_id, _, result = publication
     with Session(engine) as db, db.begin():

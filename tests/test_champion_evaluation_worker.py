@@ -8,6 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 from types import SimpleNamespace
 from unittest.mock import Mock
+from urllib.parse import urlsplit
 
 import httpx
 import pandas as pd
@@ -19,7 +20,6 @@ from automl_api.models.qualification import FinalTestAllocation
 from automl_api.models.workflows import DatasetSplitRevision, WorkflowAttempt, WorkflowEvent
 from automl_api.qualification_control import create_app
 from automl_api.services import evaluation_access
-from automl_api.services.champion_planning import plan_scope_refit
 from automl_api.services.evaluation_keys import KEY_FIELD, prepare_evaluator_credentials
 from automl_api.services.evaluation_planning import validate_evaluation_policy
 from automl_api.services.evaluation_publication import recover_evaluation_result
@@ -32,6 +32,8 @@ from automl_api.training.champion_refit import (
     execute_refit,
     publish_frozen_pipeline,
 )
+from automl_api.training.object_capabilities import ProviderObjectUnavailable
+from champion_planning_fixture import plan_scope_refit
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -88,12 +90,15 @@ def worker_case(policy_case, authority_api, tmp_path, monkeypatch):
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             requests.append((self.path, self.headers.get("Authorization")))
-            if self.path not in objects:
+            path = self.path if self.path in objects else urlsplit(self.path).path
+            if path not in objects:
                 self.send_error(403)
                 return
             self.send_response(200)
+            self.send_header("Content-Length", str(len(objects[path])))
+            self.send_header("x-amz-version-id", "native-v1" if path == "/pipeline" else "1")
             self.end_headers()
-            self.wfile.write(objects[self.path])
+            self.wfile.write(objects[path])
 
         def log_message(self, *_):
             pass
@@ -211,14 +216,6 @@ def worker_case(policy_case, authority_api, tmp_path, monkeypatch):
             monkeypatch.setattr(evaluation_control, "get_session_factory", lambda: factory)
             monkeypatch.setattr(evaluation_control, "get_object_store", lambda: store)
             monkeypatch.setattr(evaluation_control, "authority_public_key", lambda: public_key)
-            monkeypatch.setattr(
-                evaluation_control,
-                "mint_refit_read_url",
-                lambda *_: {
-                    "url": base + "/pipeline",
-                    "expires_at": scope.scope_deadline_at.isoformat(),
-                },
-            )
             control_app = FastAPI()
             control_app.include_router(evaluation_control.router, prefix="/api/v1")
 
@@ -242,6 +239,11 @@ def worker_case(policy_case, authority_api, tmp_path, monkeypatch):
                 ) as authority:
                     yield SimpleNamespace(
                         control=control,
+                        object_url=base + "/pipeline",
+                        pipeline_mint=lambda *_: {
+                            "url": base + "/pipeline",
+                            "expires_at": scope.scope_deadline_at.isoformat(),
+                        },
                         authority=authority,
                         admin=admin,
                         db=db,
@@ -269,6 +271,30 @@ def worker_case(policy_case, authority_api, tmp_path, monkeypatch):
             )
 
 
+@pytest.fixture
+def broker_worker_case(worker_case, phase1_engine, monkeypatch, tmp_path):
+    from champion_broker_fixture import install_champion_broker
+
+    c = worker_case
+    token = c.control.headers["Authorization"].split(" ", 1)[1]
+    binding = install_champion_broker(
+        c.db,
+        c.plan,
+        evaluation_control,
+        evaluation_control.evaluation_claims(token, c.attempt.id),
+        phase1_engine,
+        monkeypatch,
+        tmp_path,
+        mint=c.pipeline_mint,
+    )
+    c.plan = binding.case.plan
+    c.output_binding = binding
+    try:
+        yield c
+    finally:
+        binding.close()
+
+
 def run(case):
     return evaluation_worker.run(
         case.control,
@@ -281,21 +307,42 @@ def run(case):
 
 @pytest.mark.parametrize("lost", [None, "result", "commit", "publish"])
 def test_connected_worker_evaluates_once_and_replays_only_acknowledgements(
-    worker_case, lost, monkeypatch
+    broker_worker_case, lost, monkeypatch
 ):
-    case = worker_case
+    case = broker_worker_case
+    from automl_api.training.attempt_rpc import AttemptControlUnavailable, AttemptRPC
+
+    lost_once = False
+    receipt_reads = []
+    rpc = AttemptRPC.request
+
+    def rpc_call(self, verb, path, **kwargs):
+        nonlocal lost_once
+        response = rpc(self, verb, path, **kwargs)
+        if path.startswith("objects/receipts/"):
+            receipt_reads.append(path)
+        if lost == "result" and verb == "PUT" and not lost_once:
+            lost_once = True
+            raise AttemptControlUnavailable("Lost output acknowledgement")
+        return response
+
+    monkeypatch.setattr(AttemptRPC, "request", rpc_call)
     client, method = (
         (case.authority, "post")
         if lost == "commit"
         else (case.control, "put" if lost == "result" else "post")
     )
     original = getattr(client, method)
-    lost_once = False
 
     def call(path, **kwargs):
         nonlocal lost_once
         response = original(path, **kwargs)
-        if lost and path.endswith(lost) and not lost_once and response.status_code == 200:
+        if (
+            lost not in {None, "result"}
+            and path.endswith(lost)
+            and not lost_once
+            and response.status_code == 200
+        ):
             lost_once = True
             raise httpx.ReadError("Lost acknowledgement")
         return response
@@ -309,12 +356,15 @@ def test_connected_worker_evaluates_once_and_replays_only_acknowledgements(
     assert verified.metrics["rmse"] == pytest.approx(0, abs=1e-10)
     case.mint.assert_called_once()
     assert len(case.requests) == 3 and all(auth is None for _, auth in case.requests)
-    assert case.requests[0][0] == "/pipeline"
+    assert urlsplit(case.requests[0][0]).path == "/pipeline"
     assert case.control.post("start").status_code == 409
+    assert lost_once == (lost is not None)
+    assert len(case.output_binding.writes) == 1
+    assert len(receipt_reads) == (1 if lost == "result" else 0)
 
 
-def test_lost_grant_reply_never_requests_or_evaluates_again(worker_case, monkeypatch):
-    case = worker_case
+def test_lost_grant_reply_never_requests_or_evaluates_again(broker_worker_case, monkeypatch):
+    case = broker_worker_case
     original = case.authority.post
 
     def lost(path, **kwargs):
@@ -328,16 +378,17 @@ def test_lost_grant_reply_never_requests_or_evaluates_again(worker_case, monkeyp
     with pytest.raises(httpx.ReadError):
         run(case)
     case.mint.assert_called_once()
-    assert case.requests == [("/pipeline", None)]
+    assert len(case.requests) == 1
+    assert urlsplit(case.requests[0][0]).path == "/pipeline" and case.requests[0][1] is None
     state = case.admin.get(f"allocations/{case.plan.allocation_id}").json()
     assert state["status"] == "opened"
     assert case.control.post("start").status_code == 409
 
 
-def test_corrupt_pipeline_fails_before_final_grant(worker_case):
-    case = worker_case
+def test_corrupt_pipeline_fails_before_final_grant(broker_worker_case):
+    case = broker_worker_case
     case.objects["/pipeline"] = b"corrupt"
-    with pytest.raises(ValueError):
+    with pytest.raises(ProviderObjectUnavailable):
         run(case)
     case.mint.assert_not_called()
     assert case.admin.get(f"allocations/{case.plan.allocation_id}").json()["status"] == "allocated"
@@ -345,9 +396,9 @@ def test_corrupt_pipeline_fails_before_final_grant(worker_case):
 
 @pytest.mark.parametrize("committed", [False, True])
 def test_controller_recovers_stored_result_without_worker_or_final_reads(
-    worker_case, monkeypatch, committed
+    broker_worker_case, monkeypatch, committed
 ):
-    case = worker_case
+    case = broker_worker_case
     original = case.authority.post
 
     def unavailable(path, **kwargs):
@@ -396,3 +447,27 @@ def test_controller_recovers_stored_result_without_worker_or_final_reads(
     )
     assert case.requests == reads
     case.mint.assert_called_once()
+
+
+def test_legacy_read_plan_is_rejected_before_pipeline_or_final_data(
+    broker_worker_case, monkeypatch
+):
+    case = broker_worker_case
+    post = case.control.post
+
+    def legacy_start(path, **kwargs):
+        response = post(path, **kwargs)
+        if path == "start" and response.status_code == 200:
+            return httpx.Response(
+                200,
+                request=response.request,
+                json={**response.json(), "credential_protocol": "pod-bound-read-v1"},
+            )
+        return response
+
+    monkeypatch.setattr(case.control, "post", legacy_start)
+    with pytest.raises(ValueError, match="pod-bound object protocol"):
+        run(case)
+    assert not case.requests and not case.output_binding.writes
+    case.mint.assert_not_called()
+    assert case.admin.get(f"allocations/{case.plan.allocation_id}").json()["status"] == "allocated"

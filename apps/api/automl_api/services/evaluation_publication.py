@@ -21,6 +21,7 @@ from automl_api.services.final_test_authority import verify_receipt
 from automl_api.services.workflow_state import (
     IdempotencyConflict,
     StaleFence,
+    attempt_credentials_revoked,
     canonical_request_hash,
     cas_register_terminal_artifact,
 )
@@ -112,7 +113,9 @@ def _locked(
     if writing:
         now = datetime.now(UTC)
         if (
-            scope.status != ScopeStatus.RUNNING
+            attempt_credentials_revoked(db, attempt.id)
+            or _event(db, attempt.id, "evaluation_recovery_started") is not None
+            or scope.status != ScopeStatus.RUNNING
             or attempt.status != AttemptStatus.RUNNING
             or scope.scope_deadline_at is None
             or scope.scope_deadline_at <= now
@@ -140,8 +143,18 @@ def persist_evaluation_result(session_factory, plan: EvaluationPlan, fence, payl
         elif existing.payload != intent or existing.result_digest != canonical_request_hash(intent):
             raise IdempotencyConflict("Evaluation output was already declared differently")
     stored = store.put_bytes(key, payload)
-    if stored.uri != intent["uri"]:
-        raise ValueError("Evaluation output store returned a different URI")
+    if stored.uri != intent["uri"] or stored.byte_size != intent["byte_size"]:
+        raise RuntimeError("Evaluation output store returned unexpected metadata")
+    _read_result(store, intent, plan)
+    with session_factory() as db, db.begin():
+        _, attempt = _locked(db, plan, fence, writing=True)
+        current = _event(db, attempt.id, "evaluation_output")
+        if (
+            current is None
+            or current.payload != intent
+            or current.result_digest != canonical_request_hash(intent)
+        ):
+            raise StaleFence("Evaluation output intent changed during storage")
     return intent
 
 
@@ -179,7 +192,26 @@ def _verify_commit(receipt, plan, digest, public_key):
         raise ValueError("Authority result receipt signature or lineage is invalid")
 
 
-def recover_evaluation_result(session_factory, plan, fence, store, *, commit, authority_public_key):
+def _publication_locked(db, plan, fence, *, worker):
+    db.flush()
+    scope, attempt = _locked(db, plan, fence)
+    if worker and attempt.status != AttemptStatus.SUCCEEDED:
+        scope, attempt = _locked(db, plan, fence, writing=True)
+    if plan.credential_protocol == "pod-bound-object-v2" or (
+        worker and attempt.status != AttemptStatus.SUCCEEDED
+    ):
+        from automl_api.services.attempt_output_grants import require_output_completion
+
+        event = _event(db, attempt.id, "evaluation_output")
+        if event is None or event.result_digest != canonical_request_hash(event.payload):
+            raise StaleFence("Evaluation has no valid durable output intent")
+        require_output_completion(db, plan, fence, event.payload)
+    return scope, attempt
+
+
+def recover_evaluation_result(
+    session_factory, plan, fence, store, *, commit, authority_public_key, worker=False
+):
     """Verify stored bytes, replay one authority commit, then CAS-complete the scope.
 
     `commit` submits only the declared digest to the allocation in this plan and
@@ -188,7 +220,7 @@ def recover_evaluation_result(session_factory, plan, fence, store, *, commit, au
     cancellation, supersession and failed scopes still reject publication.
     """
     with session_factory() as db, db.begin():
-        _, attempt = _locked(db, plan, fence)
+        _, attempt = _publication_locked(db, plan, fence, worker=worker)
         event = _event(db, attempt.id, "evaluation_output")
         if event is None or event.result_digest != canonical_request_hash(event.payload):
             raise StaleFence("Evaluation has no valid durable output intent")
@@ -198,7 +230,7 @@ def recover_evaluation_result(session_factory, plan, fence, store, *, commit, au
     receipt = commit(intent["sha256"])
     _verify_commit(receipt, plan, intent["sha256"], authority_public_key)
     with session_factory() as db, db.begin():
-        scope, attempt = _locked(db, plan, fence)
+        scope, attempt = _publication_locked(db, plan, fence, worker=worker)
         output = _event(db, attempt.id, "evaluation_output")
         if output is None or output.payload != intent:
             raise StaleFence("Evaluation output intent changed during commit")

@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+import ray_observer_fixture
 from automl_api.core.config import Settings
 from automl_api.models.enums import (
     AttemptStatus,
@@ -65,6 +66,8 @@ def _attempt(run: ModelRun, status: AttemptStatus = AttemptStatus.CLAIMED) -> Wo
         terminal_cas_version=0,
     )
     attempt.id = uuid.uuid4()
+    if status in {AttemptStatus.SUBMITTED, AttemptStatus.RUNNING}:
+        attempt.ray_job_name = f"ray-{attempt.id.hex}"
     return attempt
 
 
@@ -325,6 +328,8 @@ def test_submit_reconciler_rejects_missing_and_stale_attempt() -> None:
 
 
 def test_cancel_reconciler_deletes_once_and_terminal_state_is_stable() -> None:
+    from test_training_ray_cancel_identity import ray_job_identity
+
     run = _run()
     attempt = _attempt(run, AttemptStatus.RUNNING)
     attempt.updated_at = datetime.now(UTC) - timedelta(minutes=31)
@@ -334,9 +339,12 @@ def test_cancel_reconciler_deletes_once_and_terminal_state_is_stable() -> None:
     db.scalar.return_value = attempt
     db.get.return_value = run
     k8s = MagicMock()
+    k8s.ray_job.return_value = ray_job_identity(run, attempt)
     result = reconciler.cancel_training_ray_job(db, entry, k8s)
     assert result.status == AttemptStatus.CANCELLED
-    k8s.delete_ray_job.assert_called_once_with("ray-job", namespace=run.k8s_namespace)
+    k8s.delete_ray_job.assert_called_once_with(
+        "ray-job", namespace=run.k8s_namespace, uid=k8s.ray_job.return_value["metadata"]["uid"]
+    )
 
     db.scalar.return_value = attempt
     reconciler.cancel_training_ray_job(db, entry, k8s)
@@ -381,6 +389,7 @@ def test_ray_observer_tracks_running_identity_and_run_state() -> None:
     attempt = _attempt(run, AttemptStatus.SUBMITTED)
     db = MagicMock()
     db.scalars.return_value = [attempt]
+    db.scalar.return_value = run
     db.get.return_value = run
     k8s = MagicMock()
     k8s.ray_job.return_value = {
@@ -391,7 +400,7 @@ def test_ray_observer_tracks_running_identity_and_run_state() -> None:
         }
     }
 
-    assert reconciler.observe_training_ray_jobs(db, k8s) == 1
+    assert ray_observer_fixture.observe_training_ray_jobs(db, k8s) == 1
 
     assert attempt.status == AttemptStatus.RUNNING
     assert attempt.ray_cluster_name == "observed-cluster"
@@ -409,10 +418,11 @@ def test_ray_observer_ignores_nonterminal_waiting_status() -> None:
     attempt = _attempt(run, AttemptStatus.SUBMITTED)
     db = MagicMock()
     db.scalars.return_value = [attempt]
+    db.scalar.return_value = run
     k8s = MagicMock()
     k8s.ray_job.return_value = {"status": {"jobDeploymentStatus": "Initializing"}}
 
-    assert reconciler.observe_training_ray_jobs(db, k8s) == 1
+    assert ray_observer_fixture.observe_training_ray_jobs(db, k8s) == 1
     assert attempt.status == AttemptStatus.SUBMITTED
     db.get.assert_not_called()
 
@@ -425,14 +435,15 @@ def test_ray_observer_prioritizes_failed_deployment_over_stale_running_job(
     attempt.retry_budget = 5
     command = SimpleNamespace(id=uuid.uuid4())
     db = MagicMock()
-    db.scalars.side_effect = [[attempt], []]
+    db.scalars.side_effect = [[attempt], [], []]
+    db.scalars.return_value = [attempt]
     db.scalar.side_effect = [run, run, command]
     enqueue = MagicMock()
     monkeypatch.setattr(reconciler, "enqueue_outbox", enqueue)
     k8s = MagicMock()
     k8s.ray_job.return_value = {"status": {"jobStatus": "RUNNING", "jobDeploymentStatus": "Failed"}}
 
-    assert reconciler.observe_training_ray_jobs(db, k8s) == 1
+    assert ray_observer_fixture.observe_training_ray_jobs(db, k8s) == 1
 
     assert attempt.status == AttemptStatus.SUPERSEDED
     assert attempt.terminal_reason == "RayJob terminal status FAILED"
@@ -455,14 +466,15 @@ def test_ray_observer_replaces_terminal_jobs_without_a_terminal_cas(monkeypatch,
     attempt.retry_budget = 5
     command = SimpleNamespace(id=uuid.uuid4())
     db = MagicMock()
-    db.scalars.side_effect = [[attempt], []]
+    db.scalars.side_effect = [[attempt], [], []]
+    db.scalars.return_value = [attempt]
     db.scalar.side_effect = [run, run, command]
     enqueue = MagicMock()
     monkeypatch.setattr(reconciler, "enqueue_outbox", enqueue)
     k8s = MagicMock()
     k8s.ray_job.return_value = {"status": status}
 
-    assert reconciler.observe_training_ray_jobs(db, k8s) == 1
+    assert ray_observer_fixture.observe_training_ray_jobs(db, k8s) == 1
 
     assert attempt.status == AttemptStatus.SUPERSEDED
     replacement = next(
@@ -496,13 +508,14 @@ def test_ray_observer_reclaims_a_missing_job_and_replaces_active_trials(monkeypa
     trial_attempt.id = uuid.uuid4()
     command = SimpleNamespace(id=uuid.uuid4())
     db = MagicMock()
-    db.scalars.side_effect = [[attempt], [trial_attempt]]
+    db.scalars.side_effect = [[attempt], [trial_attempt], []]
+    db.scalars.return_value = [attempt]
     db.scalar.side_effect = [run, run, command]
     monkeypatch.setattr(reconciler, "enqueue_outbox", MagicMock())
     k8s = MagicMock()
     k8s.ray_job.side_effect = ApiException(status=404)
 
-    reconciler.observe_training_ray_jobs(db, k8s)
+    ray_observer_fixture.observe_training_ray_jobs(db, k8s)
 
     assert attempt.status == AttemptStatus.SUPERSEDED
     assert trial_attempt.status == AttemptStatus.SUPERSEDED
@@ -522,11 +535,12 @@ def test_ray_observer_fails_closed_at_retry_budget_and_on_invalid_lineage() -> N
     attempt.retry_budget = 1
     db = MagicMock()
     db.scalars.side_effect = [[attempt], []]
+    db.scalars.return_value = [attempt]
     db.scalar.return_value = run
     k8s = MagicMock()
     k8s.ray_job.return_value = {"status": {"jobStatus": "FAILED"}}
 
-    reconciler.observe_training_ray_jobs(db, k8s)
+    ray_observer_fixture.observe_training_ray_jobs(db, k8s)
 
     assert attempt.status == AttemptStatus.FAILED
     assert run.status == RunStatus.FAILED
@@ -539,7 +553,7 @@ def test_ray_observer_fails_closed_at_retry_budget_and_on_invalid_lineage() -> N
     db.scalar.return_value = None
     k8s.ray_job.side_effect = ApiException(status=404)
     with pytest.raises(LookupError, match="no tracked training run"):
-        reconciler.observe_training_ray_jobs(db, k8s)
+        ray_observer_fixture.observe_training_ray_jobs(db, k8s)
 
 
 def test_ray_deadline_stops_without_repeating_the_same_model_search(monkeypatch) -> None:
@@ -548,6 +562,7 @@ def test_ray_deadline_stops_without_repeating_the_same_model_search(monkeypatch)
     attempt.retry_budget = 5
     db = MagicMock()
     db.scalars.side_effect = [[attempt], []]
+    db.scalars.return_value = [attempt]
     db.scalar.return_value = run
     enqueue = MagicMock()
     monkeypatch.setattr(reconciler, "enqueue_outbox", enqueue)
@@ -561,7 +576,7 @@ def test_ray_deadline_stops_without_repeating_the_same_model_search(monkeypatch)
         }
     }
 
-    reconciler.observe_training_ray_jobs(db, k8s)
+    ray_observer_fixture.observe_training_ray_jobs(db, k8s)
 
     assert attempt.status == AttemptStatus.FAILED
     assert run.status == RunStatus.FAILED
@@ -574,22 +589,25 @@ def test_ray_deadline_stops_without_repeating_the_same_model_search(monkeypatch)
 
 
 def test_ray_observer_propagates_api_errors_and_missing_commands() -> None:
-    attempt = _attempt(_run(), AttemptStatus.SUBMITTED)
+    run = _run()
+    attempt = _attempt(run, AttemptStatus.SUBMITTED)
     db = MagicMock()
     db.scalars.return_value = [attempt]
+    db.scalar.return_value = run
     k8s = MagicMock()
     k8s.ray_job.side_effect = ApiException(status=503)
     with pytest.raises(ApiException):
-        reconciler.observe_training_ray_jobs(db, k8s)
+        ray_observer_fixture.observe_training_ray_jobs(db, k8s)
 
     run = _run()
     attempt = _attempt(run, AttemptStatus.SUBMITTED)
     db = MagicMock()
     db.scalars.side_effect = [[attempt], []]
+    db.scalars.return_value = [attempt]
     db.scalar.side_effect = [run, run, None]
     k8s.ray_job.side_effect = ApiException(status=404)
     with pytest.raises(LookupError, match="no durable launch command"):
-        reconciler.observe_training_ray_jobs(db, k8s)
+        ray_observer_fixture.observe_training_ray_jobs(db, k8s)
 
 
 def _delivery_db(entry):
@@ -631,7 +649,6 @@ def test_entry_dispatch_requeues_failure_and_delivers_success(monkeypatch) -> No
         ("ray.training.cancel", "cancel_training_ray_job"),
         ("kubernetes.analysis.submit", "submit_analysis_job"),
         ("upload.reconcile", "reconcile_upload_session"),
-        ("registry.reconcile", "reconcile_registry_artifact"),
         ("deployment.reconcile", "reconcile_deployment"),
         ("governance.reconcile", "reconcile_governance_object"),
         ("cleanup.execute", "reconcile_cleanup"),
@@ -919,47 +936,10 @@ def test_phase2_upload_verification_rejects_short_provider_range() -> None:
     reader.close()
 
 
-def test_registry_reconciler_verifies_manifest_and_is_idempotent(monkeypatch) -> None:
+def test_registry_requires_factory_owned_dispatch():
     entry = _entry(_attempt(_run()), "registry.reconcile")
-    entry.payload = {"registry_entry_id": str(uuid.uuid4())}
-    db = MagicMock()
-    db.scalar.return_value = None
-    with pytest.raises(LookupError, match="registry entry"):
-        reconciler.reconcile_registry_artifact(db, entry)
-
-    registry_entry = SimpleNamespace(registry_metadata={"desired_state": "artifact_verified"})
-    db.scalar.return_value = registry_entry
-    assert reconciler.reconcile_registry_artifact(db, entry) is registry_entry
-
-    registry_entry = SimpleNamespace(
-        project_id=entry.project_id,
-        model_artifact_id=uuid.uuid4(),
-        registry_metadata={},
-    )
-    db.scalar.side_effect = [registry_entry, None]
-    with pytest.raises(LookupError, match="model artifact"):
-        reconciler.reconcile_registry_artifact(db, entry)
-
-    artifact = SimpleNamespace(object_uri="minio://automl/model", byte_size=10)
-    store = MagicMock()
-    monkeypatch.setattr(reconciler, "get_object_store", lambda: store)
-    db.scalar.side_effect = [registry_entry, artifact]
-    store.exists.return_value = False
-    with pytest.raises(OSError, match="not visible"):
-        reconciler.reconcile_registry_artifact(db, entry)
-
-    db.scalar.side_effect = [registry_entry, artifact]
-    store.exists.return_value = True
-    store.size.return_value = 9
-    with pytest.raises(ValueError, match="byte size"):
-        reconciler.reconcile_registry_artifact(db, entry)
-
-    artifact.byte_size = None
-    db.scalar.side_effect = [registry_entry, artifact]
-    store.size.return_value = 9
-    reconciler.reconcile_registry_artifact(db, entry)
-    assert registry_entry.registry_metadata["desired_state"] == "artifact_verified"
-    assert registry_entry.registry_metadata["verified_byte_size"] == 9
+    with pytest.raises(RuntimeError, match="factory-owned dispatcher"):
+        reconciler.reconcile_entry(_delivery_db(entry), entry, worker_id="worker-a")
 
 
 def test_analysis_reconciler_submits_once_and_records_desired_state() -> None:
@@ -1220,9 +1200,13 @@ def test_kubernetes_rayjob_methods_handle_conflicts_and_not_found() -> None:
     client._configuration_error = None
     client.settings = SimpleNamespace(training_namespace="sceptre")
     client.custom = MagicMock()
-    manifest = {"metadata": {"name": "ray-job"}}
+    run = _run()
+    manifest = reconciler.build_ray_job_manifest(run, _attempt(run), name="ray-job")
     client.custom.create_namespaced_custom_object.side_effect = ApiException(status=409)
-    client.custom.get_namespaced_custom_object.return_value = {"metadata": {"name": "ray-job"}}
+    client.custom.get_namespaced_custom_object.return_value = {
+        **manifest,
+        "metadata": {**manifest["metadata"], "uid": "native-ray-uid"},
+    }
     assert client.create_ray_job(manifest)["metadata"]["name"] == "ray-job"
     assert client.ray_job("ray-job")["metadata"]["name"] == "ray-job"
     client.custom.delete_namespaced_custom_object.side_effect = ApiException(status=404)
@@ -1268,12 +1252,13 @@ def test_ray_memory_failure_stops_instead_of_restarting_candidate_search(monkeyp
     attempt.retry_budget = 5
     db = MagicMock()
     db.scalars.side_effect = [[attempt], []]
+    db.scalars.return_value = [attempt]
     db.scalar.return_value = run
     enqueue = MagicMock()
     monkeypatch.setattr(reconciler, "enqueue_outbox", enqueue)
     k8s = MagicMock()
     k8s.ray_job.return_value = {"status": {"jobStatus": "FAILED", "message": message}}
-    reconciler.observe_training_ray_jobs(db, k8s)
+    ray_observer_fixture.observe_training_ray_jobs(db, k8s)
     assert attempt.status == AttemptStatus.FAILED
     assert run.failure_code == "TRAINING_OUT_OF_MEMORY"
     assert run.failure_message == message

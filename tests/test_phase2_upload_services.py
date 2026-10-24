@@ -320,7 +320,7 @@ def test_begin_instruction_progress_complete_and_abort(monkeypatch) -> None:
         == upload.id
     )
 
-    other = _upload()
+    other = _upload(retention_until=None)
     aborted = uploads.abort_upload_session(other, settings=_settings())
     assert aborted.status == "aborted" and driver.aborted == 1
     assert uploads.abort_upload_session(other, settings=_settings()).id == other.id
@@ -453,8 +453,9 @@ def test_cursor_registration_cleanup_and_lookup(monkeypatch) -> None:
 
     driver = Driver()
     monkeypatch.setattr(uploads, "get_object_store", lambda *_args: driver)
-    expired = _upload(expires_at=datetime.now(UTC) - timedelta(seconds=1))
+    expired = _upload(expires_at=datetime.now(UTC) - timedelta(seconds=1), retention_until=None)
     quarantined = _upload(
+        retention_until=None,
         status="quarantined",
         completed_object_uri="s3c://bucket/bad.csv",
         quarantine_delete_after=datetime.now(UTC) - timedelta(seconds=1),
@@ -558,6 +559,7 @@ def test_progress_completion_and_cleanup_failure_branches(monkeypatch) -> None:
     assert uploads.next_cursor(all_parts) is None
 
     missing_object = _upload(
+        retention_until=None,
         status="quarantined",
         completed_object_uri="s3c://bucket/already-gone.csv",
         quarantine_delete_after=datetime.now(UTC) - timedelta(seconds=1),
@@ -571,7 +573,7 @@ def test_progress_completion_and_cleanup_failure_branches(monkeypatch) -> None:
     }
     assert driver.deleted == [missing_object.completed_object_uri]
 
-    cleanup_db.row_values = [[_upload(provider_driver="gcs")]]
+    cleanup_db.row_values = [[_upload(provider_driver="gcs", retention_until=None)]]
     with pytest.raises(RuntimeError, match="Cleanup driver"):
         uploads.cleanup_abandoned_uploads(cleanup_db, settings=settings)
 
@@ -585,6 +587,7 @@ def test_cleanup_deletes_stale_completed_objects_but_preserves_legal_holds(
     version = SimpleNamespace(status=DatasetStatus.UPLOADED)
     expired_at = datetime.now(UTC) - timedelta(seconds=1)
     stale = _upload(
+        retention_until=None,
         status="verifying",
         expires_at=expired_at,
         lease_expires_at=expired_at,
@@ -700,8 +703,12 @@ def test_retention_wait_does_not_starve_other_upload_cleanup(monkeypatch, status
 
     driver = Driver()
     monkeypatch.setattr(uploads, "get_object_store", lambda *_: driver)
-    pending = _upload(status=status, completed_object_uri="s3c://bucket/retained")
-    other = _upload(status="quarantined", completed_object_uri="s3c://bucket/other")
+    pending = _upload(
+        status=status, completed_object_uri="s3c://bucket/retained", retention_until=None
+    )
+    other = _upload(
+        status="quarantined", completed_object_uri="s3c://bucket/other", retention_until=None
+    )
     now = datetime.now(UTC)
     original = driver.delete
 

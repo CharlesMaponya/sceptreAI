@@ -20,9 +20,10 @@ from automl_api.models.workflows import (
     WorkflowCommand,
     WorkflowEvent,
 )
-from automl_api.services.champion_planning import plan_scope_refit, validate_refit_policy
+from automl_api.services.champion_planning import validate_refit_policy
 from automl_api.services.workflow_state import InvalidTransition, canonical_request_hash
 from automl_api.training.champion_refit import RefitPlan
+from champion_planning_fixture import plan_scope_refit
 from sqlalchemy import delete, select
 
 pytest_plugins = ["test_champion_refit_publication"]

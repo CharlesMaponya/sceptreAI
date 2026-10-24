@@ -54,6 +54,7 @@ class S3ObjectStoreDriver:
                 "S3-compatible storage requires OBJECT_STORE_ENDPOINT, "
                 "OBJECT_STORE_ACCESS_KEY, and OBJECT_STORE_SECRET_KEY."
             )
+        # Workflow reconciliation owns retries after uncertain provider outcomes.
         if client is None:
             import boto3
             from botocore.config import Config
@@ -64,7 +65,7 @@ class S3ObjectStoreDriver:
                 region_name=region,
                 aws_access_key_id=access_key,
                 aws_secret_access_key=secret_key,
-                config=Config(signature_version="s3v4", retries={"max_attempts": 5}),
+                config=Config(signature_version="s3v4", retries={"total_max_attempts": 1}),
             )
         self.client = client
         self.presign_client = presign_client or client
@@ -78,7 +79,7 @@ class S3ObjectStoreDriver:
                 region_name=region,
                 aws_access_key_id=access_key,
                 aws_secret_access_key=secret_key,
-                config=Config(signature_version="s3v4", retries={"max_attempts": 5}),
+                config=Config(signature_version="s3v4", retries={"total_max_attempts": 1}),
             )
 
     def capabilities(self) -> UploadCapabilities:

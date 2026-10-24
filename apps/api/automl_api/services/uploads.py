@@ -300,6 +300,12 @@ def complete_upload_session(
     return completion_read(db, upload)
 
 
+def _upload_retained(upload: DatasetUploadSession, now: datetime) -> bool:
+    return upload.legal_hold or (
+        upload.retention_until is not None and upload.retention_until > now
+    )
+
+
 def abort_upload_session(
     upload: DatasetUploadSession, *, settings: Settings | None = None
 ) -> AbortUploadRead:
@@ -308,6 +314,8 @@ def abort_upload_session(
         return AbortUploadRead(id=upload.id, status="aborted", aborted_at=upload.aborted_at)
     if upload.status == "ready":
         raise UploadContractError("A ready immutable upload cannot be aborted.")
+    if _upload_retained(upload, datetime.now(UTC)):
+        raise UploadContractError("Upload retention or legal hold prevents abort.")
     driver = get_object_store(settings)
     _require_session_driver(upload, driver.driver_name)
     driver.abort_upload(provider_upload(upload))
@@ -343,7 +351,6 @@ def cleanup_abandoned_uploads(
                         DatasetUploadSession.lease_expires_at.is_(None)
                         | (DatasetUploadSession.lease_expires_at <= observed_at)
                     )
-                    & (DatasetUploadSession.legal_hold.is_(False))
                 )
                 | (
                     (DatasetUploadSession.status == "quarantined")
@@ -352,9 +359,14 @@ def cleanup_abandoned_uploads(
                         DatasetUploadSession.lease_expires_at.is_(None)
                         | (DatasetUploadSession.lease_expires_at <= observed_at)
                     )
-                    & (DatasetUploadSession.legal_hold.is_(False))
                 )
             )
+            .where(
+                DatasetUploadSession.legal_hold.is_(False),
+                DatasetUploadSession.retention_until.is_(None)
+                | (DatasetUploadSession.retention_until <= observed_at),
+            )
+            .execution_options(populate_existing=True)
             .order_by(DatasetUploadSession.expires_at, DatasetUploadSession.id)
             .limit(limit)
             .with_for_update(skip_locked=True)
@@ -363,13 +375,13 @@ def cleanup_abandoned_uploads(
     result = {"expired": 0, "completed_deleted": 0, "quarantine_deleted": 0}
     driver = get_object_store(settings)
     for upload in rows:
+        if _upload_retained(upload, observed_at):
+            continue
         if upload.provider_driver != driver.driver_name:
             raise RuntimeError(
                 "Cleanup driver does not match the persisted upload provider identity."
             )
         if upload.status in {"quarantined", "object_completed", "verifying"}:
-            if upload.legal_hold:
-                continue
             previous_status = upload.status
             uri = upload.completed_object_uri
             if uri:

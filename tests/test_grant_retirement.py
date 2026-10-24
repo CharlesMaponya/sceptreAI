@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from automl_api.models.enums import AttemptStatus, WorkflowStage
 from automl_api.models.workflows import WorkflowAttemptCredentialGrant, WorkflowEvent
-from automl_api.services import deletion
+from automl_api.services import attempt_object_grants, deletion
 from automl_api.storage.contracts import DeletionPending
 from sqlalchemy import select
 from test_attempt_object_grant_schema import grant_values, make_attempt
@@ -24,6 +24,7 @@ def clock(monkeypatch):
             return state[0]
 
     monkeypatch.setattr(deletion, "datetime", Clock)
+    monkeypatch.setattr(attempt_object_grants, "datetime", Clock)
     return state
 
 
@@ -89,7 +90,15 @@ def test_retirement_covers_every_stage_and_method(
     )
     assert len(markers) == 1
     clock[0] = original_deadline
-    deletion._retire_deletion_grants(db, project.id, None)
+    if method == "PUT" or stage in {
+        WorkflowStage.CHAMPION_REFIT,
+        WorkflowStage.CHAMPION_EVALUATION,
+    }:
+        # Schema fixtures prove neither native write completion nor legacy retirement.
+        with pytest.raises(DeletionPending, match="Legacy champion"):
+            deletion._retire_deletion_grants(db, project.id, None)
+    else:
+        deletion._retire_deletion_grants(db, project.id, None)
     assert row.expires_at == original_deadline
 
 

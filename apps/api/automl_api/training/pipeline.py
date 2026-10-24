@@ -8,7 +8,7 @@ import re
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from functools import lru_cache
 from importlib.metadata import distributions, version
 from typing import Any
@@ -48,26 +48,30 @@ from sqlalchemy.orm import Session
 from zenml import pipeline, step
 
 from automl_api.core.config import get_settings
+from automl_api.core.redaction import redact_text
 from automl_api.db.session import get_session_factory
 from automl_api.models.datasets import DatasetVersion
 from automl_api.models.enums import (
     AttemptStatus,
-    CommandStatus,
     MetricKind,
     MetricSplit,
     RunStatus,
     TaskType,
 )
+from automl_api.models.projects import Project
 from automl_api.models.runs import Metric, ModelRun
 from automl_api.models.workflows import (
     DatasetSplitRevision,
     EstimatorCatalogRevision,
     TrainingCandidate,
     WorkflowAttempt,
-    WorkflowCommand,
 )
 from automl_api.schemas.training import TrainingEstimateRequest
-from automl_api.services.dataset_digests import require_verified_digest, verify_dataset_bytes
+from automl_api.services.dataset_digests import (
+    require_distinct_training_roles,
+    require_verified_digest,
+    verify_dataset_bytes,
+)
 from automl_api.services.experiment_identity import BINDINGS, ROLES, resolve_training_identity
 from automl_api.services.feature_contracts import bound_row, validate_compiled_view
 from automl_api.services.leakage import detect_target_leakage
@@ -78,21 +82,14 @@ from automl_api.services.temporal import (
 from automl_api.services.temporal import (
     series_unix_timestamp_unit as _series_unix_timestamp_unit,
 )
-from automl_api.services.tracking_reconciliation import (
-    LEASE_SECONDS,
-    _release_tracking,
-    _tracking_heartbeat,
-    _TrackingClaim,
-    tracking_identity,
-    validate_tracking_run,
-)
+from automl_api.services.tracking_reconciliation import ensure_tracking_run
 from automl_api.services.workflow_state import (
     StaleFence,
-    begin_command,
+    attempt_credentials_revoked,
     canonical_request_hash,
-    transition_command,
 )
 from automl_api.storage.object_store import get_object_store
+from automl_api.training import training_metadata
 from automl_api.training.catalog_contract import validate_catalog_revision
 from automl_api.training.correlation import CorrelatedFeatureFilter
 from automl_api.training.evaluation import (
@@ -119,6 +116,7 @@ from automl_api.training.parameter_overrides import (
     validate_bound_overrides,
     validate_conditionals,
 )
+from automl_api.training.training_context import training_context
 
 _TERMINAL_RUN_STATUSES = frozenset(
     {
@@ -205,18 +203,17 @@ class TrackingCreationUnresolved(RuntimeError):
 
 
 def _tracked_mlflow_run(run: ModelRun, *, role: str, run_name: str, parent_run_id=None, tags=None):
-    # MLflow retries POST creation internally; only the durable command may retry it.
+    from automl_api.training.training_tracking import ensure_remote_tracking
+
+    metadata_enabled = training_metadata.enabled()
+
     os.environ["MLFLOW_HTTP_REQUEST_MAX_RETRIES"] = "0"
-    attempt_id = os.getenv("AUTOML_ATTEMPT_ID") or "legacy"
-    payload = {
-        "model_run_id": str(run.id),
-        "attempt_id": attempt_id,
-        "role": role,
-        "parent_run_id": parent_run_id,
-        "tracking_backend_hash": hashlib.sha256(mlflow.get_tracking_uri().encode()).hexdigest(),
-    }
-    factory = get_session_factory()
-    claim = None
+    remote_id = ensure_remote_tracking(run.id, role, parent_run_id=parent_run_id)
+    if remote_id is not None:
+        active = mlflow.start_run(run_id=remote_id, nested=parent_run_id is not None)
+        return (
+            training_metadata.metadata_context(active, run.id, role) if metadata_enabled else active
+        )
 
     def live_run(db):
         current = _locked_run(db, run.id)
@@ -228,231 +225,72 @@ def _tracked_mlflow_run(run: ModelRun, *, role: str, run_name: str, parent_run_i
             raise StaleFence("This run no longer owns tracking creation.")
         return current
 
-    try:
-        with factory() as db:
-            current = live_run(db)
-            command, replayed = begin_command(
-                db,
-                project_id=current.project_id,
-                actor_id=current.created_by_id,
-                operation="mlflow.run.ensure",
-                idempotency_key=canonical_request_hash(
-                    {key: payload[key] for key in ("model_run_id", "attempt_id", "role")}
-                ),
-                payload=payload,
-            )
-            if not replayed:
-                command.resource_type, command.resource_id = "model_run", current.id
-            if (
-                command.resource_type != "model_run"
-                or command.resource_id != current.id
-                or command.status == CommandStatus.CANCELLED
-            ):
-                raise StaleFence("The tracking command scope no longer belongs to this run.")
-            identity = tracking_identity(command, current)
-            request_hash = command.request_hash
-            response = command.response_payload
-            if not isinstance(response, dict):
-                raise TrackingCreationUnresolved(
-                    "MLflow creation is unresolved; invalid stored state."
-                )
-            known_id = response.get("run_id")
-            known = set(response) == {"run_id"} and isinstance(known_id, str) and bool(known_id)
-            uncertain = (
-                set(response) == {"creation_started"} and response["creation_started"] is True
-            )
-            if not (known or uncertain or response == {}):
-                raise TrackingCreationUnresolved(
-                    "MLflow creation is unresolved; invalid stored state."
-                )
-            if not known:
-                now = datetime.now(UTC)
-                active = command.lease_expires_at is not None and command.lease_expires_at > now
-                owner = command.lease_owner or ""
-                # A live parent may supersede read-only recovery, never another writer.
-                if active and (
-                    not uncertain
-                    or not owner.startswith("tracking-")
-                    or owner.startswith("tracking-writer-")
-                ):
-                    raise TrackingCreationUnresolved(
-                        "MLflow creation is unresolved; another writer owns it."
-                    )
-                if command.status == CommandStatus.FAILED:
-                    transition_command(command, CommandStatus.PENDING)
-                transition_command(command, CommandStatus.RUNNING)
-                command.lease_owner = "tracking-writer-" + uuid.uuid4().hex
-                command.heartbeat_at = now
-                command.lease_expires_at = now + timedelta(seconds=LEASE_SECONDS)
-                claim = _TrackingClaim(
-                    command.id,
-                    command.project_id,
-                    command.resource_id,
-                    command.lease_owner,
-                    identity,
-                    dict(payload),
-                    request_hash,
-                    False,
-                    None,
-                )
-            command_id = command.id
-            db.commit()
-
-        def owned(db):
-            current = live_run(db)
-            command = db.get(
-                WorkflowCommand, command_id, with_for_update=True, populate_existing=True
-            )
-            if (
-                command is None
-                or command.project_id != current.project_id
-                or command.resource_type != "model_run"
-                or command.resource_id != current.id
-                or command.operation != "mlflow.run.ensure"
-                or command.request_hash != request_hash
-                or canonical_request_hash(command.request_payload)
-                != canonical_request_hash(payload)
-                or tracking_identity(command, current) != identity
-                or canonical_request_hash(command.response_payload)
-                != canonical_request_hash(response)
-            ):
-                raise StaleFence("The tracking command changed while remote I/O was in flight.")
-            if claim is not None:
-                if (
-                    command.status != CommandStatus.RUNNING
-                    or command.lease_owner != claim.owner
-                    or command.lease_expires_at is None
-                    or command.lease_expires_at <= datetime.now(UTC)
-                ):
-                    raise StaleFence("The tracking writer no longer owns its live lease.")
-            elif command.status == CommandStatus.CANCELLED:
-                raise StaleFence("The tracking command was cancelled during remote I/O.")
-            return current, command
-
-        client = MlflowClient()
-        if (
-            hashlib.sha256(client.tracking_uri.encode()).hexdigest()
-            != payload["tracking_backend_hash"]
-        ):
-            raise ValueError("Tracking backend differs from the committed intent.")
-        if known:
-            tracked = client.get_run(known_id)
-            validate_tracking_run(tracked, identity)
-        else:
-            with _tracking_heartbeat(factory, claim, lambda: datetime.now(UTC)):
-                experiment_name = f"automl-project-{identity['project_id']}"
-                experiment = client.get_experiment_by_name(experiment_name)
-                if experiment is None:
-                    if uncertain:
-                        raise TrackingCreationUnresolved(
-                            "MLflow creation is unresolved; its experiment is unavailable."
-                        )
-                    with factory() as db:
-                        owned(db)
-                        db.commit()
-                    try:
-                        experiment_id = client.create_experiment(experiment_name)
-                    except mlflow.exceptions.MlflowException:
-                        experiment = client.get_experiment_by_name(experiment_name)
-                        if experiment is None:
-                            raise
-                        experiment_id = experiment.experiment_id
-                else:
-                    experiment_id = experiment.experiment_id
-                matches = client.search_runs(
-                    [experiment_id],
-                    filter_string=f"tags.automl_tracking_command = '{command_id}'",
-                    run_view_type=mlflow.entities.ViewType.ALL,
-                    max_results=2,
-                )
-                if len(matches) > 1:
-                    raise ValueError("Multiple MLflow runs claim the same tracking command.")
-                if matches:
-                    tracked = matches[0]
-                else:
-                    if uncertain:
-                        raise TrackingCreationUnresolved(
-                            "MLflow creation is unresolved; refusing a duplicate request."
-                        )
-                    with factory() as db:
-                        _, command = owned(db)
-                        response = {"creation_started": True}
-                        command.response_payload = response
-                        db.commit()
-                    try:
-                        tracked = client.create_run(
-                            experiment_id, run_name=run_name, tags={**(tags or {}), **identity}
-                        )
-                    except Exception as exc:
-                        raise TrackingCreationUnresolved(
-                            "MLflow creation outcome is unknown; refusing an unverified retry."
-                        ) from exc
-                validate_tracking_run(tracked, identity)
-
-        with factory() as db:
-            current, command = owned(db)
-            command.response_payload = {"run_id": tracked.info.run_id}
-            command.response_status = 200
-            command.terminal_reason = None
-            command.lease_owner = None
-            command.lease_expires_at = None
-            if command.status != CommandStatus.SUCCEEDED:
-                if command.status == CommandStatus.FAILED:
-                    transition_command(command, CommandStatus.PENDING)
-                transition_command(command, CommandStatus.RUNNING)
-                transition_command(command, CommandStatus.SUCCEEDED)
-            if role == "parent":
-                current.mlflow_run_id = tracked.info.run_id
-            db.commit()
-            tracking_id = tracked.info.run_id
-        return mlflow.start_run(run_id=tracking_id, nested=parent_run_id is not None)
-    except Exception:
-        if claim is not None:
-            try:
-                _release_tracking(factory, claim)
-            except Exception:
-                # A lost database connection leaves the committed lease to expire.
-                pass
-        raise
+    tracking_id = ensure_tracking_run(
+        run.id,
+        factory=get_session_factory(),
+        live_run=live_run,
+        client_factory=MlflowClient,
+        tracking_uri=mlflow.get_tracking_uri(),
+        attempt_id=os.getenv("AUTOML_ATTEMPT_ID") or "legacy",
+        role=role,
+        run_name=run_name,
+        parent_run_id=parent_run_id,
+        tags=tags,
+    )
+    return mlflow.start_run(run_id=tracking_id, nested=parent_run_id is not None)
 
 
-def execute_training_run(run_id: uuid.UUID) -> dict[str, float]:
-    session_factory = get_session_factory()
-    with session_factory() as db:
-        run = _locked_run(db, run_id)
-        if run is None:
-            raise ValueError(f"Model run {run_id} was not found.")
-        if run.status in _TERMINAL_RUN_STATUSES or _has_committed_training_result(run):
-            return {}
-        _validate_bound_catalog(db, run)
-        approved_columns = _bound_feature_columns(db, run)
-        validate_bound_overrides(
-            db,
-            run,
-            select_candidates(
-                run.task_type,
-                run.params.get("candidate_models"),
-                int(run.params.get("candidate_limit") or 5),
-            ),
-        )
-        version = db.get(DatasetVersion, run.dataset_version_id)
-        if version is None:
-            raise ValueError("Dataset version was not found.")
-        from automl_api.services.provider_source import (
-            reject_promotional_membership,
-            require_prepared_source,
-        )
+def _prepare_training_context(db, run_id, *, context=None, require_bound=False, mark_running=True):
+    run = _locked_run(db, run_id, **({"context": context} if context is not None else {}))
+    if run is None:
+        raise ValueError(f"Model run {run_id} was not found.")
+    if run.status in _TERMINAL_RUN_STATUSES or _has_committed_training_result(
+        run, **({"attempt_id": str(context[0])} if context is not None else {})
+    ):
+        return None
+    _validate_bound_catalog(db, run, **({"require_bound": True} if require_bound else {}))
+    approved_columns = _bound_feature_columns(
+        db, run, **({"require_bound": True} if require_bound else {})
+    )
+    validate_bound_overrides(
+        db,
+        run,
+        select_candidates(
+            run.task_type,
+            run.params.get("candidate_models"),
+            int(run.params.get("candidate_limit") or 5),
+        ),
+    )
+    version = db.get(DatasetVersion, run.dataset_version_id)
+    if version is None:
+        raise ValueError("Dataset version was not found.")
+    from automl_api.services.provider_source import (
+        reject_promotional_membership,
+        require_prepared_source,
+    )
 
-        split = _bound_split_revision(db, run)
-        source_plan = require_prepared_source(db, version, split_revision_id=split.id)
-        reject_promotional_membership(db, run)
+    split = _bound_split_revision(db, run)
+    source_plan = require_prepared_source(db, version, split_revision_id=split.id)
+    reject_promotional_membership(db, run)
+    if mark_running:
         run.status = RunStatus.RUNNING
         run.started_at = run.started_at or datetime.now(UTC)
         run.failure_code = None
         run.failure_message = None
         run.plain_english_failure = None
         run.finished_at = None
-        db.commit()
+    return run, split, approved_columns, source_plan
+
+
+def execute_training_run(run_id: uuid.UUID) -> dict[str, float]:
+    prepared = training_context(run_id)
+    if prepared is None:
+        with get_session_factory()() as db:
+            prepared = _prepare_training_context(db, run_id)
+            if prepared is None:
+                return {}
+            db.commit()
+    run, split, approved_columns, source_plan = prepared
 
     try:
         dataframe, validation_dataframe = _load_prepared_training_frames(
@@ -471,7 +309,7 @@ def execute_training_run(run_id: uuid.UUID) -> dict[str, float]:
             run_name=run.run_name or str(run.id),
             tags={"task_type": run.task_type.value},
         ) as mlflow_run:
-            mlflow.set_tags(
+            training_metadata.log_tags(
                 {
                     "project_id": str(run.project_id),
                     "dataset_version_id": str(run.dataset_version_id),
@@ -480,7 +318,7 @@ def execute_training_run(run_id: uuid.UUID) -> dict[str, float]:
                 }
             )
             result = _fit_model(dataframe, run, validation_dataframe)
-            mlflow.log_params(_json_safe(result.params))
+            training_metadata.log_params(_json_safe(result.params))
             _log_metrics_synchronously(result.metrics)
             mlflow.log_dict(
                 {
@@ -520,14 +358,19 @@ def _load_dataframe(version: DatasetVersion) -> pd.DataFrame:
     raise ValueError(f"Unsupported training dataset format: {filename}")
 
 
-def _validate_bound_catalog(db: Session, run: ModelRun) -> None:
+def _validate_bound_catalog(db: Session, run: ModelRun, *, require_bound=False) -> None:
     revision_id = (run.params or {}).get("estimator_catalog_revision_id")
     if revision_id is None:
         # shortcut: allow unbound local calls until legacy migration retires them.
-        if os.getenv("AUTOML_ATTEMPT_ID") or get_settings().environment in {
-            "production",
-            "staging",
-        }:
+        if (
+            require_bound
+            or os.getenv("AUTOML_ATTEMPT_ID")
+            or get_settings().environment
+            in {
+                "production",
+                "staging",
+            }
+        ):
             raise ValueError("Training requires a bound catalog revision")
         return
     try:
@@ -560,14 +403,19 @@ def _validate_bound_catalog(db: Session, run: ModelRun) -> None:
         raise ValueError("Training estimator selection differs from its bound catalog")
 
 
-def _bound_feature_columns(db: Session, run: ModelRun) -> list[str] | None:
+def _bound_feature_columns(db: Session, run: ModelRun, *, require_bound=False) -> list[str] | None:
     identity = run.params.get("experiment_spec_revision_id")
     if identity is None:
         # shortcut: local unbound calls remain until their legacy migration is qualified.
-        if os.getenv("AUTOML_ATTEMPT_ID") or get_settings().environment in {
-            "production",
-            "staging",
-        }:
+        if (
+            require_bound
+            or os.getenv("AUTOML_ATTEMPT_ID")
+            or get_settings().environment
+            in {
+                "production",
+                "staging",
+            }
+        ):
             raise ValueError("Training requires an immutable experiment specification")
         return None
     try:
@@ -629,6 +477,7 @@ def _bound_split_revision(db: Session, run: ModelRun) -> DatasetSplitRevision:
     uris = (split.specification or {}).get("uris") or {}
     if not uris.get("train") or not uris.get("validation"):
         raise ValueError("The prepared split revision has no sealed train/validation roles.")
+    require_distinct_training_roles(uris)
     if (
         run.task_type == TaskType.TIME_SERIES
         and split.specification.get("split_strategy") != "temporal"
@@ -914,13 +763,13 @@ def _fit_model(
     completed = _completed_candidates(run)
     leaderboard: list[dict[str, Any]] = [
         {
-            **completed.get(candidate.name, _pending_candidate(candidate)),
             "training_rows": (
                 min(len(train_x), pairwise_limit)
                 if candidate.name in PAIRWISE_SAMPLE_MODELS and pairwise_limit > 0
                 else len(train_x)
             ),
             "validation_rows": len(test_x),
+            **completed.get(candidate.name, _pending_candidate(candidate)),
         }
         for candidate in candidates
     ]
@@ -942,8 +791,8 @@ def _fit_model(
             (candidate_x, candidate_y, test_x, test_y, run.task_type, iterations, cv, scoring)
         )
     for index, entry in _candidate_entries("supervised", candidates, arguments, run, completed):
-        entry["training_rows"] = len(arguments[index][0])
-        entry["validation_rows"] = len(test_x)
+        entry.setdefault("training_rows", len(arguments[index][0]))
+        entry.setdefault("validation_rows", len(test_x))
         leaderboard[index] = entry
         if entry["status"] == "succeeded":
             candidate_model = entry.pop("_model", None)
@@ -1312,7 +1161,7 @@ def _fit_candidate(
             parent_run_id=parent_run_id,
             tags={"candidate_model": candidate.name},
         ) as candidate_run:
-            mlflow.set_tags(
+            training_metadata.log_tags(
                 {
                     "candidate_model": candidate.name,
                     "cost_tier": candidate.cost_tier,
@@ -1322,7 +1171,7 @@ def _fit_candidate(
                     "rapids_active": rapids_active,
                 }
             )
-            mlflow.log_params(params)
+            training_metadata.log_params(params)
             _log_metrics_synchronously(metrics)
             _log_metric_synchronously("cv_primary_mean", cv_mean)
             _log_metric_synchronously("cv_primary_standard_deviation", cv_std)
@@ -1340,6 +1189,7 @@ def _fit_candidate(
             metrics,
             candidate_run.info.run_id,
             registered_model_name,
+            run_id=run.id,
         )
         _persist_candidate_phase(run.id, candidate.name, "saving_model")
         model_artifact_uri, model_artifact_sha256 = _persist_candidate_model(
@@ -1619,7 +1469,7 @@ def _fit_clustering_candidate(
             parent_run_id=parent_run_id,
             tags={"candidate_model": candidate.name},
         ) as candidate_run:
-            mlflow.set_tags(
+            training_metadata.log_tags(
                 {
                     "candidate_model": candidate.name,
                     "cost_tier": candidate.cost_tier,
@@ -1630,7 +1480,7 @@ def _fit_clustering_candidate(
                     "rapids_active": rapids_active,
                 }
             )
-            mlflow.log_params(_json_safe(params))
+            training_metadata.log_params(_json_safe(params))
             _log_metrics_synchronously(best_metrics)
             _log_metric_synchronously("fit_duration_seconds", duration)
             mlflow.log_dict(_json_safe(diagnostics), "evaluation.json")
@@ -1646,6 +1496,7 @@ def _fit_clustering_candidate(
             best_metrics,
             candidate_run.info.run_id,
             registered_model_name,
+            run_id=run.id,
         )
         _persist_candidate_phase(run.id, candidate.name, "saving_model")
         model_artifact_uri, model_artifact_sha256 = _persist_candidate_model(
@@ -1682,7 +1533,7 @@ def _failed_candidate(
     run: ModelRun,
 ) -> dict[str, Any]:
     duration = round(time.monotonic() - started, 3)
-    message = str(exc)[:1000]
+    message = redact_text(str(exc))[:1000]
     print(f"Candidate {candidate.name} failed: {message}", flush=True)
     parent = mlflow.active_run()
     parent_run_id = parent.info.run_id if parent else run.tags.get("candidate_parent_run_id")
@@ -1693,7 +1544,7 @@ def _failed_candidate(
         parent_run_id=parent_run_id,
         tags={"candidate_model": candidate.name, "candidate_status": "failed"},
     ):
-        mlflow.set_tags(
+        training_metadata.log_tags(
             {
                 "candidate_model": candidate.name,
                 "candidate_status": "failed",
@@ -1728,6 +1579,10 @@ def _completed_candidates(run: ModelRun) -> dict[str, dict[str, Any]]:
 
 
 def _restore_candidate(run: ModelRun, entry: dict[str, Any]) -> dict[str, Any]:
+    if os.getenv("AUTOML_TRAINING_MODEL_READ_PROTOCOL") is not None:
+        from automl_api.training.model_read import restore_model
+
+        return {**entry, "resumed": True, "_model": restore_model(run, entry)}
     store = get_object_store()
     uri = str(entry["model_artifact_uri"])
     prefix = store.uri_for_key(f"projects/{run.project_id}/runs/{run.id}/")
@@ -1746,6 +1601,10 @@ def _persist_candidate_model(
 ) -> tuple[str, str]:
     buffer = io.BytesIO()
     joblib.dump(model, buffer, compress=3)
+    if os.getenv("AUTOML_MODEL_OUTPUT_PROTOCOL") is not None:
+        from automl_api.training.model_output import persist_model_output
+
+        return persist_model_output(run, model_name, buffer.getvalue())
     safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "-", model_name).strip("-")
     attempt_id = os.getenv("AUTOML_ATTEMPT_ID")
     attempt_prefix = f"attempts/{uuid.UUID(attempt_id)}/" if attempt_id else ""
@@ -1769,8 +1628,12 @@ def _mirror_candidate_evidence_to_parent(
     metrics: dict[str, float],
     candidate_run_id: str,
     registered_model_name: str,
+    *,
+    run_id=None,
 ) -> None:
     if not parent_run_id:
+        return
+    if training_metadata.mirror(run_id, candidate_name, candidate_run_id, len(metrics)):
         return
     client = MlflowClient()
     safe_candidate = re.sub(r"[^A-Za-z0-9_.-]+", "-", candidate_name).strip("-")
@@ -1793,7 +1656,7 @@ def _log_metrics_synchronously(metrics: dict[str, float]) -> None:
 
 def _log_metric_synchronously(name: str, value: float) -> None:
     try:
-        mlflow.log_metric(name, float(value), step=0, synchronous=True)
+        training_metadata.log_metric(name, float(value))
     except Exception as exc:
         message = str(exc).lower()
         if "duplicate key" in message and "metric_pk" in message:
@@ -1865,7 +1728,15 @@ def merge_leaderboard_entries(
     return rank_leaderboard(list(by_model.values()), primary_metric)
 
 
-def _sync_candidate_statuses(db: Session, run: ModelRun, entries: list[dict]) -> None:
+def _sync_candidate_statuses(
+    db: Session, run: ModelRun, entries: list[dict], *, context=None
+) -> None:
+    from automl_api.services.training_model_output import (
+        require_published_models,
+        require_tracking_entry_shapes,
+    )
+
+    require_tracking_entry_shapes(db, run, entries)
     terminal = {"succeeded", "failed", "cancelled", "skipped"}
     by_name = {
         entry["model"]: entry
@@ -1899,132 +1770,164 @@ def _sync_candidate_statuses(db: Session, run: ModelRun, entries: list[dict]) ->
                     raise StaleFence("Terminal candidate evidence is missing or inconsistent")
                 entry.clear()
                 entry.update(old)
-        else:
-            row.status = entry["status"]
+    require_published_models(
+        db, run, entries, **({"context": context} if context is not None else {})
+    )
+    for row in rows:
+        if row.status not in terminal:
+            row.status = by_name[row.estimator_key]["status"]
 
 
-def _persist_partial_leaderboard(
-    run_id: uuid.UUID,
-    entries: list[dict[str, Any]],
-    primary_metric: str,
-) -> None:
-    ranked = rank_leaderboard(entries, primary_metric)
-    successful = [entry for entry in ranked if entry["status"] == "succeeded"]
+def _persist_partial_leaderboard(run_id, entries, primary_metric):
+    from automl_api.training.training_progress import publish_training_progress
+
+    if (
+        publish_training_progress(run_id, "partial", entries=entries, primary_metric=primary_metric)
+        is not None
+    ):
+        return
     with get_session_factory()() as db:
         run = _locked_run(db, run_id)
-        if run is None:
-            return
-        if run.status in _TERMINAL_RUN_STATUSES or _has_committed_training_result(run):
-            return
-        if os.getenv("AUTOML_MODEL_PODS") == "1":
-            stored = {entry["model"]: entry for entry in run.tags.get("leaderboard", [])}
-            ranked = rank_leaderboard(
-                [
-                    {
-                        **entry,
-                        **stored.get(entry["model"], {}),
-                        "phase": stored.get(entry["model"], {}).get("phase") or entry.get("phase"),
-                    }
-                    if entry["status"] in {"pending", "running"}
-                    else entry
-                    for entry in ranked
-                ],
-                primary_metric,
-            )
-            successful = [entry for entry in ranked if entry["status"] == "succeeded"]
-        _sync_candidate_statuses(db, run, ranked)
-        ranked = rank_leaderboard(ranked, primary_metric)
-        successful = [entry for entry in ranked if entry["status"] == "succeeded"]
-        active = next((entry for entry in ranked if entry["status"] == "running"), None)
-        run.tags = {
-            **run.tags,
-            "leaderboard_primary_metric": primary_metric,
-            "leaderboard": _json_safe(ranked),
-            "winner": successful[0]["model"] if successful else None,
-            "winner_mlflow_run_id": (successful[0].get("mlflow_run_id") if successful else None),
-            "completed_candidates": sum(
-                entry["status"] in {"succeeded", "failed"} for entry in ranked
-            ),
-            "current_candidate": active["model"] if active else None,
-            "candidate_phase": (
-                (active.get("phase") or "training") if active else "between_candidates"
-            ),
-            "leaderboard_updated_at": datetime.now(UTC).isoformat(),
-        }
-        parent_id = run.tags.get("leaderboard_parent_run_id")
-        if parent_id:
-            try:
-                parent = _locked_run(db, uuid.UUID(str(parent_id)), check_fence=False)
-            except ValueError:
-                parent = None
-            if parent is not None and parent.project_id == run.project_id:
-                parent_metric = parent.tags.get(
-                    "leaderboard_primary_metric",
-                    primary_metric,
-                )
-                additions = [
-                    {
-                        **entry,
-                        "extension_run_id": str(run.id),
-                    }
-                    for entry in ranked
-                ]
-                merged = merge_leaderboard_entries(
-                    parent.tags.get("leaderboard", []),
-                    additions,
-                    parent_metric,
-                )
-                merged_successful = [entry for entry in merged if entry["status"] == "succeeded"]
-                parent.tags = {
-                    **parent.tags,
-                    "leaderboard": _json_safe(merged),
-                    "winner": (merged_successful[0]["model"] if merged_successful else None),
-                    "winner_mlflow_run_id": (
-                        merged_successful[0].get("mlflow_run_id") if merged_successful else None
-                    ),
-                    "completed_candidates": sum(
-                        entry["status"] in {"succeeded", "failed"} for entry in merged
-                    ),
-                    "leaderboard_updated_at": datetime.now(UTC).isoformat(),
-                }
-        db.commit()
-
-
-def _persist_candidate_phase(run_id: uuid.UUID, candidate: str, phase: str) -> None:
-    with get_session_factory()() as db:
-        run = _locked_run(db, run_id)
-        if run is None:
-            return
-        if run.status in _TERMINAL_RUN_STATUSES or _has_committed_training_result(run):
-            return
-        leaderboard = [
-            (
-                {
-                    **entry,
-                    "status": "running",
-                    "phase": phase,
-                    "phase_updated_at": datetime.now(UTC).isoformat(),
-                }
-                if entry.get("model") == candidate and entry.get("status") in {"pending", "running"}
-                else entry
-            )
-            for entry in (run.tags or {}).get("leaderboard", [])
-        ]
-        _sync_candidate_statuses(db, run, leaderboard)
-        if any(
-            entry.get("model") == candidate
-            and entry.get("status") in {"succeeded", "failed", "cancelled", "skipped"}
-            for entry in leaderboard
+        if (
+            run is None
+            or run.status in _TERMINAL_RUN_STATUSES
+            or _has_committed_training_result(run)
         ):
             return
-        run.tags = {
-            **(run.tags or {}),
-            "current_candidate": candidate,
-            "candidate_phase": phase,
-            "candidate_phase_updated_at": datetime.now(UTC).isoformat(),
-            "leaderboard": leaderboard,
-        }
+        _store_partial_leaderboard(db, run, entries, primary_metric)
         db.commit()
+
+
+def _store_partial_leaderboard(db, run, entries, primary_metric, *, context=None, model_pods=None):
+    from automl_api.services.training_model_output import require_tracking_entry_shapes
+
+    require_tracking_entry_shapes(db, run, entries)
+    ranked = rank_leaderboard(entries, primary_metric)
+    successful = [entry for entry in ranked if entry["status"] == "succeeded"]
+    if model_pods if model_pods is not None else os.getenv("AUTOML_MODEL_PODS") == "1":
+        stored = {entry["model"]: entry for entry in run.tags.get("leaderboard", [])}
+        ranked = rank_leaderboard(
+            [
+                {
+                    **entry,
+                    **stored.get(entry["model"], {}),
+                    "phase": stored.get(entry["model"], {}).get("phase") or entry.get("phase"),
+                }
+                if entry["status"] in {"pending", "running"}
+                else entry
+                for entry in ranked
+            ],
+            primary_metric,
+        )
+        successful = [entry for entry in ranked if entry["status"] == "succeeded"]
+    _sync_candidate_statuses(
+        db, run, ranked, **({"context": context} if context is not None else {})
+    )
+    ranked = rank_leaderboard(ranked, primary_metric)
+    successful = [entry for entry in ranked if entry["status"] == "succeeded"]
+    active = next((entry for entry in ranked if entry["status"] == "running"), None)
+    run.tags = {
+        **run.tags,
+        "leaderboard_primary_metric": primary_metric,
+        "leaderboard": _json_safe(ranked),
+        "winner": successful[0]["model"] if successful else None,
+        "winner_mlflow_run_id": (successful[0].get("mlflow_run_id") if successful else None),
+        "completed_candidates": sum(entry["status"] in {"succeeded", "failed"} for entry in ranked),
+        "current_candidate": active["model"] if active else None,
+        "candidate_phase": (
+            (active.get("phase") or "training") if active else "between_candidates"
+        ),
+        "leaderboard_updated_at": datetime.now(UTC).isoformat(),
+    }
+    parent_id = run.tags.get("leaderboard_parent_run_id")
+    if parent_id:
+        try:
+            parent = _locked_run(db, uuid.UUID(str(parent_id)), check_fence=False)
+        except ValueError:
+            parent = None
+        if parent is not None and parent.project_id == run.project_id:
+            parent_metric = parent.tags.get(
+                "leaderboard_primary_metric",
+                primary_metric,
+            )
+            additions = [
+                {
+                    **entry,
+                    "extension_run_id": str(run.id),
+                }
+                for entry in ranked
+            ]
+            merged = merge_leaderboard_entries(
+                parent.tags.get("leaderboard", []),
+                additions,
+                parent_metric,
+            )
+            merged_successful = [entry for entry in merged if entry["status"] == "succeeded"]
+            parent.tags = {
+                **parent.tags,
+                "leaderboard": _json_safe(merged),
+                "winner": (merged_successful[0]["model"] if merged_successful else None),
+                "winner_mlflow_run_id": (
+                    merged_successful[0].get("mlflow_run_id") if merged_successful else None
+                ),
+                "completed_candidates": sum(
+                    entry["status"] in {"succeeded", "failed"} for entry in merged
+                ),
+                "leaderboard_updated_at": datetime.now(UTC).isoformat(),
+            }
+
+
+def _persist_candidate_phase(run_id, candidate, phase):
+    from automl_api.training.training_progress import publish_training_progress
+
+    if (
+        publish_training_progress(run_id, "phase", candidate_name=candidate, phase=phase)
+        is not None
+    ):
+        return
+    with get_session_factory()() as db:
+        run = _locked_run(db, run_id)
+        if (
+            run is None
+            or run.status in _TERMINAL_RUN_STATUSES
+            or _has_committed_training_result(run)
+        ):
+            return
+        if _store_candidate_phase(db, run, candidate, phase):
+            db.commit()
+
+
+def _store_candidate_phase(db, run, candidate, phase, *, context=None):
+    leaderboard = [
+        (
+            {
+                **entry,
+                "status": "running",
+                "phase": phase,
+                "phase_updated_at": datetime.now(UTC).isoformat(),
+            }
+            if entry.get("model") == candidate and entry.get("status") in {"pending", "running"}
+            else entry
+        )
+        for entry in (run.tags or {}).get("leaderboard", [])
+    ]
+    _sync_candidate_statuses(
+        db, run, leaderboard, **({"context": context} if context is not None else {})
+    )
+    if any(
+        entry.get("model") == candidate
+        and entry.get("status") in {"succeeded", "failed", "cancelled", "skipped"}
+        for entry in leaderboard
+    ):
+        return False
+    run.tags = {
+        **(run.tags or {}),
+        "current_candidate": candidate,
+        "candidate_phase": phase,
+        "candidate_phase_updated_at": datetime.now(UTC).isoformat(),
+        "leaderboard": leaderboard,
+    }
+    return True
 
 
 def _cross_validation_strategy(
@@ -2312,9 +2215,13 @@ def _json_default(value: Any) -> Any:
     return str(value)
 
 
-def _has_committed_training_result(run: ModelRun) -> bool:
+def _has_committed_training_result(run: ModelRun, *, attempt_id=None) -> bool:
     receipt = (run.tags or {}).get("training_result_receipt")
-    return bool(receipt and receipt.get("attempt_id") == os.getenv("AUTOML_ATTEMPT_ID"))
+    return bool(
+        receipt
+        and receipt.get("attempt_id")
+        == (attempt_id if attempt_id is not None else os.getenv("AUTOML_ATTEMPT_ID"))
+    )
 
 
 def _mark_failed(run_id: uuid.UUID, exc: Exception) -> None:
@@ -2326,7 +2233,7 @@ def _mark_failed(run_id: uuid.UUID, exc: Exception) -> None:
             return
         run.status = RunStatus.FAILED
         run.failure_code = "TRAINING_PIPELINE_FAILED"
-        run.failure_message = str(exc)
+        run.failure_message = redact_text(str(exc))
         run.plain_english_failure = (
             "Model training failed. Review the run logs for data quality, "
             "memory, model, or MLflow connectivity errors."
@@ -2340,78 +2247,120 @@ def _persist_training_success(
     result: TournamentResult,
     mlflow_run_id: str,
 ) -> bool:
+    from automl_api.training.training_result import publish_training_result
+
+    published = publish_training_result(run_id, result, mlflow_run_id)
+    if published is not None:
+        return published
     with get_session_factory()() as db:
         persisted_run = _locked_run(db, run_id)
         if persisted_run is None or persisted_run.status in _TERMINAL_RUN_STATUSES:
             return False
-        _sync_candidate_statuses(db, persisted_run, result.leaderboard)
-        attempt_id = os.getenv("AUTOML_ATTEMPT_ID")
-        fenced_attempt = bool(attempt_id)
-        receipt = None
-        if fenced_attempt:
-            receipt = {
-                "attempt_id": str(uuid.UUID(attempt_id)),
-                "digest": canonical_request_hash(
-                    _json_safe(
-                        {
-                            "metrics": result.metrics,
-                            "params": result.params,
-                            "leaderboard": result.leaderboard,
-                            "primary_metric": result.primary_metric,
-                            "mlflow_run_id": mlflow_run_id,
-                        }
-                    )
-                ),
-            }
-            previous = persisted_run.tags.get("training_result_receipt")
-            if previous and previous.get("attempt_id") == receipt["attempt_id"]:
-                if previous != receipt:
-                    raise StaleFence("This attempt already committed a different training result.")
-                return True
-        persisted_run.status = RunStatus.RUNNING if fenced_attempt else RunStatus.SUCCEEDED
-        persisted_run.mlflow_run_id = mlflow_run_id
-        persisted_run.finished_at = None if fenced_attempt else datetime.now(UTC)
-        persisted_run.tags = {
-            **persisted_run.tags,
-            "winner": result.leaderboard[0]["model"],
-            "winner_mlflow_run_id": result.leaderboard[0].get("mlflow_run_id"),
-            "winner_model_artifact_uri": result.leaderboard[0].get("model_artifact_uri"),
-            **({"training_result_receipt": receipt} if receipt is not None else {}),
-            "leaderboard_primary_metric": result.primary_metric,
-            "leaderboard": result.leaderboard,
-        }
-        persisted_run.params = {
-            **persisted_run.params,
-            "excluded_leakage_columns": result.params.get(
-                "excluded_leakage_columns",
-                persisted_run.params.get("excluded_leakage_columns", []),
-            ),
-            "deduplicated_rows": result.params.get("deduplicated_rows", 0),
-            "positive_label": result.params.get(
-                "positive_label",
-                persisted_run.params.get("positive_label"),
-            ),
-        }
-        for name, value in result.metrics.items():
-            db.add(
-                Metric(
-                    project_id=persisted_run.project_id,
-                    model_run_id=persisted_run.id,
-                    name=name,
-                    kind=MetricKind.PERFORMANCE,
-                    split=MetricSplit.VALIDATION,
-                    value=float(value),
-                    higher_is_better=metric_direction(name) == "maximize",
-                )
-            )
-        db.commit()
+        if _store_training_success(db, persisted_run, result, mlflow_run_id):
+            db.commit()
     return True
 
 
-def _locked_run(db: Session, run_id: uuid.UUID, *, check_fence: bool = True) -> ModelRun | None:
-    # Keep the same attempt-before-run lock order as the reconciler. Every
-    # shared result write must reject a superseded generation, not only final CAS.
-    attempt_id = os.getenv("AUTOML_ATTEMPT_ID")
+def _store_training_success(db, persisted_run, result, mlflow_run_id, *, context=None):
+    attempt_id = str(context[0]) if context is not None else os.getenv("AUTOML_ATTEMPT_ID")
+    fenced_attempt = bool(attempt_id)
+    from automl_api.services.training_tracking import require_run_parent_tracking
+
+    tracking_attempt = require_run_parent_tracking(
+        db,
+        persisted_run,
+        mlflow_run_id,
+        context=context,
+        live=not _has_committed_training_result(persisted_run),
+    )
+    receipt = None
+    if fenced_attempt:
+        receipt = {
+            "attempt_id": str(uuid.UUID(attempt_id)),
+            "digest": canonical_request_hash(
+                _json_safe(
+                    {
+                        "metrics": result.metrics,
+                        "params": result.params,
+                        "leaderboard": result.leaderboard,
+                        "primary_metric": result.primary_metric,
+                        "mlflow_run_id": mlflow_run_id,
+                    }
+                )
+            ),
+        }
+        previous = persisted_run.tags.get("training_result_receipt")
+        if previous and previous.get("attempt_id") == receipt["attempt_id"]:
+            if previous != receipt:
+                raise StaleFence("This attempt already committed a different training result.")
+            if tracking_attempt is not None:
+                from automl_api.services.training_model_output import require_stored_tracking
+
+                require_stored_tracking(db, tracking_attempt, persisted_run)
+                from automl_api.services.training_metadata import result_metadata
+
+                result_metadata(db, tracking_attempt, persisted_run, receipt)
+            return False
+    _sync_candidate_statuses(
+        db,
+        persisted_run,
+        result.leaderboard,
+        **({"context": context} if context is not None else {}),
+    )
+    persisted_run.status = RunStatus.RUNNING if fenced_attempt else RunStatus.SUCCEEDED
+    persisted_run.mlflow_run_id = mlflow_run_id
+    persisted_run.finished_at = None if fenced_attempt else datetime.now(UTC)
+    persisted_run.tags = {
+        **persisted_run.tags,
+        "winner": result.leaderboard[0]["model"],
+        "winner_mlflow_run_id": result.leaderboard[0].get("mlflow_run_id"),
+        "winner_model_artifact_uri": result.leaderboard[0].get("model_artifact_uri"),
+        **({"training_result_receipt": receipt} if receipt is not None else {}),
+        "leaderboard_primary_metric": result.primary_metric,
+        "leaderboard": result.leaderboard,
+    }
+    persisted_run.params = {
+        **persisted_run.params,
+        "excluded_leakage_columns": result.params.get(
+            "excluded_leakage_columns",
+            persisted_run.params.get("excluded_leakage_columns", []),
+        ),
+        "deduplicated_rows": result.params.get("deduplicated_rows", 0),
+        "positive_label": result.params.get(
+            "positive_label",
+            persisted_run.params.get("positive_label"),
+        ),
+    }
+    if tracking_attempt is not None:
+        from automl_api.services.training_metadata import result_metadata
+
+        result_metadata(db, tracking_attempt, persisted_run, receipt, publish=True)
+    for name, value in result.metrics.items():
+        db.add(
+            Metric(
+                project_id=persisted_run.project_id,
+                model_run_id=persisted_run.id,
+                name=name,
+                kind=MetricKind.PERFORMANCE,
+                split=MetricSplit.VALIDATION,
+                value=float(value),
+                higher_is_better=metric_direction(name) == "maximize",
+            )
+        )
+    return True
+
+
+def _locked_run(
+    db: Session, run_id: uuid.UUID, *, check_fence: bool = True, context=None
+) -> ModelRun | None:
+    # Project deletion takes the project before its attempts and runs.
+    db.execute(
+        select(Project)
+        .join(ModelRun, ModelRun.project_id == Project.id)
+        .where(ModelRun.id == run_id)
+        .with_for_update(read=True, of=Project)
+    )
+    attempt_id = str(context[0]) if context is not None else os.getenv("AUTOML_ATTEMPT_ID")
     if check_fence and attempt_id:
         attempt = db.scalar(
             select(WorkflowAttempt)
@@ -2422,12 +2371,14 @@ def _locked_run(db: Session, run_id: uuid.UUID, *, check_fence: bool = True) -> 
         if (
             attempt is None
             or attempt.model_run_id != run_id
-            or attempt.fencing_token != os.getenv("AUTOML_FENCING_TOKEN")
+            or attempt.fencing_token
+            != (context[1] if context is not None else os.getenv("AUTOML_FENCING_TOKEN"))
             or attempt.status not in {AttemptStatus.SUBMITTED, AttemptStatus.RUNNING}
             or (
                 getattr(attempt, "lease_expires_at", None) is not None
                 and attempt.lease_expires_at <= datetime.now(UTC)
             )
+            or attempt_credentials_revoked(db, attempt.id)
         ):
             raise StaleFence("The training attempt no longer owns this run.")
     return db.scalar(select(ModelRun).where(ModelRun.id == run_id).with_for_update())

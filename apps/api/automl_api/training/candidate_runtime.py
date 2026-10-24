@@ -7,6 +7,8 @@ from types import SimpleNamespace
 
 import ray
 
+from automl_api.core.redaction import redact_text
+
 
 def enabled() -> bool:
     return os.getenv("AUTOML_MODEL_PODS") == "1"
@@ -120,7 +122,7 @@ def results(kind, jobs, run):
                         "metrics": {},
                         "diagnostics": {},
                         "best_params": {},
-                        "error": str(exc)[:2000],
+                        "error": redact_text(str(exc))[:2000],
                         "duration_seconds": None,
                         "mlflow_run_id": None,
                     }

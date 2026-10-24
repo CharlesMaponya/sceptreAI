@@ -24,10 +24,16 @@ from automl_api.models.enums import (
 from automl_api.models.projects import Project
 from automl_api.models.runs import ModelRun
 from automl_api.models.workflows import DeletionTombstone, WorkflowAttempt, WorkflowEvent
-from automl_api.services.workflow_state import StaleFence, canonical_request_hash
+from automl_api.services.workflow_state import (
+    StaleFence,
+    attempt_credentials_revoked,
+    canonical_request_hash,
+)
 
 if TYPE_CHECKING:
     from automl_api.services.provider_source import ProviderReadPlan, ProviderVerificationPlan
+    from automl_api.training.champion_evaluation import EvaluationPlan
+    from automl_api.training.champion_refit import RefitPlan
 
 
 def attempt_audience(attempt_id, fence):
@@ -91,10 +97,137 @@ class AdmissionScope:
     ray_job_name: str | None
     namespace: str
     binding_digest: str
-    source_plan: ProviderReadPlan | ProviderVerificationPlan | None = field(
-        default=None, repr=False, compare=False
+    source_plan: ProviderReadPlan | ProviderVerificationPlan | RefitPlan | EvaluationPlan | None = (
+        field(default=None, repr=False, compare=False)
     )
     verifier_resources: dict | None = field(default=None, repr=False, compare=False)
+    champion_resources: dict | None = field(default=None, repr=False, compare=False)
+    grant_deadline: datetime | None = None
+
+
+def _champion_scope(db, attempt_id, expected_project):
+    from automl_api.services.evaluation_access import locked_evaluation
+    from automl_api.services.refit_access import locked_refit
+
+    attempt = db.get(WorkflowAttempt, attempt_id, populate_existing=True)
+    claims = {"project_id": attempt.project_id, "fence": attempt.fencing_token}
+    refit = attempt.stage == WorkflowStage.CHAMPION_REFIT
+    lookup = locked_refit if refit else locked_evaluation
+    scope, attempt, plan = lookup(
+        db, attempt_id, claims, (AttemptStatus.SUBMITTED, AttemptStatus.RUNNING)
+    )
+    project = db.get(Project, attempt.project_id, populate_existing=True)
+    version = db.get(DatasetVersion, attempt.dataset_version_id, populate_existing=True)
+    stage = "refit" if refit else "evaluation"
+    submission = db.scalar(
+        select(WorkflowEvent)
+        .where(
+            WorkflowEvent.attempt_id == attempt_id,
+            WorkflowEvent.event_key == stage + "_submission",
+        )
+        .execution_options(populate_existing=True)
+    )
+    if (
+        (expected_project is not None and attempt.project_id != expected_project)
+        or project is None
+        or project.status != ProjectStatus.ACTIVE
+        or version is None
+        or version.project_id != project.id
+        or version.status in {DatasetStatus.ARCHIVED, DatasetStatus.FAILED}
+        or submission is None
+        or submission.event_type != stage + "_submission"
+        or submission.result_digest != canonical_request_hash(submission.payload)
+        or submission.payload.get("object_grant_protocol") != plan.credential_protocol
+        or plan.credential_protocol not in {"pod-bound-read-v1", "pod-bound-object-v2"}
+    ):
+        raise StaleFence("Champion workload has no live pod-bound read declaration")
+    resources = submission.payload
+    job = resources["job"]
+    pod = job["spec"]["template"]["spec"]
+    from automl_api.training.attempt_admission import TOKEN_PATH
+
+    identity = {
+        "name": "identity",
+        "projected": {
+            "defaultMode": 0o444,
+            "sources": [
+                {
+                    "serviceAccountToken": {
+                        "path": "token",
+                        "expirationSeconds": 600,
+                        "audience": attempt_audience(attempt.id, attempt.fencing_token),
+                    }
+                }
+            ],
+        },
+    }
+    if (
+        job["metadata"]["name"] != stage + "-" + attempt.id.hex
+        or attempt.workload_identity != f"project-{project.id}-{stage}"
+        or pod.get("serviceAccountName") != attempt.workload_identity
+        or pod.get("automountServiceAccountToken") is not False
+        or pod.get("enableServiceLinks") is not False
+        or identity not in pod.get("volumes", [])
+        or {"name": "AUTOML_IDENTITY_TOKEN_FILE", "value": TOKEN_PATH}
+        not in pod["containers"][0].get("env", [])
+    ):
+        raise StaleFence("Champion workload identity differs from its registered attempt")
+    deleting = db.scalar(
+        select(DeletionTombstone.id)
+        .where(
+            DeletionTombstone.project_id == project.id,
+            (DeletionTombstone.resource_type == "project")
+            | (
+                (DeletionTombstone.resource_type == "run")
+                & (DeletionTombstone.resource_id == attempt.model_run_id)
+            ),
+        )
+        .limit(1)
+    )
+    if deleting is not None:
+        raise StaleFence("Champion workload is deleting")
+    return AdmissionScope(
+        attempt.id,
+        project.id,
+        attempt.generation,
+        attempt.fencing_token,
+        attempt.workload_identity,
+        job["metadata"]["name"],
+        job["metadata"]["namespace"],
+        canonical_request_hash(
+            {
+                "plan": plan.digest,
+                "submission": submission.result_digest,
+                "deadline": scope.scope_deadline_at,
+            }
+        ),
+        source_plan=plan,
+        champion_resources=resources,
+        grant_deadline=scope.scope_deadline_at,
+    )
+
+
+def _bind_champion_identity(db, scope, observed):
+    from automl_api.services.evaluation_publication import _append
+
+    key = "champion.resources.observed"
+    payload = {
+        "submission_digest": canonical_request_hash(scope.champion_resources),
+        "uids": observed,
+    }
+    row = db.scalar(
+        select(WorkflowEvent)
+        .where(
+            WorkflowEvent.attempt_id == scope.id,
+            WorkflowEvent.event_key == key,
+        )
+        .execution_options(populate_existing=True)
+    )
+    if row is not None:
+        if row.payload != payload or row.result_digest != canonical_request_hash(payload):
+            raise StaleFence("Champion native workload identity changed")
+    else:
+        _append(db, db.get(WorkflowAttempt, scope.id), key, payload)
 
 
 def _scope(db, attempt_id, *, lock=False, expected_project=None):
@@ -103,6 +236,9 @@ def _scope(db, attempt_id, *, lock=False, expected_project=None):
         project = db.get(Project, expected_project, with_for_update={"read": True})
         if project is None or project.status != ProjectStatus.ACTIVE:
             raise StaleFence("The workload project is inactive.")
+    stage = db.scalar(select(WorkflowAttempt.stage).where(WorkflowAttempt.id == attempt_id))
+    if stage in {WorkflowStage.CHAMPION_REFIT, WorkflowStage.CHAMPION_EVALUATION}:
+        return _champion_scope(db, attempt_id, expected_project)
     query = select(WorkflowAttempt).where(WorkflowAttempt.id == attempt_id)
     if lock:
         query = query.with_for_update()
@@ -117,6 +253,7 @@ def _scope(db, attempt_id, *, lock=False, expected_project=None):
         }
         or attempt.status not in {AttemptStatus.SUBMITTED, AttemptStatus.RUNNING}
         or (attempt.lease_expires_at is not None and attempt.lease_expires_at <= datetime.now(UTC))
+        or attempt_credentials_revoked(db, attempt.id)
     ):
         raise StaleFence("The attempt no longer admits workload identities.")
     namespace = get_settings().training_namespace
@@ -286,7 +423,7 @@ def _admit(factory, attempt_id, token, k8s, scope_resolver, *, event_type):
     ):
         raise StaleFence("The pod identity does not match this attempt.")
     if pod.spec.service_account_name != attempt.workload_identity:
-        if attempt.verifier_resources is not None:
+        if attempt.verifier_resources is not None or attempt.champion_resources is not None:
             raise StaleFence("The verifier pod uses another service account.")
         job_labels = _head_owner(k8s, pod, attempt, namespace)
         if any(job_labels.get(k) != v for k, v in expected.items()):
@@ -295,6 +432,11 @@ def _admit(factory, attempt_id, token, k8s, scope_resolver, *, event_type):
         from automl_api.services.provider_import_workload import check_verifier_pod
 
         check_verifier_pod(k8s, pod, attempt.verifier_resources)
+    observed_champion = None
+    if attempt.champion_resources is not None:
+        from automl_api.services.champion_workloads import check_champion_pod
+
+        observed_champion = check_champion_pod(k8s, pod, attempt.champion_resources)
     # TokenReview authenticated these exact bytes; decode only to cap their lifetime.
     claims = jwt.decode(token, options={"verify_signature": False})
     now = int(datetime.now(UTC).timestamp())
@@ -314,6 +456,8 @@ def _admit(factory, attempt_id, token, k8s, scope_resolver, *, event_type):
         current = scope_resolver(db, attempt_id, lock=True, expected_project=attempt.project_id)
         if current != attempt or expires <= int(datetime.now(UTC).timestamp()):
             raise StaleFence("The workload binding changed or expired during verification.")
+        if observed_champion is not None:
+            _bind_champion_identity(db, current, observed_champion)
         key = f"{event_type}:{payload['token_sha256']}"
         existing = db.scalar(
             select(WorkflowEvent)

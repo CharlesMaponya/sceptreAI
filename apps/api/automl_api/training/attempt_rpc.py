@@ -23,10 +23,24 @@ class AttemptRPC:
         if ca_file:
             self.tls.load_verify_locations(cafile=ca_file)
 
-    def request(self, method, path, *, payload=None, max_bytes):
+    def request(
+        self,
+        method,
+        path,
+        *,
+        payload=None,
+        content=None,
+        request_id=None,
+        max_bytes,
+        timeout_seconds=None,
+    ):
         try:
             if type(max_bytes) is not int or max_bytes <= 0:
                 raise ValueError("A positive control response budget is required")
+            if timeout_seconds is not None and (
+                type(timeout_seconds) is not int or not 0 < timeout_seconds <= 60
+            ):
+                raise ValueError("A bounded positive control timeout is required")
             with self.token_file.open("rb") as source:
                 encoded = source.read(65537)
             if len(encoded) > 65536:
@@ -34,14 +48,31 @@ class AttemptRPC:
             token = encoded.decode().strip()
             if not token:
                 raise ValueError("Projected workload identity is invalid")
+            if content is not None and (not isinstance(content, bytes) or payload is not None):
+                raise ValueError("Control uploads require exact binary content")
+            headers = {"Authorization": f"Bearer {token}", "Accept-Encoding": "identity"}
+            if request_id is not None:
+                headers["X-Request-ID"] = str(uuid.UUID(str(request_id)))
+            if content is not None:
+                headers.update(
+                    {
+                        "Content-Type": "application/octet-stream",
+                        "Content-Length": str(len(content)),
+                    }
+                )
             with httpx.Client(
-                verify=self.tls, trust_env=False, timeout=5, follow_redirects=False
+                verify=self.tls,
+                trust_env=False,
+                timeout=timeout_seconds
+                if timeout_seconds is not None
+                else (60 if content is not None else 5),
+                follow_redirects=False,
             ) as client:
                 with client.stream(
                     method,
                     f"{self.base_url}/{self.attempt_id}/{path}",
-                    headers={"Authorization": f"Bearer {token}", "Accept-Encoding": "identity"},
-                    json=payload,
+                    headers=headers,
+                    **({"content": content} if content is not None else {"json": payload}),
                 ) as response:
                     response.raise_for_status()
                     if response.headers.get("Content-Encoding", "identity").lower() != "identity":

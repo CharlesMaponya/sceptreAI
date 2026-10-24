@@ -48,9 +48,12 @@ def reader_case(tmp_path, monkeypatch, request):
             data = json.loads(request.content)
             state["rpc"].append(data)
             assert set(data) == {"request_id", "role", "object_index"}
-            item = [i for i in value.safe_data.objects if i.role == data["role"]][
-                data["object_index"]
-            ]
+            role = (
+                "train"
+                if state.get("champion") and data["role"] in {"candidate", "pipeline"}
+                else data["role"]
+            )
+            item = [i for i in value.safe_data.objects if i.role == role][data["object_index"]]
             fault = state["fault"]
             query = {
                 "X-Amz-Date": datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
@@ -82,6 +85,12 @@ def reader_case(tmp_path, monkeypatch, request):
                 "sha256": item.sha256,
                 "url": url,
             }
+            if state.get("champion"):
+                response["object_version"] = item.version
+            if fault == "receipt_version":
+                response["object_version"] = "another-version"
+            elif fault == "missing_receipt_version":
+                response.pop("object_version", None)
             if fault == "size":
                 response["byte_limit"] += 1
             elif fault == "sha":
@@ -310,3 +319,84 @@ def test_native_response_version_is_required_before_body_exposure(reader_case, f
     assert state["body_reads"] == body_reads
     state["fault"] = None
     assert consume(reader, item) == source.objects[(item.uri, item.version)]
+
+
+@pytest.mark.parametrize("reader_case", ["aws", "gcp", "azure"], indirect=True)
+def test_champion_reader_pins_receipt_version_and_rotates_identity_without_retry(reader_case):
+    from types import SimpleNamespace
+
+    _, source, value, token, state = reader_case
+    item = value.safe_data.objects[0]
+    plan = SimpleNamespace(
+        attempt_id=uuid.uuid4(),
+        candidate=item.model_copy(update={"uri": item.uri + "-candidate"}),
+        partitions=value.safe_data.objects,
+    )
+    reader = caps.ChampionGrantReader(
+        plan,
+        base_url="https://control.invalid/api/v1/internal/attempts",
+        token_file=token,
+    )
+    state["champion"] = True
+    with reader.open_stream(item.uri) as stream:
+        assert stream.read(65536) == source.objects[(item.uri, item.version)]
+        assert stream.read(1) == b""
+    token.write_text("rotating-token-b")
+    state["fault"] = "unavailable"
+    with pytest.raises(caps.ProviderObjectUnavailable):
+        with reader.open_stream(item.uri):
+            pytest.fail("Unavailable issuance was consumed")
+    assert len(state["rpc"]) == 2
+    rpc = [r for r in state["requests"] if r.url.host == "control.invalid"]
+    assert rpc[0].headers["authorization"] == "Bearer rotating-token-a"
+    assert rpc[1].headers["authorization"] == "Bearer rotating-token-b"
+    assert sum(r.url.host == "objects.invalid" for r in state["requests"]) == 1
+
+
+@pytest.mark.parametrize("fault", ["receipt_version", "missing_receipt_version"])
+def test_champion_reader_rejects_missing_or_conflicting_pinned_version(reader_case, fault):
+    from types import SimpleNamespace
+
+    _, _, value, token, state = reader_case
+    item = value.safe_data.objects[0]
+    reader = caps.ChampionGrantReader(
+        SimpleNamespace(attempt_id=uuid.uuid4(), frozen_pipeline=item),
+        base_url="https://control.invalid/api/v1/internal/attempts",
+        token_file=token,
+    )
+    state["champion"] = True
+    state["fault"] = fault
+    with pytest.raises(caps.ProviderObjectUnavailable):
+        with reader.open_stream(item.uri):
+            pytest.fail("Invalid version capability was consumed")
+    assert len(state["rpc"]) == 1
+    assert state["rpc"][0]["role"] == "pipeline"
+    assert all(r.url.host == "control.invalid" for r in state["requests"])
+
+
+def test_champion_copy_verifier_consumes_large_capability_stream_in_bounded_chunks():
+    import hashlib
+    import io
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    from automl_api.storage.contracts import ObjectMetadata
+    from automl_api.training.champion_refit import RefitObject, _copy_verified
+
+    data = b"verified-model" * 12000
+    item = RefitObject(
+        uri="s3c://fixture/model", sha256=hashlib.sha256(data).hexdigest(), byte_size=len(data)
+    )
+
+    class Response:
+        def iter_raw(self, chunk_size):
+            assert chunk_size == 65536
+            yield from (data[i : i + chunk_size] for i in range(0, len(data), chunk_size))
+
+    store = SimpleNamespace(
+        stat=lambda uri: ObjectMetadata(uri=uri, byte_size=len(data)),
+        open_stream=lambda _uri: nullcontext(caps._BoundedChunks(Response(), len(data))),
+    )
+    target = io.BytesIO()
+    _copy_verified(store, item, target, lambda: None)
+    assert target.read() == data

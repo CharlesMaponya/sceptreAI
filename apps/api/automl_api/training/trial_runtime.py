@@ -7,19 +7,17 @@ import os
 import threading
 import uuid
 
-from sqlalchemy import func, select
-
 from automl_api.core.config import get_settings
 from automl_api.db.session import get_session_factory
-from automl_api.models.workflows import TrainingCandidate, WorkflowEvent
 from automl_api.services.training_trials import (
-    enroll_trial,
+    enroll_candidate_evaluation,
     finish_trial,
     heartbeat_trial,
     start_trial,
 )
-from automl_api.services.workflow_state import StaleFence, canonical_request_hash
+from automl_api.services.workflow_state import StaleFence
 from automl_api.training.attempt_admission import admit_parent, proof_deadline
+from automl_api.training.trial_control import trial_control
 from automl_api.training.worker import _fenced_attempt_context
 
 _HEARTBEAT_INTERVAL = 15
@@ -35,7 +33,8 @@ class TrialEvaluationFailed(RuntimeError):
 
 def requires_durable_trials():
     return bool(
-        os.getenv("AUTOML_ATTEMPT_ID")
+        os.getenv("AUTOML_TRIAL_CONTROL_PROTOCOL") is not None
+        or os.getenv("AUTOML_ATTEMPT_ID")
         or os.getenv("AUTOML_FENCING_TOKEN")
         or get_settings().environment == "production"
         or os.getenv("AUTOML_MODEL_PODS") == "1"
@@ -54,87 +53,42 @@ def trial_parent_context():
 
 
 def enroll_evaluation(
-    run, candidate_name, suggestion_id, parameters, parent, *, dispatch_id=None, proof=None,
+    run,
+    candidate_name,
+    suggestion_id,
+    parameters,
+    parent,
+    *,
+    dispatch_id=None,
+    proof=None,
 ):
+    reply = trial_control(
+        "enroll",
+        run,
+        parent,
+        candidate_name=candidate_name,
+        suggestion_id=suggestion_id,
+        parameters=parameters,
+        dispatch_id=dispatch_id,
+    )
+    if reply is not None:
+        return {"attempt_id": reply.child_attempt_id, "remote": True}
     proof = admit_parent(parent, project_id=run.project_id) if proof is None else proof
     if proof is not None and proof.get("project_id") != str(run.project_id):
         raise StaleFence("Trial admission belongs to another project.")
     factory = get_session_factory()
     try:
         with factory() as db:
-            candidates = list(
-                db.scalars(
-                    select(TrainingCandidate.id)
-                    .where(
-                        TrainingCandidate.project_id == run.project_id,
-                        TrainingCandidate.model_run_id == run.id,
-                        TrainingCandidate.estimator_key == candidate_name,
-                    )
-                    .limit(2)
-                )
-            )
-            if len(candidates) != 1:
-                raise StaleFence("A trial requires exactly one durable candidate identity.")
-            attempt = enroll_trial(
+            context = enroll_candidate_evaluation(
                 db,
-                run_attempt_id=parent[0],
-                run_fencing_token=parent[1],
-                candidate_id=candidates[0],
+                run_id=run.id,
+                project_id=run.project_id,
+                candidate_name=candidate_name,
                 suggestion_id=suggestion_id,
                 parameters=parameters,
-                execution_id=canonical_request_hash(
-                    {
-                        "parent": str(parent[0]),
-                        "candidate": str(candidates[0]),
-                        "suggestion": suggestion_id,
-                    }
-                ),
+                parent=parent,
+                dispatch_id=dispatch_id,
             )
-            context = dict(
-                attempt_id=attempt.id,
-                fencing_token=attempt.fencing_token,
-                run_fencing_token=parent[1],
-            )
-            if dispatch_id is not None:
-                if not dispatch_id.strip() or len(dispatch_id) > 200:
-                    raise ValueError("Tune dispatch identity must contain 1 to 200 characters.")
-                payload = {"ray_trial_id": dispatch_id, "suggestion_id": suggestion_id}
-                digest = canonical_request_hash(payload)
-                key = f"trial.dispatch:{dispatch_id}"
-                event = db.scalar(
-                    select(WorkflowEvent)
-                    .where(
-                        WorkflowEvent.attempt_id == attempt.id,
-                        WorkflowEvent.event_key == key,
-                    )
-                    .execution_options(populate_existing=True)
-                )
-                if event is not None:
-                    if (
-                        event.result_digest != digest
-                        or canonical_request_hash(event.payload) != digest
-                    ):
-                        raise StaleFence("Tune dispatch evidence conflicts with its identity.")
-                else:
-                    sequence = (
-                        db.scalar(
-                            select(func.max(WorkflowEvent.sequence)).where(
-                                WorkflowEvent.attempt_id == attempt.id,
-                            )
-                        )
-                        or 0
-                    ) + 1
-                    db.add(
-                        WorkflowEvent(
-                            project_id=attempt.project_id,
-                            attempt_id=attempt.id,
-                            sequence=sequence,
-                            event_key=key,
-                            event_type="trial.dispatch",
-                            payload=payload,
-                            result_digest=digest,
-                        )
-                    )
             proof_deadline(proof)
             db.commit()
             return context
@@ -156,16 +110,38 @@ def evaluate_trial(
     parent = parent_context if parent_context is not None else trial_parent_context()
     if parent is None:
         return evaluate()
-    proof = admit_parent(parent, project_id=run.project_id)
+    proof = (
+        None
+        if os.getenv("AUTOML_TRIAL_CONTROL_PROTOCOL") is not None
+        else admit_parent(parent, project_id=run.project_id)
+    )
     if proof is not None and proof.get("project_id") != str(run.project_id):
         raise StaleFence("Trial admission belongs to another project.")
     context = enroll_evaluation(run, candidate_name, suggestion_id, parameters, parent, proof=proof)
     context["worker_id"] = uuid.uuid4().hex
-    factory = get_session_factory()
+    remote = context.pop("remote", False)
+    factory = None if remote else get_session_factory()
+
+    def remote_operation(action, **payload):
+        reply = trial_control(
+            action,
+            run,
+            parent,
+            child_attempt_id=context["attempt_id"],
+            worker_id=context["worker_id"],
+            **payload,
+        )
+        if reply is None:
+            raise StaleFence("Trial control declaration was withdrawn during execution")
+        return reply.terminal
+
     try:
-        with factory() as db:
-            cached = start_trial(db, **context, lease_limit=proof_deadline(proof))
-            db.commit()
+        if remote:
+            cached = remote_operation("start")
+        else:
+            with factory() as db:
+                cached = start_trial(db, **context, lease_limit=proof_deadline(proof))
+                db.commit()
     except StaleFence:
         raise
     except Exception as exc:
@@ -177,9 +153,12 @@ def evaluate_trial(
 
     def publish(**payload):
         try:
-            with factory() as db:
-                finish_trial(db, **context, **payload)
-                db.commit()
+            if remote:
+                remote_operation("finish", **payload)
+            else:
+                with factory() as db:
+                    finish_trial(db, **context, **payload)
+                    db.commit()
         except StaleFence:
             raise
         except Exception as exc:
@@ -190,10 +169,13 @@ def evaluate_trial(
     def heartbeat():
         while not stop.wait(_HEARTBEAT_INTERVAL):
             try:
-                renewed = admit_parent(parent, project_id=run.project_id)
-                with factory() as db:
-                    heartbeat_trial(db, **context, lease_limit=proof_deadline(renewed))
-                    db.commit()
+                if remote:
+                    remote_operation("heartbeat")
+                else:
+                    renewed = admit_parent(parent, project_id=run.project_id)
+                    with factory() as db:
+                        heartbeat_trial(db, **context, lease_limit=proof_deadline(renewed))
+                        db.commit()
             except Exception:
                 # Publication independently checks the current parent and live child lease.
                 return

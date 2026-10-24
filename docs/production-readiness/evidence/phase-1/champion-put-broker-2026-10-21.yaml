@@ -1,0 +1,162 @@
+{
+  "status": "verified_scoped_champion_pod_bound_put_broker_integration",
+  "phase_complete": false,
+  "verified_at": "2026-10-21T19:36:06.391095+00:00",
+  "branch": "codex/production-readiness",
+  "head": "e039d2e0d32f945863c67118fc19e928bdafcd73",
+  "source_state": "uncommitted working tree; no commit, push or deployment performed",
+  "connected_passed": 928,
+  "failures": 0,
+  "errors": 0,
+  "skips": 0,
+  "duration_seconds": 451.078,
+  "test_modules": {
+    "tests.test_attempt_output_store": 80,
+    "tests.test_s3_sdk_retry_ownership": 14,
+    "tests.test_versioned_streams": 46,
+    "tests.test_attempt_output_retirement": 30,
+    "tests.test_grant_retirement": 22,
+    "tests.test_grant_retirement_deletion": 8,
+    "tests.test_refit_retirement": 34,
+    "tests.test_evaluator_retirement": 44,
+    "tests.test_champion_read_protocol": 16,
+    "tests.test_provider_import_jobs": 17,
+    "tests.test_attempt_object_grants": 28,
+    "tests.test_champion_read_broker": 80,
+    "tests.test_champion_refit_jobs": 15,
+    "tests.test_champion_evaluation_reconciler": 26,
+    "tests.test_champion_output_authority": 36,
+    "tests.test_attempt_identity": 29,
+    "tests.test_champion_workload_identity": 9,
+    "tests.test_champion_evaluation_jobs": 12,
+    "tests.test_provider_import_managed_admission": 53,
+    "tests.test_champion_refit_control": 12,
+    "tests.test_champion_evaluation_control": 5,
+    "tests.test_champion_evaluation_worker": 9,
+    "tests.test_champion_proxy_isolation": 12,
+    "tests.test_champion_revocation": 8,
+    "tests.test_champion_read_grants": 6,
+    "tests.test_object_grant_http": 11,
+    "tests.test_champion_refit_recovery": 29,
+    "tests.test_champion_credentials": 15,
+    "tests.test_champion_refit_publication": 15,
+    "tests.test_champion_evaluation_publication": 8,
+    "tests.test_object_capability_reader": 47,
+    "tests.test_champion_evaluation_planning": 9,
+    "tests.test_champion_evaluation_keys": 8,
+    "tests.test_champion_planning": 17,
+    "tests.test_champion_refit_execution": 7,
+    "tests.test_object_read_capabilities": 29,
+    "tests.test_attempt_rpc": 19,
+    "tests.test_attempt_output_http": 2,
+    "tests.test_attempt_output_broker": 61
+  },
+  "overlapping_focused_cases": {
+    "authority_and_protocol": 79,
+    "publication": 8,
+    "actual_sdk_wire": 12,
+    "owned_postgresql_connection_termination": 2
+  },
+  "regressions_reproduced": {
+    "missing_pod_bound_put_routes": 2,
+    "premature_or_revoked_publication": 5,
+    "existing_revocation_positive_control_passed": 1
+  },
+  "implemented": [
+    "New refit/evaluator plans use pod-bound-object-v2. Saved manifests match the plan protocol; old None/read-v1 serialization and hashes remain unchanged.",
+    "Projected-token PUT requests bind one UUID/role, exact own URI, SHA256/size, project/scope/attempt, Pod UID, fence, original token hash/authority digest and original deadline before native I/O.",
+    "A pending declaration precedes bounded body streaming. Validated bytes and evaluator signature precede the committed issuance owner and stage output intent.",
+    "One conditional native SDK operation runs outside SQL. Exact-version size/hash readback precedes a completion event bound to the original grant and owner.",
+    "Native completion is recorded independently of later worker revocation/cancellation. Fresh admission, original grant deadline and exact output intent still govern acknowledgement.",
+    "A lost upload acknowledgement permits one receipt GET, never another upload. Role/nonce replay cannot start another native operation or extend the original expiry.",
+    "Legacy model/result upload routes return410. New-plan parsing fails closed on prior closed/read-v1 schemas; actual prior-binary and rolling qualification remain open.",
+    "Worker publication cannot replace native completion with a merely readable object, and evaluator publication rechecks lease/revocation/recovery fences after stored-result verification.",
+    "Trusted evaluator recovery of protocol-v2 results also requires native completion, then verifies bytes, result signature and signed authority lineage without reopening final-data access.",
+    "Every started unknown PUT and unjournaled champion output remains a retirement barrier after expiry. Known completion still waits for the original deadline; legacy unknown history is not inferred away."
+  ],
+  "native_storage": {
+    "drivers": [
+      "aws_s3",
+      "s3_compatible",
+      "gcs",
+      "azure_blob"
+    ],
+    "write_conditions": [
+      "S3 IfNoneMatch=*",
+      "GCS if_generation_match=0",
+      "Azure overwrite=False"
+    ],
+    "retry_controls": [
+      "S3 total_max_attempts=1 enforced",
+      "GCS retry=None and checksum=None to prevent SDK corruption deletes",
+      "Azure retry_total=0 and max_concurrency=1"
+    ],
+    "s3_single_put_output_limit_bytes": 5000000000,
+    "limit_boundary": "Larger S3 model outputs require tracked multipart custody. This does not reduce the separate dataset-upload or45GB migration targets.",
+    "native_version": "Bound in attempt.output.completed.<grant UUID>; PUT grant.object_version remains NULL under the existing schema."
+  },
+  "fault_coverage": [
+    "Two-connection PostgreSQL same/different-nonce preparation races and duplicate delivery while the first native operation is active.",
+    "Actual ASGI body-stream revocation, invalid transport/hash/signature/size, wrong workload principal, Pod-token rotation, cancellation and changed intents.",
+    "Accepted-write response loss, malformed/missing native version, late known completion, expired unknown custody and one-shot receipt-only recovery.",
+    "Terminate only the active test-owned PostgreSQL completion connection after native acceptance; retain unknown custody and forbid another native write.",
+    "Ordinary publication during unresolved native I/O and after revocation; revocation during stored-object verification; preserve trusted recovery and terminal replay.",
+    "Legacy API write-route rejection, old plan hashes and previous read-v1/closed-schema rejection of the new protocol."
+  ],
+  "verification_boundary": [
+    "Actual production admission, router, worker, cleanup/replacement, final-authority and SQL code runs against the owned local PostgreSQL fixture.",
+    "TokenReview/native Kubernetes responses and control sockets are explicit doubles. Joined worker tests retain real stored bytes and existing real TLS object-read/proxy checks.",
+    "The native storage call is doubled at the joined-worker boundary; its implementation is separately checked with actual installed SDKs against owned loopback HTTP and SDK doubles.",
+    "Wire controls use small payloads below provider resumable/chunk thresholds and synthetic credentials. Large GCS/Azure resumable/block fault paths, actual cloud IAM, current deployment/TLS/rotation/process loss and release images are not qualified by these checks.",
+    "The controlled SQL termination proves this local fault point; it does not qualify PostgreSQL HA, pooler failover or whole-process loss."
+  ],
+  "retained_attempts": {
+    "read_only_inventory_and_deadline_assumptions": "before-put-read-inventory-connected.xml:914cases,4failures; callers were updated to account for PUTs and the latest original deadline, without changing production retirement rules.",
+    "fixture_allocation_conflict": "before-serial-authority-fixtures-connected.xml:926passes,1setup error409 while a separate fixture probe overlapped the shared synthetic split identity. The authority guard was retained; the serial928-case run passed.",
+    "gcs_async_metadata_ordering": "Earlier storage checkpoint retained its failed test-oracle report; exact bucket-metadata GETs are allowed asynchronously while write/delete/object-readback controls remain strict."
+  },
+  "source_inputs": 509,
+  "source_manifest": ".unlazy/phase1-champion-put-broker/source-sha256.json",
+  "source_manifest_sha256": "7e4cabf946455758ef684c3018c36353565e32bb4268cfb8194e3ebda7384964",
+  "quality": {
+    "repository_ruff": "passed",
+    "changed_python_files_formatted": 28,
+    "existing_champion_planning_style": "Only the protocol string changed; reverse substitution matches its prior frozen SHA256.",
+    "strict_schema_revision": "0018_attempt_predecessor_lineage",
+    "schema_differences": [],
+    "root_coverage_sha256": "d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9"
+  },
+  "sdk_versions": {
+    "boto3": "1.43.56",
+    "botocore": "1.43.56",
+    "google-cloud-storage": "3.13.1",
+    "azure-storage-blob": "12.30.0"
+  },
+  "gates": {
+    "met": 5,
+    "unmet": 0,
+    "abandoned": 0,
+    "reverified": true
+  },
+  "phase1_requirements": {
+    "verified": 2,
+    "open": 34
+  },
+  "capacity": {
+    "observed_at": "2026-10-21T19:36:06.390924+00:00",
+    "target_database_bytes": 45000000000,
+    "reserve_bytes": 43500000000,
+    "free_bytes": 45783285760,
+    "qualification_performed": false,
+    "largest_table_row_counts": null,
+    "additional_WAL_and_migration_overhead_required": true
+  },
+  "minimum_free_bytes_during_connected": 45781704704,
+  "remaining": [
+    "All-stage/child/predecessor/final-authority brokers, unknown native-outcome reconciliation and physical retirement of old/untracked operations.",
+    "Source-current whole-backend suite/global statement and branch coverage at90.01% independently; the historical4308-pass checkpoint had86.888% branch coverage.",
+    "Actual native cloud permissions, large/chunked transfer fault matrices, current release images/runtime, TLS/rotation/process loss, replica/pooler/HA qualification and prerequisite phases.",
+    "The45GB physical migration with representative largest-table rows, WAL/migration headroom and actual prior-binary/concurrent migration. The15x10GiB upload campaign remains deferred to suitable infrastructure.",
+    "Required handoff: original phase1-deletion:G7 remains abandoned because seven historical QA objects are missing. No historical object/signature was recreated."
+  ]
+}

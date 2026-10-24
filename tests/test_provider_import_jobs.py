@@ -259,6 +259,51 @@ def test_expired_generation_waits_for_uid_cleanup_before_one_bounded_replacement
         assert previous.fencing_token == original.fence and previous.cleanup_state == "complete"
 
 
+def test_expired_unknown_put_retains_network_and_identity_until_verified_retirement(job_case):
+    from automl_api.models.workflows import WorkflowAttemptCredentialGrant
+    from automl_api.services.attempt_object_grants import _digest
+    from test_attempt_object_grant_schema import grant_values
+
+    c = job_case
+    tick(c)
+    original = snapshot(c)
+    now = datetime.now(UTC) - timedelta(minutes=2)
+    with c.factory() as db, db.begin():
+        attempt = db.get(WorkflowAttempt, original.id)
+        row = WorkflowAttemptCredentialGrant(
+            **grant_values(
+                attempt,
+                method="PUT",
+                role="prepared",
+                object_version=None,
+                status="unknown",
+                created_at=now,
+                expires_at=now + timedelta(seconds=60),
+                issuance_owner=uuid.uuid4(),
+                issuance_started_at=now,
+            )
+        )
+        row.grant_digest = _digest(row)
+        db.add(row)
+        db.flush()
+        grant_id, deadline = row.id, row.expires_at
+    try:
+        expire(c)
+        for _ in range(5):
+            tick(c)
+        current = snapshot(c)
+        assert current.id == original.id and current.cleanup != "complete"
+        assert [kind for kind, _ in c.k8s.deletes] == ["job"]
+        assert not c.k8s.objects["job"]
+        assert c.k8s.objects["network"] and c.k8s.objects["service_account"]
+        with c.factory() as db:
+            row = db.get(WorkflowAttemptCredentialGrant, grant_id)
+            assert row.status == "revoked" and row.expires_at == deadline
+    finally:
+        with c.factory() as db, db.begin():
+            db.delete(db.get(WorkflowAttemptCredentialGrant, grant_id))
+
+
 def test_replaced_resource_uid_is_never_adopted_or_deleted(job_case):
     c = job_case
     tick(c)

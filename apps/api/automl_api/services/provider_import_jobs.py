@@ -14,8 +14,8 @@ from automl_api.models.enums import AttemptStatus, CommandStatus, WorkflowStage
 from automl_api.models.workflows import WorkflowAttempt
 from automl_api.services.attempt_identity import _scope
 from automl_api.services.attempt_object_grants import (
+    has_unretired_attempt_credentials,
     revoke_attempt_grants,
-    unretired_grant_deadline,
 )
 from automl_api.services.evaluation_publication import _append, _event
 from automl_api.services.provider_import import (
@@ -253,7 +253,7 @@ def _cleanup(factory, k8s, version_id, desired):
             if pods.items:
                 return False
             with factory() as db, db.begin():
-                if unretired_grant_deadline(db, snapshot.id) is not None:
+                if has_unretired_attempt_credentials(db, snapshot.id):
                     return False
         expected = resources[kind]
         actual = _read(read, expected)

@@ -49,15 +49,18 @@ open. See [the checkpoint evidence](evidence/phase-1/attempt-object-grants-2026-
 
 Project and run deletion revoke affected grants before destructive side effects
 and defer through the existing outbox until the latest original started capability
-expires. This includes uncertain or revoked GET/PUT grants, every affected attempt
+expires. Started PUTs additionally require verified native completion, even when
+expired or revoked. This covers every affected attempt
 generation, dependent runs and associated champion scopes. Waiting preserves the
 failure budget. Pending intents never reached the provider and can be retired
 immediately. Legal holds prevent grant mutation and cleanup.
 
-After expiry, normal deletion resumes. Selected-run grant records are removed
+After expiry, reads and verified completed PUTs can retire. Unknown started PUTs
+keep deletion pending; expiry alone does not prove a native write has stopped.
+Selected-run grant records are removed
 before restrictive attempt foreign keys cascade; unrelated runs and projects keep
 their records and objects. An in-flight signing/deletion race rejects disclosure
-and retains revocation. The checkpoint passes 384 Python tests with committed
+and retains revocation. The historical deletion checkpoint passed 384 Python tests with committed
 PostgreSQL and real embedded file deletion. Controlled-clock and doubled Kubernetes/
 provider checks do not qualify native URL expiry or current images. See
 [the deletion evidence](evidence/phase-1/grant-retirement-2026-10-18.yaml).
@@ -326,3 +329,274 @@ change; current-source full-suite/global coverage checks remain required. Its
 86.651% branch result was below90.01%. Phase1 remains two Verified/34 Open.
 45GB/actual prior-binary migration, pooler/failover, shared preservation and the
 original seven missing QA objects/abandoned preservationG7 remain unresolved.
+
+
+## 2026-10-21 — started PUTs require native completion proof
+
+The shared retirement barrier now retains any started PUT without an exact native
+completion record, including issued, issuing, unknown, failed, revoked and expired
+rows. The record must match the immutable grant digest, issuance owner, own object
+URI, size/hash and native version. Logical revocation does not erase issuance
+ownership or shorten its original deadline. A valid completion record does not
+bypass that original deadline or legacy champion-history quarantine.
+
+Project/run deletion defers without native cleanup or retry-budget consumption.
+Refit and evaluator cleanup/sweeps retain dependencies and reject replacement.
+Provider-import cleanup also uses this shared check before deleting its service
+account or network policy. Unstarted intents and elapsed read grants keep their
+existing behavior. Unknown rows remain quarantined until trusted reconciliation
+can establish completion; this change does not create that reconciler.
+
+The conditional native storage helper has SDK fault checks but is not yet wired
+to worker uploads. The full pod-bound PUT issuer, router, protocol/worker migration,
+legacy unjournaled writers and native process-loss recovery remain unfinished.
+See [the scoped evidence](evidence/phase-1/started-put-retirement-2026-10-21.yaml).
+
+
+## 2026-10-21 — champion output broker integration
+
+New refit and evaluator plans declare `pod-bound-object-v2`. Their workers upload
+through `PUT /api/v1/internal/attempts/{id}/objects/{role}/{sha256}` using fresh
+projected Pod tokens, an exact Content-Length and one request UUID. The API computes
+the own output URI and commits a role/nonce/Pod/fence/size/hash/deadline declaration
+before streaming, then validates the body and evaluator signature before claiming
+one native operation. All provider I/O runs outside SQL.
+
+Conditional native creation, disabled write retries, immutable versions and exact
+version size/hash readback precede durable completion. A completion event binds
+the original grant and issuance owner without changing its intent digest or
+expiry. An already claimed operation can finish after logical expiry; cleanup
+waits for actual completion evidence. Cancellation or revocation cannot erase
+known completion, and fresh authority still governs disclosure. A lost upload
+acknowledgement permits one receipt GET, never a second upload.
+
+Worker publication also requires matching native completion; a readable object
+alone cannot bypass missing version evidence. Evaluator publication rechecks
+lease/revocation/recovery authority after stored-result verification. Trusted
+evaluator recovery retains valid signed-output adoption without reopening final
+data, and requires completion for v2 results. Old plan hashes remain unchanged.
+Legacy model/result upload routes return 410; read-v1 plans cannot request new
+output writes. Actual prior-binary/rolling qualification remains independent.
+
+The S3 model-output path uses a single PUT capped at 5,000,000,000 bytes; larger
+S3 model outputs need tracked multipart custody. Dataset-upload limits and the
+45 GB migration target are independent. GCS/Azure remain bounded by their registered
+artifact budgets; large resumable/block fault paths remain unqualified.
+
+All 928 connected checks pass across 39 modules, without failures, errors or skips.
+Two checks terminate only their active owned PostgreSQL completion connection
+after native acceptance and retain unknown custody. All 509 frozen inputs match;
+Ruff, formatting and strict 0018 schema parity pass. All five integration gates
+pass after reverification. Native SDK wire controls use small loopback payloads;
+joined workers use explicit native/Kubernetes/control-socket doubles. These
+checks do not qualify cloud IAM, current release images, whole-process loss or
+large-volume operation. Full Phase1 remains in progress, with 34 requirements Open.
+[Integration evidence](evidence/phase-1/champion-put-broker-2026-10-21.yaml).
+
+
+## Generic revocation guards — 2026-10-21
+
+Generic splitter, preparation and training admission now checks the durable
+revocation marker both before and after remote identity verification. Ordinary
+training/analysis mutation guards and parent/child trial enrollment/execution
+reuse that marker check, including pending revocations in sessions with
+autoflush disabled. The worker lease helper receives its current SQL session
+from all six production callers.
+
+Verified committed training/analysis receipts remain recoverable; terminal trial
+replay and explicitly authorized predecessor adoption preserve their original
+hashes without new execution or lease extension. A 55-case PostgreSQL baseline
+records 37 failures before these guards; all 58 focused cases and 1647 connected
+cases across 63 modules now pass. All four scoped gates, repository Ruff,
+changed-file formatting and strict 0018 schema parity pass on 510 frozen inputs.
+
+This verifies the existing logical guard boundaries. Ordinary workers still
+have database/provider configuration, and direct native writes plus SQL-spanning
+I/O need their full broker and recovery integration. Source-current full backend,
+independent coverage, native/release and 45 GB migration qualification remain
+required. Original abandoned phase1-deletion:G7 still requires handoff for seven
+missing historical QA objects.
+[Revocation evidence](evidence/phase-1/generic-attempt-revocation-2026-10-21.yaml).
+
+
+## Parent lifecycle RPC — 2026-10-23
+
+Configured current Ray training heads and managed analysis workers select
+parent-control-v1. Parent metadata/start/heartbeat/result recovery/completion/failure
+use projected Pod identity over bounded verified TLS; a declared worker never falls
+back to SQL for these operations. Shared SQL mutators preserve legacy workers.
+New Ray outbox rows carry ray-parent-control-v2; saved legacy/v1 policies remain intact.
+
+903 connected cases pass, including 41 worker/manifest and 28 API controls. A real
+k3d Pod-bound TokenReview and token-rotation probe passes over verified local TLS
+with worker-local SQL disabled; its pending Pod never runs a container.
+Remaining pipeline/trial/data/result SQL and storage access still require conversion
+before credentials can be withdrawn. Maintained images, full coverage, native
+custody/retirement, 45 GB qualification and original abandoned deletion:G7 remain open.
+[Parent control evidence](evidence/phase-1/parent-control-2026-10-23.yaml).
+
+
+## Durable trial RPC — 2026-10-23
+
+New configured Ray training heads and compute workers select trial-control-v1
+through the saved ray-trial-control-v3 policy. Fixed-CV, clustering and Tune reuse
+the existing SQL trial domain through Pod-bound TLS RPC for enrollment, dispatch,
+start/replay, heartbeat and immutable result/failure publication. No child SQL fence
+is returned. Legacy workers and saved legacy/v1/v2 manifests retain their behavior.
+
+1,133 connected cases pass, including 44 worker/manifest and 27 API
+controls. Real local k3d identity and verified TLS execute three-fold CV once and
+replay twice with worker SQL and legacy admission disabled. All five scoped gates
+reverify; complete worker credential withdrawal remains open because pipeline,
+analysis, dataset, model and tracking operations still need conversion. Native
+custody/retirement, maintained images, full coverage, 45 GB rehearsal and original
+abandoned deletion:G7 also remain required.
+[Trial control evidence](evidence/phase-1/trial-control-2026-10-23.yaml).
+
+
+## Training input context — 2026-10-23
+
+Configured current training heads select training-context-v1 through the saved
+ray-training-context-v4 policy. Initial run/catalog/feature/override/source validation
+and RUNNING initialization use Pod-authenticated TLS with an explicit API-side fence,
+active publisher/lease checks and fresh graph authority after native identity I/O.
+The closed context contains safe train/validation roles and approved execution fields;
+final manifests, missing source plans, terminal contexts and overlapping role locations
+are rejected. Legacy startup shares the same role-separation guard.
+
+The evidence combines the preserved connected run with the current affected-consumer
+rerun using exact collection and source/AST accounting. The real TLS/k3d probe reaches
+the prepared-reader boundary with worker SQL disabled and deliberately stops before
+loading data. Tracking/progress/result SQL and data/model/output operations still need
+conversion before credentials can be withdrawn. Maintained images, full coverage,
+native custody/retirement,45 GB qualification and original abandoned G7 remain open.
+[Training context evidence](evidence/phase-1/training-context-2026-10-23.yaml).
+
+
+### 2026-10-23 — attempt-owned training model outputs
+
+New declared candidate writers serialize and publish models through the Pod-authenticated output broker. The server derives each location from its current project/run/attempt/candidate and content digest, requires the saved writer declaration and sealed input/candidate authority, and commits a fixed candidate slot plus issuance owner before native I/O. Different candidates can write concurrently. An uncertain write cannot be repeated or replaced by another nonce. Native completion is retained across cancellation, while acknowledgement requires fresh authority. Worker response loss uses receipt lookup only. A reusable publication guard requires the exact verified completion; remaining progress/result publication still needs conversion.
+
+**1,302 connected checks pass**, including 14 model worker/manifest and 24 API authority cases. The connected run is retained with a current 272-case manifest rerun after alphabetically sorting two existing constant imports; exact source-diff and case accounting are preserved. Three original body failures prove the worker-storage gap. Five scoped unlazy gates pass re-verification over 545 frozen inputs. The original fifteen legacy/v1/v2/v3/v4 manifests remain exactly equal. New Ray records select ray-model-output-v5 and configured training head/compute writers select training-model-output-v1.
+
+The local probe uses real verified TLS and k3d Pod TokenReview, two distinct bound tokens, actual model serialization and deliberately lost PUT acknowledgement; recovery returns its original receipt after one stored write. Storage is a conditional in-memory fixture, not live provider SDK/permission evidence. Its pending identity Pod never executes a container. The exact owned namespace and SQL fixtures are read back absent, and owned object bytes/secrets are retired. [Evidence](evidence/phase-1/training-model-output-2026-10-23.yaml).
+
+All 36 requirements remain **2 Verified / 34 Open**. Broader credential withdrawal, remaining native custody/retirement, maintained images and full/release/branch coverage remain required. Single model uploads are capped at 5 GB; larger models require tracked multipart custody. The user qualification ceiling is 45 GB physical database size, with largest-table row counts still unspecified. No 45 GB rehearsal was run, and the 43.5 GB free reserve is preserved. Original abandoned phase1-deletion:G7 still requires seven missing historical QA objects.
+
+
+### 2026-10-23 — training publication custody
+
+Declared broker runs now require the exact verified native model completion at the shared candidate-status boundary used by both partial leaderboard and final result publication. A readable URI is insufficient. The server resolves the current saved parent declaration and revalidates source/candidate authority. Missing identity variables, closed parents, changed fences, duplicate declarations and unknown policies cannot downgrade to legacy publication. Project locks precede attempt/run locks, matching project deletion. Result replay checks the committed digest before candidate mutation; duplicate publication retains one metric commit.
+
+New model slots record their immutable input/candidate digest without changing the closed worker receipt. The recovery reconciler carries explicit verified-model references. Predecessor publication requires the recorded reference at every generation and the same current input binding. Unlisted, legacy-without-binding, unknown or changed-source artifacts are refused. Old slots remain usable in their original attempt; predecessor adoption requires controlled qualification. This protects publication and does not qualify the still-ambient model reader.
+
+**1,509 connected checks pass**, including 27 publication authority cases. Evidence combines the retained connected run with a current 156-case rerun of all changed legacy fixture consumers. Production bytes and old assertions are unchanged; 32 initial fake-session failures are retained and superseded by corrected fixture results. Two original body failures establish the missing-receipt gap. Four scoped unlazy gates pass re-verification over 546 frozen inputs. All eighteen captured legacy/v1/v2/v3/v4/v5 manifests remain unchanged. The local real TLS/k3d probe rejects forged metadata, publishes the verified model through actual SQL partial/final paths, replays the result and completes the parent once with one metric commit. Its conditional storage backend is a fixture, and publication deliberately still uses worker SQL. Owned namespace/SQL resources and secrets are retired and read back absent. [Evidence](evidence/phase-1/training-publication-custody-2026-10-23.yaml).
+
+All 36 requirements remain **2 Verified / 34 Open**. Closed result/progress contracts, complete tournament validation, tracking/SQL withdrawal, model/data readers, remaining native custody/retirement and full/release/coverage remain required. The 45 GB migration rehearsal is still pending and the 43.5 GB reserve is preserved. Original abandoned phase1-deletion:G7 still requires seven missing historical QA objects.
+
+
+### 2026-10-23 — final training result control RPC
+
+New declared training heads now publish final results through Pod-authenticated control without opening worker-local SQL. The finite closed contract requires the complete selected terminal tournament, the server-ranked winner and matching winner metrics, plus verified model custody for every success. It validates public leaderboard types, preserves candidate row counts and rejects malformed/nonfinite/oversized metadata, foreign scopes and contradictory derived counts. Shared persistence takes an explicit trusted fence and atomically commits metrics, metadata and a request-bound acknowledgement.
+
+A lost acknowledgement permits receipt lookup only. Exact result replay can recover after parent lease expiry without new work; conflicting or changed stored metrics, directions, steps, leaderboard, tracking pointer or typed derived parameters are refused. Parent API, legacy-worker completion and observer adoption all enforce the saved RPC receipt policy. New Ray rows select ray-training-result-v6; configured training heads select training-result-v1, and v6 training submission fails before service-account creation without a valid HTTPS control URL. All eighteen captured legacy/v1/v2/v3/v4/v5 templates remain unchanged.
+
+**1,629 connected checks pass**, including 21 result worker/manifest/deadline and 52 API authority cases. Three original test-body failures establish the worker SQL gap. Five scoped gates pass re-verification over 551 frozen inputs; repository lint, new-hunk formatting, strict0018 and three CI preflights pass. [Evidence](evidence/phase-1/training-result-rpc-2026-10-23.yaml).
+
+The real local TLS/k3d probe uses separate pending writer and publisher Pod identities. The writer cannot publish the parent result; forged artifact metadata is rejected. With worker session factories disabled, valid final publication recovers a deliberately lost acknowledgement and parent completion replays with one metric commit and one terminal CAS. Native storage is explicitly a conditional fixture. Both identity Pods never execute containers; owned namespace/SQL resources, object bytes and secrets are retired and read back absent.
+
+All 36 requirements remain **2 Verified / 34 Open**. Progress/failure/tracking SQL, data/model readers and remaining native custody/retirement still need conversion before ambient credentials can be withdrawn. Shared candidate exception logging also still needs credential redaction. Full/release/coverage, maintained-image/process-loss/mixed-version and45 GB migration qualification remain pending, preserving43.5GB free reserve. Original abandoned phase1-deletion:G7 still requires seven missing historical QA objects.
+
+
+### 2026-10-23 — training failure credential redaction
+
+Shared supervised/clustering failures now redact exception text before existing truncation and before console, MLflow tags and returned candidate metadata. Wrapped Ray task failures and legacy run failure persistence use the same existing redactor. URL credentials, signed query values, bearer values and quoted credentials at clipping boundaries are covered; ordinary error diagnostics and existing status/control flow remain unchanged. No protocol, dependency, schema or config changes were needed.
+
+Seven original test-body failures prove disclosure across the candidate, Ray and legacy SQL paths. **224 connected checks pass**, including eight focused privacy cases; two scoped unlazy gates pass re-verification over 552 frozen inputs. Source/AST guards restrict the production diff to three redactor calls plus imports. Repository lint, three CI preflights, root coverage and all36 status rows are preserved. The tests use synthetic secrets and isolate network/tracking sinks. [Evidence](evidence/phase-1/training-failure-redaction-2026-10-23.yaml).
+
+This closes the exception-message finding recorded after result RPC. All 36 requirements remain **2 Verified / 34 Open**. Remaining progress/tracking and data/model credential conversion, native custody/retirement, full/release/coverage and45 GB qualification remain required. The43.5GB reserve and original abandoned phase1-deletion:G7 handoff for seven missing historical QA objects are unchanged.
+
+
+### 2026-10-23 — ordered training progress control RPC
+
+New saved training submissions select `ray-training-progress-v7`. Their heads and compute workers publish candidate phases and partial leaderboards through Pod-authenticated control without opening worker-local SQL. All 21 captured legacy/v1–v6 templates remain unchanged, including v6 final-result RPC. Shared persistence receives an explicit trusted fence; sealed source, candidate identities and parent routing are checked again after native identity verification. Only the admitted parent publisher can publish the complete aggregate.
+
+Durable request receipts bind each stream to one Pod/client and monotonic sequence. Exact replay is harmless, nonce/sequence reuse conflicts, and older updates cannot replace newer phases. Terminal candidate metadata cannot change through partial or final publication. Pending snapshots preserve terminal outcomes, and updates after trusted final publication are no-ops, including recovery after lease expiry. Resumed candidates retain original training and validation row counts.
+
+**1,747 connected checks pass**, including 15 progress worker/manifest/count and 50 API authority cases, with no failures/errors/skips. Four original test-body failures establish the worker SQL gap. Five scoped gates pass re-verification over 557 frozen inputs; repository lint, new-hunk formatting, strict0018 and all three CI preflights pass. [Evidence](evidence/phase-1/training-progress-rpc-2026-10-23.yaml). Failed test-oracle drafts remain private evidence: initial launch already has pending entries, phase updates mark candidates running, hashes cover normalized closed requests, and receipt nonces cannot be reused between phase and aggregate actions.
+
+A real local TLS/k3d probe used separate pending candidate and parent Pods, fresh bound TokenReview and three distinct tokens. With worker SQL disabled, phase, partial and final publication succeeded; three lost progress acknowledgements recovered through GET only, a candidate Pod could not publish parent progress, and late progress left the final result unchanged. Model storage is explicitly an in-memory conditional fixture. One model write and one terminal CAS were observed. Identity Pods never executed containers. Exact namespace/SQL/object resources and secret files were retired and read back absent.
+
+All 36 requirements remain **2 Verified / 34 Open**. Worker tracking SQL and native tracking/data/model access still prevent broad credential withdrawal. Other native custody/retirement, current full/release/coverage, maintained-image/mixed-version/process-loss, 45 GB migration and 15×10 GiB qualification remain required. The user’s database qualification ceiling is 45,000,000,000 physical bytes; largest-table row targets remain unspecified. No scale test was attempted, preserving the43.5 GB reserve. Original abandoned phase1-deletion:G7 still requires seven missing original historical QA objects; no replacement artifacts were manufactured.
+
+
+### 2026-10-24 — server-owned training tracking creation
+
+New saved training submissions select `ray-training-tracking-v8`. Heads and compute workers use `training-tracking-v1` for parent/candidate/failure tracking creation and recovery, without opening worker SQL or the inline tracking creation client. The native writer is shared once with legacy workers; its original lease, creation-marker, error and uncertainty branches are preserved by an AST guard and current regression coverage. All24 captured legacy/v1–v7 templates remain unchanged.
+
+The server derives tracking names, tags, backend and parent ID from the current sealed run. Only the admitted parent publisher can create parent tracking; selected candidate/failure roles bind their first Pod owner before native effects. Child creation checks the current native parent lifecycle and lineage. SQL connections and locks are released for native I/O, then source/role/lease/token authority is checked again before publication.
+
+A durable acknowledgement binds the native tracking ID to the command request, parent, backend and role owner atomically with writer publication. Changed command IDs or acknowledgement fields are refused. Existing commands without their original Pod-ownership record require controlled recovery; the API does not invent a new owner. Lost HTTP/SQL acknowledgements use receipt GET only. Native uncertainty never permits a repeated creation. If read-only reconciliation knew the ID before an acknowledgement was recorded, receipt repair validates the existing native record and cannot create a new run.
+
+**1,872 connected checks pass**, including 21 tracking worker/manifest cases, 52 API authority cases and all 78 legacy tracking writer/lease/recovery/HTTP/process-loss cases, with no failures/errors/skips. Four original test-body failures establish the worker SQL gap. Five scoped gates pass re-verification over562 frozen inputs; repository lint, changed-hunk formatting, strict0018 and three CI preflights pass. [Evidence](evidence/phase-1/training-tracking-rpc-2026-10-24.yaml).
+
+The real local TLS/k3d probe uses separate pending parent/candidate Pod identities and three distinct bound tokens. With worker SQL and the inline creation SDK disabled, it creates one parent, one candidate and one failure tracking run, recovers four lost HTTP acknowledgements by GET, rejects a nonpublisher parent and replays the original parent without another creation. MLflow uses a real owned SQLite store through its SQLAlchemy SDK; tracking HTTP/provider and maintained-image qualification are not claimed by this probe. Both Pods never execute containers. Exact namespace/SQL/store resources and secret files are retired and read back absent. The first probe passed tracking operations but failed harness cleanup on a version-specific cache attribute; its exact resources were retired separately, cleanup was corrected, and only the later full probe counts as passing evidence.
+
+All36 requirements remain **2 Verified / 34 Open**. Direct worker MLflow logging/resume and data/model readers still require conversion before broad credentials can be withdrawn. Final/candidate tracking references also still need binding to the exact server tracking receipts. All-stage native permissions, remaining custody/retirement, current full/release/coverage, maintained-image/mixed-version and full-pipeline process-loss qualification remain required. No45GB or15×10GiB scale claim is made; the43.5GB free reserve remains enforced. Original abandoned phase1-deletion:G7 remains a required handoff for seven missing historical QA objects, without reconstructed or re-signed replacements.
+
+
+### 2026-10-24 — tracking references bound to model custody
+
+Model reservations under saved v8 policy now bind the original candidate tracking receipt and producer Pod. Partial/final API and SQL publication, stored-result replay and explicitly allowlisted predecessor recovery verify that original custody and the exact parent tracking ID. Missing historical receipts require controlled recovery. Validation precedes pending/terminal snapshot restoration, so merging cannot hide an invalid incoming tracking ID. No migration, dependency, configuration or protocol version changed; all 27 captured manifests remain unchanged.
+
+**1,897 connected checks pass**, including 25 tracking-reference cases, with no failures/errors/skips. The three genuine original negative controls remain preserved. Five scoped gates were reverified over 564 frozen inputs; lint, changed-hunk formatting, strict0018 and the three CI preflights pass. [Evidence](evidence/phase-1/training-tracking-references-2026-10-24.yaml).
+
+The local verified-TLS/k3d test used separate pending parent/writer Pods and three bound tokens, two real MLflow SDK tracking records and one conditional model-storage fixture write. Worker SQL was disabled. Missing/forged tracking references failed, lost model/progress/result acknowledgements recovered through GET, and completion retained one metric and terminal CAS. Exact owned namespace/SQL/store resources and secret files were retired. Native model providers, tracking HTTP, maintained images and complete worker isolation are not qualified by this probe.
+
+Phase 1 remains **2 Verified / 34 Open**. Direct worker MLflow logging/resume/registry artifacts and data/model readers still prevent broad credential withdrawal. Current full/branch coverage, remaining native custody/retirement and runtime qualification remain required. No45GB or15×10GiB scale qualification was attempted; the43.5GB reserve remains enforced. Original abandoned phase1-deletion:G7 still requires seven original historical QA objects; none were reconstructed or re-signed.
+
+
+### 2026-10-24 — Pod-owned training metadata and retirement
+
+New saved v9 training routes ordinary parent/candidate/failure tags, parameters, metrics and parent mirrors through authenticated control. Immutable request slots bind original tracking custody and source before native effects. Each synchronous native batch has its own completion marker; uncertainty permits GET only. Pre-existing tag values cannot acknowledge a pending writer, and a missing marker retains the retirement barrier. Read-only background inspection can settle marked effects after cancellation or actual API process death, without another write or a worker acknowledgement. Malformed rows defer fairly.
+
+V9 brokered model writes and final publication now require original metadata readiness. Model slots, explicit predecessor references and final-result links preserve the exact proof. Missing or altered history fails closed. V8 model custody retains its original policy, and all27 captured old manifests remain unchanged. No migration, dependency or threshold changed.
+
+**2,159 distinct connected cases pass in composed evidence**, including 37 metadata worker, 51 API and 15 retirement cases, with no remaining failures/errors/skips. The full run passed2,158 cases and exposed one SQL fault-injection harness error; changing only that test hook from before_commit to before_flush made its unchanged assertions pass in a focused rerun against a terminated PostgreSQL backend. Production inputs and every other test body remain identical. Seven scoped gates were reverified over570 frozen inputs; lint, changed-hunk formatting, strict0018 and three CI preflights pass. Seven genuine negative controls are retained across worker metadata, numeric overflow and missing readiness. The first two retirement failure artifacts were accidentally overwritten; they are explicitly excluded from retained automatic negative evidence. Current retirement controls pass. [Evidence](evidence/phase-1/training-tracking-metadata-2026-10-24.yaml).
+
+The real local TLS/k3d probe used separate pending parent/writer Pods and three bound tokens. With worker SQL and ordinary metadata SDK functions disabled, three real MLflow SDK tracking records received nine metadata batches and nine completion markers; HTTP acknowledgement loss recovered by GET. Model storage remains a conditional in-memory fixture. One model write, SQL metric and terminal CAS were retained. Exact owned namespace/SQL/store resources and secret files were retired. The probe does not qualify native model providers, tracking HTTP, maintained images or full worker isolation.
+
+Phase1 remains **2 Verified / 34 Open**. Native run context, diagnostic/model artifacts, registry operations, data/model readers, remaining custody/retirement and current full/runtime/coverage qualification remain required. No45GB or15×10GiB scale claim is made; the43.5GB reserve is enforced. Original abandoned phase1-deletion:G7 still requires seven original historical QA objects, without reconstructed or re-signed replacements.
+
+
+### 2026-10-24 — authenticated model restoration
+
+New saved v10 training heads restore published candidate models through the existing short-lived GET broker. The server selects the original verified model version; only the current parent Pod can read it. Replacement attempts require explicit predecessor custody and unchanged inputs. Native signing holds no caller SQL connection, uncertain or replayed requests cannot remint a URL, and the original read deadline remains a retirement barrier. Workers verify complete bounded bytes and SHA-256 before deserialization, with storage access disabled. No migration, dependency or broad credential withdrawal was introduced; all 30 captured legacy/v1–v9 manifests are unchanged.
+
+**868 connected checks pass**, including 41 model reader worker/manifest cases and 26 PostgreSQL authority cases, with no failures/errors/skips, over 575 frozen inputs. Four scoped unlazy gates passed re-verification. Lint, changed-hunk formatting, strict0018 and three CI preflights pass. The original storage-access negative control remains preserved. Earlier role-selection and fixture-cleanup failures are retained; the exact failed fixture resources were retired. [Evidence](evidence/phase-1/training-model-read-2026-10-24.yaml).
+
+The local verified-TLS/k3d probe used separate pending parent/writer Pods and five distinct bound tokens. One exact-version model was streamed and restored with worker storage/SQL disabled; the writer Pod was denied. Owned namespace/SQL/store/secrets were retired and read back absent. Model storage and HTTPS serving are conditional fixtures; native providers, maintained images and full worker isolation are not qualified.
+
+Phase 1 remains **2 Verified / 34 Open**. Training dataset readers, Ray Tune checkpoint storage, native MLflow context/artifacts/registry, remaining custody/retirement and current full/runtime/branch-coverage qualification remain required. The 45 GB database ceiling is recorded; no 45 GB or 15×10 GiB scale claim is made and the 43.5 GB reserve is preserved. Original abandoned phase1-deletion:G7 still requires seven original historical QA objects; none were reconstructed or re-signed.
+
+
+### 2026-10-24 — registry inspection outside SQL
+
+Background registry verification now uses the factory-owned dispatcher, releasing its connection and locks before storage existence/size reads. Fresh project, command, registry, run, artifact and delivery snapshots fence publication afterward. Only the exact live delivery can record a result or retry; an old reader cannot change a successor even when both use the same worker name. Verification, delivery and command completion commit atomically, and verified replay performs no storage reads. The old transaction-owned route rejects this topic.
+
+**269 connected checks pass**, including 27 focused PostgreSQL cases over 577 frozen inputs, with no failures/errors/skips. Three scoped unlazy gates passed re-verification. Real process termination, backend connection loss, lost commit acknowledgement, concurrent readers and committed source changes are covered. The original negative control recorded a checked-out connection; its unchanged body now records zero for both native reads. Lint, changed-hunk format, strict0018 and three CI preflights pass. [Evidence](evidence/phase-1/registry-inspection-2026-10-24.yaml).
+
+This preserves the existing existence/size check. It does not qualify native content hashes, immutable versions or producer custody. The HTTP registration path still has its initial size read under SQL and remains required work. No dependency, migration, credential protocol or coverage threshold changed; no current native-provider or scale claim is made.
+
+Phase 1 remains **2 Verified / 34 Open**. Remaining worker credential conversion, native custody/retirement, current full/runtime/coverage and 45 GB/load qualification remain required. The 43.5 GB reserve is preserved. Original abandoned phase1-deletion:G7 still requires seven original historical QA objects; none were reconstructed or re-signed.
+
+
+### 2026-10-24 — registry HTTP registration outside SQL
+
+HTTP registration now commits a read-only selected-model snapshot before the initial storage-size read, releasing both its connection and admission mutex. A short final transaction rechecks active user/token, current project/membership, deletion barriers and exact candidate/data/schema metadata before publication. Existing registrations replay without storage access. Concurrent requests share one canonical registry entry, artifact and version; unrelated sibling progress or parent completion does not reject an unchanged successful selected model.
+
+**288 connected checks pass**, including 26 focused HTTP/PostgreSQL registration cases and 27 background-inspection cases, over 578 frozen inputs, with no failures/errors/skips. Three scoped unlazy gates passed re-verification. Real backend termination, lost commit acknowledgement, concurrent registration and authority/source changes during reads are covered. The unchanged negative-control body now observes zero caller connections; all original selected-model persistence assertions remain. Lint, changed-hunk format, strict0018 and three CI preflights pass. [Evidence](evidence/phase-1/registry-registration-2026-10-24.yaml).
+
+This closes the initial-read transaction gap recorded in the previous registry checkpoint. Visibility and size still do not attest native content hash, immutable version or producer custody. No migration, dependency, credential protocol or public request schema changed, and no native-provider/image/scale qualification is claimed.
+
+Phase 1 remains **2 Verified / 34 Open**. Remaining worker credential conversion, native custody/retirement, current full/runtime/coverage and 45 GB/load qualification remain required. The 43.5 GB reserve is preserved. Original abandoned phase1-deletion:G7 still requires seven original historical QA objects; none were reconstructed or re-signed.

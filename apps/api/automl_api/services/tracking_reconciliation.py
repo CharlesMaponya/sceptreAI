@@ -291,3 +291,226 @@ def reconcile_tracking_once(session_factory, *, client=None, limit=25, now=None)
             _publish_tracking(session_factory, claim, clock(), tracked=tracked, error=error)
         )
     return resolved
+
+
+def ensure_tracking_run(
+    run_id,
+    *,
+    factory,
+    live_run,
+    client_factory,
+    tracking_uri,
+    attempt_id,
+    role,
+    run_name,
+    parent_run_id=None,
+    tags=None,
+    record_receipt=None,
+):
+    """Commit exclusive ownership before native creation; never repeat an unknown write."""
+    import os
+
+    import mlflow
+
+    from automl_api.services.workflow_state import StaleFence, begin_command, canonical_request_hash
+    from automl_api.training.pipeline import TrackingCreationUnresolved
+
+    # MLflow retries POST creation internally; only the durable command may retry it.
+    os.environ["MLFLOW_HTTP_REQUEST_MAX_RETRIES"] = "0"
+    payload = {
+        "model_run_id": str(run_id),
+        "attempt_id": attempt_id,
+        "role": role,
+        "parent_run_id": parent_run_id,
+        "tracking_backend_hash": hashlib.sha256(tracking_uri.encode()).hexdigest(),
+    }
+    claim = None
+
+    try:
+        with factory() as db:
+            current = live_run(db)
+            command, replayed = begin_command(
+                db,
+                project_id=current.project_id,
+                actor_id=current.created_by_id,
+                operation="mlflow.run.ensure",
+                idempotency_key=canonical_request_hash(
+                    {key: payload[key] for key in ("model_run_id", "attempt_id", "role")}
+                ),
+                payload=payload,
+            )
+            if not replayed:
+                command.resource_type, command.resource_id = "model_run", current.id
+            if (
+                command.resource_type != "model_run"
+                or command.resource_id != current.id
+                or command.status == CommandStatus.CANCELLED
+            ):
+                raise StaleFence("The tracking command scope no longer belongs to this run.")
+            identity = tracking_identity(command, current)
+            request_hash = command.request_hash
+            response = command.response_payload
+            if not isinstance(response, dict):
+                raise TrackingCreationUnresolved(
+                    "MLflow creation is unresolved; invalid stored state."
+                )
+            known_id = response.get("run_id")
+            known = set(response) == {"run_id"} and isinstance(known_id, str) and bool(known_id)
+            uncertain = (
+                set(response) == {"creation_started"} and response["creation_started"] is True
+            )
+            if not (known or uncertain or response == {}):
+                raise TrackingCreationUnresolved(
+                    "MLflow creation is unresolved; invalid stored state."
+                )
+            if not known:
+                now = datetime.now(UTC)
+                active = command.lease_expires_at is not None and command.lease_expires_at > now
+                owner = command.lease_owner or ""
+                # A live parent may supersede read-only recovery, never another writer.
+                if active and (
+                    not uncertain
+                    or not owner.startswith("tracking-")
+                    or owner.startswith("tracking-writer-")
+                ):
+                    raise TrackingCreationUnresolved(
+                        "MLflow creation is unresolved; another writer owns it."
+                    )
+                if command.status == CommandStatus.FAILED:
+                    transition_command(command, CommandStatus.PENDING)
+                transition_command(command, CommandStatus.RUNNING)
+                command.lease_owner = "tracking-writer-" + uuid.uuid4().hex
+                command.heartbeat_at = now
+                command.lease_expires_at = now + timedelta(seconds=LEASE_SECONDS)
+                claim = _TrackingClaim(
+                    command.id,
+                    command.project_id,
+                    command.resource_id,
+                    command.lease_owner,
+                    identity,
+                    dict(payload),
+                    request_hash,
+                    False,
+                    None,
+                )
+            command_id = command.id
+            db.commit()
+
+        def owned(db):
+            current = live_run(db)
+            command = db.get(
+                WorkflowCommand, command_id, with_for_update=True, populate_existing=True
+            )
+            if (
+                command is None
+                or command.project_id != current.project_id
+                or command.resource_type != "model_run"
+                or command.resource_id != current.id
+                or command.operation != "mlflow.run.ensure"
+                or command.request_hash != request_hash
+                or canonical_request_hash(command.request_payload)
+                != canonical_request_hash(payload)
+                or tracking_identity(command, current) != identity
+                or canonical_request_hash(command.response_payload)
+                != canonical_request_hash(response)
+            ):
+                raise StaleFence("The tracking command changed while remote I/O was in flight.")
+            if claim is not None:
+                if (
+                    command.status != CommandStatus.RUNNING
+                    or command.lease_owner != claim.owner
+                    or command.lease_expires_at is None
+                    or command.lease_expires_at <= datetime.now(UTC)
+                ):
+                    raise StaleFence("The tracking writer no longer owns its live lease.")
+            elif command.status == CommandStatus.CANCELLED:
+                raise StaleFence("The tracking command was cancelled during remote I/O.")
+            return current, command
+
+        client = client_factory()
+        if (
+            hashlib.sha256(client.tracking_uri.encode()).hexdigest()
+            != payload["tracking_backend_hash"]
+        ):
+            raise ValueError("Tracking backend differs from the committed intent.")
+        if known:
+            tracked = client.get_run(known_id)
+            validate_tracking_run(tracked, identity)
+        else:
+            with _tracking_heartbeat(factory, claim, lambda: datetime.now(UTC)):
+                experiment_name = f"automl-project-{identity['project_id']}"
+                experiment = client.get_experiment_by_name(experiment_name)
+                if experiment is None:
+                    if uncertain:
+                        raise TrackingCreationUnresolved(
+                            "MLflow creation is unresolved; its experiment is unavailable."
+                        )
+                    with factory() as db:
+                        owned(db)
+                        db.commit()
+                    try:
+                        experiment_id = client.create_experiment(experiment_name)
+                    except mlflow.exceptions.MlflowException:
+                        experiment = client.get_experiment_by_name(experiment_name)
+                        if experiment is None:
+                            raise
+                        experiment_id = experiment.experiment_id
+                else:
+                    experiment_id = experiment.experiment_id
+                matches = client.search_runs(
+                    [experiment_id],
+                    filter_string=f"tags.automl_tracking_command = '{command_id}'",
+                    run_view_type=mlflow.entities.ViewType.ALL,
+                    max_results=2,
+                )
+                if len(matches) > 1:
+                    raise ValueError("Multiple MLflow runs claim the same tracking command.")
+                if matches:
+                    tracked = matches[0]
+                else:
+                    if uncertain:
+                        raise TrackingCreationUnresolved(
+                            "MLflow creation is unresolved; refusing a duplicate request."
+                        )
+                    with factory() as db:
+                        _, command = owned(db)
+                        response = {"creation_started": True}
+                        command.response_payload = response
+                        db.commit()
+                    try:
+                        tracked = client.create_run(
+                            experiment_id, run_name=run_name, tags={**(tags or {}), **identity}
+                        )
+                    except Exception as exc:
+                        raise TrackingCreationUnresolved(
+                            "MLflow creation outcome is unknown; refusing an unverified retry."
+                        ) from exc
+                validate_tracking_run(tracked, identity)
+
+        with factory() as db:
+            current, command = owned(db)
+            command.response_payload = {"run_id": tracked.info.run_id}
+            command.response_status = 200
+            command.terminal_reason = None
+            command.lease_owner = None
+            command.lease_expires_at = None
+            if command.status != CommandStatus.SUCCEEDED:
+                if command.status == CommandStatus.FAILED:
+                    transition_command(command, CommandStatus.PENDING)
+                transition_command(command, CommandStatus.RUNNING)
+                transition_command(command, CommandStatus.SUCCEEDED)
+            if role == "parent":
+                current.mlflow_run_id = tracked.info.run_id
+            if record_receipt is not None:
+                record_receipt(db, current, command)
+            db.commit()
+            tracking_id = tracked.info.run_id
+        return tracking_id
+    except Exception:
+        if claim is not None:
+            try:
+                _release_tracking(factory, claim)
+            except Exception:
+                # A lost database connection leaves the committed lease to expire.
+                pass
+        raise

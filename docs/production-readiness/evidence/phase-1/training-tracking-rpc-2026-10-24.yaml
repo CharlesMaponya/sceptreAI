@@ -1,0 +1,129 @@
+date: '2026-10-24'
+scope: training-tracking-rpc
+phase: 1
+phase_complete: false
+source_inputs: 562
+source_manifest_sha256: d8fefd759a5011f86142b00ff4a27a6ffb5973d32f6f1c4be9738850284cdf73
+checks:
+  passed: 1872
+  worker: 21
+  authority: 52
+  legacy_tracking: 78
+  failures: 0
+  errors: 0
+  skips: 0
+  phase_complete: false
+  original_worker_sql_tripwire_failures: 4
+  unowned_history_accepted_before_fix: 1
+  scoped_gates_reverified: 5
+  strict_schema: 0018_attempt_predecessor_lineage
+  repository_ruff: pass
+  new_hunk_format: pass
+  original_native_writer_ast_preserved: true
+  ci_preflights: 3 passed
+  legacy_through_v7_templates_unchanged: 24
+protocols:
+  new_saved_policy: ray-training-tracking-v8
+  head_and_compute: training-tracking-v1
+  request_byte_budget: 4096
+  control_timeout_seconds: 60
+behavior:
+- Declared parent/candidate/failure tracking creation and recovery use Pod-authenticated
+  control without worker SQL or the inline creation client.
+- The existing writer is shared once; its exclusive renewable claim, irreversible
+  creation marker, uncertainty recovery, lineage checks, cancellation and error branches
+  remain intact.
+- Server derives role names, tags, tracking backend and parent ID from the current
+  sealed run; selected candidate and live native parent lineage are verified.
+- Each role has a committed Pod owner before native effects; parent creation is exclusive
+  to the admitted parent publisher.
+- Native I/O holds no caller SQL connection/row lock; source, role owner, parent lease
+  and token lifetime are checked before writes/publication.
+- A native acknowledgement event binds the exact tracking ID to its command request,
+  parent, backend and role owner atomically with writer publication.
+- Unowned pre-existing tracking commands are rejected rather than assigned a new Pod
+  owner.
+- Lost HTTP/SQL acknowledgements use GET only. Unknown native creation is not reissued;
+  missing acknowledgement repair validates an existing known native record and never
+  creates a run.
+- Worker resumes the returned ID through existing MLflow behavior; direct worker MLflow
+  logging/resume and artifact/data access remain unconverted.
+native:
+  context: k3d-sceptre
+  verified_tls: true
+  real_pod_bound_token_review: true
+  distinct_parent_candidate_pods: true
+  distinct_tokens: 3
+  worker_sql_and_inline_creation_sdk_disabled: true
+  native_tracking_runs: 3
+  roles:
+  - parent
+  - candidate:Ridge
+  - failure:Ridge
+  lost_http_acknowledgements_recovered_by_get: 4
+  namespace_retired_readback_404: true
+  owned_sql_rows_retired: true
+  owned_sqlite_store_physically_retired: true
+  secret_files_removed: true
+  storage_backend: real MLflow SQLAlchemy SDK with an owned SQLite store; tracking
+    HTTP/provider not claimed
+  pending_identity_pods_never_executed: true
+  maintained_image_tested: false
+  full_worker_isolation: false
+  worker_logging_resume_isolated: false
+retained_failures:
+- A real negative control accepted a pre-existing command after its ownership record
+  was removed. The final guard now refuses this unqualified history without constructing
+  an owner.
+- The first API run exposed missing HTTP 503 handling for TrackingCreationUnresolved;
+  fixed without changing authorization errors.
+- 'Fixture-only defects were corrected: a token cannot be rebound to another Pod,
+  and a misplaced test counter referenced the wrong scope.'
+- The first native probe completed tracking operations but failed cleanup because
+  this installed MLflow uses SqlAlchemyStore._engine_map. The exact owned namespace/SQLite
+  store/secrets were subsequently retired and read back absent; failed output is retained
+  and is not passing evidence.
+limits:
+  requirements:
+    total: 36
+    verified: 2
+    open: 34
+  remaining:
+  - Direct MLflow logging/resume and data/model readers before broad credential withdrawal
+  - Bind final/candidate tracking references to the exact server tracking receipts
+  - All-stage credential/network/native permission qualification and maintained images
+  - Remaining native producer intent/custody/physical retirement
+  - Current full backend and independent 90.01 percent branch coverage
+  - Mixed-version/process-loss qualification for the complete current pipeline
+  - 45 GB migration rehearsal and largest-table row targets
+  - 15 users each uploading 10 GiB on suitable infrastructure
+  user_database_ceiling_bytes: 45000000000
+  largest_table_rows: not supplied
+  free_disk_reserve_bytes: 43500000000
+  minimum_free_bytes_during_regression: 43797053440
+  scale_qualified: false
+  required_handoff: 'phase1-deletion:G7 remains abandoned: seven missing original
+    historical QA objects (2 models, 5 signed results); do not reconstruct or re-sign
+    them'
+evidence_hashes:
+  regression.log: 82eb3690fe361001c39b64577073c65bd43e7ff388587fbba876f4c72248f32c
+  regression.xml: 51aab9f8af51e579dfd1cec8e2dc3a04033623e7ccab87ac1200580ad4dfe967
+  regression-state.json: c2ed6965bd171f61731f96211795a0f23cee30411f8ccc98acbeaba0a50441a2
+  collection.log: 9b8142a0190f88b8dd3310eb4316585b4f12b3262e031dd2a692c95443044ff0
+  native.log: cb02e9d194a84e5cb1572b933a1684c4b119c5feac163267a065236f441d69bf
+  native.xml: c4c4deb40f9a4cc318ecde5ead5b3ea57e954dbeefcc1d613e1505bafaceebb8
+  native-probe-state.json: e34082c2c445b36d160d670b162ed814cfa2d0a09328eedf224404aecc444522
+  test_native_tracking.py: 6274ff3c484375b1606e6fe0e2d57f4108618d7c28ff66d5efbea7233e21bda2
+  failed-native-cleanup.json: 69ed98739297162b699ed8834e668504395fc028f1d007fc581142496c1834c4
+  first-native.log: ce3e5fb3918b72a1f113c98f7b74945fab3af35a6d8bf8f2fe4c40e5bbb17959
+  baseline.log: faab825aabe5db55445bcfe0f04fae8b6a98ac841be25a3e50d50d9cad1cc34d
+  baseline.xml: 19854cc91aa40b567388b51f0c5d4b63070c403d0bf5386312efe7f234071537
+  unowned-baseline.log: ec3dd2e74be2de436e556569b89b3775713aab27756162eef571277dbb9d7d4c
+  unowned-baseline.xml: 4c62f2ba765097764c2c9bbe6be4ae42291ccadbbd7aa08cf2a557381e7e6837
+  lint.log: 82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18
+  legacy-reference.json: 6ab2d4f22893d1d6443adfaec251485e5f992fdc0c4f9ef2f2aa40064c7babf5
+  legacy-current.json: 6ab2d4f22893d1d6443adfaec251485e5f992fdc0c4f9ef2f2aa40064c7babf5
+  preflight-0.log: 00c8dcf3b37f2eac6114a4c21f9f742c56e354ada6672f1b15189664820d92a5
+  preflight-1.log: a414947a0f058a04ee8ca14e4023b0661f0892a6cb81c082ba87469dd71ed9e9
+  preflight-2.log: dffd5dbca119ddf99cc5a088942e02d1127f7108463f4627161d74775ec7e554
+  GATES.md: 24d894851bda14acabb9d4ec4f0fbf37646d8deca7b13ecaac5cbc414a383f78

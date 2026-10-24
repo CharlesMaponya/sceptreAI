@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import uuid
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -20,8 +21,8 @@ from automl_api.models.workflows import (
     WorkflowEvent,
 )
 from automl_api.services.attempt_object_grants import (
+    has_unretired_attempt_credentials,
     revoke_attempt_grants,
-    unretired_grant_deadline,
 )
 from automl_api.services.workflow_state import InvalidTransition, canonical_request_hash
 from automl_api.training.champion_refit import RefitObject, RefitPlan, RefitPolicy, _within
@@ -96,11 +97,25 @@ def validate_refit_policy(db: Session, scope: PromotionalScope) -> tuple[RefitPo
     return policy, digest
 
 
-def plan_scope_refit(db: Session, scope_id: uuid.UUID, store) -> WorkflowAttempt | None:
-    """Caller commits the pending attempt and plan; this never submits a workload.
+@dataclass(frozen=True)
+class RefitInspection:
+    selection_digest: str
+    uri: str
+    sha256: str
+    byte_size: int | None = None
 
-    Scope-before-refit-attempt locking is shared with publication. Training locks
-    use SKIP LOCKED so an observer finishing a member cannot deadlock the planner.
+
+def plan_scope_refit(
+    db: Session,
+    scope_id: uuid.UUID,
+    store,
+    *,
+    inspection: RefitInspection | None = None,
+) -> WorkflowAttempt | RefitInspection | None:
+    """Select under SQL locks, or record a freshly revalidated inspected selection.
+
+    The caller ends this transaction before inspecting a returned RefitInspection.
+    Scope-before-attempt locks match publication; training uses SKIP LOCKED.
     """
     scope = db.scalar(
         select(PromotionalScope).where(PromotionalScope.id == scope_id)
@@ -136,7 +151,7 @@ def plan_scope_refit(db: Session, scope_id: uuid.UUID, store) -> WorkflowAttempt
         revoke_attempt_grants(db, latest.id)
         if (
             latest.cleanup_state != "complete"
-            or unretired_grant_deadline(db, latest.id) is not None
+            or has_unretired_attempt_credentials(db, latest.id)
         ):
             return None
         original = db.scalar(select(WorkflowEvent).where(
@@ -208,8 +223,48 @@ def plan_scope_refit(db: Session, scope_id: uuid.UUID, store) -> WorkflowAttempt
     uri = entry["model_artifact_uri"]
     if not _within(uri, store.uri_for_key(f"projects/{scope.project_id}/runs/{run.id}/")):
         raise InvalidTransition("Selected candidate artifact belongs to another run")
+    selected = RefitInspection(
+        selection_digest=canonical_request_hash(
+            {
+                "scope_id": str(scope.id),
+                "project_id": str(scope.project_id),
+                "deadline": scope.scope_deadline_at.isoformat(),
+                "sealed_at": scope.sealed_at.isoformat() if scope.sealed_at else None,
+                "membership_digest": scope.membership_digest,
+                "split_id": str(scope.split_revision_id),
+                "experiment_id": str(scope.experiment_spec_revision_id),
+                "policy_digest": policy_digest,
+                "training": sorted(
+                    (
+                        str(attempt.id),
+                        attempt.fencing_token,
+                        attempt.status.value,
+                        attempt.terminal_cas_version,
+                    )
+                    for attempt in training
+                ),
+                "runs": [
+                    {
+                        "id": str(member.id),
+                        "status": member.status.value,
+                        "params": member.params,
+                        "tags": member.tags,
+                    }
+                    for member in sorted(runs, key=lambda row: str(row.id))
+                ],
+            }
+        ),
+        uri=uri,
+        sha256=entry["model_artifact_sha256"],
+    )
+    if inspection is None:
+        return selected
+    if inspection.byte_size is None or replace(inspection, byte_size=None) != selected:
+        return None
     candidate = RefitObject(
-        uri=uri, sha256=entry["model_artifact_sha256"], byte_size=store.stat(uri).byte_size,
+        uri=uri,
+        sha256=selected.sha256,
+        byte_size=inspection.byte_size,
     )
     if candidate.byte_size > policy.max_model_bytes:
         raise InvalidTransition("Selected pipeline exceeds the preregistered model budget")
@@ -221,11 +276,12 @@ def plan_scope_refit(db: Session, scope_id: uuid.UUID, store) -> WorkflowAttempt
 
 
 def _record_plan(db, scope, plan, predecessor=None):
+    plan = plan.model_copy(update={"credential_protocol": "pod-bound-object-v2"})
     attempt = WorkflowAttempt(
         id=plan.attempt_id, project_id=scope.project_id, scope_id=scope.id,
         model_run_id=plan.run_id, dataset_version_id=plan.dataset_version_id,
         stage=WorkflowStage.CHAMPION_REFIT, logical_key=f"refit:{scope.id}",
-        workload_identity=f"refit:{plan.attempt_id}", fencing_token=uuid.uuid4().hex,
+        workload_identity=f"project-{scope.project_id}-refit", fencing_token=uuid.uuid4().hex,
         generation=predecessor.generation + 1 if predecessor else 1,
         predecessor_attempt_id=predecessor.id if predecessor else None,
         retry_budget=1, status=AttemptStatus.PENDING,

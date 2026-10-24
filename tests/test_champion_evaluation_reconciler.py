@@ -17,6 +17,7 @@ from test_champion_evaluation_authority import compatible_uri_fixture as compati
 from test_champion_evaluation_authority import handoff_case as handoff_case
 from test_champion_evaluation_jobs import EvaluatorKubernetes
 from test_champion_evaluation_jobs import evaluator_job_case as evaluator_job_case
+from test_champion_evaluation_worker import broker_worker_case as broker_worker_case
 from test_champion_evaluation_worker import run
 from test_champion_evaluation_worker import worker_case as worker_case
 
@@ -112,9 +113,9 @@ def test_heartbeat_racing_failure_observation_defers_decision(evaluator_job_case
     [(False, "recover"), (True, "recover"), (False, "corrupt"), (True, "cancel")],
 )
 def test_controller_recovers_real_worker_output_without_second_grant(
-    worker_case, monkeypatch, committed, outcome
+    broker_worker_case, monkeypatch, committed, outcome
 ):
-    case = worker_case
+    case = broker_worker_case
     original = case.authority.post
 
     def lost(path, **kwargs):
@@ -163,15 +164,61 @@ def test_controller_recovers_real_worker_output_without_second_grant(
     assert case.requests == reads
     case.mint.assert_called_once()
     assert case.control.post("heartbeat").status_code == 409
-    assert reconcile_evaluation_jobs_once(
-        case.factory,
-        k8s,
-        authority_factory=authority_factory,
-        public_key=case.public_key,
-        store=case.store,
-    ) == (1 if outcome == "recover" else 0)
+    assert (
+        reconcile_evaluation_jobs_once(
+            case.factory,
+            k8s,
+            authority_factory=authority_factory,
+            public_key=case.public_key,
+            store=case.store,
+        )
+        == 1
+    )
+    case.db.refresh(case.attempt)
+    assert case.attempt.cleanup_state != "complete"
+    from automl_api.models.workflows import WorkflowAttemptCredentialGrant
+    from automl_api.services import attempt_object_grants
+    from automl_api.services.evaluation_reconciler import _cleanup_attempt
+
+    with case.factory() as db:
+        rows = list(
+            db.scalars(
+                select(WorkflowAttemptCredentialGrant).where(
+                    WorkflowAttemptCredentialGrant.attempt_id == case.plan.attempt_id
+                )
+            )
+        )
+        deadlines = {row.id: row.expires_at for row in rows}
+        deadline = max(deadlines.values())
+        assert all(row.status == "revoked" for row in rows)
+        assert {row.method for row in rows} == {"GET", "PUT"}
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return deadline
+
+    monkeypatch.setattr(attempt_object_grants, "datetime", Clock)
+    assert _cleanup_attempt(case.factory, k8s, case.plan.attempt_id)
     case.db.refresh(case.attempt)
     assert case.attempt.cleanup_state == "complete"
+    with case.factory() as db:
+        assert all(
+            db.get(WorkflowAttemptCredentialGrant, key).expires_at == value
+            for key, value in deadlines.items()
+        )
+    assert (
+        reconcile_evaluation_jobs_once(
+            case.factory,
+            k8s,
+            authority_factory=authority_factory,
+            public_key=case.public_key,
+            store=case.store,
+        )
+        == 0
+    )
+    assert case.requests == reads
+    case.mint.assert_called_once()
 
 
 def test_recovery_fence_rejects_late_start(worker_case):

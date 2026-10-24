@@ -12,6 +12,7 @@ import pandas as pd
 import pytest
 from automl_api.models.datasets import DatasetVersion
 from automl_api.models.enums import AttemptStatus, RunStatus, TaskType
+from automl_api.models.projects import Project
 from automl_api.models.workflows import DatasetSplitRevision, WorkflowAttempt
 from automl_api.training import pipeline
 from automl_api.training.model_catalog import CandidateSpec
@@ -49,15 +50,23 @@ class _Session(AbstractContextManager):
         if _statement.column_descriptions[0]["entity"].__name__ in {
             "DatasetProviderImport",
             "PromotionalScopeMember",
+            "WorkflowEvent",
         }:
             return None
         if _statement.column_descriptions[0]["entity"] is WorkflowAttempt:
+            if not os.getenv("AUTOML_ATTEMPT_ID"):
+                return None
             return SimpleNamespace(
+                id=uuid.UUID(os.environ["AUTOML_ATTEMPT_ID"]),
                 model_run_id=self.run.id,
                 fencing_token=os.getenv("AUTOML_FENCING_TOKEN"),
                 status=AttemptStatus.RUNNING,
             )
         return self.run
+
+    def execute(self, statement):
+        assert statement.column_descriptions[0]["entity"] is Project
+        assert statement._for_update_arg.read
 
     def scalars(self, _statement):
         return []
@@ -71,6 +80,9 @@ class _Session(AbstractContextManager):
 
     def add(self, instance: object) -> None:
         self.added.append(instance)
+
+    def flush(self) -> None:
+        return None
 
     def commit(self) -> None:
         self.commits += 1

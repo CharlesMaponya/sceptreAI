@@ -1,0 +1,105 @@
+{
+  "status": "verified_scoped_observer_identity",
+  "recorded_at": "2026-10-22T22:30:47.399146+00:00",
+  "phase_complete": false,
+  "summary": {
+    "passed": 696,
+    "focused": 89,
+    "failures": 0,
+    "errors": 0,
+    "skips": 0,
+    "phase_complete": false
+  },
+  "baseline": {
+    "cases": 89,
+    "failures": 86,
+    "errors": 0,
+    "skips": 0,
+    "all_failures_from_unchanged_snapshot_oracle": true,
+    "source": "Captured pre-fix reconciler imported through a private API overlay; positive controls pass."
+  },
+  "gates": {
+    "met": 4,
+    "unmet": 0,
+    "abandoned": 0,
+    "reverified": 4
+  },
+  "source_manifest": ".unlazy/phase1-ray-observer-identity/source-sha256.json",
+  "native": {
+    "status": "terminal_pass",
+    "context": "k3d-sceptre",
+    "namespace": "phase1-ray-observe-03e5fc0fc6c8",
+    "suspended": true,
+    "shared_qa_mutated": false,
+    "cases": [
+      {
+        "stage": "training_run",
+        "name": "suspended-training-run",
+        "uid": "d5d64cb3-1dbb-46e3-b1ae-07fbaf1bdf56",
+        "same_name_replay": true,
+        "owned_observation_verified": true,
+        "foreign_project_rejected": true,
+        "foreign_fence_same_prefix": true,
+        "foreign_fence_rejected": true,
+        "ownership_rejected": true,
+        "specification_rejected": true
+      },
+      {
+        "stage": "splitter",
+        "name": "suspended-splitter",
+        "uid": "3dedb906-648e-4d51-a6bf-cba8a3c48983",
+        "same_name_replay": true,
+        "owned_observation_verified": true,
+        "foreign_project_rejected": true,
+        "foreign_fence_same_prefix": true,
+        "foreign_fence_rejected": true,
+        "ownership_rejected": true,
+        "specification_rejected": true
+      },
+      {
+        "stage": "preparation",
+        "name": "suspended-preparation",
+        "uid": "15dce2d3-bf54-4e6f-ac5b-7fed680ae61e",
+        "same_name_replay": true,
+        "owned_observation_verified": true,
+        "foreign_project_rejected": true,
+        "foreign_fence_same_prefix": true,
+        "foreign_fence_rejected": true,
+        "ownership_rejected": true,
+        "specification_rejected": true
+      }
+    ],
+    "source_ast_sha256": {
+      "apps/api/automl_api/services/kubernetes_training.py": "37e411090d916dd3c066208046a91580d7cfa87e89a38a1a6e6ca695db41285e",
+      "apps/api/automl_api/services/reconciler.py": "c73fb9d8b78f3dccdfb75dda8cb803ba9cd2ad3ab73467ff3e51d613d8d5112f"
+    },
+    "namespace_uid": "3014d023-e6db-481f-8977-e1dacad3c8d2",
+    "no_pods_or_rayclusters": true,
+    "namespace_retired": true
+  },
+  "behavior": [
+    "Training/splitter/preparation observers verify native name/namespace, nonempty UID and project/resource/attempt/generation labels before status or Ray IDs can be published.",
+    "Dataset observations also verify dataset version and stage.",
+    "The Ray jobId must match its original submitted prefix; the submitter additionally carries exactly one full fencing token, project ID and attempt ID and the saved service account. Equal jobId prefixes cannot hide different full tokens.",
+    "Training observation rejects missing/foreign parent scope while preserving the existing LookupError contract and leaving analysis attempts to their own observer.",
+    "SQL terminal receipt and lease expiry recovery, fresh snapshot fencing and native inspection outside SQL retain their existing controls."
+  ],
+  "checks": [
+    "696 connected cases, including all410 cases from the submission/cancellation scope and197 existing analysis/recovery cases, pass with zero failures/errors/skips.",
+    "211 focused/affected checks passed before the final connected run.",
+    "All original assertions in modified existing test modules remain unchanged; older status-only mocks now provide explicit selected rows, native names and labeled responses.",
+    "Repository Ruff, new-hunk formatting, strict0018 parity and all three CI preflights pass; coverage.json is unchanged.",
+    "Actual suspended k3d RayJobs in all three stages passed native identity checks and rejected a mismatched project or a full fence with the same16-character prefix. All three probe namespaces, including the failed fixture-token probe, are404 on re-verification."
+  ],
+  "retained_failures": [
+    "Initial connected run:665 passed/13 failures in incomplete older mock fixtures; source error compatibility and fixture setup were corrected without removing assertions.",
+    "The first full-fence native probe used a short unit-fixture token and failed its equal16-character-prefix assertion. The namespace was retired; the corrected full-length-token probe passes. Earlier prefix-only native and678-pass checkpoints remain historical."
+  ],
+  "limitations": [
+    "Native probes use suspended objects and the actual verification helper/SDK; no maintained running training image or physical producer/credential retirement is qualified.",
+    "The observed UID must be nonempty; it is not yet compared against an immutable persisted submission receipt. Same-name recreation bearing all the original identity fields remains unqualified.",
+    "Ordinary workers still receive ambient database/object-store credentials; all-stage broker conversion and native-operation custody remain required.",
+    "The4862-pass full-backend checkpoint predates the Ray fixes; independent branch coverage86.86784% remains below90.01%.",
+    "All36 Phase1 requirements remain2 Verified/34 Open;45 GB migration qualification and original abandoned phase1-deletion:G7 remain unresolved."
+  ]
+}

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import re
 from datetime import datetime
+from urllib.parse import unquote, urlsplit
 
 from automl_api.models.datasets import DatasetVersion
 
@@ -42,3 +43,37 @@ def verify_dataset_bytes(version: DatasetVersion, content: bytes) -> None:
     expected = require_verified_digest(version)
     if len(content) != version.byte_size or hashlib.sha256(content).hexdigest() != expected:
         raise DatasetDigestError("Dataset bytes differ from the verified size or SHA-256 digest.")
+
+
+def require_distinct_training_roles(uris):
+    """Reject overlapping prepared roles before any data reader receives their locations."""
+
+    def location(value):
+        parsed = urlsplit(str(value))
+        path = unquote(parsed.path)
+        if any(part in {".", ".."} for part in path.split("/")):
+            raise DatasetDigestError("Prepared role locations cannot contain traversal segments")
+        scheme = {"minio": "s3", "s3c": "s3", "gcs": "gs", "azure": "az"}.get(
+            parsed.scheme, parsed.scheme
+        )
+        return scheme, parsed.netloc.lower(), path
+
+    if not uris.get("train") or not uris.get("validation"):
+        raise DatasetDigestError("Prepared training requires both safe roles")
+
+    def overlaps(left, right):
+        if left[:2] != right[:2]:
+            return False
+        left_path, right_path = left[2].rstrip("/"), right[2].rstrip("/")
+        return (
+            left_path == right_path
+            or left_path.startswith(right_path + "/")
+            or right_path.startswith(left_path + "/")
+        )
+
+    safe = (location(uris["train"]), location(uris["validation"]))
+    final = {
+        location(value) for role, value in uris.items() if str(role).startswith("final") and value
+    }
+    if overlaps(*safe) or any(overlaps(role, protected) for role in safe for protected in final):
+        raise DatasetDigestError("Prepared train/validation roles overlap each other or final-test")

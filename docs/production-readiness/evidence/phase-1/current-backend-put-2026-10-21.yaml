@@ -1,0 +1,61 @@
+{
+  "status": "terminal_full_backend_failures_and_branch_coverage_unmet",
+  "phase_complete": false,
+  "verified_at": "2026-10-21T20:25:16.607351+00:00",
+  "source_state": "Frozen snapshot before the broker fixture-import isolation fix; a new source-current run remains required.",
+  "collected": 4515,
+  "passed": 4511,
+  "outcomes": {
+    "failure": [
+      "tests.test_attempt_output_broker.test_worker_publication_requires_the_committed_native_completion[refit-False]",
+      "tests.test_champion_refit_publication.test_publication_preserves_provider_bucket_and_container[az://account/container]",
+      "tests.test_champion_refit_publication.test_publication_preserves_provider_bucket_and_container[gs://test]",
+      "tests.test_object_store.test_embedded_driver_upload_contract_and_streaming"
+    ],
+    "error": [],
+    "skipped": []
+  },
+  "pytest_returncode": 1,
+  "coverage_returncode": 1,
+  "coverage": {
+    "statements": {
+      "covered": 22385,
+      "total": 23593,
+      "percent": 94.87983723985928,
+      "additional_covered_outcomes_for_current_denominator": 0
+    },
+    "branches": {
+      "covered": 6105,
+      "total": 7034,
+      "percent": 86.79272106909298,
+      "additional_covered_outcomes_for_current_denominator": 227
+    }
+  },
+  "source_inputs": 509,
+  "source_manifest": ".unlazy/phase1-current-backend-2026-10-21-put/source-sha256.json",
+  "gates_at_snapshot": {
+    "met": 1,
+    "unmet": 2,
+    "abandoned": 0
+  },
+  "preflight_returncodes": {
+    "generate_production_task_index.log": 0,
+    "validate_phase2_evidence.log": 0,
+    "check_no_dask_runtime.log": 0
+  },
+  "minimum_free_bytes": 45743112192,
+  "reserve_bytes": 43500000000,
+  "root_coverage_sha256": "d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9",
+  "failure_followup": "All four failures pass after the module-local fixture repair:97 affected cases pass in both collection orders,947 connected cases pass, and the subsequent full4515-case run passes without errors/skips. This failed snapshot is retained. See current-backend-fixture-isolation-2026-10-21.yaml; branch coverage remains unmet.",
+  "runtime_boundary": "Local Ray2.56.1 versus CPU lock2.58.0 remains fixture-only; no release/runtime qualification.",
+  "phase1_requirements": {
+    "verified": 2,
+    "open": 34
+  },
+  "remaining": [
+    "All full-backend failures must pass on current sources.",
+    "Statements and branches must each meet90.01%; the current fixed branch denominator needs227 additional covered outcomes.",
+    "All-stage/native/release/HA, actual prior-binary,45GB physical migration and prerequisites remain unqualified.",
+    "Required handoff: original phase1-deletion:G7 remains abandoned because seven historical QA objects are missing."
+  ]
+}

@@ -508,3 +508,15 @@ def test_same_nonce_cannot_change_registered_object_role(grant_case):
     assert c.signer.call_count == 1
     assert len(rows(c)) == 1
     assert issue(c)["expires_at"] == delivered["expires_at"]
+
+
+def test_pending_revocation_blocks_same_transaction_read_authorization(grant_case):
+    c = grant_case
+    proof = attempt_identity.admit_attempt(c.factory, c.attempt_id, c.token, c.k8s)
+    with c.factory() as db, db.begin():
+        db.autoflush = False
+        grants.revoke_attempt_grants(db, c.attempt_id)
+        assert any(isinstance(row, WorkflowEvent) for row in db.new)
+        with pytest.raises(StaleFence, match="no longer admits workload identities"):
+            grants._authorization(db, c.attempt_id, proof, c.request)
+    assert c.signer.call_count == 0 and rows(c) == []

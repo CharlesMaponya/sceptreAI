@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from automl_api.models.enums import AttemptStatus
 from automl_api.models.workflows import WorkflowAttempt, WorkflowAttemptCredentialGrant
-from automl_api.services.champion_planning import plan_scope_refit
+from champion_planning_fixture import plan_scope_refit
 from sqlalchemy import select
 from test_attempt_object_grant_schema import grant_values
 
@@ -141,6 +141,12 @@ def test_cleanup_and_sweep_preserve_dependencies_until_original_deadline(
     refit_jobs._reconcile(factory, k8s, attempt.id)
     db.refresh(attempt)
     db.refresh(row)
+    if method == "PUT":
+        assert attempt.cleanup_state != "complete"
+        assert name in k8s.objects["secret"] and name in k8s.objects["network_policy"]
+        assert row.expires_at == deadline
+        assert plan_scope_refit(db, scope.id, store) is None
+        return
     assert attempt.cleanup_state == "complete" and not any(k8s.objects.values())
     assert row.expires_at == deadline
     replacement = plan_scope_refit(db, scope.id, store)
@@ -150,7 +156,7 @@ def test_cleanup_and_sweep_preserve_dependencies_until_original_deadline(
 
 @pytest.mark.parametrize("method", ["GET", "PUT"])
 @pytest.mark.parametrize("started", [False, True])
-def test_unstarted_or_physically_expired_grants_do_not_block_replacement(
+def test_unstarted_grants_and_expired_reads_allow_replacement_but_unknown_puts_block(
     planning_case, grant_clock, method, started
 ):
     db, store, _, scope, _ = planning_case
@@ -164,6 +170,10 @@ def test_unstarted_or_physically_expired_grants_do_not_block_replacement(
     if started:
         grant_clock[0] = original
     replacement = plan_scope_refit(db, scope.id, store)
+    if started and method == "PUT":
+        assert replacement is None
+        assert row.expires_at == original
+        return
     assert replacement.generation == 2
     db.refresh(row)
     assert row.status == "revoked" and row.expires_at == original

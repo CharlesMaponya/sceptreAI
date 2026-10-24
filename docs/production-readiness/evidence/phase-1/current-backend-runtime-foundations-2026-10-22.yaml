@@ -1,0 +1,63 @@
+{
+  "status": "terminal_tests_pass_branch_coverage_unmet",
+  "phase_complete": false,
+  "observed_at": "2026-10-22T04:50:30.476931+00:00",
+  "source_inputs": 510,
+  "source_manifest": ".unlazy/phase1-current-backend-runtime-foundations/source-sha256.json",
+  "collected": 4561,
+  "preflight_returncodes": {
+    "generate_production_task_index.log": 0,
+    "validate_phase2_evidence.log": 0,
+    "check_no_dask_runtime.log": 0
+  },
+  "reserve_bytes": 43500000000,
+  "root_coverage_sha256": "d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9",
+  "fixture_correction": "runtime-foundation-fixtures-2026-10-22.yaml",
+  "previous_full_backend": "current-backend-generic-revocation-2026-10-21.yaml",
+  "runtime_boundary": "Local Ray2.56.1 versus CPU lock2.58.0; fixture-only, no fresh release/runtime/image qualification.",
+  "phase1_requirements": {
+    "verified": 2,
+    "open": 34
+  },
+  "remaining": [
+    "Whole-backend branches remain86.879%, below the independent90.01% minimum; the current fixed denominator needs221 further covered outcomes.",
+    "Native credential/broker and transaction-bound I/O implementation remain unfinished; see the static queue-selector inventory.",
+    "Native/release/HA/process-loss, actual prior-binary and45GB migration qualification remain open.",
+    "Original phase1-deletion:G7 remains abandoned because seven historical QA objects are missing."
+  ],
+  "verified_at": "2026-10-22T05:13:08.222915+00:00",
+  "source_state": "Historical 510-input snapshot before the upload retention increment; new production and test inputs require fresh whole-backend and coverage qualification.",
+  "passed": 4561,
+  "outcomes": {
+    "failure": [],
+    "error": [],
+    "skipped": []
+  },
+  "coverage": {
+    "statements": {
+      "covered": 22403,
+      "total": 23601,
+      "percent": 94.92394390068218,
+      "additional_covered_outcomes_for_current_denominator": 0
+    },
+    "branches": {
+      "covered": 6118,
+      "total": 7042,
+      "percent": 86.87872763419483,
+      "additional_covered_outcomes_for_current_denominator": 221
+    }
+  },
+  "tests_pass": true,
+  "independent_coverage_pass": false,
+  "pytest_returncode": 0,
+  "coverage_returncode": 1,
+  "gates_at_snapshot": {
+    "met": 2,
+    "unmet": 1,
+    "abandoned": 0
+  },
+  "strict_schema_parity": true,
+  "schema_head": "0018_attempt_predecessor_lineage",
+  "repository_ruff_passed": true,
+  "minimum_free_bytes": 45634646016
+}

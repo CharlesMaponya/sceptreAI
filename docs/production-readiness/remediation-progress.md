@@ -1340,7 +1340,7 @@ These13 versions are not proven corrupt or repaired. Byte rescans, controlled mi
 
 ### 2026-10-16 — QA dataset byte verification and guarded metadata repair
 
-The read-only rescan matched all13 actual dataset hashes over280,788 bytes. All13 persisted byte sizes were missing. The first attempt stopped at its pre-read size guard; the resumed probe admitted provider HEAD sizes under the same16MiB object/64MiB total caps,64KiB reads and40s deadline. No object changed. Observation evidence: `evidence/phase-1/qa-digest-rescan-2026-10-16.yaml`.
+The read-only rescan matched all13 actual dataset hashes over280,788 bytes. All13 persisted byte sizes were missing. The first attempt stopped at its pre-read size guard; the resumed probe admitted provider HEAD sizes under the same16MiB object/64MiB total caps,64KiB reads and 40s deadline. No object changed. Observation evidence: `evidence/phase-1/qa-digest-rescan-2026-10-16.yaml`.
 
 A frozen plan then passed five real PostgreSQL controls: changed digest, wrong project, stale row, conflicting evidence and full valid-repair rollback. The original rows and proof set survived every rollback unchanged. One guarded transaction committed13 digest-verification records and observed sizes/verification times. Replaying repaired0/replayed13. The follow-up read-only inventory measured13 versions/0 requiring verification review and0 upload sessions. Content hashes/scopes and all unrelated row fields are preserved; QA Pod/PVC identities are unchanged. No object writes/deletes, shared rollout or migration occurred. Repair evidence: `evidence/phase-1/qa-digest-metadata-repair-2026-10-16.yaml`.
 
@@ -1493,7 +1493,7 @@ Admission now owns a short read transaction, freezes the workload/source binding
 
 Current verification includes45 committed database race/replay cases and358 related regressions, with no failures/errors/skips. Positive controls prove zero checked-out SQL connections and independently available Project/attempt/run/version row locks during each remote lookup. Concurrent same-token and rotated-token requests preserve unique evidence, and actual commit-then-lost-acknowledgement cases recover without duplicate rows. The analysis fixtures now store real small source bytes and matching verified SHA-256 metadata; the earlier three fixture failures were not resolved by weakening the digest guard.
 
-Seven bounded native cases use real local K3d TokenReview and Pod-bound tokens: identity denial/replay, training startup/heartbeat/manual token replacement, validation/explainability/drift publication, and splitter/preparation admission/expiry barriers. All test Pods remained unscheduled; all seven owned namespaces are absent. Existing QA Pod and PVC identities match the recorded baseline. The native harness import-path collection failure was corrected before any resources were created. Across gate and native runs, the audit measures412 test executions and410 distinct IDs; lint/diff checks pass and coverage.json is unchanged. [Evidence](evidence/phase-1/admission-io-2026-10-18.yaml) records exact source and result hashes.
+Seven bounded native cases use real local K3d TokenReview and Pod-bound tokens: identity denial/replay, training startup/heartbeat/manual token replacement, validation/explainability/drift publication, and splitter/preparation admission/expiry barriers. All test Pods remained unscheduled; all seven owned namespaces are absent. Existing QA Pod and PVC identities match the recorded baseline. The native harness import-path collection failure was corrected before any resources were created. Across gate and native runs, the audit measures412 test executions and 410 distinct IDs; lint/diff checks pass and coverage.json is unchanged. [Evidence](evidence/phase-1/admission-io-2026-10-18.yaml) records exact source and result hashes.
 
 These native tests execute current application code locally through ASGI, with manual token files and synthetic conformance inputs. They do not qualify deployed worker images, TLS/egress, automatic kubelet rotation, cloud IAM, absent raw/final storage capabilities or a complete AttemptCredentialBroker. The older import checkpoint remains bound to its recorded source snapshot. Model/migration inputs did not change; the dedicated test database stays0013 and QA stays0011/old images. No existing QA Pod/PVC/Secret/object or schema was modified, and no rollout, commit or push occurred.
 
@@ -1811,7 +1811,7 @@ The first full Dockerfile build missed its dependency cache and was deliberately
 stopped before compromising the43GB free-space reserve. The Docker source-overlay
 attempt also needed to unpack old base layers and stopped at its higher guard.
 Both terminal attempts and their logs are retained; no blind retry or broad cache
-prune occurred. Small OCI source layers (528,238 API bytes and409,976 CPU bytes)
+prune occurred. Small OCI source layers (528,238 API bytes and 409,976 CPU bytes)
 reuse the unchanged, previously qualified dependency layers in the local registry.
 They run on agent-0, which already caches those bases. These are test images; the
 fresh release-build requirement stays open. Source directories use opaque
@@ -2587,7 +2587,7 @@ still do not fully use the durable pod-bound grant broker. Complete stage/child/
 output wiring and native permissions/current-image qualification remain required.
 The3953-pass full-backend checkpoint predates this and the revocation transaction
 change; current-source full-suite/global coverage checks remain required. Its
-86.651% branch result was below90.01%. Phase1 remains two Verified/34 Open.
+86.651% branch result was below 90.01%. Phase1 remains two Verified/34 Open.
 45GB/actual prior-binary migration, pooler/failover, shared preservation and the
 original seven missing QA objects/abandoned preservationG7 remain unresolved.
 
@@ -2635,3 +2635,905 @@ branch result did not meet90.01%. Full stage/child broker wiring, native workflo
 release images, pooler/failover,45GB/actual prior binaries and shared preservation
 remain unqualified. The seven missing historical QA objects and original abandoned
 preservationG7 remain unresolved.
+
+
+## 2026-10-20 — monitoring ingestion identity and concurrent writes
+
+Monitoring ingestion now stores the complete typed request hash and rejects reuse
+of an observation key with changed input. A deployment row lock serializes metric
+sequence allocation and configuration revisions; refreshed ORM rows prevent stale
+session state from defeating either check. Lookup uses a bounded database query
+and sequence aggregation rather than loading the complete metric history.
+
+Canonical cached responses and body-key replays must match the submitted point,
+including user metadata and deployment identity. Ambiguous legacy history without
+hash evidence returns409 `monitoring_idempotency_evidence_missing`; retrying the
+original canonical Idempotency-Key header preserves valid historical replay.
+Changed requests return409 `idempotency_key_reused`; contradictory saved responses
+return409 `monitoring_response_mismatch`. Existing history and caches are never
+rewritten or assigned inferred hashes. Internal hash evidence stays out of public
+metric metadata. Nonfinite point values, nested metadata and threshold values
+return422 through the production validation handler.
+
+The corrected initial reproduction had15 failing cases and six passing controls;
+six additional nonfinite configuration cases also reproduced failures. Final
+verification passes167 connected tests, including41 overlapping focused cases,
+with no failures, errors or skips. Six real concurrent HTTP/PostgreSQL scenarios
+cover metric sequencing, duplicate/conflicting keys and configuration revisions.
+Two cached ORM controls, three supplied timestamp variants and three current-role
+controls pass. These tests use the real router, PostgreSQL, services and project
+permissions; the authenticated-user dependency is overridden. They do not qualify
+native providers, Kubernetes or release images.
+
+All495 frozen source inputs match, repository Ruff and five changed-file format
+checks pass, and strict schema parity remains at0018. No schema or dependency
+change was needed. All three scoped gates pass; original coverage.json is
+unchanged. [Monitoring evidence](evidence/phase-1/monitoring-ingestion-2026-10-20.yaml).
+
+W04/W05 remain Open pending the other canonical mutation families and deployed
+qualification. Phase1 remains two Verified/34 Open. The3953-pass full-backend
+checkpoint predates the revocation, proxy, lineage and monitoring changes;
+current-source full-suite/global coverage checks remain required. Its86.651%
+branch coverage was below 90.01%. The user confirmed45GB as the database
+qualification ceiling; a physical rehearsal and largest-table row counts remain
+unqualified. Full broker/native workflows, pooler/failover, actual prior binaries
+and shared preservation remain open. The seven missing historical QA objects and
+original abandoned preservation gate `phase1-deletion:G7` remain unresolved.
+
+
+## 2026-10-20 — serialize governance report generation after audit collection
+
+Governance generation now allocates report versions under a refreshed deployment
+row lock after audit collection and HTML rendering. It locks and refreshes the
+linked registry entry, rejecting changed deployment/model identity with409
+`governance_binding_changed`. The failed command and report intent roll back.
+External audit reads occur before these locks. JSON/HTML output always persists
+as pending intent for the existing reconciler; the unused inline-write path and
+its option were removed. The only production caller already used deferred output.
+Existing report history is not rewritten.
+
+The original HTTP/PostgreSQL race returned version1 for both distinct requests;
+sequential and same-header replay controls passed. Three additional controls
+reproduced acceptance after deployment detachment, source replacement or a model
+name change during an audit read. Final verification passes304 connected tests,
+including13 overlapping focused cases, with no failures, errors or skips. Two
+actual concurrent requests now serialize versions1/2 or replay the same command.
+Four audit-read cases allow a separate writer to finish before version locking,
+then either generate valid evidence or reject the changed binding. Three current-
+role controls, replay after binding removal and cross-deployment key conflicts
+pass. Real PostgreSQL reconciliation writes four distinct JSON/HTML keys with the
+expected bytes; repeated reconciliation does not write them again.
+
+The HTTP tests use real services, the canonical audit builder/HTML renderer and
+project permissions, with the authenticated-user dependency overridden. Binding
+controls inject an audit object reader; the byte-integrity reconciler control
+uses an in-memory store. These do not qualify native providers or release images.
+All496 frozen inputs match, repository Ruff and four changed-file formatting
+checks pass, strict schema parity remains at0018 and all three scoped gates pass.
+No schema/dependency change was needed; original coverage.json is unchanged.
+[Governance generation evidence](evidence/phase-1/governance-generation-2026-10-20.yaml).
+
+W04/W05 remain Open for the other mutation families and deployed qualification.
+Phase1 remains two Verified/34 Open. Earlier full-backend and monitoring evidence
+is historical for files changed by this increment; current-source full-suite and
+global coverage remain required. The3953-pass checkpoint had86.651% branch
+coverage, below 90.01%. Full broker/native workflows, pooler/failover, physical45GB
+and actual prior-binary migrations remain unqualified. Shared preservation remains
+open with seven missing historical QA objects and original abandoned
+`phase1-deletion:G7`.
+
+
+## 2026-10-20 — current full backend checkpoint at schema0018
+
+The complete backend selection now collects and passes all4178 tests against the
+owned PostgreSQL fixture, with zero failures, errors or skips, in1368.11 seconds.
+This checkpoint includes the revocation transaction, proxy isolation, declared
+predecessor lineage, monitoring and governance generation fixes. All496 frozen
+source/configuration inputs match after the run. Post-suite strict schema parity
+passes at0018 and repository Ruff passes. All three preflights pass: generated
+production task index, historical Phase2 evidence validation and no-Dask runtime
+checks. Original coverage.json remains unchanged. The lowest free-space reading
+was44,929,232,896 bytes, above the43,500,000,000-byte test reserve.
+
+Whole-backend statements cover21967/23159=94.852973%; branches cover5963/6872=
+86.772410%. Statements exceed90.01%, but branches do not. At this denominator,
+223 additional branch outcomes are needed. The coverage checker exits1 as
+required. Two full-backend gates pass and one coverage gate remains unmet after
+reverification; no threshold or exclusion was changed.
+[Current backend evidence](evidence/phase-1/current-backend-2026-10-20.yaml).
+Earlier backend evidence remains preserved as historical.
+
+This is a local fixture-toolchain checkpoint. Its recorded Ray version is2.56.1,
+while the manifest pins2.58.0; it does not qualify the release dependency runtime
+or current release images. No live provider/Kubernetes test path was enabled.
+Native workflows and complete stage/child/output broker wiring, pooler/failover,
+actual prior-release binaries, physical45GB migration and prerequisite phase
+qualification remain required. The storage recheck finds only the root data disk,
+with about44.95GB free, and a separate1GB EFI partition; no second data disk is
+available for the45GB fixture plus reserve and migration overhead.
+
+Phase1 remains two Verified/34 Open. Shared preservation remains unqualified:
+seven historical QA objects are missing and original abandoned preservation
+`phase1-deletion:G7` remains a required handoff. A passing full backend selection
+has not closed these broader requirements.
+
+
+## 2026-10-20 — align champion workload identity with saved Job delivery
+
+New champion refit attempts now record `project-{project_id}-refit`; evaluator
+attempts record `project-{project_id}-evaluation`. Their generated Jobs use those
+same project-and-stage service-account names. Delivery creates the account named
+in the durable Job, in that Job's namespace, instead of using a global hard-coded
+name and the current default namespace. The existing account-creation helper and
+controller RBAC already support this. Existing planning replays and previously
+recorded submission manifests retain their original identity/account; no history
+or old grant/receipt is rewritten. The static legacy chart accounts remain for
+such replays.
+
+The baseline reproduced five mismatches while two legacy delivery controls
+passed. Final verification passes233 connected tests, including nine overlapping
+focused cases, with no failures, errors or skips. Real PostgreSQL planning checks
+cover both stages, project/stage separation and refit replacement. Four delivery/
+replay controls use the declared account even after the current default namespace
+changes. Two legacy planning controls preserve original identities. Kubernetes
+transport is doubled; this is not native permission or pod-admission evidence.
+
+All497 frozen source/configuration inputs match. Repository Ruff and six Python
+format checks pass; the older champion planner keeps its existing formatting for
+the single-line identity change. Strict schema parity passes at0018, all three
+scoped gates pass and original coverage.json remains unchanged. No schema or
+dependency change was needed.
+[Champion workload identity evidence](evidence/phase-1/champion-workload-identity-2026-10-20.yaml).
+
+This is the identity prerequisite for champion safe-read brokering. Refit and
+evaluator legacy control endpoints still mint unjournaled read URLs. Projected
+pod tokens, actual Job/Pod/SA/policy identity validation, immutable native object
+versions, durable read/output grant wiring, uncertain-outcome retirement and
+native/release-image qualification remain required. A pod UID or object version
+must not be invented to fill the existing grant schema. Old plan digests and
+historical grant evidence must remain intact when those paths are connected.
+
+W02 and the broader Phase1 remain Open: two Verified/34 Open. The4178-pass full
+backend checkpoint predates this increment; its86.772% branch coverage was below
+90.01%, and current-source full-suite/global coverage remain required. Release-
+dependency runtime, pooler/failover, physical45GB/prior-binary migration and the
+prerequisite phases remain unqualified. Shared preservation remains open with
+seven missing historical QA objects and original abandoned `phase1-deletion:G7`.
+
+
+## 2026-10-20 — enforce revocation in live champion access checks
+
+Refit and evaluator shared access checks now reject nonterminal attempts with an
+existing credential-revocation event, even if their status remainsRUNNING. The
+existing read broker uses the same shared check. It flushes pending events before
+querying, so revocation in the caller's autoflush-disabled transaction also blocks
+access. A revocation committed during external URL minting prevents disclosure
+when the route rechecks current authorization. Valid active reads and completed-
+attempt acknowledgement lookup retain their existing behavior.
+
+The PostgreSQL baseline reproduced six bypasses: committed revocation, pending
+revocation and revocation during minting, for both champion stages. Four valid
+active/completed controls passed. Final verification passes287 connected tests,
+including11 overlapping focused cases, with no failures, errors or skips. The
+additional common-broker case rejects same-transaction pending revocation before
+any signer call or grant creation. The new champion checks call the real route
+handlers directly against committed PostgreSQL fixtures; URL minting is doubled.
+During-mint revocation uses a genuinely independent connection. Existing checks
+continue to verify that external minting holds no SQL connection/lock and stale
+capabilities are not disclosed. These checks do not qualify native providers or
+Kubernetes permissions.
+
+All498 frozen source/configuration inputs match, repository Ruff and six changed-
+file formatting checks pass, and strict schema parity remains at0018. All three
+scoped gates pass after reverification. Original coverage.json is unchanged; no
+schema, dependency, historical plan/grant/receipt or new grant ledger was added.
+[Champion revocation evidence](evidence/phase-1/champion-revocation-2026-10-20.yaml).
+
+Logical revocation does not physically invalidate a previously issued native URL.
+Original expiry, credential retirement and cleanup/replacement barriers still
+apply. The legacy champion minters are now guarded against this bypass, but their
+full pod-bound read/output broker integration remains required, including actual
+Job/Pod/SA/policy validation and real immutable object versions. No such evidence
+is inferred from a revocation event or fabricated for historical attempts.
+
+Phase1 remains two Verified/34 Open. The4178-pass full-backend checkpoint predates
+this and the champion workload-identity increment; its86.772% branch coverage was
+below 90.01%. Current-source full-suite/global coverage, release dependency runtime,
+complete broker/native workflows, pooler/failover, physical45GB/prior-binary
+migration and prerequisite phase qualification remain required. Shared preservation
+remains unqualified with seven missing historical QA objects and original abandoned
+`phase1-deletion:G7`.
+
+
+## 2026-10-21 — integrate champion safe reads with the durable broker
+
+New refit and evaluator plans declare `pod-bound-read-v1`; saved Jobs project
+attempt/fence-bound tokens. Deployments must configure the existing
+`attemptIdentity.controlBaseUrl` with the HTTPS broker root and permit that
+endpoint in both stage egress policies. Their existing CA bundles also cover
+broker TLS. Worker images must implement the same protocol. Both workers use
+the existing broker for approved candidate, train/validation and frozen-pipeline
+reads. Admission validates the Job, Pod, service account and effective network
+policies against the saved declaration and pins their native UIDs. Immutable object versions and issuance intent commit before signing;
+revalidation prevents stale disclosure, nonce replay cannot mint again, and
+renewal, revocation or an unknown result cannot extend the original deadline.
+
+Legacy HMAC download routes now return410 without minting. Old plan serialization
+and hashes remain unchanged. Unknown legacy read history blocks cleanup,
+replacement and deletion until verified recovery; no expiry or grant history is
+inferred. New plan fields are rejected by a structural copy of the old closed
+schema. This does not qualify actual previous-release binaries or legacy recovery.
+
+All 623 connected tests across 31 modules pass, without failures, errors or skips.
+They include 137 broker/identity cases, 80 overlapping champion broker cases,
+47 capability-reader cases and 36 worker/proxy cases. Joined worker tests preserve
+real TLS storage transport and rejecting ambient-proxy controls. Four real worker
+recovery scenarios accept or reject stored results as before, keep cleanup pending
+until recorded read expiry, then complete without another final-data grant.
+Deletion checks preserve unrelated data and quarantine missing champion history.
+Kubernetes/TokenReview and native stat/signing are doubled; two additional joined
+HTTP broker tests also double the object transport. These are not native provider,
+deployed Kubernetes or release image qualification.
+
+All 501 frozen source/configuration inputs match. Repository Ruff, 31 owned file
+format checks and strict 0018 schema parity pass; all four scoped gates pass after
+reverification. Original coverage.json is unchanged. No schema, dependency or
+production historical plan/grant/receipt was rewritten.
+[Champion read-broker evidence](evidence/phase-1/champion-read-broker-2026-10-21.yaml).
+
+Phase 1 remains **two Verified/34 Open**. The 4178-test full-backend checkpoint is
+historical; current-source full-suite/global coverage, complete all-stage reads,
+outputs/child attempts/final authority, native workflows, release runtime,
+pooler/failover and prerequisite qualifications remain open. 45 GB remains the
+migration qualification ceiling; largest-table row counts and enough space for
+that physical database, reserve and migration overhead are still required.
+Shared preservation remains unqualified: seven historical QA objects are missing,
+and original `phase1-deletion:G7` remains abandoned with handoff required.
+
+
+## 2026-10-21 — enforce champion output write authority
+
+Evaluator persistence now rejects committed or pending credential revocation and
+controller recovery claims. Both champion output paths revalidate current authority
+and their exact durable intent after storage I/O before acknowledging the write.
+Refit reloads output history to avoid stale ORM values. Evaluator readback and
+signature verification now live in shared persistence, before its final SQL check;
+the route no longer repeats that read. Unexpected storage URI or byte size fails.
+
+Revocation during request streaming prevents storage. Refit retains the intent it
+registered before reading the body. Changes during a write prevent acknowledgement
+while preserving already written bytes and intent for reconciliation. Trusted
+controller recovery can still publish a valid stored signed result after worker
+revocation or lease expiry; it does not reopen final data.
+
+The baseline reproduced two evaluator revocation bypasses with four passing
+controls. All 659 connected tests across 32 modules now pass, including 36 focused
+cases, without failures, errors or skips. Tests use committed PostgreSQL,
+independent mutation connections, actual HTTP/ASGI body interleaving and local
+embedded object bytes. They cover revoked, expired, superseded or recovery-fenced
+workers, changed plans/intents, incorrect storage metadata and valid recovery.
+Storage I/O holds no broker SQL connection. Native provider behavior and deployed
+Kubernetes are separate open qualifications.
+
+All 502 frozen inputs match. Repository Ruff, four Python formatting checks
+and strict schema parity at 0018 pass. All three scoped gates pass after
+reverification; original coverage.json is unchanged. No schema or dependency
+changed. The earlier 623-test read-broker checkpoint and 4178-test full backend
+checkpoint are historical after this change.
+[Output authority evidence](evidence/phase-1/champion-output-authority-2026-10-21.yaml).
+
+Phase 1 remains **two Verified/34 Open**. Full delegated PUT grants, native in-flight
+write retirement, all-stage broker/retry qualification, current release images,
+full-suite and global coverage and pooler/failover remain required. Rejecting a stale
+acknowledgement does not undo an already started write or prove physical
+retirement. The 45 GB physical migration and prior-binary qualification remain open.
+Seven historical QA objects remain missing; original `phase1-deletion:G7` remains
+abandoned with handoff required.
+
+
+## 2026-10-21 — remeasure the entire backend after champion integration
+
+The complete CI `tests/` selection now passes **4,308 / 4,308 tests**, with no
+failures, errors or skips. Collection and execution match all unique cases;
+four UUID4-valued parameters are normalized only for identity comparison across
+the two pytest processes. All three CI preflights pass, all 502 frozen inputs
+match, repository Ruff passes and post-suite strict schema parity is 0018.
+
+Whole-backend statement coverage is **22,136 / 23,328  = 94.890%**. Branch coverage
+is **6,030 / 6,940  = 86.888%**, below the independently required 90.01%. At this
+fixed denominator, 217 additional branch outcomes would be needed. No thresholds,
+exclusions or test selections were changed, and original coverage.json is intact.
+The full-backend verification scope has **two gates met / one unmet**: coverage
+G3 remains open. The earlier 4178-test checkpoint stays historical.
+
+The owned test PostgreSQL container was stopped after execution. Its original
+container and persistent volume were resumed without reset or recreation, then
+the read-only schema audit passed. The failed connection attempt is retained.
+Observed free space stayed above 43.5 GB throughout the test run. This is fixture
+runtime qualification: local Ray is 2.56.1 while the CPU lock pins 2.58.0. Current
+release images, native providers/Kubernetes and release dependency runtime remain
+unqualified.
+[Full backend evidence](evidence/phase-1/current-backend-2026-10-21.yaml).
+
+Phase 1 remains **two Verified / 34 Open**. Full delegated PUT grants, physical
+in-flight write retirement, complete native workflows, pooler/failover and
+prerequisite qualification remain required. The 45 GB physical migration and actual
+prior-binary qualification remain open. Seven historical QA objects remain
+missing; original `phase1-deletion:G7` stays abandoned with handoff required.
+
+
+## 2026-10-21 — stop hidden S3 mutation retries
+
+Configured AWS/S3-compatible data clients and separate public signing clients now
+allow one SDK attempt per operation. Previously the driver configured five SDK retries: an
+accepted multipart-upload creation or object write followed by 503 or a connection
+drop could be silently repeated. The workflow did not observe the first uncertain
+outcome. Explicit caller recovery now queries the original multipart upload ID
+without creating another upload. Caller error classification and externally
+injected clients retain their existing behavior.
+
+Eight actual boto/botocore HTTP fault cases reproduced duplicate accepted mutations;
+four normal controls passed. All 315 connected checks now pass, including 14 focused
+checks, without failures, errors or skips. Both client modes, creates and writes,
+503/disconnect faults and an environment retry override are exercised. The SDK
+connects only to owned loopback fixtures using synthetic credentials. Cloud
+permissions, actual cloud assets, TLS and current release images remain unqualified.
+
+All 503 frozen inputs match. Repository Ruff, both changed-file formatting checks
+and strict 0018 schema parity pass; all three scoped gates pass after reverification.
+No schema or dependency changed, and original coverage.json remains intact.
+[S3 retry ownership evidence](evidence/phase-1/s3-sdk-retry-owner-2026-10-21.yaml).
+
+Phase 1 remains **two Verified / 34 Open**. The 4308-pass full-backend checkpoint is
+historical after this SDK change; current-source full-suite/global coverage remains
+required. Its 86.888% branch coverage was below 90.01%. Full delegated PUT grants,
+physical in-flight write retirement, all-stage/native workflows, pooler/failover,
+release runtime and 45 GB/prior-binary migration remain open. Seven historical QA
+objects remain missing, with original abandoned `phase1-deletion:G7` requiring
+handoff. No prior unknown native outcome or historical record was inferred away.
+
+
+## 2026-10-21 — unknown started PUTs cannot retire from expiry alone
+
+Fixed the shared retirement barrier so recorded started PUTs in issuing, issued,
+unknown, failed, expired or revoked state remain pending after their original
+deadline unless an exact native-completion event binds the grant, owner, object,
+size/hash and immutable version. Known completion still waits for the original
+deadline and does not bypass legacy champion-history quarantine. Project/run
+deletion, refit/evaluator cleanup and replacement, and provider-import identity/
+network cleanup use the barrier. No unsafe rewrite or inferred outcome is added.
+
+Six baseline regression cases reproduced premature retirement. All 486 connected
+checks now pass without failures, errors or skips across 15 modules, including
+30 retirement cases and 80 conditional-storage cases. Twelve of the storage cases
+exercise actual installed SDKs over owned loopback HTTP with synthetic credentials.
+One initial test failure was an ordering assumption: GCS queues bucket metadata
+reads in a background thread. The corrected check permits only that exact metadata
+read while retaining single-mutation, no object-readback/delete on error and byte
+preservation controls. The corrected wire and full connected runs pass.
+
+All 506 frozen inputs match. Repository Ruff, formatting for 11 changed Python
+files and strict schema parity at 0018 pass; root coverage.json remains intact.
+The three narrow safeguards gates pass after reverification. The original full
+PUT broker contract remains **0 met /5 unmet**: the storage helper is not connected
+to worker uploads, no production writer emits the new completion evidence yet,
+and issuer/router/protocol/worker integration and unknown-outcome reconciliation
+remain unfinished. [Scoped evidence](evidence/phase-1/started-put-retirement-2026-10-21.yaml).
+
+Phase1 remains **two Verified /34 Open**. Source-current full backend coverage,
+all-stage/native release qualification and actual prior-binary migration remain
+required. The 45GB physical migration was not run: 45.8GB free cannot accommodate
+the 45GB database plus the 43.5 GB reserve and WAL/migration overhead. Largest-table
+row counts remain unspecified. Seven historical QA objects remain missing;
+original abandoned `phase1-deletion:G7` requires handoff.
+
+
+## 2026-10-21 — champion outputs use the durable pod-bound broker
+
+Completed both worker output paths through the existing grant table and projected
+Pod identity. New plans/manifests use `pod-bound-object-v2`; None/read-v1 shapes
+and hashes remain stable. The API binds one role/UUID/own URI/Pod/fence/size/hash
+and original deadline before streaming, validates bytes and evaluator signature,
+then commits one issuance owner before conditional native I/O outside SQL. Exact
+version readback precedes a bound completion event. Lost upload replies trigger
+one receipt lookup and no new write. Legacy output routes return 410.
+
+Publication cannot bypass native completion or live worker authority. Regressions
+reproduced four premature-publication cases and a revoked evaluator publication;
+the existing refit revocation control passed. The fixed worker/controller paths
+preserve signed-result recovery without reopening final data. Unknown or unjournaled
+write history remains quarantined after expiry. Native completion survives later
+revocation, but cannot authorize stale disclosure or new native operations.
+
+All 928 connected checks pass across 39 modules, with no failures, errors or skips.
+Focused overlapping checks include 79 authority/protocol cases, 8 publication cases
+and 12 actual SDK wire cases. Two cases terminate only the active test-owned SQL
+connection after a native write and verify unknown custody/no reupload. The run
+also covers both actual workers, lost replies, ASGI stream revocation, concurrent
+SQL preparation, original deadlines, old hashes and old-schema rejection.
+
+One broad run exposed GET-only fixture assumptions and selection of an arbitrary
+grant expiry; checks now include PUTs and the latest original deadline. Another
+run had an allocation 409 while a separate probe overlapped the shared synthetic
+split identity. The guard was retained; the final serial 928-case run passed.
+All failed reports remain available. Native wire checks use owned small loopback
+payloads and synthetic credentials; joined worker calls use explicit native and
+Kubernetes doubles. No cloud/release/large-volume claim is inferred.
+
+All 509 frozen inputs match. Repository Ruff, formatting for 28 changed Python files
+and strict schema parity at 0018 pass. Existing champion-planning style is retained
+with only the protocol-string change, verified against its prior hash. Root
+coverage.json is unchanged. All five integration gates pass after reverification.
+[Broker evidence](evidence/phase-1/champion-put-broker-2026-10-21.yaml).
+
+Phase1 remains **two Verified /34 Open**. The whole-backend checkpoint predates
+these changes; current global coverage remains required. All-stage/child/native
+permissions, unknown-outcome reconciliation, large/chunked fault matrices, release
+images/runtime, TLS/rotation/process loss and pooler/HA remain open. The 45 GB physical
+migration was not run: 45.8 GB free cannot accommodate 45 GB plus the 43.5 GB reserve and
+WAL/migration overhead. Largest-table rows and actual prior-binary qualification
+remain outstanding. Seven historical QA objects remain missing; original abandoned
+`phase1-deletion:G7` requires handoff. No commit, push or deployment was performed.
+
+
+## 2026-10-21 — current whole-backend validation started
+
+The full CI `tests/` selection now collects **4515 tests** against all 509 frozen
+inputs after the PUT broker/publication changes. All three CI preflights pass.
+The serial test process is still running; no full-suite or coverage pass is
+claimed. Private coverage outputs will be measured independently against 90.01%
+for statements and branches, preserving root coverage.json. The dedicated PostgreSQL
+fixture and 43.5 GB free-space guard remain in effect. Local Ray remains 2.56.1
+versus the CPU lock 2.58.0, so release/runtime qualification remains open.
+[Run status](evidence/phase-1/current-backend-put-2026-10-21.yaml).
+
+Phase1 remains **two Verified /34 Open**, including the unrun 45 GB physical
+migration and original abandoned preservation `phase1-deletion:G7` handoff.
+
+
+## 2026-10-21 — full-backend result requires fixture isolation and more branch coverage
+
+All 4515 cases completed: 4511 passed and 4 failed, with no errors or skips. Statement
+coverage is 94.880%; branch coverage is 86.793%, below 90.01%. The current branch
+denominator needs 227 more covered outcomes. No threshold or exclusion changed.
+Full-backend gates at that frozen snapshot are 1 met /2 unmet; Phase1 is incomplete.
+
+The failures are the broker's premature-publication check, two provider-URI
+publication checks and the embedded upload/streaming contract. Registering the
+HTTP broker test module as a global pytest plugin also registered its synthetic
+cloud-URI autouse fixture globally. The repair keeps explicit fixtures local and
+retains every assertion. All 97 affected tests pass with broker-first collection;
+reverse-order and connected checks are underway. A source-current full suite
+remains required after the repair.
+
+The original 509-input full snapshot and failure report remain retained. All three
+CI preflights pass; root coverage.json stays unchanged. Native/release/runtime,
+actual prior-binary and 45GB qualification remain open, with original abandoned
+`phase1-deletion:G7` still requiring handoff for seven missing historical objects.
+
+
+## 2026-10-21 — broker fixture isolation passes connected requalification
+
+The global helper-plugin registration is replaced by explicit module-local
+fixture imports. Every original broker assertion is preserved, with added upload
+failure diagnostics. All97 affected cases pass in both collection orders;
+all947 connected cases pass across40 modules without failures, errors or skips.
+Only the broker test module differs among509 frozen inputs; production, coverage
+configuration and exclusions are unchanged. Repository Ruff, changed-file format,
+strict0018 schema parity and root coverage preservation pass.
+
+The fixture-isolation scope has3 met /0 unmet /0 abandoned gates. This is a
+scoped repair: the full4515-case requalification and independent90.01% coverage
+remain required. The earlier4511-pass/4-failure full snapshot is retained.
+Phase1 stays two Verified /34 Open. Native/release/runtime, actual prior-binary
+and45GB physical migration remain open; original abandoned phase1-deletion:G7
+still requires handoff for seven missing historical QA objects.
+[Evidence](evidence/phase-1/broker-fixture-isolation-2026-10-21.yaml).
+
+
+## 2026-10-21 — full backend passes after fixture isolation; branch coverage stays open
+
+All 4515 collected cases pass without failures, errors or skips. Collection and
+execution identities match, all 509 frozen inputs remain unchanged, and all three
+CI preflights plus repository Ruff and post-suite strict 0018 schema parity pass.
+The four previously failing cases pass without weaker assertions or production
+changes. Root coverage.json is preserved; private outputs remain separate.
+
+Coverage measures 22397/23593 statements (94.931%) and 6111/7034 branches (86.878%).
+The independent 90.01% branch threshold still fails and requires 221 additional
+covered outcomes at the current denominator. Full-backend gates are 2 met /1
+unmet /0 abandoned; no whole-phase completion is claimed.
+
+The retained frontend checkpoint matches all 76 source hashes and 10 artifact
+hashes: 214 unit tests, lint/build, four coverage dimensions and four offline
+browser cases. This is an integrity recheck of retained evidence, not a new
+execution or live API/release qualification. Local Ray remains 2.56.1 versus
+the CPU lock 2.58.0.
+
+Phase1 remains two Verified /34 Open. Generic revocation guards and all-stage
+broker/native credential removal remain implementation work. Native/release,
+actual prior-binary and 45 GB physical migration qualification remain open.
+Original phase1-deletion:G7 remains abandoned, requiring handoff for seven
+missing historical QA objects.
+[Full result](evidence/phase-1/current-backend-fixture-isolation-2026-10-21.yaml).
+
+
+## 2026-10-21 — generic revocation guards pass focused checks
+
+The real PostgreSQL baseline records 37 failures /18 passes across 55 cases:
+36 cases lack typed revocation denial, while a pending child revocation collides
+with a terminal event sequence. Existing active controls and committed receipt
+recovery pass. The shared revocation helper now protects generic admission and
+ordinary training/analysis/trial mutation guards, including pending markers.
+Trial enrollment also denies a revoked nonterminal child before assigning an
+execution identity. Verified terminal replay and explicit predecessor adoption
+remain available without new compute or changed historical receipts.
+
+All 56 focused cases pass. A connected attempt was stopped after capturing an
+existing test's changed denial-stage message; its 467-case partial report and
+runner interruption are retained, not counted as a completed suite. Only that
+test's expected diagnostic text changed; its no-signer/no-grant assertions stay
+intact. The new 1647-case connected run is underway across 63 modules on 510
+frozen inputs. No scoped or whole-phase completion is claimed yet.
+
+The earlier 4515-pass full snapshot is historical; it needs source-current
+requalification after these guards. Its independent branch coverage was86.878%,
+requiring 221 further covered outcomes at that denominator. Native credentials,
+direct native writes and SQL-spanning I/O remain broader implementation gaps.
+Native/release, actual prior-binary,45GB qualification and original abandoned
+phase1-deletion:G7 remain open.
+[Evidence](evidence/phase-1/generic-attempt-revocation-2026-10-21.yaml).
+
+
+## 2026-10-21 — generic revocation guards pass connected qualification
+
+All 1647 connected cases pass across 63 modules with no failures, errors or skips.
+The scope has 4 met /0 unmet /0 abandoned gates, reverified against 510 frozen
+inputs, repository Ruff, changed-file formatting and strict 0018 schema parity.
+All 58 focused cases pass, including nine new terminal-recovery/adoption cases
+and the existing pending-grant and runtime controls. The prior full connected
+attempt recorded 1645 passes/2 failures because its session double lacked the
+attempt ID and revocation query/flush interface. That double now represents an
+active, unrevoked attempt; every original test assertion remains unchanged.
+The failed/interrupted attempts and source manifests remain retained.
+
+Committed and pending revocations deny generic admission and ordinary training,
+analysis and trial mutations. Verified completed receipts and explicit
+predecessor adoption remain available without new execution or lease extension.
+No native credential, output journal or direct-native-I/O completion claim is
+made: those broader implementation gaps remain open.
+
+The earlier 4515-pass full backend is a historical 509-input snapshot; a new full
+run is required after these changes. Its branch coverage was 86.878%, below the
+independent 90.01% threshold. Phase1 remains two Verified /34 Open. Native/release,
+actual prior-binary and 45 GB physical migration qualification remain open, as
+does original abandoned phase1-deletion:G7 for seven missing historical objects.
+[Evidence](evidence/phase-1/generic-attempt-revocation-2026-10-21.yaml).
+
+
+The source-current full-backend run after the generic guards now collects
+4561 cases on the same 510 frozen inputs. All three CI preflights pass. Its
+terminal test result and independent coverage remain pending; root coverage.json
+is preserved.
+[Run status](evidence/phase-1/current-backend-generic-revocation-2026-10-21.yaml).
+
+
+## 2026-10-22 — explicit queue-selector inventory during the frozen backend run
+
+Static source review accounts for 17 explicit SKIP LOCKED selections and one
+transaction-scoped advisory acquisition across 166 production Python files and
+15 functions. Nine positive/negative scanner controls distinguish the selection
+and lock kinds. The inventory is source review only: dynamic SQL, dependency
+internals, blocking/no-lock polling loops and runtime worker behavior are not
+qualified by it. W03 and the whole Phase1 remain Open.
+
+The concrete next implementation gaps include native upload deletion/abort under
+SQL locks without a committed cleanup owner, Kubernetes observers holding their
+selection transaction across remote reads, candidate stats during planning, and
+transaction-bound native outbox handlers. Existing durable claims and several
+split-transaction paths are distinguished rather than counted as blanket
+coverage. No running full-backend inputs, schema or dependencies changed.
+[Inventory](phase-1-queue-claims.md) and
+[evidence](evidence/phase-1/queue-claims-2026-10-21.yaml).
+
+
+## 2026-10-22 — full-backend result and runtime-foundation fixture correction
+
+The frozen 4561-case full run completed with 4558 passes /3 failures, without
+errors or skips. All three CI preflights pass. Statement coverage is94.894%;
+branch coverage is86.779%, below the independent90.01% minimum and requiring
+228 further covered outcomes at the current denominator. The full checkpoint
+has1 met /2 unmet /0 abandoned gates.
+
+All three failures come from older session doubles that return an attempt for
+the new event lookup or exhaust a fixed list of scalar results. The doubles now
+explicitly represent no revocation event. No production code, test assertion or
+expected exception changed. All105 cases in the complete affected module and
+PostgreSQL revocation/parent-lease/publication controls pass. All three fixture
+gates, repository Ruff and strict0018 schema parity pass; new hunks need no
+formatting and the six unrelated legacy formatter hunks remain untouched.
+
+The failed full snapshot is retained, and a fresh full-backend/coverage run is
+required. Phase1 remains two Verified /34 Open. Native credentials/brokers,
+transaction-bound I/O, release/runtime and45GB qualification remain unfinished;
+original abandoned phase1-deletion:G7 still requires seven historical QA objects.
+[Fixture evidence](evidence/phase-1/runtime-foundation-fixtures-2026-10-22.yaml).
+
+
+The fresh full backend after the session-double correction collected 4561 cases
+on 510 frozen inputs and is running. All three CI preflights pass. No complete
+backend or coverage pass is claimed until its terminal result is verified.
+[Run status](evidence/phase-1/current-backend-runtime-foundations-2026-10-22.yaml).
+
+
+## 2026-10-22 — all 4561 backend cases pass; branch coverage stays open
+
+The source-current full run passes every collected case with no failures, errors
+or skips. Collection/execution identities match, all510 frozen inputs match,
+all three CI preflights and repository Ruff pass, and post-suite strict0018
+schema parity remains intact. Root coverage.json is unchanged.
+
+Coverage measures22403/23601 statements (94.924%) and6118/7042 branches (86.879%).
+The independent90.01% branch minimum remains unmet, needing221 further covered
+outcomes at this denominator. Full-backend gates are2 met /1 unmet /0 abandoned;
+Phase1 remains two Verified /34 Open. This does not qualify native/release,
+actual prior-binary,45GB or original abandoned phase1-deletion:G7.
+[Evidence](evidence/phase-1/current-backend-runtime-foundations-2026-10-22.yaml).
+
+
+## 2026-10-22 — upload retention guards
+
+Legal hold and future retention now block explicit abort and every automatic cleanup status. Filters apply before LIMIT and locked rows refresh cached ORM state. 153 connected checks pass, including 55 focused PostgreSQL cases; baseline reproduced 20 failures. Eligible, equal-deadline, idempotent no-op and provider-retention deferral behavior pass. [Evidence](evidence/phase-1/upload-retention-guards-2026-10-22.yaml).
+
+This policy increment does not close native cleanup ownership or SQL/I-O separation. Phase1 remains 2 Verified/34 Open; current-source full/coverage, native/release, prior-binary and45GB qualification remain required. Original phase1-deletion:G7 remains abandoned for seven missing historical QA objects.
+
+
+## 2026-10-22 — project deletion preserves retained uploads
+
+Project deletion now also respects stored upload hold/retention at admission and before every queued stage. 242 connected checks (70 focused PostgreSQL cases) pass after reproducing 48 failures. Eligible/equal-deadline deletion, run-only deletion and policy-release replay pass; 32 repeated waits preserve the retry budget. [Evidence](evidence/phase-1/project-upload-retention-2026-10-22.yaml). Native cleanup custody and SQL/I-O separation remain required; Phase 1 stays 2 Verified / 34 Open.
+
+This closes a project-prefix deletion bypass for retained uploads. It does not qualify native cleanup ownership, interrupted operations or concurrent out-of-band SQL policy changes. Current-source full/coverage, release/native, prior-binary and 45GB migration checks remain required. Original phase1-deletion:G7 remains abandoned for seven missing historical QA objects.
+
+
+## 2026-10-22 — champion planner releases SQL before inspection
+
+Champion planning now releases its SQL connection and scope/run/training locks before candidate stat, then revalidates current selection under fresh locks before storing a plan. 138 connected checks (15 focused) pass, including competing planners, stale selection, oversized/wrong metadata, inspection errors and actual owned-process death during a doubled read. [Evidence](evidence/phase-1/planner-inspection-2026-10-22.yaml). W03/W10 remain Open; native upload cleanup ownership and observer/outbox boundaries still require implementation.
+
+This is read-only inspection separation, not native cleanup custody or whole-phase completion. Phase 1 remains 2 Verified / 34 Open. Current-source full/coverage, native/release, actual prior-binary, 45GB qualification and original abandoned phase1-deletion:G7 remain required.
+
+
+## 2026-10-22 — Ray observer reads release SQL locks
+
+Training and dataset RayJob observations now release SQL before native reads and revalidate the current locked attempt/run/profile snapshot before publication. 441 connected checks (32 focused) pass, including canceled/renewed state, competing missing observations and committed results. Retry constructors also preserve dataset/run/trial/scope/campaign identifiers; the PostgreSQL lineage check covers a parent and both active children. [Evidence](evidence/phase-1/ray-observer-inspection-2026-10-22.yaml). The two analysis observers and native mutation custody remain required; W03/W10 and Phase 1 remain Open.
+
+The first run retained two failures from lost training retry dataset lineage; the final frozen snapshot passes all connected cases. This does not close native mutation custody, both analysis observers, all queue leases/fairness or whole-phase qualification. Local Ray 2.56.1 differs from locked 2.58.0. Current-source full/coverage, native/release, actual prior-binary and 45GB checks remain required. Original phase1-deletion:G7 remains abandoned for seven missing historical QA objects.
+
+
+## 2026-10-22 — managed analysis observation releases SQL locks
+
+Managed analysis observations now release SQL before Job reads and revalidate current attempt/run plus submission/source evidence before publication. 365 connected checks (45 focused across validation, explainability and drift) pass, including a real report commit during an in-flight read, foreign Job identity, competing observers and non-null dataset retry lineage. All 32 focused Ray controls also pass. [Evidence](evidence/phase-1/analysis-observer-inspection-2026-10-22.yaml). The legacy analysis observer, native cleanup custody and full W03/W10 qualification remain required; Phase 1 remains 2 Verified / 34 Open.
+
+This closes the managed analysis read boundary, not native delete/cleanup custody or whole-phase readiness. The legacy analysis observer can still delete a Job under SQL and remains required. Current-source full/coverage, native/release, actual prior-binary and 45GB checks remain open. Original phase1-deletion:G7 remains abandoned for seven missing historical QA objects.
+
+
+## 2026-10-22 — legacy analysis inspection and durable UID cleanup
+
+Legacy analysis observation and fatal-waiting cleanup now use committed, namespace/UID-bound state. 459 connected checks (84 focused) pass, including atomic intent/projection rollback, competing observers/owners, lost native/SQL acknowledgements, real SDK process death, owned-Pod/finalizer waits and deletion guards. An actual local k3d suspended-Job probe rejected the old UID against a replacement and removed its owned namespace normally, with no Pods created. [Evidence](evidence/phase-1/legacy-analysis-custody-2026-10-22.yaml). Other native cleanup/producer custody and W03/W10 remain Open; Phase 1 stays 2 Verified /34 Open.
+
+The corrected negative baseline runs in a private pre-change source overlay. Initial control/isolation failures are retained; only the final 459-case frozen run is qualified. Failed fixture cleanup used 12 exact user/project/tombstone sets from their own teardown evidence, and the native test used one owned namespace and exact UIDs. No existing QA preservation or maintained-image qualification is claimed. Source now scans 167 production Python files with 17 explicit SKIP LOCKED selections and one transaction advisory acquisition. Current-source whole-backend/coverage, remaining native mutations and producer credentials, actual prior-binary and 45GB qualification stay required. Original phase1-deletion:G7 remains abandoned for seven missing historical QA objects.
+
+
+## 2026-10-22 — current full-backend qualification after legacy cleanup
+
+The new full CI selection collected all4862 tests on521 frozen inputs; all three preflights pass. The driver is still running, and source changes remain frozen until it is terminal. No full-test or coverage pass is claimed. [Run status](evidence/phase-1/current-backend-legacy-custody-2026-10-22.yaml). The read-only triage recorded unconditioned training RayJob cancellation and unvalidated same-name submission conflict replay as required follow-up fixes. All36 Phase1 requirements and original abandoned phase1-deletion:G7 remain required.
+
+
+### 2026-10-22 — full backend checkpoint after legacy cleanup
+
+All **4,862 tests passed**, with zero failures, errors or skips. All three CI preflights, strict schema0018 parity and repository lint passed. Independent coverage: **22,703/23,917 statements (94.92411%)**, **6,218/7,158 branches (86.86784%)**. Branch coverage still fails90.01%;225 further outcomes at this denominator are needed. The original coverage.json is unchanged. Three gates re-executed:2 met/1 unmet. This checkpoint precedes subsequent Ray cancellation changes. [Evidence](evidence/phase-1/current-backend-legacy-custody-2026-10-22.yaml).
+
+The user confirmed45 GB as the maximum migration qualification target; row-count distribution is unspecified. The43.5 GB reserve and roughly45.3 GB free space prevent a genuine45 GB database rehearsal locally. No reserve reduction or scale qualification is claimed. All36 requirements remain:2 Verified/34 Open. Original abandoned phase1-deletion:G7 still requires the seven missing historical QA objects.
+
+
+### 2026-10-22 — training Ray cancellation verifies native identity
+
+Training cancellation now reads the RayJob in the run’s stored namespace, verifies its exact name, project/run/attempt/generation labels and nonempty UID, then passes that UID to the existing foreground-delete SDK. Malformed or foreign responses fail closed;404 replay preserves terminal CAS and native read/delete failures remain retryable. Existing job names are preserved.
+
+**355 connected checks pass**, including35 focused cases; the pre-fix source failed34 controls without collection/setup/teardown errors. All three CI preflights, repository lint, new-hunk formatting and strict schema0018 parity pass. Four unlazy gates were re-executed:4 met. On local k3d, suspended RayJobs proved foreign-job preservation, a real UID-precondition409 with replacement survival, correct owned deletion and404 replay. No Pods/RayClusters launched; the owned namespace is gone. Native SQL was a test double in this probe; physical retirement, native transaction custody and release qualification remain open. [Evidence](evidence/phase-1/training-ray-cancel-identity-2026-10-22.yaml). All36 requirements remain2 Verified/34 Open, with the45 GB gate and original abandoned phase1-deletion:G7 unchanged.
+
+
+### 2026-10-23 — Ray submission binds command scope and exact native specification
+
+Training submission now verifies topic/project/run/type/stage/logical scope before terminal replay or native effects, and refreshes the locked attempt. Shared RayJob creation accepts fresh responses or409 replay only when the native name, namespace, ownership labels, UID and exact submitted specification match. Changed images, entrypoints, environments, resources, worker groups or unrequested execution fields fail closed. Existing job names are unchanged. Worker groups explicitly pin the existing KubeRay numOfHosts=1 default, preserving native replay compatibility without accepting arbitrary extra specification fields.
+
+**410 connected checks pass**, including55 focused cases and every355-case cancellation regression. Captured pre-fix modules fail49 controls without collection/setup/teardown errors. Repository Ruff, new-hunk formatting, strict0018 parity and all three CI preflights pass. Four gates were re-executed:4 met. On local k3d, all three suspended workload types passed actual create/409 replay and conflict rejection; no Pods/RayClusters launched and the owned namespace is gone. The initial strict native failure on implicit numOfHosts defaulting remains recorded, with its namespace cleaned and the final explicit-default probe passing. [Evidence](evidence/phase-1/ray-submission-identity-2026-10-23.yaml).
+
+This fixes submission/cancellation identity gaps; it does not establish one physical execution or full native lifecycle custody. Persistent native UID receipts, observer identity, credential/producer retirement, all other side effects and maintained-image qualification remain required. The full4862-pass checkpoint is historical after these two increments; independent branch coverage remains below90.01%. Phase1 stays2 Verified/34 Open. The45 GB migration rehearsal and original abandoned phase1-deletion:G7 remain unresolved.
+
+
+### 2026-10-23 — Ray observers verify native ownership and the full fence
+
+Training, splitter and preparation observers now verify the returned RayJob’s exact name/namespace, nonempty UID and project/resource/attempt/generation labels before publishing status or native IDs. Dataset observations also bind version and stage. The submitter must carry exactly one full fence, project ID and attempt ID and the saved service account, alongside the original Ray jobId. A token sharing the same16-character jobId prefix cannot pass as the current full fence. Training parent scope is checked without changing the missing-parent LookupError contract. Existing terminal receipt recovery, lease expiry and SQL snapshot fencing remain active.
+
+**696 connected cases pass**, including89 focused identity cases, every410-case submission/cancellation regression and197 analysis/recovery cases. Captured pre-fix source fails all86 negative snapshot controls; three positive controls pass. All original assertions in changed existing test modules are preserved. The initial665-pass/13-failure mock run is retained; selected-row/native-identity fixture setup was corrected. Repository Ruff, changed-hunk formatting, strict0018 parity and all three CI preflights pass. Four unlazy gates were re-executed:4 met. [Evidence](evidence/phase-1/ray-observer-identity-2026-10-23.yaml).
+
+Local k3d suspended RayJobs for all three stages pass actual native identity verification and reject mismatched project/full-fence identities, including an equal jobId prefix. The initial short-token probe failed its fixture assertion and cleaned its namespace; the corrected full-length-token probe passes. All three owned probe namespaces are404 on re-verification; the successful probe launched no Pods/RayClusters. This is control-plane verification, not running-image or physical producer retirement qualification. Persisted native UID receipts, all-stage broker conversion, native operation custody,45 GB migration rehearsal and all other Phase1 gates remain required. Status stays2 Verified/34 Open; original abandoned phase1-deletion:G7 remains visible.
+
+
+### 2026-10-23 — remove unused credentials from current-controller Ray pods
+
+New Ray submit outbox rows now save the server-selected ray-pod-env-v1 policy. The current controller omits database, object-store and tracking environment/configuration credentials from submitters in all three stages, and omits DATABASE_URL from splitter/preparation compute workers. Heads and training compute workers retain the database access their current code still uses. The existing restricted analysis login does not have the required Ray lifecycle/trial grants, so it was not substituted. Full all-stage broker conversion remains required.
+
+Old queued rows retain their exact original payload and legacy manifest; an unknown or explicit null policy fails before native work. All three legacy bodies match the captured pre-change source on deterministic inputs. New generation/retry/handoff producers share the existing enqueue_outbox path; no new config option, dependency or schema migration is added. Older consumers ignore the new payload declaration, so mixed-version rollout and existing credentialed Pods remain unqualified.
+
+**799 connected cases pass**, including65 focused controls, all696 prior connected cases and38 PostgreSQL contracts. The pre-fix factories fail34/65 controls using an adapter that accepts only the new keyword while preserving original bodies. Four unlazy gates were re-executed:4 met. Repository Ruff, new-hunk formatting, strict0018 parity and three CI preflights pass. Local k3d accepted three current and three captured legacy suspended RayJobs; saved templates match their credential policy and same-name replay retains each UID. No Pods/RayClusters launched; the owned namespace is404. [Evidence](evidence/phase-1/ray-pod-credentials-2026-10-23.yaml).
+
+This is a reduction in explicit template secret exposure, not full worker isolation. Ordinary driver/trial SQL, storage-capable filesystems, native custody/retirement, maintained-image rollout, independent branch coverage and45 GB migration qualification remain open. All36 Phase1 requirements remain2 Verified/34 Open; original abandoned phase1-deletion:G7 remains a required historical-data handoff.
+
+
+### 2026-10-23 — Pod-bound parent lifecycle control
+
+Declared workers now use bounded TLS RPC for parent metadata, start, heartbeat, stored-result recovery, completion and failure. The API binds ownership to the verified Pod UID and worker instance, rechecks SQL authority after native identity I/O, and rejects a run-kind change between context lookup and start. Recovery validates stored result facts and preserves one terminal CAS without minting capabilities or extending execution. Legacy workers share the original SQL lifecycle implementation.
+
+New Ray outbox rows select ray-parent-control-v2; configured training heads and managed analysis select parent-control-v1. Six saved legacy/v1 Ray manifests match the captured builders exactly. Pipeline, trial and data/result access still require their existing credentials; full worker isolation remains open.
+
+**903 connected cases pass**, including 41 worker/manifest and 28 API authority cases. The six captured pre-change controls fail in their bodies. Existing expiry/CAS test patch targets were updated after moving the shared helper; all original assertions remain. All five scoped unlazy gates pass re-verification. Repository lint, changed-hunk formatting, strict 0018 parity and three CI preflights pass on 531 frozen inputs. The local k3d probe exercises actual TokenReview, Pod-bound token rotation and verified TLS with worker SQL disabled, then preserves one result CAS/metric through recovery and repeated completion. Both created probe namespaces are404; the successful Pod never ran a container. [Evidence](evidence/phase-1/parent-control-2026-10-23.yaml).
+
+Maintained-image execution, remaining worker broker conversion, native operation custody/retirement, current-source full backend and independent branch coverage remain required. The confirmed 45 GB migration target still needs sufficient capacity while preserving the 43.5 GB reserve. All 36 Phase1 requirements remain 2 Verified / 34 Open. Original abandoned phase1-deletion:G7 still requires the seven missing historical QA objects.
+
+
+### 2026-10-23 — Pod-bound durable trial control
+
+Declared fixed-CV, clustering and Tune workers now enroll, record dispatch evidence, start/replay, heartbeat and publish trial results/failures through bounded TLS RPC. The API reuses the existing SQL domain, binds ownership to Pod UID and worker nonce, revalidates source/run/candidate/child authority after native identity I/O, and returns no child SQL fence. Closed finite metadata has a 256 KiB budget. Unknown protocols, missing parents, mismatched replies, withdrawn declarations and uncertain publication stop execution without SQL fallback. Shared terminal replay now also requires CAS version 1.
+
+New Ray outbox rows select ray-trial-control-v3. Configured training heads and compute workers select trial-control-v1; heads retain parent control. Nine captured legacy/v1/v2 Ray manifests remain exactly equal. Existing driver/data/model/tracking credentials remain until their dependent operations are converted.
+
+**1,133 connected cases pass**, including 44 worker/manifest and 27 API authority cases. Three captured pre-change body failures and one positive local control establish the transport gap. Real foreign-project and foreign-parent records, competing workers/Pods, native I/O without SQL locks, cancellation/revocation/source changes, dispatch/result replay, real PostgreSQL loss before claim commit and lost terminal commit acknowledgement are covered. All five unlazy gates pass re-verification on 536 frozen inputs; repository Ruff, new-hunk formatting, strict 0018 and three CI preflights pass. [Evidence](evidence/phase-1/trial-control-2026-10-23.yaml).
+
+The real k3d/TLS probe runs three-fold Ridge CV once, then replays twice without recomputing, with trial worker SQL and legacy admission disabled. It verifies two distinct Pod-bound tokens, one child terminal CAS/event and one parent result CAS/metric. The identity Pod stays pending; its owned namespace and project/run/parent/child rows are read back absent. This qualifies the local control transport, not a maintained image or full worker/network isolation.
+
+Pipeline/analysis/dataset broker conversion, native custody/retirement, maintained-image rollout, current-source full tests and independent branch coverage remain required. The confirmed 45 GB migration target needs suitable capacity while preserving the 43.5 GB reserve. All 36 requirements remain 2 Verified / 34 Open; original abandoned phase1-deletion:G7 still needs the seven missing historical QA objects.
+
+
+### 2026-10-23 — validated training input context
+
+Declared startup now validates and loads its complete initial run/catalog/feature/override/prepared-source context through Pod-authenticated TLS. It reuses the legacy SQL preparation path with an explicit trusted fence for API calls. The current parent publisher, lease and requesting Pod must agree. Source/run/graph authority is checked again after native identity I/O; TokenReview holds no SQL connection or locks. Missing bindings cannot use a local shortcut. Initialization and replay preserve the original start timestamp, including real connection loss before commit and lost commit acknowledgement.
+
+The closed plan contains approved execution metadata and train/validation locations only. It excludes unknown configuration fields and final locations, rejects canonical-provider final manifests and missing provider plans, and preserves candidate worker identity metadata during resume. The shared legacy/API role guard also rejects location aliases, directory containment, traversal and safe/final overlap. A terminal context cannot authorize a new prepared read.
+
+New Ray rows select ray-training-context-v4; only configured training heads select training-context-v1. Parent/trial control remains enabled. All twelve captured legacy/v1/v2/v3 manifests are exactly equal. Tracking/progress/result SQL and data/model/output access still need their existing credentials and further broker conversion.
+
+**1,390 distinct connected checks pass across the preserved 1,292-case run and the current 401-case affected-path rerun**, including 52 context worker/manifest and 30 API authority cases. The exact union matches current collection; source/AST guards verify that unchanged-source evidence is retained and every startup consumer affected by the review fixes was rerun. One original body failure proves the SQL transport gap. Five scoped unlazy gates pass re-verification on 541 frozen inputs; repository Ruff, new-hunk formatting, strict0018 and three preflights pass. [Evidence](evidence/phase-1/training-context-2026-10-23.yaml).
+
+Real local TLS/k3d delivers the sealed plan into the prepared-reader boundary twice with worker SQL disabled, two distinct Pod-bound tokens, only approved columns/safe roles and no new object grant. The identity Pod never runs a container. All three owned probe namespaces and the current project/run/attempt rows are read back absent. The probe stops before data loading; it does not qualify a whole pipeline or maintained image. A temporary owned-PostgreSQL outage was repaired by starting its exact preserved container, without resetting data; the failed run remains retained.
+
+All 36 requirements remain 2 Verified / 34 Open. Pipeline/analysis/dataset capabilities, native custody/retirement, release/coverage and the 45 GB migration rehearsal remain required. The 43.5 GB reserve is unchanged. Original abandoned phase1-deletion:G7 still needs the seven missing historical QA objects.
+
+
+### 2026-10-23 — attempt-owned training model outputs
+
+New declared candidate writers serialize and publish models through the Pod-authenticated output broker. The server derives each location from its current project/run/attempt/candidate and content digest, requires the saved writer declaration and sealed input/candidate authority, and commits a fixed candidate slot plus issuance owner before native I/O. Different candidates can write concurrently. An uncertain write cannot be repeated or replaced by another nonce. Native completion is retained across cancellation, while acknowledgement requires fresh authority. Worker response loss uses receipt lookup only. A reusable publication guard requires the exact verified completion; remaining progress/result publication still needs conversion.
+
+**1,302 connected checks pass**, including 14 model worker/manifest and 24 API authority cases. The connected run is retained with a current 272-case manifest rerun after alphabetically sorting two existing constant imports; exact source-diff and case accounting are preserved. Three original body failures prove the worker-storage gap. Five scoped unlazy gates pass re-verification over 545 frozen inputs. The original fifteen legacy/v1/v2/v3/v4 manifests remain exactly equal. New Ray records select ray-model-output-v5 and configured training head/compute writers select training-model-output-v1.
+
+The local probe uses real verified TLS and k3d Pod TokenReview, two distinct bound tokens, actual model serialization and deliberately lost PUT acknowledgement; recovery returns its original receipt after one stored write. Storage is a conditional in-memory fixture, not live provider SDK/permission evidence. Its pending identity Pod never executes a container. The exact owned namespace and SQL fixtures are read back absent, and owned object bytes/secrets are retired. [Evidence](evidence/phase-1/training-model-output-2026-10-23.yaml).
+
+All 36 requirements remain **2 Verified / 34 Open**. Broader credential withdrawal, remaining native custody/retirement, maintained images and full/release/branch coverage remain required. Single model uploads are capped at 5 GB; larger models require tracked multipart custody. The user qualification ceiling is 45 GB physical database size, with largest-table row counts still unspecified. No 45 GB rehearsal was run, and the 43.5 GB free reserve is preserved. Original abandoned phase1-deletion:G7 still requires seven missing historical QA objects.
+
+
+### 2026-10-23 — training publication custody
+
+Declared broker runs now require the exact verified native model completion at the shared candidate-status boundary used by both partial leaderboard and final result publication. A readable URI is insufficient. The server resolves the current saved parent declaration and revalidates source/candidate authority. Missing identity variables, closed parents, changed fences, duplicate declarations and unknown policies cannot downgrade to legacy publication. Project locks precede attempt/run locks, matching project deletion. Result replay checks the committed digest before candidate mutation; duplicate publication retains one metric commit.
+
+New model slots record their immutable input/candidate digest without changing the closed worker receipt. The recovery reconciler carries explicit verified-model references. Predecessor publication requires the recorded reference at every generation and the same current input binding. Unlisted, legacy-without-binding, unknown or changed-source artifacts are refused. Old slots remain usable in their original attempt; predecessor adoption requires controlled qualification. This protects publication and does not qualify the still-ambient model reader.
+
+**1,509 connected checks pass**, including 27 publication authority cases. Evidence combines the retained connected run with a current 156-case rerun of all changed legacy fixture consumers. Production bytes and old assertions are unchanged; 32 initial fake-session failures are retained and superseded by corrected fixture results. Two original body failures establish the missing-receipt gap. Four scoped unlazy gates pass re-verification over 546 frozen inputs. All eighteen captured legacy/v1/v2/v3/v4/v5 manifests remain unchanged. The local real TLS/k3d probe rejects forged metadata, publishes the verified model through actual SQL partial/final paths, replays the result and completes the parent once with one metric commit. Its conditional storage backend is a fixture, and publication deliberately still uses worker SQL. Owned namespace/SQL resources and secrets are retired and read back absent. [Evidence](evidence/phase-1/training-publication-custody-2026-10-23.yaml).
+
+All 36 requirements remain **2 Verified / 34 Open**. Closed result/progress contracts, complete tournament validation, tracking/SQL withdrawal, model/data readers, remaining native custody/retirement and full/release/coverage remain required. The 45 GB migration rehearsal is still pending and the 43.5 GB reserve is preserved. Original abandoned phase1-deletion:G7 still requires seven missing historical QA objects.
+
+
+### 2026-10-23 — final training result control RPC
+
+New declared training heads now publish final results through Pod-authenticated control without opening worker-local SQL. The finite closed contract requires the complete selected terminal tournament, the server-ranked winner and matching winner metrics, plus verified model custody for every success. It validates public leaderboard types, preserves candidate row counts and rejects malformed/nonfinite/oversized metadata, foreign scopes and contradictory derived counts. Shared persistence takes an explicit trusted fence and atomically commits metrics, metadata and a request-bound acknowledgement.
+
+A lost acknowledgement permits receipt lookup only. Exact result replay can recover after parent lease expiry without new work; conflicting or changed stored metrics, directions, steps, leaderboard, tracking pointer or typed derived parameters are refused. Parent API, legacy-worker completion and observer adoption all enforce the saved RPC receipt policy. New Ray rows select ray-training-result-v6; configured training heads select training-result-v1, and v6 training submission fails before service-account creation without a valid HTTPS control URL. All eighteen captured legacy/v1/v2/v3/v4/v5 templates remain unchanged.
+
+**1,629 connected checks pass**, including 21 result worker/manifest/deadline and 52 API authority cases. Three original test-body failures establish the worker SQL gap. Five scoped gates pass re-verification over 551 frozen inputs; repository lint, new-hunk formatting, strict0018 and three CI preflights pass. [Evidence](evidence/phase-1/training-result-rpc-2026-10-23.yaml).
+
+The real local TLS/k3d probe uses separate pending writer and publisher Pod identities. The writer cannot publish the parent result; forged artifact metadata is rejected. With worker session factories disabled, valid final publication recovers a deliberately lost acknowledgement and parent completion replays with one metric commit and one terminal CAS. Native storage is explicitly a conditional fixture. Both identity Pods never execute containers; owned namespace/SQL resources, object bytes and secrets are retired and read back absent.
+
+All 36 requirements remain **2 Verified / 34 Open**. Progress/failure/tracking SQL, data/model readers and remaining native custody/retirement still need conversion before ambient credentials can be withdrawn. Shared candidate exception logging also still needs credential redaction. Full/release/coverage, maintained-image/process-loss/mixed-version and45 GB migration qualification remain pending, preserving43.5GB free reserve. Original abandoned phase1-deletion:G7 still requires seven missing historical QA objects.
+
+
+### 2026-10-23 — training failure credential redaction
+
+Shared supervised/clustering failures now redact exception text before existing truncation and before console, MLflow tags and returned candidate metadata. Wrapped Ray task failures and legacy run failure persistence use the same existing redactor. URL credentials, signed query values, bearer values and quoted credentials at clipping boundaries are covered; ordinary error diagnostics and existing status/control flow remain unchanged. No protocol, dependency, schema or config changes were needed.
+
+Seven original test-body failures prove disclosure across the candidate, Ray and legacy SQL paths. **224 connected checks pass**, including eight focused privacy cases; two scoped unlazy gates pass re-verification over 552 frozen inputs. Source/AST guards restrict the production diff to three redactor calls plus imports. Repository lint, three CI preflights, root coverage and all36 status rows are preserved. The tests use synthetic secrets and isolate network/tracking sinks. [Evidence](evidence/phase-1/training-failure-redaction-2026-10-23.yaml).
+
+This closes the exception-message finding recorded after result RPC. All 36 requirements remain **2 Verified / 34 Open**. Remaining progress/tracking and data/model credential conversion, native custody/retirement, full/release/coverage and45 GB qualification remain required. The43.5GB reserve and original abandoned phase1-deletion:G7 handoff for seven missing historical QA objects are unchanged.
+
+
+### 2026-10-23 — ordered training progress control RPC
+
+New saved training submissions select `ray-training-progress-v7`. Their heads and compute workers publish candidate phases and partial leaderboards through Pod-authenticated control without opening worker-local SQL. All 21 captured legacy/v1–v6 templates remain unchanged, including v6 final-result RPC. Shared persistence receives an explicit trusted fence; sealed source, candidate identities and parent routing are checked again after native identity verification. Only the admitted parent publisher can publish the complete aggregate.
+
+Durable request receipts bind each stream to one Pod/client and monotonic sequence. Exact replay is harmless, nonce/sequence reuse conflicts, and older updates cannot replace newer phases. Terminal candidate metadata cannot change through partial or final publication. Pending snapshots preserve terminal outcomes, and updates after trusted final publication are no-ops, including recovery after lease expiry. Resumed candidates retain original training and validation row counts.
+
+**1,747 connected checks pass**, including 15 progress worker/manifest/count and 50 API authority cases, with no failures/errors/skips. Four original test-body failures establish the worker SQL gap. Five scoped gates pass re-verification over 557 frozen inputs; repository lint, new-hunk formatting, strict0018 and all three CI preflights pass. [Evidence](evidence/phase-1/training-progress-rpc-2026-10-23.yaml). Failed test-oracle drafts remain private evidence: initial launch already has pending entries, phase updates mark candidates running, hashes cover normalized closed requests, and receipt nonces cannot be reused between phase and aggregate actions.
+
+A real local TLS/k3d probe used separate pending candidate and parent Pods, fresh bound TokenReview and three distinct tokens. With worker SQL disabled, phase, partial and final publication succeeded; three lost progress acknowledgements recovered through GET only, a candidate Pod could not publish parent progress, and late progress left the final result unchanged. Model storage is explicitly an in-memory conditional fixture. One model write and one terminal CAS were observed. Identity Pods never executed containers. Exact namespace/SQL/object resources and secret files were retired and read back absent.
+
+All 36 requirements remain **2 Verified / 34 Open**. Worker tracking SQL and native tracking/data/model access still prevent broad credential withdrawal. Other native custody/retirement, current full/release/coverage, maintained-image/mixed-version/process-loss, 45 GB migration and 15×10 GiB qualification remain required. The user’s database qualification ceiling is 45,000,000,000 physical bytes; largest-table row targets remain unspecified. No scale test was attempted, preserving the43.5 GB reserve. Original abandoned phase1-deletion:G7 still requires seven missing original historical QA objects; no replacement artifacts were manufactured.
+
+
+### 2026-10-24 — server-owned training tracking creation
+
+New saved training submissions select `ray-training-tracking-v8`. Heads and compute workers use `training-tracking-v1` for parent/candidate/failure tracking creation and recovery, without opening worker SQL or the inline tracking creation client. The native writer is shared once with legacy workers; its original lease, creation-marker, error and uncertainty branches are preserved by an AST guard and current regression coverage. All24 captured legacy/v1–v7 templates remain unchanged.
+
+The server derives tracking names, tags, backend and parent ID from the current sealed run. Only the admitted parent publisher can create parent tracking; selected candidate/failure roles bind their first Pod owner before native effects. Child creation checks the current native parent lifecycle and lineage. SQL connections and locks are released for native I/O, then source/role/lease/token authority is checked again before publication.
+
+A durable acknowledgement binds the native tracking ID to the command request, parent, backend and role owner atomically with writer publication. Changed command IDs or acknowledgement fields are refused. Existing commands without their original Pod-ownership record require controlled recovery; the API does not invent a new owner. Lost HTTP/SQL acknowledgements use receipt GET only. Native uncertainty never permits a repeated creation. If read-only reconciliation knew the ID before an acknowledgement was recorded, receipt repair validates the existing native record and cannot create a new run.
+
+**1,872 connected checks pass**, including 21 tracking worker/manifest cases, 52 API authority cases and all 78 legacy tracking writer/lease/recovery/HTTP/process-loss cases, with no failures/errors/skips. Four original test-body failures establish the worker SQL gap. Five scoped gates pass re-verification over562 frozen inputs; repository lint, changed-hunk formatting, strict0018 and three CI preflights pass. [Evidence](evidence/phase-1/training-tracking-rpc-2026-10-24.yaml).
+
+The real local TLS/k3d probe uses separate pending parent/candidate Pod identities and three distinct bound tokens. With worker SQL and the inline creation SDK disabled, it creates one parent, one candidate and one failure tracking run, recovers four lost HTTP acknowledgements by GET, rejects a nonpublisher parent and replays the original parent without another creation. MLflow uses a real owned SQLite store through its SQLAlchemy SDK; tracking HTTP/provider and maintained-image qualification are not claimed by this probe. Both Pods never execute containers. Exact namespace/SQL/store resources and secret files are retired and read back absent. The first probe passed tracking operations but failed harness cleanup on a version-specific cache attribute; its exact resources were retired separately, cleanup was corrected, and only the later full probe counts as passing evidence.
+
+All36 requirements remain **2 Verified / 34 Open**. Direct worker MLflow logging/resume and data/model readers still require conversion before broad credentials can be withdrawn. Final/candidate tracking references also still need binding to the exact server tracking receipts. All-stage native permissions, remaining custody/retirement, current full/release/coverage, maintained-image/mixed-version and full-pipeline process-loss qualification remain required. No45GB or15×10GiB scale claim is made; the43.5GB free reserve remains enforced. Original abandoned phase1-deletion:G7 remains a required handoff for seven missing historical QA objects, without reconstructed or re-signed replacements.
+
+
+### 2026-10-24 — tracking references bound to model custody
+
+Model reservations under saved v8 policy now bind the original candidate tracking receipt and producer Pod. Partial/final API and SQL publication, stored-result replay and explicitly allowlisted predecessor recovery verify that original custody and the exact parent tracking ID. Missing historical receipts require controlled recovery. Validation precedes pending/terminal snapshot restoration, so merging cannot hide an invalid incoming tracking ID. No migration, dependency, configuration or protocol version changed; all 27 captured manifests remain unchanged.
+
+**1,897 connected checks pass**, including 25 tracking-reference cases, with no failures/errors/skips. The three genuine original negative controls remain preserved. Five scoped gates were reverified over 564 frozen inputs; lint, changed-hunk formatting, strict0018 and the three CI preflights pass. [Evidence](evidence/phase-1/training-tracking-references-2026-10-24.yaml).
+
+The local verified-TLS/k3d test used separate pending parent/writer Pods and three bound tokens, two real MLflow SDK tracking records and one conditional model-storage fixture write. Worker SQL was disabled. Missing/forged tracking references failed, lost model/progress/result acknowledgements recovered through GET, and completion retained one metric and terminal CAS. Exact owned namespace/SQL/store resources and secret files were retired. Native model providers, tracking HTTP, maintained images and complete worker isolation are not qualified by this probe.
+
+Phase 1 remains **2 Verified / 34 Open**. Direct worker MLflow logging/resume/registry artifacts and data/model readers still prevent broad credential withdrawal. Current full/branch coverage, remaining native custody/retirement and runtime qualification remain required. No45GB or15×10GiB scale qualification was attempted; the43.5GB reserve remains enforced. Original abandoned phase1-deletion:G7 still requires seven original historical QA objects; none were reconstructed or re-signed.
+
+
+### 2026-10-24 — Pod-owned training metadata and retirement
+
+New saved v9 training routes ordinary parent/candidate/failure tags, parameters, metrics and parent mirrors through authenticated control. Immutable request slots bind original tracking custody and source before native effects. Each synchronous native batch has its own completion marker; uncertainty permits GET only. Pre-existing tag values cannot acknowledge a pending writer, and a missing marker retains the retirement barrier. Read-only background inspection can settle marked effects after cancellation or actual API process death, without another write or a worker acknowledgement. Malformed rows defer fairly.
+
+V9 brokered model writes and final publication now require original metadata readiness. Model slots, explicit predecessor references and final-result links preserve the exact proof. Missing or altered history fails closed. V8 model custody retains its original policy, and all27 captured old manifests remain unchanged. No migration, dependency or threshold changed.
+
+**2,159 distinct connected cases pass in composed evidence**, including 37 metadata worker, 51 API and 15 retirement cases, with no remaining failures/errors/skips. The full run passed2,158 cases and exposed one SQL fault-injection harness error; changing only that test hook from before_commit to before_flush made its unchanged assertions pass in a focused rerun against a terminated PostgreSQL backend. Production inputs and every other test body remain identical. Seven scoped gates were reverified over570 frozen inputs; lint, changed-hunk formatting, strict0018 and three CI preflights pass. Seven genuine negative controls are retained across worker metadata, numeric overflow and missing readiness. The first two retirement failure artifacts were accidentally overwritten; they are explicitly excluded from retained automatic negative evidence. Current retirement controls pass. [Evidence](evidence/phase-1/training-tracking-metadata-2026-10-24.yaml).
+
+The real local TLS/k3d probe used separate pending parent/writer Pods and three bound tokens. With worker SQL and ordinary metadata SDK functions disabled, three real MLflow SDK tracking records received nine metadata batches and nine completion markers; HTTP acknowledgement loss recovered by GET. Model storage remains a conditional in-memory fixture. One model write, SQL metric and terminal CAS were retained. Exact owned namespace/SQL/store resources and secret files were retired. The probe does not qualify native model providers, tracking HTTP, maintained images or full worker isolation.
+
+Phase1 remains **2 Verified / 34 Open**. Native run context, diagnostic/model artifacts, registry operations, data/model readers, remaining custody/retirement and current full/runtime/coverage qualification remain required. No45GB or15×10GiB scale claim is made; the43.5GB reserve is enforced. Original abandoned phase1-deletion:G7 still requires seven original historical QA objects, without reconstructed or re-signed replacements.
+
+
+### 2026-10-24 — authenticated model restoration
+
+New saved v10 training heads restore published candidate models through the existing short-lived GET broker. The server selects the original verified model version; only the current parent Pod can read it. Replacement attempts require explicit predecessor custody and unchanged inputs. Native signing holds no caller SQL connection, uncertain or replayed requests cannot remint a URL, and the original read deadline remains a retirement barrier. Workers verify complete bounded bytes and SHA-256 before deserialization, with storage access disabled. No migration, dependency or broad credential withdrawal was introduced; all 30 captured legacy/v1–v9 manifests are unchanged.
+
+**868 connected checks pass**, including 41 model reader worker/manifest cases and 26 PostgreSQL authority cases, with no failures/errors/skips, over 575 frozen inputs. Four scoped unlazy gates passed re-verification. Lint, changed-hunk formatting, strict0018 and three CI preflights pass. The original storage-access negative control remains preserved. Earlier role-selection and fixture-cleanup failures are retained; the exact failed fixture resources were retired. [Evidence](evidence/phase-1/training-model-read-2026-10-24.yaml).
+
+The local verified-TLS/k3d probe used separate pending parent/writer Pods and five distinct bound tokens. One exact-version model was streamed and restored with worker storage/SQL disabled; the writer Pod was denied. Owned namespace/SQL/store/secrets were retired and read back absent. Model storage and HTTPS serving are conditional fixtures; native providers, maintained images and full worker isolation are not qualified.
+
+Phase 1 remains **2 Verified / 34 Open**. Training dataset readers, Ray Tune checkpoint storage, native MLflow context/artifacts/registry, remaining custody/retirement and current full/runtime/branch-coverage qualification remain required. The 45 GB database ceiling is recorded; no 45 GB or 15×10 GiB scale claim is made and the 43.5 GB reserve is preserved. Original abandoned phase1-deletion:G7 still requires seven original historical QA objects; none were reconstructed or re-signed.
+
+
+### 2026-10-24 — registry inspection outside SQL
+
+Background registry verification now uses the factory-owned dispatcher, releasing its connection and locks before storage existence/size reads. Fresh project, command, registry, run, artifact and delivery snapshots fence publication afterward. Only the exact live delivery can record a result or retry; an old reader cannot change a successor even when both use the same worker name. Verification, delivery and command completion commit atomically, and verified replay performs no storage reads. The old transaction-owned route rejects this topic.
+
+**269 connected checks pass**, including 27 focused PostgreSQL cases over 577 frozen inputs, with no failures/errors/skips. Three scoped unlazy gates passed re-verification. Real process termination, backend connection loss, lost commit acknowledgement, concurrent readers and committed source changes are covered. The original negative control recorded a checked-out connection; its unchanged body now records zero for both native reads. Lint, changed-hunk format, strict0018 and three CI preflights pass. [Evidence](evidence/phase-1/registry-inspection-2026-10-24.yaml).
+
+This preserves the existing existence/size check. It does not qualify native content hashes, immutable versions or producer custody. The HTTP registration path still has its initial size read under SQL and remains required work. No dependency, migration, credential protocol or coverage threshold changed; no current native-provider or scale claim is made.
+
+Phase 1 remains **2 Verified / 34 Open**. Remaining worker credential conversion, native custody/retirement, current full/runtime/coverage and 45 GB/load qualification remain required. The 43.5 GB reserve is preserved. Original abandoned phase1-deletion:G7 still requires seven original historical QA objects; none were reconstructed or re-signed.
+
+
+### 2026-10-24 — registry HTTP registration outside SQL
+
+HTTP registration now commits a read-only selected-model snapshot before the initial storage-size read, releasing both its connection and admission mutex. A short final transaction rechecks active user/token, current project/membership, deletion barriers and exact candidate/data/schema metadata before publication. Existing registrations replay without storage access. Concurrent requests share one canonical registry entry, artifact and version; unrelated sibling progress or parent completion does not reject an unchanged successful selected model.
+
+**288 connected checks pass**, including 26 focused HTTP/PostgreSQL registration cases and 27 background-inspection cases, over 578 frozen inputs, with no failures/errors/skips. Three scoped unlazy gates passed re-verification. Real backend termination, lost commit acknowledgement, concurrent registration and authority/source changes during reads are covered. The unchanged negative-control body now observes zero caller connections; all original selected-model persistence assertions remain. Lint, changed-hunk format, strict0018 and three CI preflights pass. [Evidence](evidence/phase-1/registry-registration-2026-10-24.yaml).
+
+This closes the initial-read transaction gap recorded in the previous registry checkpoint. Visibility and size still do not attest native content hash, immutable version or producer custody. No migration, dependency, credential protocol or public request schema changed, and no native-provider/image/scale qualification is claimed.
+
+Phase 1 remains **2 Verified / 34 Open**. Remaining worker credential conversion, native custody/retirement, current full/runtime/coverage and 45 GB/load qualification remain required. The 43.5 GB reserve is preserved. Original abandoned phase1-deletion:G7 still requires seven original historical QA objects; none were reconstructed or re-signed.

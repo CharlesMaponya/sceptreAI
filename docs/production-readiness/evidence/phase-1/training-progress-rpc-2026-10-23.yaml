@@ -1,0 +1,97 @@
+date: '2026-10-23'
+scope: training-progress-rpc
+phase: 1
+phase_complete: false
+source_inputs: 557
+source_manifest_sha256: 1225c02f979f71328afcf204c2a922b97f0fe816e61cdc54abf75a1d678933be
+checks:
+  passed: 1747
+  worker: 15
+  authority: 50
+  failures: 0
+  errors: 0
+  skips: 0
+  phase_complete: false
+  original_sql_tripwire_failures: 4
+  scoped_gates_reverified: 5
+  strict_schema: 0018_attempt_predecessor_lineage
+  repository_ruff: pass
+  new_hunk_format: pass
+  ci_preflights: 3 passed
+  legacy_through_v6_templates_unchanged: 21
+behavior:
+- Candidate phase and partial leaderboard publication use authenticated RPC for new
+  saved v7 submissions; declared workers never fall back to SQL.
+- Shared SQL mutations receive an explicit trusted attempt/fence; sealed source, selected
+  candidates and parent routing are revalidated around native identity I/O.
+- Only the parent publisher may publish the complete selected aggregate; admitted
+  candidate Pods may update selected candidate phases.
+- Each stream has one Pod/client owner and monotonic sequence; exact request replay
+  is idempotent, reused sequences/nonces conflict, and stale updates cannot overwrite
+  newer ones.
+- A lost acknowledgement uses receipt lookup only; real SQL connection loss rolls
+  back both progress mutations and receipts.
+- Terminal candidate metadata is immutable across partial and final publication; pending
+  snapshots retain accepted terminal outcomes and updates after a trusted final result
+  are acknowledged no-ops.
+- Resumed candidate row counts survive initial progress, candidate replay and final
+  result construction.
+native:
+  context: k3d-sceptre
+  verified_tls: true
+  real_pod_bound_token_review: true
+  separate_candidate_and_parent_pods: true
+  distinct_token_digests: 3
+  worker_sql_disabled_for_phase_partial_and_final: true
+  lost_progress_acknowledgements: 3
+  progress_changed:
+  - true
+  - true
+  - false
+  terminal_cas: 1
+  native_model_writes: 1
+  storage_backend: in-memory conditional fixture; native provider SDK not exercised
+  pending_pods_never_executed: true
+  namespace_retired_readback_404: true
+  owned_sql_objects_retired: true
+  secret_files_removed: true
+  maintained_image_tested: false
+  full_worker_isolation: false
+limits:
+  phase_requirements:
+    total: 36
+    verified: 2
+    open: 34
+  remaining:
+  - Worker tracking SQL and native tracking/data/model access before broad credential
+    withdrawal
+  - Remaining producer intent, native custody and verified physical retirement
+  - Current full backend and independent branch coverage gate
+  - Maintained-image, mixed-version and process-loss qualification
+  - 45 GB migration rehearsal and largest-table row-count qualification
+  - 15 users each uploading 10 GiB on suitable infrastructure
+  user_database_size_ceiling_bytes: 45000000000
+  largest_table_rows: not supplied
+  free_disk_reserve_bytes: 43500000000
+  scale_qualification: false
+  required_handoff: phase1-deletion:G7 remains abandoned; seven original historical
+    QA objects (2 models, 5 signed results) are missing and must not be reconstructed
+    or re-signed
+evidence_hashes:
+  regression.log: fdcb55269dceb0a26a8db8d12ae40426618a3de046a939ac2697d3d2b4a178ea
+  regression.xml: fa1f4e8508a61545221ea2b9db462b7281daac6e4f509fc13a27e24b5d6a89e1
+  regression-state.json: 6b3f39bfce6a10aeb8edba203a0ca7bbfd27448bfae3328d9661d4f91259d65e
+  collection.log: ca80c260939a8d8ba02182a8669a023feff8344cc6c5e2746f6e26434fbbd48c
+  native.log: dbdfc598623d85e32b904c8a61cd8cfa924bc67b1f96e84f4ef7c59aa272aa35
+  native.xml: e71a1e4da1226711c3d4d43d1ebc8b17c704d32bc4db41caf93cfdf6c392c4c1
+  native-probe-state.json: 0367f957c37c1c4938933fbef8f2c36b65bbc02f9325c1d775eb94a4ab528869
+  test_native_parent.py: e17e24c1f90937babd5953aef0e996a944495fa9d83e28648fcc8a111ebad1ec
+  baseline.log: bd80b30bb3cef836d95695df18696e09b5d01a841ffae356ed7cdbb9f61bd26f
+  baseline.xml: bde8ef8feccfa1a9774e631998a941e37c2f505a9c818993822ebf74724edf80
+  lint.log: 82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18
+  legacy-reference.json: df14d637c4b8ff6f63daf5badf59b78f6ebfa48123c02c9e45dfff7519944338
+  legacy-current.json: df14d637c4b8ff6f63daf5badf59b78f6ebfa48123c02c9e45dfff7519944338
+  preflight-0.log: 00c8dcf3b37f2eac6114a4c21f9f742c56e354ada6672f1b15189664820d92a5
+  preflight-1.log: a414947a0f058a04ee8ca14e4023b0661f0892a6cb81c082ba87469dd71ed9e9
+  preflight-2.log: dffd5dbca119ddf99cc5a088942e02d1127f7108463f4627161d74775ec7e554
+  GATES.md: 5f1a8eace0039753cc6986e89799582410913f7fb3befe4bcdc4408dfc3b568d

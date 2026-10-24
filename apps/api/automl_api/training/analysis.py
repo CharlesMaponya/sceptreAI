@@ -753,7 +753,7 @@ def _persist_analysis_result(
         if context is not None:
             attempt = db.get(WorkflowAttempt, context[0])
             proof_deadline(proof)
-            _require_parent_lease(attempt)
+            _require_parent_lease(db, attempt)
             if not cas_register_terminal_artifact(
                 db,
                 attempt_id=context[0],
@@ -803,7 +803,7 @@ def _mark_analysis_failed(run_id: uuid.UUID, exc: Exception) -> None:
         context = _fenced_attempt_context()
         if context is not None:
             attempt = db.get(WorkflowAttempt, context[0])
-            _require_parent_lease(attempt)
+            _require_parent_lease(db, attempt)
             transition_attempt(
                 attempt,
                 AttemptStatus.FAILED,

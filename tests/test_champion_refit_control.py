@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 from types import SimpleNamespace
 from unittest.mock import MagicMock
+from urllib.parse import urlsplit
 
 import pytest
 from automl_api.api.routes import refit_control
@@ -27,6 +28,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from test_champion_evaluation_authority import compatible_uri_fixture as compatible_uri_fixture
 
 pytest_plugins = ["test_champion_refit_publication"]
 SECRET = "refit-control-test-signing-key-0123456789"
@@ -34,8 +36,10 @@ SECRET = "refit-control-test-signing-key-0123456789"
 
 @pytest.fixture
 def control_case(durable_refit, refit_case, tmp_path, monkeypatch):
-    db, plan, _, attempt, scope = durable_refit
+    db, plan, seeded_output, attempt, scope = durable_refit
     store, _ = refit_case
+    # The publication fixture pre-fits a model; this worker fixture starts before its own write.
+    store.delete(seeded_output.frozen_pipeline_uri)
     attempt.status = AttemptStatus.SUBMITTED
     db.flush()
     monkeypatch.setattr(
@@ -55,12 +59,14 @@ def control_case(durable_refit, refit_case, tmp_path, monkeypatch):
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
-            if self.path not in objects:
+            path = urlsplit(self.path).path
+            if path not in objects:
                 self.send_error(403)
                 return
-            payload = objects[self.path]
+            payload = objects[path]
             self.send_response(200)
             self.send_header("Content-Length", str(len(payload)))
+            self.send_header("x-amz-version-id", "native-v1")
             self.end_headers()
             self.wfile.write(payload)
 
@@ -112,7 +118,6 @@ def control_case(durable_refit, refit_case, tmp_path, monkeypatch):
             "expires_at": deadline.isoformat(),
         }
 
-    monkeypatch.setattr(refit_control, "mint_refit_read_url", mint)
     app = FastAPI()
     app.include_router(refit_control.router, prefix="/api/v1")
 
@@ -127,6 +132,8 @@ def control_case(durable_refit, refit_case, tmp_path, monkeypatch):
             base_url=f"https://testserver/api/v1/internal/refits/{attempt.id}/",
             headers={"Authorization": f"Bearer {token}"},
         ) as client:
+            client.mint = mint
+            client.object_url = f"https://127.0.0.1:{server.server_port}{next(iter(objects))}"
             yield client, db, store, plan, attempt, scope, str(cert_path), token
     finally:
         server.shutdown()
@@ -134,18 +141,62 @@ def control_case(durable_refit, refit_case, tmp_path, monkeypatch):
         thread.join(timeout=5)
 
 
-def test_credential_free_worker_fits_uploads_and_replays_publication(control_case, monkeypatch):
-    client, db, _, plan, attempt, _, ca, token = control_case
+@pytest.fixture
+def broker_control_case(control_case, phase1_engine, monkeypatch, tmp_path):
+    from champion_broker_fixture import install_champion_broker
+
+    client, db, store, plan, attempt, scope, ca, token = control_case
+    binding = install_champion_broker(
+        db,
+        plan,
+        refit_control,
+        refit_control.refit_claims(token, attempt.id),
+        phase1_engine,
+        monkeypatch,
+        tmp_path,
+        mint=client.mint,
+    )
+    client.output_upload = binding.upload
+    client.output_binding = binding
+    try:
+        yield client, db, store, binding.case.plan, attempt, scope, ca, token
+    finally:
+        binding.close()
+
+
+@pytest.mark.parametrize("lost_output_ack", [False, True])
+def test_credential_free_worker_fits_uploads_and_replays_publication(
+    broker_control_case, monkeypatch, lost_output_ack
+):
+    client, db, _, plan, attempt, _, ca, token = broker_control_case
     monkeypatch.delenv("DATABASE_URL", raising=False)
     with pytest.raises(TokenError):
         decode_token(token, secret=SECRET, expected_type="access")
+    from automl_api.training.attempt_rpc import AttemptControlUnavailable, AttemptRPC
+
+    rpc = AttemptRPC.request
+    lost = []
+    lookups = []
+
+    def request(self, method, path, **kwargs):
+        response = rpc(self, method, path, **kwargs)
+        if path.startswith("objects/receipts/"):
+            lookups.append(path)
+        if lost_output_ack and method == "PUT" and not lost:
+            lost.append(path)
+            raise AttemptControlUnavailable("Lost accepted output acknowledgement")
+        return response
+
+    monkeypatch.setattr(AttemptRPC, "request", request)
     result = refit_worker.run(client, ca_file=ca)
+    assert len(lost) == len(lookups) == int(lost_output_ack)
+    assert len(client.output_binding.writes) == 1
     db.refresh(attempt)
     assert attempt.status == AttemptStatus.SUCCEEDED
     assert result["row_count"] == sum(part.rows for part in plan.partitions)
     assert client.post("publish", json=result).status_code == 200
     assert client.post("start").status_code == 409
-    assert client.get("inputs/0").status_code == 409
+    assert client.get("inputs/0").status_code == 410
     events = list(
         db.scalars(
             select(WorkflowEvent)
@@ -155,16 +206,29 @@ def test_credential_free_worker_fits_uploads_and_replays_publication(control_cas
             .order_by(WorkflowEvent.sequence)
         )
     )
-    assert [event.event_key for event in events] == ["refit_plan", "refit_output", "refit_frozen"]
+    identity = events[3]
+    assert identity.event_type == "attempt.identity"
+    assert identity.event_key == "attempt.identity:" + identity.payload["token_sha256"]
+    assert [
+        event.event_key
+        for event in events
+        if event is not identity and event.event_type != "attempt.output.completed"
+    ] == [
+        "refit_plan",
+        "refit_submission",
+        "champion.resources.observed",
+        "refit_output",
+        "refit_frozen",
+    ]
 
 
 def test_input_capability_requires_current_attempt_and_cannot_name_arbitrary_objects(control_case):
     client, db, _, _, attempt, _, _, _ = control_case
     assert client.post("start").status_code == 200
     grant = client.get("inputs/0")
-    assert grant.status_code == 200 and grant.headers["cache-control"] == "no-store"
-    assert client.get("inputs/-1").status_code == 404
-    assert client.get("inputs/3").status_code == 404
+    assert grant.status_code == 410 and grant.headers["cache-control"] == "no-store"
+    assert client.get("inputs/-1").status_code == 410
+    assert client.get("inputs/3").status_code == 410
     assert (
         client.get(
             f"https://testserver/api/v1/internal/refits/{uuid.uuid4()}/inputs/0",
@@ -174,26 +238,42 @@ def test_input_capability_requires_current_attempt_and_cannot_name_arbitrary_obj
     db.refresh(attempt)
     attempt.lease_expires_at = datetime.now(UTC) - timedelta(seconds=1)
     db.flush()
-    assert client.get("inputs/0").status_code == 409
+    assert client.get("inputs/0").status_code == 410
     assert client.post("heartbeat").status_code == 409
 
 
-def test_output_intent_precedes_storage_and_rejects_wrong_or_changed_bytes(control_case):
-    client, db, store, plan, attempt, _, _, _ = control_case
+def test_output_intent_precedes_storage_and_rejects_wrong_or_changed_bytes(broker_control_case):
+    client, db, store, plan, attempt, _, _, _ = broker_control_case
     assert client.post("start").status_code == 200
     content = b"first model"
     digest = hashlib.sha256(content).hexdigest()
-    assert client.put(f"model/{digest}", content=b"wrong bytes").status_code == 422
+    nonce = uuid.uuid4()
+    assert client.output_upload(b"wrong bytes", digest=digest, request_id=nonce).status_code == 422
     intent = db.scalar(
         select(WorkflowEvent).where(
             WorkflowEvent.attempt_id == attempt.id,
             WorkflowEvent.event_key == "refit_output",
         )
     )
-    assert intent is not None
-    assert not store.exists(intent.payload["uri"])
-    assert client.put(f"model/{digest}", content=content).status_code == 200
-    assert client.put(f"model/{'d' * 64}", content=content).status_code == 409
+    assert intent is None
+    from automl_api.models.workflows import WorkflowAttemptCredentialGrant
+
+    grant = db.scalar(
+        select(WorkflowAttemptCredentialGrant).where(
+            WorkflowAttemptCredentialGrant.attempt_id == attempt.id
+        )
+    )
+    assert grant.status == "pending" and grant.issuance_started_at is None
+    assert not store.exists(grant.object_uri)
+    db.commit()
+    db.get_bind().commit()
+    assert client.output_upload(content, digest=digest, request_id=nonce).status_code == 200
+    assert client.output_upload(content, digest="d" * 64, request_id=nonce).status_code == 401
+    intent = db.scalar(
+        select(WorkflowEvent).where(
+            WorkflowEvent.attempt_id == attempt.id, WorkflowEvent.event_key == "refit_output"
+        )
+    )
     result = {
         "frozen_pipeline_uri": intent.payload["uri"],
         "frozen_pipeline_digest": digest,
@@ -211,7 +291,7 @@ def test_worker_failure_seals_attempt_for_reconciler_and_never_returns_secret_er
     assert client.post("heartbeat").json() == {"renewed": True}
     assert client.post("fail").status_code == 200
     assert client.post("fail").status_code == 200
-    assert client.get("inputs/1").status_code == 409
+    assert client.get("inputs/1").status_code == 410
     db.refresh(attempt)
     assert attempt.status == AttemptStatus.FAILED
     assert attempt.terminal_reason == "Refit worker reported execution failure"
@@ -233,16 +313,16 @@ def test_replaced_cancelled_or_invalid_capabilities_cannot_read(control_case, in
     else:
         client.headers["Authorization"] = f"Bearer {token}.invalid"
     db.flush()
-    assert client.get("inputs/0").status_code == (401 if invalid == "signature" else 409)
+    assert client.get("inputs/0").status_code == (401 if invalid == "signature" else 410)
 
 
-def test_oversized_upload_is_rejected_before_storage_or_output_intent(control_case):
-    client, db, _, plan, attempt, _, _, _ = control_case
+def test_oversized_upload_is_rejected_before_storage_or_output_intent(broker_control_case):
+    client, db, _, plan, attempt, _, _, _ = broker_control_case
     assert client.post("start").status_code == 200
-    response = client.put(
-        f"model/{'a' * 64}", content=b"x", headers={"Content-Length": str(plan.max_model_bytes + 1)}
+    response = client.output_upload(
+        b"x", digest="a" * 64, headers={"Content-Length": str(plan.max_model_bytes + 1)}
     )
-    assert response.status_code == 413
+    assert response.status_code == 401
     assert (
         db.scalar(
             select(WorkflowEvent).where(
@@ -254,16 +334,16 @@ def test_oversized_upload_is_rejected_before_storage_or_output_intent(control_ca
     )
 
 
-def test_mint_failure_does_not_disclose_provider_capabilities(control_case, monkeypatch):
+def test_retired_input_route_does_not_mint_provider_capabilities(control_case, monkeypatch):
     client, *_ = control_case
     assert client.post("start").status_code == 200
 
     def failed_mint(*_args):
         raise RuntimeError("https://provider.example/object?secret=do-not-disclose")
 
-    monkeypatch.setattr(refit_control, "mint_refit_read_url", failed_mint)
+    monkeypatch.setattr(refit_access, "mint_refit_read_url", failed_mint)
     response = client.get("inputs/0")
-    assert response.status_code == 503
+    assert response.status_code == 410
     assert "do-not-disclose" not in response.text
 
 

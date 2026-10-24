@@ -1,9 +1,9 @@
 {
   "status": "audited_complete_backend_run",
   "phase_complete": false,
-  "verified_at": "2026-10-20T06:24:22.090181+00:00",
-  "collected": 3781,
-  "passed": 3781,
+  "verified_at": "2026-10-20T19:01:55.774560+00:00",
+  "collected": 4178,
+  "passed": 4178,
   "failures": [],
   "errors": [],
   "skipped": [],
@@ -11,39 +11,42 @@
   "independent_coverage_thresholds_pass": false,
   "coverage": {
     "statements": {
-      "covered": 21835,
-      "total": 23080,
-      "percent": 94.60571923743501
+      "covered": 21967,
+      "total": 23159,
+      "percent": 94.85297292629215
     },
     "branches": {
-      "covered": 5895,
-      "total": 6838,
-      "percent": 86.20941795846738
+      "covered": 5963,
+      "total": 6872,
+      "percent": 86.77240977881257
     }
   },
   "required_each_dimension_percent": 90.01,
-  "schema_head_rechecked": "0017_upload_session_project",
+  "schema_head_rechecked": "0018_attempt_predecessor_lineage",
   "post_suite_schema_parity": true,
   "repository_ruff_pass": true,
-  "tested_input_count": 486,
+  "tested_input_count": 496,
   "coverage_original_sha256": "d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9",
   "artifact_sha256": {
-    ".unlazy/phase1-current-backend/backend-state.json": "5ad49e49551c4e30cb0cb6f6bc37cca0ebfab8c551ff7d88fbec420f48f6dcff",
-    ".unlazy/phase1-current-backend/source-sha256.json": "9cf4dcf33f5edafbd626fbc8f804577aafbd808e0426e91ac359c48906b3939f",
-    ".unlazy/phase1-current-backend/backend.log": "d8c40615b230afa0afa5076e655ff914009ef37d1033188ead84a259764f4b5c",
-    ".unlazy/phase1-current-backend/backend.xml": "c9178c5748dea5b39c23c49c49ad689f66a0cc67313a486e70e4d4882ce81cb1",
-    ".unlazy/phase1-current-backend/collect.log": "3a97f89d244b03177fd37b2b5ffbb3821a24630d478e4ac7c6bef2e3bdad8598",
-    ".unlazy/phase1-current-backend/coverage.json": "775b06d0893c71755425475edade1559bc5c63fda662f6ce4fbc88f19f81ec96",
-    ".unlazy/phase1-current-backend/coverage-threshold.log": "08e37f9c9224dee20dc72f63adfe91368a16f473888e04641889297952752ea7",
+    ".unlazy/phase1-current-backend/backend-state.json": "510da3aea7d639c06d857aa73322b0d3d948d271de8c55236f524ba0e39ac973",
+    ".unlazy/phase1-current-backend/source-sha256.json": "af0fb0b651e3b29517439b1f822610e6db5800ebc24e109004c38159ebee8bd8",
+    ".unlazy/phase1-current-backend/backend.log": "42642a143ffc4976ac223143fd76870ab259fe223a4396a260d1110ee0366a47",
+    ".unlazy/phase1-current-backend/backend.xml": "96fb1a56e4981cef1c089252901e17d0d8562185885bca0062feb592e83200d0",
+    ".unlazy/phase1-current-backend/collect.log": "2f28ba7ec17542c2300f85af7e6a43f1a51ececf94cf4d53191d297a65defc1e",
+    ".unlazy/phase1-current-backend/coverage.json": "51d45fed28899da46bbc01bc28455eb06fca52ace849ba29fce42bd0f5277245",
+    ".unlazy/phase1-current-backend/coverage-threshold.log": "7c2df8f2daf75ce59b92629f08f4ac361a87d6b9b6c0ca6f06f529627ce4beb5",
     ".unlazy/phase1-current-backend/generate_production_task_index.log": "00c8dcf3b37f2eac6114a4c21f9f742c56e354ada6672f1b15189664820d92a5",
     ".unlazy/phase1-current-backend/validate_phase2_evidence.log": "a414947a0f058a04ee8ca14e4023b0661f0892a6cb81c082ba87469dd71ed9e9",
     ".unlazy/phase1-current-backend/check_no_dask_runtime.log": "dffd5dbca119ddf99cc5a088942e02d1127f7108463f4627161d74775ec7e554",
     ".unlazy/phase1-current-backend/run.py": "39f2b54fa2b6689c2b76ffdad417dd0937d520869050746e67abba8d0b803ad9",
-    ".unlazy/phase1-current-backend/audit.py": "73070dcab21c52a5e06391c974642202830c4e5aa4aea936e84fafbe9cc6c867",
+    ".unlazy/phase1-current-backend/audit.py": "836e438c3466fd5346c76ce804041ce0afe13cb585501a1c9cda144acc4b4565",
     ".unlazy/phase1-current-backend/toolchain.json": "74326659b9422921066a1f6a462a53940a1b71f4a51e15a2640d2b1f5d57ff83",
-    ".unlazy/phase1-current-backend/lint.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    ".unlazy/phase1-current-backend/lint.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    ".unlazy/phase1-current-backend/GATES.md": "fbb2174aaa57247f312c74d38c4f387f9938c869550a703b12dc9734fe5900f6",
+    ".unlazy/phase1-current-backend/gates.log": "1d774681d723fe6fce80eb2cee0f1be2fb96f948799ad310b8659834edaa9aa7",
+    ".unlazy/phase1-current-backend/final-gates.log": "3a27b85cf7735305c07486df484282ba809a404147558158375e4c8ccbd76b9b"
   },
-  "minimum_free_bytes": 45116678144,
+  "minimum_free_bytes": 44929232896,
   "reserve_bytes": 43500000000,
   "isolated_database": "automl_branch_0e6a232bc7_tests",
   "live_provider_or_kubernetes_tests_enabled": false,
@@ -54,5 +57,14 @@
   "migration_qualification_ceiling_bytes": 45000000000,
   "shared_preservation_qualified": false,
   "historical_missing_qa_objects": 7,
-  "abandoned_handoff": "phase1-deletion:G7"
+  "abandoned_handoff": "phase1-deletion:G7",
+  "scoped_gates_met": 2,
+  "scoped_gates_unmet": 1,
+  "scoped_gates_abandoned": 0,
+  "additional_branch_outcomes_needed_at_current_denominator": 223,
+  "historical_full_backend_evidence": "fixture-backend-2026-10-20.yaml",
+  "full_backend_duration_seconds": 1368.11,
+  "installed_ray_version": "2.56.1",
+  "manifest_ray_version": "2.58.0",
+  "release_dependency_runtime_qualified": false
 }

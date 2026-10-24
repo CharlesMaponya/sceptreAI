@@ -1,0 +1,329 @@
+{
+  "status": "reviewed_static_inventory_only",
+  "phase_complete": false,
+  "runtime_qualified": false,
+  "verified_at": "2026-10-21T22:03:34.299584+00:00",
+  "production_python_files": 166,
+  "explicit_skip_locked_selections": 17,
+  "transaction_advisory_calls": 1,
+  "session_advisory_calls_found": 0,
+  "unique_functions": 15,
+  "source_manifest": ".unlazy/phase1-queue-inventory/source-sha256.json",
+  "source_manifest_sha256": "f14993b11724411035f354e1ffd4b20e29d1a5d9328a59b4b90791fa6810c940",
+  "scanner_controls": 9,
+  "scope": "Explicit SQLAlchemy and literal-SQL call sites in production Python; dynamic SQL, dependency internals and blocking/no-lock polling loops are not certified by this inventory.",
+  "sites": [
+    {
+      "path": "apps/api/automl_api/services/champion_planning.py",
+      "line": 106,
+      "function": "plan_scope_refit",
+      "kind": "skip_locked",
+      "classification": "planning_native_read",
+      "native_io_in_transaction": true,
+      "lease_fields": [],
+      "transaction_owner": "workflow_reconciler.plan_champions_once",
+      "caller_refs": [
+        "apps/api/automl_api/workflow_reconciler.py:135"
+      ],
+      "review": "Scope, training-attempt and run selections are planning serialization, not a durable planner claim. The caller commits after plan_scope_refit returns; store.stat(candidate_uri) runs before _record_plan under the same transaction. Native read must be split from SQL with current scope/selection revalidation."
+    },
+    {
+      "path": "apps/api/automl_api/services/champion_planning.py",
+      "line": 175,
+      "function": "plan_scope_refit",
+      "kind": "skip_locked",
+      "classification": "planning_native_read",
+      "native_io_in_transaction": true,
+      "lease_fields": [],
+      "transaction_owner": "workflow_reconciler.plan_champions_once",
+      "caller_refs": [
+        "apps/api/automl_api/workflow_reconciler.py:135"
+      ],
+      "review": "Scope, training-attempt and run selections are planning serialization, not a durable planner claim. The caller commits after plan_scope_refit returns; store.stat(candidate_uri) runs before _record_plan under the same transaction. Native read must be split from SQL with current scope/selection revalidation."
+    },
+    {
+      "path": "apps/api/automl_api/services/champion_planning.py",
+      "line": 184,
+      "function": "plan_scope_refit",
+      "kind": "skip_locked",
+      "classification": "planning_native_read",
+      "native_io_in_transaction": true,
+      "lease_fields": [],
+      "transaction_owner": "workflow_reconciler.plan_champions_once",
+      "caller_refs": [
+        "apps/api/automl_api/workflow_reconciler.py:135"
+      ],
+      "review": "Scope, training-attempt and run selections are planning serialization, not a durable planner claim. The caller commits after plan_scope_refit returns; store.stat(candidate_uri) runs before _record_plan under the same transaction. Native read must be split from SQL with current scope/selection revalidation."
+    },
+    {
+      "path": "apps/api/automl_api/services/final_test_credentials.py",
+      "line": 307,
+      "function": "expire_unacknowledged_grants",
+      "kind": "skip_locked",
+      "classification": "sql_transition",
+      "native_io_in_transaction": false,
+      "lease_fields": [
+        "grant_claim.expires_at",
+        "allocation.cas_version"
+      ],
+      "transaction_owner": "qualification_control.recover_grants",
+      "caller_refs": [
+        "apps/api/automl_api/qualification_control.py:209"
+      ],
+      "review": "Pure database expiry reconciliation. A committed grant-claim deadline and allocation CAS guard the failure transition; signing is local and this function neither mints another capability nor retries provider I/O."
+    },
+    {
+      "path": "apps/api/automl_api/services/profiling_jobs.py",
+      "line": 386,
+      "function": "resume_incomplete_profiling_jobs",
+      "kind": "skip_locked",
+      "classification": "sql_transition",
+      "native_io_in_transaction": false,
+      "lease_fields": [
+        "OutboxEntry.lease_owner",
+        "OutboxEntry.lease_expires_at"
+      ],
+      "transaction_owner": "resume_incomplete_profiling_jobs",
+      "caller_refs": [
+        "apps/api/automl_api/main.py:47",
+        "apps/api/automl_api/workflow_reconciler.py:259",
+        "apps/api/automl_api/services/profiling_jobs.py:356",
+        "apps/api/automl_api/services/profiling_jobs.py:456"
+      ],
+      "review": "Backfills a durable local-profile command/outbox and commits. Selection is metadata recovery, not executing a profile. The later local-profile delivery uses the committed outbox generation/owner and an independent-session heartbeat."
+    },
+    {
+      "path": "apps/api/automl_api/services/reconciler.py",
+      "line": 1158,
+      "function": "observe_training_ray_jobs",
+      "kind": "skip_locked",
+      "classification": "observer_native_read",
+      "native_io_in_transaction": true,
+      "lease_fields": [
+        "WorkflowAttempt.lease_expires_at (worker execution, not observer claim)"
+      ],
+      "transaction_owner": "workflow_reconciler.observe_once",
+      "caller_refs": [
+        "apps/api/automl_api/workflow_reconciler.py:103"
+      ],
+      "review": "Locks active attempts/runs, calls k8s.ray_job and applies observation/replacement before the outer batch commits. SKIP LOCKED is a transient observer selection, with no separately committed observer lease. Split native reads and revalidate current fence/receipt/lease before metadata changes."
+    },
+    {
+      "path": "apps/api/automl_api/services/reconciler.py",
+      "line": 1458,
+      "function": "observe_analysis_attempts",
+      "kind": "skip_locked",
+      "classification": "observer_native_read",
+      "native_io_in_transaction": true,
+      "lease_fields": [
+        "WorkflowAttempt.lease_expires_at (worker execution, not observer claim)"
+      ],
+      "transaction_owner": "workflow_reconciler.observe_once",
+      "caller_refs": [
+        "apps/api/automl_api/workflow_reconciler.py:103"
+      ],
+      "review": "Locks tracked analysis attempts/runs, reads the Kubernetes Job with a five-second request timeout and queues cleanup/replacement inside the caller transaction. Preserve verified terminal receipt/CAS handling when separating observation from publication."
+    },
+    {
+      "path": "apps/api/automl_api/services/reconciler.py",
+      "line": 1564,
+      "function": "observe_analysis_jobs",
+      "kind": "skip_locked",
+      "classification": "observer_native_read",
+      "native_io_in_transaction": true,
+      "lease_fields": [],
+      "transaction_owner": "workflow_reconciler.observe_once",
+      "caller_refs": [
+        "apps/api/automl_api/workflow_reconciler.py:103",
+        "apps/api/automl_api/services/training.py"
+      ],
+      "review": "Legacy unbound analysis selection calls training._sync_run_status with observe_managed=True under run locks. This is a compatibility observer, not a leased queue claim. It needs native-I/O separation and explicit legacy/process-loss qualification."
+    },
+    {
+      "path": "apps/api/automl_api/services/reconciler.py",
+      "line": 1589,
+      "function": "observe_dataset_ray_jobs",
+      "kind": "skip_locked",
+      "classification": "observer_native_read",
+      "native_io_in_transaction": true,
+      "lease_fields": [
+        "WorkflowAttempt.lease_expires_at (worker execution, not observer claim)"
+      ],
+      "transaction_owner": "workflow_reconciler.observe_once",
+      "caller_refs": [
+        "apps/api/automl_api/workflow_reconciler.py:103"
+      ],
+      "review": "Locks splitter/preparation attempts and profiles, calls k8s.ray_job and updates or replaces the generation in the outer observation transaction. Existing worker leases do not turn this remote observation into a committed observer claim."
+    },
+    {
+      "path": "apps/api/automl_api/services/refit_jobs.py",
+      "line": 140,
+      "function": "_locked",
+      "kind": "skip_locked",
+      "classification": "split_transaction_native",
+      "native_io_in_transaction": false,
+      "lease_fields": [
+        "WorkflowAttempt.status",
+        "WorkflowAttempt.lease_expires_at"
+      ],
+      "transaction_owner": "refit_jobs._reconcile and its recovery/cleanup callers",
+      "caller_refs": [
+        "apps/api/automl_api/services/refit_jobs.py:239",
+        "apps/api/automl_api/services/refit_jobs.py:348"
+      ],
+      "review": "Short SQL scope/attempt selectors. _reconcile commits SUBMITTED plus the manifest/startup lease, closes the SQL context before job_state/_ensure_resources/_cleanup, then uses a fresh transaction to revalidate scope/status/deadline. This is not an exclusive controller-operation lease; unknown-create and replica/native process-loss qualification remain separate."
+    },
+    {
+      "path": "apps/api/automl_api/services/refit_jobs.py",
+      "line": 148,
+      "function": "_locked",
+      "kind": "skip_locked",
+      "classification": "split_transaction_native",
+      "native_io_in_transaction": false,
+      "lease_fields": [
+        "WorkflowAttempt.status",
+        "WorkflowAttempt.lease_expires_at"
+      ],
+      "transaction_owner": "refit_jobs._reconcile and its recovery/cleanup callers",
+      "caller_refs": [
+        "apps/api/automl_api/services/refit_jobs.py:239",
+        "apps/api/automl_api/services/refit_jobs.py:348"
+      ],
+      "review": "Short SQL scope/attempt selectors. _reconcile commits SUBMITTED plus the manifest/startup lease, closes the SQL context before job_state/_ensure_resources/_cleanup, then uses a fresh transaction to revalidate scope/status/deadline. This is not an exclusive controller-operation lease; unknown-create and replica/native process-loss qualification remain separate."
+    },
+    {
+      "path": "apps/api/automl_api/services/tracking_reconciliation.py",
+      "line": 70,
+      "function": "_claim_tracking",
+      "kind": "skip_locked",
+      "classification": "durable_lease_claim",
+      "native_io_in_transaction": false,
+      "lease_fields": [
+        "WorkflowCommand.lease_owner",
+        "WorkflowCommand.lease_expires_at",
+        "WorkflowCommand.heartbeat_at",
+        "WorkflowCommand.retry_count"
+      ],
+      "transaction_owner": "tracking_reconciliation._claim_tracking",
+      "caller_refs": [
+        "apps/api/automl_api/services/tracking_reconciliation.py:243"
+      ],
+      "review": "Locks command/run, sets owner/heartbeat/expiry and retry accounting, snapshots identity/payload and commits before returning. The caller performs MLflow lookups outside this context, with independent short heartbeat transactions."
+    },
+    {
+      "path": "apps/api/automl_api/services/tracking_reconciliation.py",
+      "line": 189,
+      "function": "_publish_tracking",
+      "kind": "skip_locked",
+      "classification": "lease_fenced_publication",
+      "native_io_in_transaction": false,
+      "lease_fields": [
+        "WorkflowCommand.lease_owner",
+        "WorkflowCommand.lease_expires_at",
+        "WorkflowCommand.request_hash"
+      ],
+      "transaction_owner": "tracking_reconciliation._publish_tracking",
+      "caller_refs": [
+        "apps/api/automl_api/services/tracking_reconciliation.py:243"
+      ],
+      "review": "A publication/revalidation selection after external lookup, not another queue claim. Checks unchanged live owner, request and scope identity before recording the result and releasing the lease; commits inside this helper."
+    },
+    {
+      "path": "apps/api/automl_api/services/training.py",
+      "line": 925,
+      "function": "_lock_training_admission",
+      "kind": "transaction_advisory",
+      "classification": "admission_xact_mutex",
+      "native_io_in_transaction": "caller-dependent",
+      "lease_fields": [],
+      "transaction_owner": "calling API/control-plane transaction",
+      "caller_refs": [
+        "apps/api/automl_api/services/training.py:608",
+        "apps/api/automl_api/services/training.py:1154",
+        "apps/api/automl_api/services/training.py:1312",
+        "apps/api/automl_api/services/reconciler.py:275",
+        "apps/api/automl_api/services/operations.py",
+        "apps/api/automl_api/services/validation.py"
+      ],
+      "review": "The only explicit advisory acquisition is pg_advisory_xact_lock: PostgreSQL releases it at transaction end. It serializes admission/quota work; it is neither a session advisory worker lock nor a queue claim. This classification does not certify the duration or native I/O of every admission caller."
+    },
+    {
+      "path": "apps/api/automl_api/services/uploads.py",
+      "line": 333,
+      "function": "cleanup_abandoned_uploads",
+      "kind": "skip_locked",
+      "classification": "cleanup_native",
+      "native_io_in_transaction": true,
+      "lease_fields": [
+        "DatasetUploadSession.lease_expires_at (eligibility only)"
+      ],
+      "transaction_owner": "workflow_reconciler.cleanup_uploads_once",
+      "caller_refs": [
+        "apps/api/automl_api/workflow_reconciler.py:123"
+      ],
+      "review": "Selects expired sessions under row locks, performs driver.delete or driver.abort_upload, clears lease fields and flushes; the caller commits only afterward. It does not first commit an exclusive cleanup owner/native-operation record. A factory-owned claim/I/O/fenced-publication flow must preserve legal holds, provider identity, retention and uncertain in-flight native custody."
+    },
+    {
+      "path": "apps/api/automl_api/services/workflow_state.py",
+      "line": 217,
+      "function": "claim_outbox",
+      "kind": "skip_locked",
+      "classification": "durable_lease_claim",
+      "native_io_in_transaction": false,
+      "lease_fields": [
+        "OutboxEntry.lease_owner",
+        "OutboxEntry.lease_expires_at",
+        "OutboxEntry.delivery_attempts"
+      ],
+      "transaction_owner": "workflow_reconciler.run_once claim phase",
+      "caller_refs": [
+        "apps/api/automl_api/workflow_reconciler.py:39",
+        "apps/api/automl_api/services/reconciler.py:180"
+      ],
+      "review": "Claim owner/expiry/delivery count are flushed and the sole production caller commits before dispatch. Dispatch opens another session and is mixed: upload verification/local profiling explicitly commit before slow I/O, while registry verification, deployment/governance writes and cleanup still invoke native APIs within their delivery transaction. A correct claim alone does not qualify all handlers."
+    },
+    {
+      "path": "apps/api/automl_api/services/workflow_state.py",
+      "line": 636,
+      "function": "claim_attempts",
+      "kind": "skip_locked",
+      "classification": "unused_lease_helper",
+      "native_io_in_transaction": false,
+      "lease_fields": [
+        "WorkflowAttempt.lease_owner",
+        "WorkflowAttempt.lease_expires_at",
+        "WorkflowAttempt.heartbeat_at",
+        "WorkflowAttempt.retry_count"
+      ],
+      "transaction_owner": "caller must commit; no production caller found",
+      "caller_refs": [
+        "apps/api/automl_api/services/workflow_state.py:625"
+      ],
+      "review": "Generic claim builder refreshes rows, gates retry budget and sets lease/heartbeat; it only flushes. No direct production call site was found in apps/api or packages. Its tests do not qualify an actual worker delivery path."
+    },
+    {
+      "path": "apps/api/automl_api/workflow_reconciler.py",
+      "line": 180,
+      "function": "plan_champions_once",
+      "kind": "skip_locked",
+      "classification": "sql_transition",
+      "native_io_in_transaction": false,
+      "lease_fields": [],
+      "transaction_owner": "workflow_reconciler.plan_champions_once error-recovery transaction",
+      "caller_refs": [
+        "apps/api/automl_api/workflow_reconciler.py:135"
+      ],
+      "review": "The SKIP LOCKED occurrence is the fresh SQL-only error handler after the failed planning transaction has exited. It updates/marks the scope; it is not a separate worker queue or lease. The main planning call still has the native stat boundary documented above."
+    }
+  ],
+  "phase1_requirements": {
+    "verified": 2,
+    "open": 34
+  },
+  "remaining": [
+    "W03 remains Open. The full logical queue/worker inventory and runtime/process-loss qualification remain required.",
+    "Split upload cleanup, planning/observer reads and transaction-bound native outbox handlers without weakening ownership, replay or unknown native custody.",
+    "Native/release/runtime, actual prior-binary and45GB qualification remain unqualified.",
+    "Original phase1-deletion:G7 remains abandoned for seven missing historical QA objects."
+  ]
+}

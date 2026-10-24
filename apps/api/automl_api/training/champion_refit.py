@@ -14,7 +14,7 @@ from urllib.parse import unquote, urlsplit
 import joblib
 import pandas as pd
 import pyarrow.parquet as pq
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 from sklearn.base import clone
 
 from automl_api.services.temporal import normalize_temporal_features
@@ -73,13 +73,21 @@ class RefitPlan(RefitPolicy):
     attempt_id: uuid.UUID
     run_id: uuid.UUID
     candidate: RefitObject
+    credential_protocol: Literal["pod-bound-read-v1", "pod-bound-object-v2"] | None = None
+
+    @model_serializer(mode="wrap")
+    def serialize_plan(self, handler):
+        value = handler(self)
+        if self.credential_protocol is None:
+            value.pop("credential_protocol", None)
+        return value
 
     @property
     def policy_digest(self):
         return canonical_request_hash(
             self.model_dump(
                 mode="json",
-                exclude={"attempt_id", "run_id", "candidate"},
+                exclude={"attempt_id", "run_id", "candidate", "credential_protocol"},
             )
         )
 
@@ -106,7 +114,7 @@ def _copy_verified(store, item, destination, progress):
     remaining = item.byte_size
     with store.open_stream(item.uri) as source:
         while remaining:
-            chunk = source.read(min(remaining, 1024 * 1024))
+            chunk = source.read(min(remaining, 65536))
             if len(chunk) > remaining:
                 raise ValueError("Refit source violated its bounded read contract")
             if not chunk:
@@ -136,7 +144,6 @@ def validate_refit_paths(plan, store):
             raise ValueError("Refit may read only registered train/validation partitions")
     if plan.candidate.byte_size > plan.max_model_bytes:
         raise ValueError("Candidate exceeds its preregistered model budget")
-
 
 
 def execute_refit(
@@ -377,9 +384,14 @@ def publish_frozen_pipeline(db, plan: RefitPlan, result: FrozenPipeline, *, fenc
         checkpoint_uri=result.frozen_pipeline_uri,
     ):
         raise StaleFence("Refit terminal publication lost its fence")
-    event_sequence = 1 + (db.scalar(select(func.max(WorkflowEvent.sequence)).where(
-        WorkflowEvent.attempt_id == attempt.id,
-    )) or 0)
+    event_sequence = 1 + (
+        db.scalar(
+            select(func.max(WorkflowEvent.sequence)).where(
+                WorkflowEvent.attempt_id == attempt.id,
+            )
+        )
+        or 0
+    )
     checkpoint = WorkflowCheckpoint(
         project_id=plan.project_id,
         attempt_id=attempt.id,
@@ -485,7 +497,10 @@ def run_refit_attempt(session_factory, store, *, project_id, attempt_id, fencing
 
     with session_factory() as db, db.begin():
         plan = start_refit_attempt(
-            db, project_id=project_id, attempt_id=attempt_id, fencing_token=fencing_token,
+            db,
+            project_id=project_id,
+            attempt_id=attempt_id,
+            fencing_token=fencing_token,
         )
         scope_id = plan.scope_id
         deadline = db.get(PromotionalScope, scope_id).scope_deadline_at

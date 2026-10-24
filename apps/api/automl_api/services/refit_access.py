@@ -16,7 +16,7 @@ from automl_api.core.config import get_settings
 from automl_api.models.enums import AttemptStatus, ScopeStatus, WorkflowStage
 from automl_api.models.workflows import PromotionalScope, WorkflowAttempt, WorkflowEvent
 from automl_api.security.tokens import create_signed_token, decode_token
-from automl_api.services.workflow_state import StaleFence
+from automl_api.services.workflow_state import StaleFence, attempt_credentials_revoked
 from automl_api.storage.contracts import immutable_object_version
 from automl_api.storage.read_capabilities import validate_native_read_url
 from automl_api.training.champion_refit import RefitPlan
@@ -86,6 +86,16 @@ def locked_refit(db, attempt_id, claims, statuses):
         or attempt.fencing_token != claims["fence"]
         or scope.status != ScopeStatus.RUNNING
         or attempt.status not in statuses
+        or (
+            attempt.status
+            in {
+                AttemptStatus.PENDING,
+                AttemptStatus.CLAIMED,
+                AttemptStatus.SUBMITTED,
+                AttemptStatus.RUNNING,
+            }
+            and attempt_credentials_revoked(db, attempt_id)
+        )
         or scope.scope_deadline_at is None
         or scope.scope_deadline_at <= now
         or (

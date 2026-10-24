@@ -1,0 +1,30 @@
+{
+  "status": "verified_upload_retention_policy_only",
+  "phase_complete": false,
+  "native_custody_qualified": false,
+  "regression_passed": 153,
+  "focused_cases": 55,
+  "baseline_failed": 20,
+  "baseline_passed": 35,
+  "source_inputs": 511,
+  "source_manifest": ".unlazy/phase1-upload-retention-guards/source-sha256.json",
+  "minimum_free_bytes": 45628985344,
+  "reserve_bytes": 43500000000,
+  "strict_schema_head": "0018_attempt_predecessor_lineage",
+  "gates_at_snapshot": {
+    "met": 4,
+    "unmet": 0,
+    "abandoned": 0
+  },
+  "phase1_requirements": {
+    "verified": 2,
+    "open": 34
+  },
+  "change": "Stored legal hold and unelapsed retention block explicit abort and all cleanup classes. SQL filters before LIMIT, refreshes locked ORM state; eligible/equal deadline and no-op behavior preserved.",
+  "remaining": [
+    "Committed cleanup ownership, native-operation custody and SQL/I-O separation remain required.",
+    "Fresh whole-backend and independent coverage qualification required after this increment; preceding 4561-case snapshot passed all tests at 86.879% branches.",
+    "Cloud/release/previous-binary and physical 45GB migration remain unqualified. Local free space cannot accommodate 45GB plus the 43.5GB reserve.",
+    "Original phase1-deletion:G7 remains abandoned: seven historical QA objects are missing and require handoff."
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "status": "scoped_regressions_and_full_backend_pass_branch_coverage_unmet",
+  "phase_complete": false,
+  "verified_at": "2026-10-21T20:38:08.650776+00:00",
+  "change": "Replace global pytest_plugins registration of test_attempt_output_http with explicit module-local fixture imports; preserve all assertions and add upload failure diagnostics.",
+  "production_inputs_changed": false,
+  "broker_first_passed": 97,
+  "storage_first_passed": 97,
+  "connected_passed": 947,
+  "source_inputs": 509,
+  "source_manifest": ".unlazy/phase1-broker-fixture-isolation/source-sha256.json",
+  "baseline_full_backend": {
+    "collected": 4515,
+    "passed": 4511,
+    "failed": 4,
+    "evidence": "current-backend-put-2026-10-21.yaml",
+    "branch_percent": 86.79272106909298
+  },
+  "root_coverage_sha256": "d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9",
+  "migration_target_bytes": 45000000000,
+  "remaining": [
+    "Full backend passes4515 cases. Independent90.01% branch coverage remains unmet at86.878%; see the linked full-backend evidence.",
+    "All-stage/native/release/runtime and actual prior-binary qualification;45GB physical migration remains unrun.",
+    "Original phase1-deletion:G7 remains abandoned: seven historical QA objects are missing."
+  ],
+  "connected_modules": 40,
+  "errors": 0,
+  "skipped": 0,
+  "minimum_free_bytes": 45726339072,
+  "reserve_bytes": 43500000000,
+  "schema_head": "0018_attempt_predecessor_lineage",
+  "gates": {
+    "met": 3,
+    "unmet": 0,
+    "abandoned": 0
+  },
+  "full_backend_followup": "current-backend-fixture-isolation-2026-10-21.yaml"
+}

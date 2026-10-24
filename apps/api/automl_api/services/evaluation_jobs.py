@@ -11,7 +11,11 @@ from urllib.parse import urlsplit
 from kubernetes.client import ApiException
 
 from automl_api.models.enums import AttemptStatus
-from automl_api.services.champion_workloads import DIGEST, isolated_workload
+from automl_api.services.champion_workloads import (
+    DIGEST,
+    isolated_workload,
+    project_attempt_identity,
+)
 from automl_api.services.evaluation_access import (
     evaluation_claims,
     evaluation_token,
@@ -43,7 +47,7 @@ def _url(value):
     return value.rstrip("/")
 
 
-def submission(plan, scope, settings, key_secret):
+def submission(plan, scope, settings, key_secret, *, attempt):
     base = _url(os.environ.get("EVALUATION_CONTROL_BASE_URL", ""))
     authority = _url(os.environ.get("EVALUATION_AUTHORITY_URL", ""))
     image = os.environ.get("EVALUATION_IMAGE", settings.training_image)
@@ -118,7 +122,15 @@ def submission(plan, scope, settings, key_secret):
         )
         mounts.append({"name": volume, "mountPath": path, "readOnly": True})
         env.append({"name": variable, "value": path + "/" + key})
-    return isolated_workload(
+    project_attempt_identity(
+        metadata,
+        env,
+        volumes,
+        mounts,
+        attempt,
+        settings.attempt_control_base_url,
+    )
+    desired = isolated_workload(
         metadata=metadata,
         image=image,
         seconds=seconds,
@@ -131,8 +143,10 @@ def submission(plan, scope, settings, key_secret):
         settings=settings,
         egress=egress,
         worker="evaluation",
-        service_account="sceptre-champion-evaluation",
+        service_account=f"project-{plan.project_id}-evaluation",
     )
+    desired["object_grant_protocol"] = plan.credential_protocol
+    return desired
 
 
 def submit_evaluator(session_factory, k8s, plan, authority_token, key_secret, *, fence):
@@ -163,7 +177,7 @@ def submit_evaluator(session_factory, k8s, plan, authority_token, key_secret, *,
             raise InvalidTransition("Evaluator result-key Secret differs from its generation")
         now = datetime.now(UTC)
         if attempt.status == AttemptStatus.PENDING:
-            desired = submission(plan, scope, k8s.settings, key_secret)
+            desired = submission(plan, scope, k8s.settings, key_secret, attempt=attempt)
             _record(db, attempt, "evaluation_submission", desired)
             transition_attempt(attempt, AttemptStatus.CLAIMED, fencing_token=fence)
             transition_attempt(attempt, AttemptStatus.SUBMITTED, fencing_token=fence)
@@ -183,7 +197,9 @@ def submit_evaluator(session_factory, k8s, plan, authority_token, key_secret, *,
 def _ensure_resources(k8s, desired, plan, fence, control_token, authority_token):
     metadata = desired["job"]["metadata"]
     name, namespace = metadata["name"], metadata["namespace"]
-    k8s.ensure_service_account("sceptre-champion-evaluation")
+    k8s.ensure_service_account(
+        desired["job"]["spec"]["template"]["spec"]["serviceAccountName"], namespace=namespace
+    )
     secret = dict(
         apiVersion="v1",
         kind="Secret",

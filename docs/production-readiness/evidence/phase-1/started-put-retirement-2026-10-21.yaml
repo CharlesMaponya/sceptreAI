@@ -1,0 +1,107 @@
+{
+  "status": "verified_scoped_storage_and_started_put_retirement_safeguards",
+  "phase_complete": false,
+  "full_put_broker_complete": false,
+  "verified_at": "2026-10-21T15:00:54.898638+00:00",
+  "connected_passed": 486,
+  "failures": 0,
+  "errors": 0,
+  "skips": 0,
+  "duration_seconds": 263.256,
+  "test_modules": {
+    "tests.test_attempt_output_store": 80,
+    "tests.test_s3_sdk_retry_ownership": 14,
+    "tests.test_versioned_streams": 46,
+    "tests.test_attempt_output_retirement": 30,
+    "tests.test_grant_retirement": 22,
+    "tests.test_grant_retirement_deletion": 8,
+    "tests.test_refit_retirement": 34,
+    "tests.test_evaluator_retirement": 44,
+    "tests.test_champion_read_protocol": 6,
+    "tests.test_provider_import_jobs": 17,
+    "tests.test_attempt_object_grants": 28,
+    "tests.test_champion_read_broker": 80,
+    "tests.test_champion_refit_jobs": 15,
+    "tests.test_champion_evaluation_reconciler": 26,
+    "tests.test_champion_output_authority": 36
+  },
+  "baseline_premature_retirement_failures": 6,
+  "started_put_retirement_cases_overlapping": 30,
+  "conditional_native_storage_cases_overlapping": 80,
+  "actual_sdk_wire_cases_overlapping": 12,
+  "sdk_versions": {
+    "boto3": "1.43.56",
+    "botocore": "1.43.56",
+    "google-cloud-storage": "3.13.1",
+    "azure-storage-blob": "12.30.0"
+  },
+  "checks": [
+    "Every recorded started PUT without exact bound native completion blocks retirement after its deadline in every logical status.",
+    "Native completion must bind grant digest, issuance owner, URI, size/hash and immutable version; invalid or rehashed mismatched evidence stays blocked.",
+    "A valid completion event does not shorten the original grant deadline or waive legacy champion-history quarantine.",
+    "Committed project/run deletion remains pending without native I/O or failure-budget use; unrelated data stays present.",
+    "Refit/evaluator cleanup and replacement retain dependencies for unknown PUTs; provider-import cleanup uses the shared barrier.",
+    "Conditional storage helper uses one-shot create conditions, disabled write retries and exact-version size/SHA readback for AWS/S3-compatible, GCS and Azure adapters.",
+    "Accepted response-loss and invalid readback preserve stored bytes and do not authorize another write or cleanup."
+  ],
+  "verification_boundary": [
+    "Actual PostgreSQL, shared production cleanup/replacement code and HTTP read-broker controls run against the owned local fixture.",
+    "SDK wire controls use owned loopback HTTP with synthetic credentials; remaining provider cases use explicit SDK doubles.",
+    "Completion-event positive controls are synthetic database fixtures; no production output writer emits this event yet.",
+    "The conditional storage helper is not yet wired to worker output uploads."
+  ],
+  "test_oracle_correction": {
+    "retained_initial_connected_report": "before-async-bucket-control-connected.xml",
+    "initial_passed": 485,
+    "initial_failed": 1,
+    "cause": "GCS SDK asynchronously fetches bucket metadata, invalidating a test assertion about GET/POST order.",
+    "correction": "Allow only the exact bucket-metadata GET irrespective of order; preserve the single accepted mutation, no helper object readback on error, no DELETE and original-byte assertions.",
+    "installed_sdk_source_inspected": "google/cloud/storage/_bucket_metadata_cache.py:BucketMetadataCache.get_or_queue_fetch",
+    "corrected_wire_passed": 12,
+    "corrected_connected_passed": 486
+  },
+  "source_inputs": 506,
+  "source_manifest_sha256": "c4a4f419227f8cb24352e02c0bd8bd9dc1b093ff664d98f76b70943673be39c2",
+  "source_manifest": ".unlazy/phase1-champion-put-broker/safeguards/source-sha256.json",
+  "quality": {
+    "repository_ruff": "passed",
+    "changed_files_formatted": 11,
+    "strict_schema_revision": "0018_attempt_predecessor_lineage",
+    "schema_differences": [],
+    "root_coverage_sha256": "d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9"
+  },
+  "gates": {
+    "scoped_safeguards": {
+      "met": 3,
+      "unmet": 0,
+      "abandoned": 0
+    },
+    "full_champion_put_broker": {
+      "met": 0,
+      "unmet": 5,
+      "abandoned": 0
+    }
+  },
+  "phase1_requirements": {
+    "verified": 2,
+    "open": 34
+  },
+  "capacity": {
+    "observed_at": "2026-10-21T14:55:55.159068+00:00",
+    "target_database_bytes": 45000000000,
+    "reserve_bytes": 43500000000,
+    "free_bytes": 45797093376,
+    "qualification_performed": false,
+    "largest_table_row_counts": null,
+    "additional_WAL_and_migration_overhead_required": true
+  },
+  "minimum_free_bytes_during_connected": 45793411072,
+  "remaining": [
+    "Complete the parent full PUT broker contract: durable issuance, pod-bound HTTP route, protocol versioning, both real worker output paths, legacy write-route retirement and receipt-only recovery after response loss.",
+    "Resolve unknown and unjournaled native writes using trusted physical completion/retirement evidence; expired/revoked rows remain quarantined meanwhile.",
+    "Qualify native cloud permissions, current immutable images, TLS/rotation/process loss, whole stage/child/final-authority workflow inventory and release runtime.",
+    "Run the source-current full backend suite and meet statement and branch coverage independently; the historical full checkpoint had 86.888% branch coverage below 90.01%.",
+    "Run the 45GB physical migration with representative table rows, WAL/migration headroom and actual prior-binary/concurrent migration; the 15x10GiB upload campaign needs suitable infrastructure.",
+    "Required handoff: original phase1-deletion:G7 remains abandoned because seven historical QA objects are missing; no historical object or signature was recreated."
+  ]
+}

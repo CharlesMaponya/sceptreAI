@@ -12,7 +12,9 @@ from automl_api.training import evaluation_worker, refit_worker
 from automl_api.training.champion_evaluation import GrantedFinalStore
 from cryptography.hazmat.primitives import serialization
 from test_champion_evaluation_authority import compatible_uri_fixture as compatible_uri_fixture
+from test_champion_evaluation_worker import broker_worker_case as broker_worker_case
 from test_champion_evaluation_worker import worker_case as worker_case
+from test_champion_refit_control import broker_control_case as broker_control_case
 from test_champion_refit_control import control_case as control_case
 
 pytest_plugins = [
@@ -55,15 +57,15 @@ def ambient_proxy(request, monkeypatch):
         thread.join(timeout=5)
 
 
-def test_refit_reads_ignore_ambient_proxy(control_case, ambient_proxy):
-    client, _, _, plan, _, _, ca, _ = control_case
+def test_refit_reads_ignore_ambient_proxy(broker_control_case, ambient_proxy):
+    client, _, _, plan, _, _, ca, _ = broker_control_case
     result = refit_worker.run(client, ca_file=ca)
     assert result["row_count"] == sum(part.rows for part in plan.partitions)
     assert ambient_proxy == []
 
 
-def test_evaluator_pipeline_ignores_ambient_proxy(worker_case, ambient_proxy, tmp_path):
-    c = worker_case
+def test_evaluator_pipeline_ignores_ambient_proxy(broker_worker_case, ambient_proxy, tmp_path):
+    c = broker_worker_case
     c.control.post("start").raise_for_status()
     pipeline = evaluation_worker.CachedPipeline(
         c.plan, c.control, tmp_path / "pipeline", ca_file=c.ca, progress=lambda: None
@@ -94,7 +96,7 @@ def test_evaluator_final_reads_ignore_ambient_proxy(worker_case, ambient_proxy):
 def test_refit_control_client_ignores_ambient_proxy(control_case, ambient_proxy, monkeypatch):
     client, _, _, _, _, _, ca, token = control_case
     client.post("start").raise_for_status()
-    url = client.get("inputs/0").json()["url"]
+    url = client.object_url
     parts = urlsplit(url)
     monkeypatch.setenv("REFIT_CONTROL_URL", f"{parts.scheme}://{parts.netloc}/")
     monkeypatch.setenv("REFIT_CONTROL_TOKEN", token)
@@ -123,7 +125,7 @@ def test_evaluator_control_clients_ignore_ambient_proxy(
 ):
     c = worker_case
     c.control.post("start").raise_for_status()
-    url = c.control.get("pipeline").json()["url"]
+    url = c.object_url
     parts = urlsplit(url)
     for name in ("EVALUATION_CONTROL_URL", "EVALUATION_AUTHORITY_URL"):
         monkeypatch.setenv(name, f"{parts.scheme}://{parts.netloc}/")

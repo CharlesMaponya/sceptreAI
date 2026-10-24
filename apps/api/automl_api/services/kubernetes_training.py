@@ -333,23 +333,42 @@ class KubernetesTrainingClient:
             manifest.get("metadata", {}).get("namespace") or self.settings.training_namespace
         )
         try:
-            return self.custom.create_namespaced_custom_object(
+            created = self.custom.create_namespaced_custom_object(
                 group="ray.io",
                 version="v1",
                 namespace=namespace,
                 plural="rayjobs",
                 body=manifest,
+                _request_timeout=5,
             )
         except ApiException as exc:
             if exc.status != 409:
                 raise
-            return self.custom.get_namespaced_custom_object(
+            created = self.custom.get_namespaced_custom_object(
                 group="ray.io",
                 version="v1",
                 namespace=namespace,
                 plural="rayjobs",
                 name=manifest["metadata"]["name"],
+                _request_timeout=5,
             )
+        metadata = created.get("metadata") if isinstance(created, dict) else None
+        uid = metadata.get("uid") if isinstance(metadata, dict) else None
+        labels = metadata.get("labels") if isinstance(metadata, dict) else None
+        if (
+            not isinstance(uid, str)
+            or not uid.strip()
+            or metadata.get("name") != manifest["metadata"]["name"]
+            or metadata.get("namespace") != namespace
+            or not isinstance(labels, dict)
+            or any(
+                labels.get(key) != value
+                for key, value in manifest["metadata"].get("labels", {}).items()
+            )
+            or created.get("spec") != manifest.get("spec")
+        ):
+            raise ValueError("RayJob identity or submitted specification differs from the command.")
+        return created
 
     def ray_job(self, name: str, namespace: str | None = None) -> dict[str, Any]:
         if not self._configured:
@@ -360,6 +379,7 @@ class KubernetesTrainingClient:
             namespace=namespace or self.settings.training_namespace,
             plural="rayjobs",
             name=name,
+            _request_timeout=5,
         )
 
     def delete_ray_job(
@@ -773,6 +793,7 @@ class KubernetesTrainingClient:
         job_spec = manifest["spec"]
         pod_spec = job_spec["template"]["spec"]
         container = pod_spec["containers"][0]
+        from automl_api.schemas.parent_control import PARENT_CONTROL_PROTOCOL
         from automl_api.services.attempt_identity import attempt_audience
         from automl_api.training.attempt_admission import (
             ANALYSIS_PROTOCOL,
@@ -804,6 +825,7 @@ class KubernetesTrainingClient:
         job_spec["template"]["metadata"]["labels"].update(labels)
         pod_spec["serviceAccountName"] = attempt.workload_identity
         bindings = {
+            "AUTOML_PARENT_CONTROL_PROTOCOL",
             "ENVIRONMENT",
             "ATTEMPT_CONTROL_BASE_URL",
             "AUTOML_ATTEMPT_ID",
@@ -820,6 +842,10 @@ class KubernetesTrainingClient:
                 {"name": "AUTOML_IDENTITY_TOKEN_FILE", "value": TOKEN_PATH},
             ]
         )
+        if url:
+            container["env"].append(
+                {"name": "AUTOML_PARENT_CONTROL_PROTOCOL", "value": PARENT_CONTROL_PROTOCOL}
+            )
         pod_spec["volumes"] = [v for v in pod_spec["volumes"] if v["name"] != "attempt-identity"]
         container["volumeMounts"] = [
             v for v in container["volumeMounts"] if v["name"] != "attempt-identity"
@@ -1298,16 +1324,21 @@ class KubernetesTrainingClient:
             ),
         )
 
-    def job_state(self, job_name: str) -> str:
+    def job_state(
+        self, job_name: str, *, namespace: str | None = None, uid: str | None = None
+    ) -> str:
         try:
             job = self.batch.read_namespaced_job_status(
                 name=job_name,
-                namespace=self.settings.training_namespace,
+                namespace=namespace or self.settings.training_namespace,
+                _request_timeout=5,
             )
         except ApiException as exc:
             if exc.status == 404:
                 return "missing"
             raise
+        if uid is not None and getattr(job.metadata, "uid", None) != uid:
+            raise ValueError("The Kubernetes Job UID changed during observation.")
         if getattr(getattr(job, "metadata", None), "deletion_timestamp", None):
             return "terminating"
         if job.status.succeeded:
@@ -1315,9 +1346,16 @@ class KubernetesTrainingClient:
         if job.status.failed:
             return "failed"
         pods = self.core.list_namespaced_pod(
-            namespace=self.settings.training_namespace,
+            namespace=namespace or self.settings.training_namespace,
+            _request_timeout=5,
             label_selector=f"job-name={job_name}",
         ).items
+        if uid is not None:
+            pods = [
+                pod
+                for pod in pods
+                if any(ref.uid == uid for ref in pod.metadata.owner_references or [])
+            ]
         if _container_waiting_failure(pods, _FATAL_CONTAINER_WAITING_REASONS) is not None:
             return "terminal_waiting_failure"
         if _container_waiting_failure(pods, _IMAGE_PULL_BACKOFF_REASONS) is not None:
@@ -1326,12 +1364,17 @@ class KubernetesTrainingClient:
             return "running"
         return "queued"
 
-    def job_failure_details(self, job_name: str) -> tuple[str, str]:
+    def job_failure_details(
+        self, job_name: str, *, namespace: str | None = None, uid: str | None = None
+    ) -> tuple[str, str]:
         try:
             job = self.batch.read_namespaced_job_status(
                 name=job_name,
-                namespace=self.settings.training_namespace,
+                namespace=namespace or self.settings.training_namespace,
+                _request_timeout=5,
             )
+            if uid is not None and getattr(job.metadata, "uid", None) != uid:
+                raise ValueError("The Kubernetes Job UID changed during observation.")
             for condition in job.status.conditions or []:
                 if condition.type == "Failed" and condition.reason == "DeadlineExceeded":
                     return (
@@ -1341,9 +1384,16 @@ class KubernetesTrainingClient:
         except (ApiException, AttributeError):
             pass
         pods = self.core.list_namespaced_pod(
-            namespace=self.settings.training_namespace,
+            namespace=namespace or self.settings.training_namespace,
+            _request_timeout=5,
             label_selector=f"job-name={job_name}",
         ).items
+        if uid is not None:
+            pods = [
+                pod
+                for pod in pods
+                if any(ref.uid == uid for ref in pod.metadata.owner_references or [])
+            ]
         if not pods:
             return (
                 "KUBERNETES_JOB_FAILED",

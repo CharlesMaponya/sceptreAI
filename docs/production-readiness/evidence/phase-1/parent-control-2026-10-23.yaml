@@ -1,0 +1,80 @@
+{
+  "status": "verified_scoped_pod_bound_parent_control",
+  "recorded_at": "2026-10-23T06:07:05.555420+00:00",
+  "phase_complete": false,
+  "summary": {
+    "passed": 903,
+    "worker": 41,
+    "authority": 28,
+    "failures": 0,
+    "errors": 0,
+    "skips": 0,
+    "phase_complete": false
+  },
+  "gates": {
+    "met": 5,
+    "unmet": 0,
+    "abandoned": 0,
+    "reverified": 5
+  },
+  "source_inputs": 531,
+  "source_manifest": ".unlazy/phase1-parent-control/source-sha256.json",
+  "source_manifest_sha256": "9dbdf5716782a1ccc338c5a1f48717dee62f69f81d8e575a3490fbc1af2b0a28",
+  "baseline": {
+    "cases": 6,
+    "failures": 6,
+    "errors": 0,
+    "skips": 0,
+    "qualification": "Captured original worker lifecycle and main tests fail in their bodies: four SQL-tripwire failures and two legacy admission failures instead of declared parent RPC. Original six test bodies and fixture are unchanged."
+  },
+  "behavior": [
+    "Declared workers fetch run metadata and perform parent start, heartbeat, receipt recovery, completion and failure through a closed bounded TLS RPC. These lifecycle operations fail closed without worker SQL fallback.",
+    "Start binds the expected run kind, Pod UID and worker instance; short SQL capture/revalidation surrounds real native identity I/O. Concurrent owners, cancellation/revocation, source changes, premature completion and contradictory receipts are rejected.",
+    "Trusted same-Pod result recovery preserves one terminal CAS and metric row, without issuing credentials or renewing execution. Failure replay preserves the recorded reason.",
+    "Existing SQL lifecycle behavior is shared with legacy workers. New Ray outbox rows save ray-parent-control-v2; only configured training heads select parent-control-v1. Managed analysis manifests select it when a control URL is configured.",
+    "Saved legacy and ray-pod-env-v1 Ray manifests remain exactly equal to captured pre-change builders on six deterministic inputs with an HTTPS control URL; saved queue payloads retain their existing policy."
+  ],
+  "native": {
+    "status": "terminal_pass",
+    "context": "k3d-sceptre",
+    "namespace": "phase1-parent-cf7b3c0118ee",
+    "maintained_image_tested": false,
+    "full_worker_isolation": false,
+    "source_manifest_sha256": "9dbdf5716782a1ccc338c5a1f48717dee62f69f81d8e575a3490fbc1af2b0a28",
+    "namespace_uid": "646ac2e2-5790-4db2-ac08-1a7a9ac06285",
+    "pod_uid": "689a102f-bb06-4f48-b173-11ecfaf930fd",
+    "worker_sql_tripwire": true,
+    "real_token_review": true,
+    "token_rotated": true,
+    "verified_tls": true,
+    "terminal_cas": 1,
+    "metric_rows": 1,
+    "pending_pod_never_ran": true,
+    "run_id": "d6b9351b-3c15-47ba-9ae9-c59f845182ed",
+    "attempt_id": "742f26a1-aea9-4e35-a8d3-3aae241d7981",
+    "project_id": "d18dde42-ef52-4ddc-90bc-96df85b0753d",
+    "namespace_retired": true
+  },
+  "retained_failures": [
+    "Initial connected run: 875 passed and four failed because tests patched the former worker-module clock/CAS helpers. Patch targets now point to the shared service; all original assertions are preserved.",
+    "Initial added manifest controls failed on frozen Settings mutation; corrected fixture uses dataclasses.replace.",
+    "First native harness failed before creating Kubernetes resources due to a state-file name collision. Second failed before token issuance on an SDK class-name mismatch; its owned namespace was retired and independently read back as 404. Both logs are retained."
+  ],
+  "checks": [
+    "repository Ruff",
+    "changed-hunk formatting",
+    "strict schema 0018",
+    "three CI preflights",
+    "exact collected/executed test identities",
+    "root coverage.json preserved",
+    "36 ledger requirements retained: 2 Verified, 34 Open"
+  ],
+  "limitations": [
+    "Pipeline, trial, analysis data/result and other worker operations still use SQL/storage configuration; complete worker credential withdrawal remains required.",
+    "The native probe uses the actual API route over local verified TLS and real k3d TokenReview with a pending Pod; no maintained training image or running training computation is qualified.",
+    "All native side-effect custody, immutable submission UID receipts, physical retirement and mixed-version rollout/drain remain required.",
+    "The 4862-case full backend checkpoint is historical after later changes. Current-source full tests and independent branch coverage remain required; local Ray 2.56.1 differs from locked 2.58.0.",
+    "User-confirmed 45,000,000,000-byte database qualification needs suitable capacity and representative largest-table row counts; the 43,500,000,000-byte reserve remains unchanged.",
+    "Original abandoned phase1-deletion:G7 requires the seven missing historical QA objects. No reconstruction or re-signing is permitted."
+  ]
+}

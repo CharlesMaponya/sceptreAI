@@ -1,0 +1,87 @@
+{
+  "status": "verified_scoped_submission_identity",
+  "recorded_at": "2026-10-22T22:05:38.027868+00:00",
+  "phase_complete": false,
+  "summary": {
+    "passed": 410,
+    "focused": 55,
+    "failures": 0,
+    "errors": 0,
+    "skips": 0,
+    "phase_complete": false
+  },
+  "baseline": {
+    "cases": 55,
+    "failures": 49,
+    "errors": 0,
+    "skips": 0,
+    "source": "Captured pre-fix reconciler and Kubernetes SDK modules imported through a private overlay; all negative controls retained."
+  },
+  "gates": {
+    "met": 4,
+    "unmet": 0,
+    "abandoned": 0,
+    "reverified": 4
+  },
+  "native": {
+    "status": "terminal_pass",
+    "context": "k3d-sceptre",
+    "namespace": "phase1-ray-submit-19d6c8c22dde",
+    "suspended": true,
+    "shared_qa_mutated": false,
+    "cases": [
+      {
+        "stage": "training_run",
+        "name": "suspended-training-run",
+        "uid": "70c318b4-d10d-42ce-aad5-4519005905ac",
+        "same_name_replay": true,
+        "ownership_rejected": true,
+        "specification_rejected": true
+      },
+      {
+        "stage": "splitter",
+        "name": "suspended-splitter",
+        "uid": "b6cf7abd-ad7c-4c3f-998a-98ef26622a0f",
+        "same_name_replay": true,
+        "ownership_rejected": true,
+        "specification_rejected": true
+      },
+      {
+        "stage": "preparation",
+        "name": "suspended-preparation",
+        "uid": "65da5d46-7833-498e-918e-7bd7a8ad5b14",
+        "same_name_replay": true,
+        "ownership_rejected": true,
+        "specification_rejected": true
+      }
+    ],
+    "source_ast_sha256": {
+      "apps/api/automl_api/services/kubernetes_training.py": "37e411090d916dd3c066208046a91580d7cfa87e89a38a1a6e6ca695db41285e",
+      "apps/api/automl_api/services/reconciler.py": "33d43b51c69715f9180add540d7b3004f8485cc9da017011adead7fac49fa9cd"
+    },
+    "namespace_uid": "199d17bc-ac2b-4dfd-955f-ee74f21d3009",
+    "no_pods_or_rayclusters": true,
+    "namespace_retired": true
+  },
+  "source_manifest": ".unlazy/phase1-ray-submit-identity/source-sha256.json",
+  "behavior": [
+    "Training submission checks the outbox topic, project, run, aggregate type, attempt stage and logical key before terminal replay or native calls, and refreshes the locked attempt.",
+    "The shared SDK verifies the returned name, namespace, requested ownership labels, nonempty UID and exact submitted specification for both fresh creates and409 conflict reads.",
+    "Worker groups explicitly declare the existing native numOfHosts=1 default; existing deterministic job names remain unchanged for lost-ACK replay.",
+    "Unrequested runtime environments and container commands are rejected along with changed images, source environment, resources, fences and worker groups."
+  ],
+  "checks": [
+    "410 connected cases, including all355 cases from the previous cancellation scope, pass without errors/skips.",
+    "Repository Ruff, new-hunk formatting, strict0018 schema parity and all three CI preflights pass.",
+    "Actual k3d suspended training/splitter/preparation manifests accept exact same-name replay and reject conflicts; owned namespace404 reverified.",
+    "The first exact-spec native probe rejected the implicit numOfHosts default and cleaned its namespace. Its failed evidence is retained; explicit manifest defaulting resolved it.",
+    "Original coverage.json is unchanged."
+  ],
+  "limitations": [
+    "This is scoped SDK/control-plane identity qualification; no maintained training image or running Ray workload was qualified.",
+    "Future CRD/operator mutation of a submitted specification fails closed and requires fresh compatibility qualification.",
+    "Native transaction custody, persistent native UID receipts, physical producer/credential retirement, full-name collision prevention and Ray observer identity remain unfinished.",
+    "The4862-pass full-backend checkpoint predates these two Ray fixes; branch coverage86.86784% is below90.01%. A new whole-backend checkpoint is still required for final Phase1 qualification.",
+    "All36 requirements remain2 Verified/34 Open. Actual45 GB migration rehearsal and original abandoned phase1-deletion:G7 (seven missing historical QA objects) remain required."
+  ]
+}

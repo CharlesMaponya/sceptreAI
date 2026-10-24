@@ -48,12 +48,6 @@ def control_case(key_case, policy_case, monkeypatch):
     monkeypatch.setattr(evaluation_control, "get_object_store", lambda: store)
     monkeypatch.setattr(evaluation_control, "authority_public_key", lambda: authority_key)
 
-    def mint(actual_store, item, deadline):
-        assert actual_store is store and item == plan.frozen_pipeline
-        assert 0 < (deadline - datetime.now(UTC)).total_seconds() <= 90
-        return {"url": "https://objects.test/frozen", "expires_at": deadline.isoformat()}
-
-    monkeypatch.setattr(evaluation_control, "mint_refit_read_url", mint)
     signer = serialization.load_pem_private_key(
         base64.b64decode(k8s.core.secret.data[KEY_FIELD]), password=None
     )
@@ -78,19 +72,46 @@ def control_case(key_case, policy_case, monkeypatch):
         yield client, db, scope, attempt, plan, payload, authority, authority_token, store, token
 
 
-def test_scoped_result_upload_and_authority_receipt_complete_once(control_case):
-    client, db, scope, attempt, plan, payload, authority, authority_token, _, token = control_case
+@pytest.fixture
+def broker_control_case(control_case, phase1_engine, monkeypatch, tmp_path):
+    from champion_broker_fixture import install_champion_broker
+
+    client, db, _, attempt, plan, *_ = control_case
+    binding = install_champion_broker(
+        db,
+        plan,
+        evaluation_control,
+        evaluation_control.evaluation_claims(control_case[-1], attempt.id),
+        phase1_engine,
+        monkeypatch,
+        tmp_path,
+        mint=lambda *_: None,
+    )
+    client.output_upload = binding.upload
+    client.output_binding = binding
+    try:
+        yield control_case
+    finally:
+        binding.close()
+
+
+def test_scoped_result_upload_and_authority_receipt_complete_once(broker_control_case):
+    client, db, scope, attempt, plan, payload, authority, authority_token, _, token = (
+        broker_control_case
+    )
     with pytest.raises(TokenError):
         decode_token(token, secret=SECRET, expected_type="access")
     assert client.post("start").json() == plan.model_dump(mode="json")
     assert client.post("start").status_code == 409
     grant = client.get("pipeline")
-    assert grant.status_code == 200 and grant.headers["cache-control"] == "no-store"
+    assert grant.status_code == 410 and grant.headers["cache-control"] == "no-store"
     assert client.post("heartbeat").json() == {"renewed": True}
-    uploaded = client.put("result", content=payload)
+    nonce = uuid.uuid4()
+    uploaded = client.output_upload(payload, request_id=nonce)
     assert uploaded.status_code == 200, uploaded.text
     assert uploaded.json()["sha256"] == hashlib.sha256(payload).hexdigest()
-    assert client.put("result", content=payload).json() == uploaded.json()
+    assert client.output_upload(payload, request_id=nonce).json() == uploaded.json()
+    intent = {key: uploaded.json()[key] for key in ("uri", "sha256", "byte_size")}
     # Synthetic authority fixture uses its explicit open contract; no final objects are read here.
     path = f"allocations/{plan.allocation_id}"
     auth = {"Authorization": f"Bearer {authority_token}"}
@@ -100,17 +121,17 @@ def test_scoped_result_upload_and_authority_receipt_complete_once(control_case):
         path + "/commit", headers=auth, json={**opened, "result_digest": uploaded.json()["sha256"]}
     )
     assert committed.status_code == 200, committed.text
-    assert client.post("publish", json=committed.json()).json() == uploaded.json()
-    assert client.post("publish", json=committed.json()).json() == uploaded.json()
+    assert client.post("publish", json=committed.json()).json() == intent
+    assert client.post("publish", json=committed.json()).json() == intent
     db.refresh(scope)
     db.refresh(attempt)
     assert scope.status == ScopeStatus.SUCCEEDED and attempt.status == AttemptStatus.SUCCEEDED
-    assert client.get("pipeline").status_code == 409
+    assert client.get("pipeline").status_code == 410
 
 
 @pytest.mark.parametrize("fault", ["lease", "fence", "cancel"])
-def test_stale_worker_cannot_get_pipeline_or_write_result(control_case, fault):
-    client, db, scope, attempt, _, payload, *_ = control_case
+def test_stale_worker_cannot_get_pipeline_or_write_result(broker_control_case, fault):
+    client, db, scope, attempt, _, payload, *_ = broker_control_case
     assert client.post("start").status_code == 200
     db.refresh(attempt)
     if fault == "lease":
@@ -120,12 +141,14 @@ def test_stale_worker_cannot_get_pipeline_or_write_result(control_case, fault):
     else:
         scope.status = ScopeStatus.CANCELLED
     db.flush()
-    assert client.get("pipeline").status_code == 409
-    assert client.put("result", content=payload).status_code == 409
+    db.commit()
+    db.get_bind().commit()
+    assert client.get("pipeline").status_code == 410
+    assert client.output_upload(payload).status_code == 401
 
 
-def test_result_bounds_corruption_cross_attempt_and_failure_record(control_case):
-    client, db, scope, attempt, _, payload, *_ = control_case
+def test_result_bounds_corruption_cross_attempt_and_failure_record(broker_control_case):
+    client, db, scope, attempt, _, payload, *_ = broker_control_case
     assert client.post("start").status_code == 200
     assert (
         client.get(
@@ -133,11 +156,8 @@ def test_result_bounds_corruption_cross_attempt_and_failure_record(control_case)
         ).status_code
         == 401
     )
-    assert client.put("result", content=b"x" * 65537).status_code == 413
-    assert (
-        client.put("result", content=payload.replace(b'"rmse":1.0', b'"rmse":2.0')).status_code
-        == 409
-    )
+    assert client.output_upload(b"x" * 65537).status_code == 401
+    assert client.output_upload(payload.replace(b'"rmse":1.0', b'"rmse":2.0')).status_code == 401
     assert client.post("publish", json={"signature": "forged"}).status_code == 409
     assert client.post("fail").json() == {"recorded": True}
     assert client.post("fail").json() == {"recorded": True}

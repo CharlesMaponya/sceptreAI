@@ -18,11 +18,16 @@ from sqlalchemy import func, or_, select
 from automl_api.models.enums import AttemptStatus, ScopeStatus, WorkflowStage
 from automl_api.models.workflows import PromotionalScope, WorkflowAttempt, WorkflowEvent
 from automl_api.services.attempt_object_grants import (
+    has_unretired_attempt_credentials,
     revoke_attempt_grants,
-    unretired_grant_deadline,
 )
 from automl_api.services.champion_planning import ACTIVE_ATTEMPTS
-from automl_api.services.champion_workloads import DIGEST, delete_owned_resource, isolated_workload
+from automl_api.services.champion_workloads import (
+    DIGEST,
+    delete_owned_resource,
+    isolated_workload,
+    project_attempt_identity,
+)
 from automl_api.services.refit_access import locked_refit, refit_claims, refit_token
 from automl_api.services.workflow_state import canonical_request_hash, transition_attempt
 
@@ -31,7 +36,7 @@ LABEL = "automl.platform/refit-attempt"
 _next_sweep = 0.0
 
 
-def submission(plan, scope, settings):
+def submission(plan, scope, settings, *, attempt):
     base = os.environ.get("REFIT_CONTROL_BASE_URL", "").rstrip("/")
     parts = urlsplit(base)
     image = os.environ.get("REFIT_IMAGE", settings.training_image)
@@ -65,7 +70,11 @@ def submission(plan, scope, settings):
     if seconds <= 0:
         raise ValueError("Refit scope deadline expired")
     name = f"refit-{plan.attempt_id.hex}"
-    labels = {LABEL: str(plan.attempt_id), "automl.platform/workflow-stage": "champion-refit"}
+    labels = {
+        LABEL: str(plan.attempt_id),
+        "automl.platform/workflow-stage": "champion-refit",
+        "automl.platform/project-id": str(plan.project_id),
+    }
     metadata = {"name": name, "namespace": settings.training_namespace, "labels": labels}
     disk = max(
         256 * 1024 * 1024,
@@ -98,7 +107,15 @@ def submission(plan, scope, settings):
         )
         mounts.append({"name": "ca", "mountPath": "/refit-ca", "readOnly": True})
         env.append({"name": "REFIT_CA_FILE", "value": "/refit-ca/ca.crt"})
-    return isolated_workload(
+    project_attempt_identity(
+        metadata,
+        env,
+        volumes,
+        mounts,
+        attempt,
+        settings.attempt_control_base_url,
+    )
+    desired = isolated_workload(
         metadata=metadata,
         image=image,
         seconds=seconds,
@@ -111,8 +128,10 @@ def submission(plan, scope, settings):
         settings=settings,
         egress=egress,
         worker="refit",
-        service_account="sceptre-champion-refit",
+        service_account=f"project-{plan.project_id}-refit",
     )
+    desired["object_grant_protocol"] = plan.credential_protocol
+    return desired
 
 
 def _locked(db, attempt_id):
@@ -144,7 +163,9 @@ def _terminal(attempt, reason):
 def _ensure_resources(k8s, desired, attempt_id, project_id, fence, token):
     namespace = desired["job"]["metadata"]["namespace"]
     name = desired["job"]["metadata"]["name"]
-    k8s.ensure_service_account("sceptre-champion-refit")
+    k8s.ensure_service_account(
+        desired["job"]["spec"]["template"]["spec"]["serviceAccountName"], namespace=namespace
+    )
     secret = {
         "apiVersion": "v1",
         "kind": "Secret",
@@ -305,7 +326,7 @@ def sweep_refit_resources(session_factory, k8s):
             retiring = False
             if attempt is not None:
                 revoke_attempt_grants(db, attempt_id)
-                retiring = unretired_grant_deadline(db, attempt_id) is not None
+                retiring = has_unretired_attempt_credentials(db, attempt_id)
         _cleanup(
             k8s,
             {
@@ -355,7 +376,7 @@ def _reconcile(session_factory, k8s, attempt_id):
                 },
                 (AttemptStatus.PENDING,),
             )
-            desired = submission(plan, scope, k8s.settings)
+            desired = submission(plan, scope, k8s.settings, attempt=attempt)
             sequence = 1 + (
                 db.scalar(
                     select(func.max(WorkflowEvent.sequence)).where(
@@ -395,7 +416,7 @@ def _reconcile(session_factory, k8s, attempt_id):
         retiring = False
         if terminal:
             revoke_attempt_grants(db, attempt_id)
-            retiring = unretired_grant_deadline(db, attempt_id) is not None
+            retiring = has_unretired_attempt_credentials(db, attempt_id)
         observed_status = attempt.status
         project_id, fence = attempt.project_id, attempt.fencing_token
         token = None if terminal else refit_token(attempt, scope.scope_deadline_at)

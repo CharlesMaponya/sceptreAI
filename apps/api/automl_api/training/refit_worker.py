@@ -8,12 +8,13 @@ import signal
 import ssl
 from threading import Event, Thread
 from urllib.parse import urlsplit
-from urllib.request import HTTPRedirectHandler, HTTPSHandler, ProxyHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler
 
 import httpx
 
 from automl_api.storage.contracts import ObjectMetadata
 from automl_api.training.champion_refit import RefitPlan, execute_refit
+from automl_api.training.object_capabilities import champion_grant_reader, champion_output_writer
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -31,17 +32,16 @@ def _tls_context(ca_file):
 class RefitCapabilityStore:
     def __init__(self, plan, control, *, ca_file=None):
         self.plan, self.control = plan, control
-        self.inputs = {item.uri: (i, item) for i, item in enumerate(
-            (plan.candidate, *plan.partitions)
-        )}
+        self.inputs = {
+            item.uri: (i, item) for i, item in enumerate((plan.candidate, *plan.partitions))
+        }
         self.root, separator, _ = plan.candidate.uri.partition(
             f"/projects/{plan.project_id}/runs/{plan.run_id}/"
         )
         if not separator:
             raise ValueError("Candidate storage lineage is invalid")
-        self.opener = build_opener(
-            ProxyHandler({}), _NoRedirect(), HTTPSHandler(context=_tls_context(ca_file)),
-        )
+        self.reader = champion_grant_reader(plan, ca_file=ca_file)
+        self.writer = champion_output_writer(plan, ca_file=ca_file)
 
     def uri_for_key(self, key):
         return self.root + "/" + key
@@ -51,15 +51,7 @@ class RefitCapabilityStore:
         return ObjectMetadata(uri=item.uri, byte_size=item.byte_size)
 
     def open_stream(self, uri):
-        index, _ = self.inputs[uri]
-        response = self.control.get(f"inputs/{index}")
-        response.raise_for_status()
-        url = response.json()["url"]
-        parts = urlsplit(url)
-        if parts.scheme != "https" or parts.username or parts.fragment:
-            raise ValueError("Refit inputs require HTTPS capabilities")
-        # Separate transport: the control bearer token never reaches object storage.
-        return self.opener.open(Request(url, method="GET"), timeout=60)
+        return self.reader.open_stream(uri)
 
     def put_bytes(self, key, value):
         digest = hashlib.sha256(value).hexdigest()
@@ -69,14 +61,7 @@ class RefitCapabilityStore:
         )
         if key != expected or len(value) > self.plan.max_model_bytes:
             raise ValueError("Refit output is outside the attempt capability")
-        response = self.control.put(
-            f"model/{digest}", content=value,
-            headers={"Content-Type": "application/octet-stream"},
-        )
-        response.raise_for_status()
-        stored = response.json()
-        if stored != {"uri": self.uri_for_key(key), "sha256": digest, "byte_size": len(value)}:
-            raise ValueError("Refit output acknowledgement changed")
+        stored = self.writer.write("pipeline", value, self.uri_for_key(key))
         return ObjectMetadata(uri=stored["uri"], byte_size=stored["byte_size"])
 
 
@@ -105,7 +90,9 @@ def run(control, *, ca_file=None):
     thread.start()
     try:
         result = execute_refit(
-            plan, RefitCapabilityStore(plan, control, ca_file=ca_file), progress=progress,
+            plan,
+            RefitCapabilityStore(plan, control, ca_file=ca_file),
+            progress=progress,
         )
         progress()
         # A lost acknowledgement replays the same CAS; never repeat fitting here.
@@ -141,7 +128,9 @@ def main():
     with httpx.Client(
         base_url=base_url.rstrip("/") + "/",
         headers={"Authorization": f"Bearer {os.environ['REFIT_CONTROL_TOKEN']}"},
-        verify=_tls_context(ca_file), follow_redirects=False, trust_env=False,
+        verify=_tls_context(ca_file),
+        follow_redirects=False,
+        trust_env=False,
         timeout=httpx.Timeout(60, connect=10),
     ) as control:
         run(control, ca_file=ca_file)

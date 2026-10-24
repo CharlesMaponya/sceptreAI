@@ -1,0 +1,44 @@
+schema_version: 1
+recorded_at: '2026-10-23'
+scope: training failure credential redaction
+phase_complete: false
+source_inputs: 552
+requirements:
+  total: 36
+  verified: 2
+  open: 34
+checks:
+  passed: 224
+  focused: 8
+  failures: 0
+  errors: 0
+  skips: 0
+  phase_complete: false
+baseline:
+  credential_disclosure_body_failures: 7
+  runs:
+  - cases: 7
+    failures: 6
+    ordinary_diagnostic_passes: 1
+  - cases: 1
+    failures: 1
+  original_tests_and_fixtures_preserved: true
+behavior:
+- The shared supervised/clustering failure helper redacts exception text before clipping
+  and before console, tracking tags and returned metadata.
+- Wrapped Ray task failure metadata and legacy SQL failure messages use the same existing
+  redactor.
+- Existing 1000/250/2000 candidate/tracking/Ray limits and ordinary diagnostics remain
+  unchanged; existing exception control flow remains intact.
+qualification_limits:
+- Synthetic credential-bearing exceptions exercise the real failure helpers with tracking/network
+  sinks isolated; no live credentials or provider services are used.
+- This is a focused security increment, not current full-backend, release, native-permission
+  or capacity qualification.
+- Remaining progress/tracking/data/model credential conversion, native custody/retirement,45
+  GB rehearsal and original abandoned deletion:G7 still require completion.
+hygiene:
+- Source/AST guards restrict production changes to three redactor applications plus
+  imports
+- Repository Ruff and three CI preflights pass
+- Root coverage and all36 requirement statuses are preserved

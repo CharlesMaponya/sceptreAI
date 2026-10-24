@@ -146,6 +146,49 @@ def dispatch(c):
 
 
 @pytest.mark.parametrize("kind", ["run", "project"])
+def test_expired_unknown_put_defers_committed_deletion_without_native_io(cleanup_case, kind):
+    from automl_api.services.attempt_object_grants import _digest
+
+    c = cleanup_case
+    with c.factory() as db, db.begin():
+        row = db.get(WorkflowAttemptCredentialGrant, c.grant_ids[0])
+        row.method, row.role, row.object_version = "PUT", "model", None
+        row.status, row.issued_at = "unknown", None
+        row.grant_digest = _digest(row)
+        original = (row.grant_digest, row.expires_at, row.issuance_owner, row.issuance_started_at)
+    c.clock[0] = original[1] + timedelta(days=1)
+    request(c, kind)
+    for _ in range(2):
+        dispatch(c)
+        with c.factory() as db, db.begin():
+            row = db.get(WorkflowAttemptCredentialGrant, c.grant_ids[0])
+            assert row.status == "revoked"
+            assert (
+                row.grant_digest,
+                row.expires_at,
+                row.issuance_owner,
+                row.issuance_started_at,
+            ) == original
+            entry = db.get(OutboxEntry, c.entry_id)
+            assert entry.status == OutboxStatus.PENDING and entry.delivery_attempts == 0
+            assert db.get(WorkflowCommand, c.command_id).retry_count == 0
+            assert db.get(DeletionTombstone, c.tombstone_id).status != "complete"
+            assert db.get(ModelRun, c.run_ids[0]) is not None
+            assert db.get(Project, c.project_id) is not None
+            assert all(
+                stage.status == "pending"
+                for stage in db.scalars(
+                    select(DeletionStage).where(DeletionStage.tombstone_id == c.tombstone_id)
+                )
+            )
+            entry.available_at = c.clock[0]
+        assert c.store.exists(c.owned) and c.store.exists(c.sibling)
+        assert c.store.exists(c.foreign_object)
+        c.get_store.assert_not_called()
+        assert all(not method.mock_calls for method in vars(c.k8s).values())
+
+
+@pytest.mark.parametrize("kind", ["run", "project"])
 def test_deletion_defers_durably_then_finishes_without_touching_unrelated_data(cleanup_case, kind):
     c = cleanup_case
     request(c, kind)
@@ -214,7 +257,7 @@ def test_deletion_defers_durably_then_finishes_without_touching_unrelated_data(c
     c.k8s.delete_ray_job.assert_not_called()
 
 
-def test_associated_scope_grants_retire_even_when_champion_belongs_to_another_member(cleanup_case):
+def test_associated_scope_grants_retire_but_unknown_champion_history_blocks_deletion(cleanup_case):
     c = cleanup_case
     with c.factory() as db, db.begin():
         user, project = db.get(User, c.actor_id), db.get(Project, c.project_id)
@@ -245,15 +288,19 @@ def test_associated_scope_grants_retire_even_when_champion_belongs_to_another_me
         assert db.get(WorkflowAttemptCredentialGrant, c.grant_ids[1]).status == "issued"
     c.get_store.assert_not_called()
     c.clock[0] += timedelta(seconds=120)
-    for _ in range(3):
-        dispatch(c)
-        c.clock[0] += timedelta(seconds=6)
+    dispatch(c)
     with c.factory() as db:
-        assert db.get(ModelRun, c.run_ids[0]) is None
+        assert db.get(ModelRun, c.run_ids[0]) is not None
         assert db.get(ModelRun, c.run_ids[1]) is not None
         assert db.get(WorkflowAttempt, champion.id) is not None
-        assert db.get(WorkflowAttemptCredentialGrant, grant_id).status == "revoked"
+        row = db.get(WorkflowAttemptCredentialGrant, grant_id)
+        assert row.status == "revoked" and row.expires_at == c.clock[0]
         assert db.get(WorkflowAttemptCredentialGrant, c.grant_ids[1]).status == "issued"
+        assert db.get(DeletionTombstone, c.tombstone_id).status == "pending"
+        assert "Legacy champion" in db.get(OutboxEntry, c.entry_id).last_error
+    c.get_store.assert_not_called()
+    assert c.store.exists(c.owned) and c.store.exists(c.sibling)
+    assert all(not method.mock_calls for method in vars(c.k8s).values())
 
 
 def test_legal_hold_prevents_cleanup_and_grant_mutation(cleanup_case):

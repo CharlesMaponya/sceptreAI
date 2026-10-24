@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import analysis_observer_fixture
 import pytest
 from automl_api.core.config import Settings
 from automl_api.models.enums import AttemptStatus, OutboxStatus, RunStatus
@@ -119,7 +120,7 @@ def cleanup_entry(db, run_id):
 def test_expiry_queues_exact_cleanup_and_fresh_generation_atomically(recovery):
     engine, run_id, old_id, fence, k8s, source_id, manifest, _ = recovery
     with Session(engine) as db, db.begin():
-        assert reconciler.observe_analysis_attempts(db, k8s) == 1
+        assert analysis_observer_fixture.observe_analysis_attempts(db, k8s) == 1
     k8s.batch.read_namespaced_job.assert_not_called()
     k8s.delete_job.assert_not_called()
     with Session(engine) as db:
@@ -149,13 +150,13 @@ def test_expiry_queues_exact_cleanup_and_fresh_generation_atomically(recovery):
         assert replacement.payload["manifest"]["metadata"]["name"] != manifest["metadata"]["name"]
         assert cleanup_entry(db, run_id).payload["uid"]
     with Session(engine) as db, db.begin():
-        assert reconciler.observe_analysis_attempts(db, k8s) == 0
+        assert analysis_observer_fixture.observe_analysis_attempts(db, k8s) == 0
 
 
 def test_expiry_rollback_preserves_old_generation(recovery):
     engine, run_id, old_id, _, k8s, _, _, _ = recovery
     with Session(engine) as db:
-        reconciler.observe_analysis_attempts(db, k8s)
+        analysis_observer_fixture.observe_analysis_attempts(db, k8s)
         db.rollback()
     with Session(engine) as db:
         assert db.get(WorkflowAttempt, old_id).status == AttemptStatus.RUNNING
@@ -167,7 +168,7 @@ def test_exhausted_budget_still_queues_cleanup(recovery):
     with Session(engine) as db, db.begin():
         db.get(WorkflowAttempt, old_id).retry_budget = 1
     with Session(engine) as db, db.begin():
-        reconciler.observe_analysis_attempts(db, k8s)
+        analysis_observer_fixture.observe_analysis_attempts(db, k8s)
     with Session(engine) as db:
         assert db.get(WorkflowAttempt, old_id).status == AttemptStatus.FAILED
         assert db.get(ModelRun, run_id).failure_code == "ANALYSIS_RETRY_EXHAUSTED"
@@ -197,7 +198,7 @@ def test_job_exit_without_report_cannot_certify_success(recovery, cause):
     elif cause == "complete":
         job.status = client.V1JobStatus(succeeded=1)
     with Session(engine) as db, db.begin():
-        reconciler.observe_analysis_attempts(db, k8s)
+        analysis_observer_fixture.observe_analysis_attempts(db, k8s)
     with Session(engine) as db:
         assert db.get(WorkflowAttempt, old_id).status == AttemptStatus.SUPERSEDED
         assert db.get(ModelRun, run_id).status == RunStatus.QUEUED
@@ -215,7 +216,7 @@ def test_terminal_or_moved_run_is_preserved_without_replacement(recovery, state)
         else:
             run.status = RunStatus.CANCELLED if state == "cancelled" else RunStatus.FAILED
     with Session(engine) as db, db.begin():
-        reconciler.observe_analysis_attempts(db, k8s)
+        analysis_observer_fixture.observe_analysis_attempts(db, k8s)
     with Session(engine) as db:
         assert db.get(WorkflowAttempt, old_id).status == AttemptStatus.CANCELLED
         assert db.get(ModelRun, run_id).failure_message == "control-plane decision"
@@ -233,7 +234,7 @@ def test_committed_report_only_queues_cleanup(recovery):
         db.get(WorkflowAttempt, old_id).lease_expires_at = datetime.now(UTC) + timedelta(seconds=90)
     analysis._persist_analysis_result(run_id, {"metrics": {"rmse": 1}})
     with Session(engine) as db, db.begin():
-        reconciler.observe_analysis_attempts(db, k8s)
+        analysis_observer_fixture.observe_analysis_attempts(db, k8s)
     with Session(engine) as db:
         old = db.get(WorkflowAttempt, old_id)
         assert old.status == AttemptStatus.SUCCEEDED and old.terminal_cas_version == 1
@@ -261,7 +262,7 @@ def test_committed_report_only_queues_cleanup(recovery):
 def test_cleanup_rejects_stale_or_changed_identity(recovery, invalid):
     engine, run_id, old_id, _, k8s, source_id, manifest, jobs = recovery
     with Session(engine) as db, db.begin():
-        reconciler.observe_analysis_attempts(db, k8s)
+        analysis_observer_fixture.observe_analysis_attempts(db, k8s)
     with Session(engine) as db:
         saved = cleanup_entry(db, run_id)
         entry = SimpleNamespace(
@@ -301,7 +302,7 @@ def test_cleanup_rejects_stale_or_changed_identity(recovery, invalid):
 def test_lost_delete_ack_replays_without_changing_old_cas(recovery):
     engine, run_id, old_id, _, k8s, _, _, jobs = recovery
     with Session(engine) as db, db.begin():
-        reconciler.observe_analysis_attempts(db, k8s)
+        analysis_observer_fixture.observe_analysis_attempts(db, k8s)
 
     def delete(*_a, **_k):
         jobs.clear()
@@ -328,7 +329,7 @@ def test_replacement_can_submit_claim_and_publish_one_report(recovery, analysis_
 
     engine, run_id, old_id, _, k8s, source_id, _, _ = recovery
     with Session(engine) as db, db.begin():
-        reconciler.observe_analysis_attempts(db, k8s)
+        analysis_observer_fixture.observe_analysis_attempts(db, k8s)
     with Session(engine) as db, db.begin():
         entry = db.scalar(
             select(OutboxEntry).where(
@@ -353,7 +354,7 @@ def test_replacement_can_submit_claim_and_publish_one_report(recovery, analysis_
     worker._begin_fenced_attempt(run_id, worker_id="new-worker")
     analysis._persist_analysis_result(run_id, {"metrics": {"rmse": 1}})
     with Session(engine) as db, db.begin():
-        reconciler.observe_analysis_attempts(db, k8s)
+        analysis_observer_fixture.observe_analysis_attempts(db, k8s)
     with Session(engine) as db:
         assert db.get(ModelRun, run_id).status == RunStatus.SUCCEEDED
         assert db.get(WorkflowAttempt, old_id).status == AttemptStatus.SUPERSEDED
@@ -375,7 +376,7 @@ def test_concurrent_observers_make_one_replacement(recovery):
 
     def observe():
         with Session(engine) as db, db.begin():
-            return reconciler.observe_analysis_attempts(db, k8s)
+            return analysis_observer_fixture.observe_analysis_attempts(db, k8s)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         assert sum(pool.map(lambda _: observe(), range(2))) == 1
@@ -404,7 +405,7 @@ def test_observer_refreshes_cached_live_attempt(recovery):
             db.get(WorkflowAttempt, old_id).lease_expires_at = datetime.now(UTC) - timedelta(
                 seconds=1
             )
-        reconciler.observe_analysis_attempts(cached, k8s)
+        analysis_observer_fixture.observe_analysis_attempts(cached, k8s)
         assert old.status == AttemptStatus.SUPERSEDED
         cached.commit()
 

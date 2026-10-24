@@ -18,7 +18,9 @@ from automl_api.db import qualification_session
 from automl_api.db import session as db_session
 from automl_api.main import create_app, lifespan
 from automl_api.models.enums import AttemptStatus, RunKind, RunStatus
+from automl_api.models.workflows import WorkflowEvent
 from automl_api.security.tokens import create_signed_token
+from automl_api.services import training_parent
 from automl_api.training import analysis, pipeline, worker
 from fastapi import HTTPException, Response
 from fastapi.routing import APIRoute
@@ -372,6 +374,11 @@ def test_worker_begins_only_the_matching_submitted_attempt(monkeypatch) -> None:
     )
     db = MagicMock()
     db.scalar.return_value = attempt
+    db.scalar.side_effect = lambda statement: (
+        None
+        if statement.column_descriptions[0]["entity"] is WorkflowEvent
+        else db.scalar.return_value
+    )
     db.get.return_value = durable_run
     monkeypatch.setattr(worker, "get_session_factory", lambda: lambda: _session_context(db))
 
@@ -404,15 +411,17 @@ def test_worker_terminal_cas_publishes_once_and_rejects_missing_artifact(monkeyp
     )
     durable_run = SimpleNamespace(
         id=run_id,
+        project_id=uuid.uuid4(),
+        run_kind=RunKind.TRAINING,
         tags={"winner_model_artifact_uri": "s3://models/winner"},
         status=RunStatus.RUNNING,
         finished_at=None,
     )
     db = MagicMock()
-    db.scalar.side_effect = [attempt, durable_run]
+    db.scalar.side_effect = [attempt, durable_run, None]
     monkeypatch.setattr(worker, "get_session_factory", lambda: lambda: _session_context(db))
     terminal_cas = MagicMock(return_value=True)
-    monkeypatch.setattr(worker, "cas_register_terminal_artifact", terminal_cas)
+    monkeypatch.setattr(training_parent, "cas_register_terminal_artifact", terminal_cas)
 
     worker._complete_fenced_attempt(run_id, context)
 
@@ -427,13 +436,13 @@ def test_worker_terminal_cas_publishes_once_and_rejects_missing_artifact(monkeyp
     assert durable_run.finished_at is not None
 
     durable_run.tags = {}
-    db.scalar.side_effect = [attempt, durable_run]
+    db.scalar.side_effect = [attempt, durable_run, None]
     with pytest.raises(ValueError, match="was not published"):
         worker._complete_fenced_attempt(run_id, context)
     db.scalar.side_effect = [None, durable_run]
     with pytest.raises(ValueError, match="lineage is missing"):
         worker._complete_fenced_attempt(run_id, context)
-    db.scalar.side_effect = [attempt, durable_run]
+    db.scalar.side_effect = [attempt, durable_run, None]
     durable_run.tags = {"winner_model_artifact_uri": "s3://models/winner"}
     terminal_cas.return_value = False
     with pytest.raises(worker.StaleFence, match="CAS was rejected"):
@@ -460,7 +469,7 @@ def test_worker_failure_is_fenced_and_cannot_overwrite_a_successor(monkeypatch) 
         finished_at=None,
     )
     db = MagicMock()
-    db.scalar.side_effect = [attempt, durable_run]
+    db.scalar.side_effect = [attempt, durable_run, None]
     monkeypatch.setattr(worker, "get_session_factory", lambda: lambda: _session_context(db))
 
     assert worker._fail_fenced_attempt(run_id, context, RuntimeError("fit failed"))

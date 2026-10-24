@@ -151,6 +151,15 @@ def test_cleanup_and_key_sweeps_wait_for_original_recorded_expiry(
     grant_clock[0] = deadline
     if mode != "terminal":
         sweep_evaluation_resources(c.factory, c.k8s)
+    if method == "PUT":
+        assert not _cleanup_attempt(c.factory, c.k8s, c.attempt.id)
+        c.db.refresh(c.attempt)
+        c.db.refresh(row)
+        assert c.attempt.cleanup_state != "complete" and row.expires_at == deadline
+        assert c.key in c.k8s.objects["secret"]
+        with pytest.raises(InvalidTransition):
+            prepare(c)
+        return
     assert _cleanup_attempt(c.factory, c.k8s, c.attempt.id)
     assert not any(c.k8s.objects.values())
     c.db.refresh(c.attempt)
@@ -160,7 +169,7 @@ def test_cleanup_and_key_sweeps_wait_for_original_recorded_expiry(
 
 @pytest.mark.parametrize("method", ["GET", "PUT"])
 @pytest.mark.parametrize("started", [False, True])
-def test_unstarted_or_expired_grants_allow_replacement(
+def test_unstarted_grants_and_expired_reads_allow_replacement_but_unknown_puts_block(
     stopped_evaluator, grant_clock, method, started
 ):
     c = stopped_evaluator
@@ -186,6 +195,12 @@ def test_unstarted_or_expired_grants_allow_replacement(
     original = row.expires_at
     if started:
         grant_clock[0] = original
+    if started and method == "PUT":
+        with pytest.raises(InvalidTransition):
+            prepare(c)
+        c.db.refresh(row)
+        assert row.expires_at == original
+        return
     plan, _, key = prepare(c)
     assert plan.attempt_id != c.attempt.id and key != c.key
     assert prepare(c)[0] == plan
@@ -343,6 +358,12 @@ def test_controller_resumes_registered_legacy_replacement_after_retiring_predece
         step()
         c.db.refresh(row)
         assert row.expires_at == original
+        if capability == "PUT":
+            c.db.refresh(c.attempt)
+            assert c.attempt.cleanup_state != "complete"
+            assert c.key in c.k8s.objects["secret"]
+            assert not c.k8s.objects["job"]
+            return
     c.db.refresh(c.attempt)
     assert c.attempt.cleanup_state == "complete" and c.key not in c.k8s.objects["secret"]
     assert f"evaluation-{plan.attempt_id.hex}" in c.k8s.objects["job"]

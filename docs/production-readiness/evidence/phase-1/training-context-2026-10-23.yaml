@@ -1,0 +1,106 @@
+{
+  "status": "verified_scoped_training_input_context",
+  "recorded_at": "2026-10-23T12:59:45.365198+00:00",
+  "phase_complete": false,
+  "summary": {
+    "passed": 1390,
+    "worker": 52,
+    "authority": 30,
+    "baseline_connected": 1292,
+    "current_affected": 401,
+    "failures": 0,
+    "errors": 0,
+    "skips": 0,
+    "phase_complete": false,
+    "provenance": "1292-case connected run plus current affected-consumer rerun; exact union matches collection. Only the reviewed role/state guards changed semantics; unchanged-source results are retained."
+  },
+  "gates": {
+    "met": 5,
+    "unmet": 0,
+    "abandoned": 0,
+    "reverified": 5
+  },
+  "source_inputs": 541,
+  "source_manifest": ".unlazy/phase1-training-context/source-sha256.json",
+  "source_manifest_sha256": "e807698512b532a2f160bfbdbb541ac4813202a10d6950384d43d52c2b7f428f",
+  "baseline": {
+    "cases": 1,
+    "failures": 1,
+    "errors": 0,
+    "skips": 0,
+    "qualification": "Original declared startup fails in its body at the worker SQL tripwire before the prepared reader; the original test and fixture bodies remain unchanged."
+  },
+  "behavior": [
+    "Declared training startup loads the complete validated initial SQL context and initializes RUNNING through bounded Pod-authenticated TLS. The API receives an explicit trusted attempt fence instead of changing process environment.",
+    "The shared legacy preparation path validates the sealed catalog, compiled feature graph, parameter overrides, prepared split and source policy. The API requires all bindings even without a worker environment.",
+    "Current project/run/attempt/lease/revocation, parent publisher and graph authority are revalidated after native identity I/O. The requesting Pod must match the active publisher; TokenReview holds no SQL connection or row lock.",
+    "Closed metadata exports approved parameters/candidate fields and train/validation roles only. Unknown keys, credentials in role URLs, missing provider plans, terminal contexts and canonical-provider final manifests are rejected or excluded.",
+    "The shared prepared-role guard rejects identical locations, URI aliases, traversal, directory containment and trailing-slash aliases across safe/final roles; legitimate common name prefixes remain accepted.",
+    "New Ray rows save ray-training-context-v4. Only configured training heads select training-context-v1; existing parent/trial transports remain selected. Twelve legacy/v1/v2/v3 manifests match the captured old builders exactly."
+  ],
+  "native": {
+    "status": "terminal_pass",
+    "context": "k3d-sceptre",
+    "namespace": "phase1-context-d0a764217866",
+    "maintained_image_tested": false,
+    "full_worker_isolation": false,
+    "source_manifest_sha256": "e807698512b532a2f160bfbdbb541ac4813202a10d6950384d43d52c2b7f428f",
+    "namespace_uid": "dda3aa29-722c-4ab9-8f1f-b501908f51b0",
+    "pod_uid": "b6a21d9d-8feb-412f-81a7-5f231c4eb122",
+    "identity_token_digests": [
+      "03fd4bfa4dd6f4aa2d2396643d152e1cc44ed568c625c31dbeaafa90758cc863",
+      "f44c6fc2835cf6d2d8852a1c3bf09b628cf080e1f0dfb08652735af070892b5f"
+    ],
+    "prepared_reader_calls": 2,
+    "approved_columns": [
+      "x",
+      "time",
+      "target"
+    ],
+    "disclosed_roles": [
+      "train",
+      "validation"
+    ],
+    "final_location_disclosed": false,
+    "parent_started_at_preserved": true,
+    "worker_pipeline_sql_disabled": true,
+    "worker_sql_tripwire": true,
+    "real_token_review": true,
+    "token_rotated": true,
+    "verified_tls": true,
+    "terminal_cas": 0,
+    "pending_pod_never_ran": true,
+    "run_id": "1092f9b3-2cbb-46d3-8394-c41d5d43961f",
+    "attempt_id": "ab8415a7-5aff-4002-87ad-c38bd27cd286",
+    "project_id": "86a07f52-ae02-4ecd-90bc-0c4fb0631eda",
+    "namespace_retired": true
+  },
+  "test_provenance": {
+    "connected_checkpoint_cases": 1292,
+    "current_affected_cases": 401,
+    "composition": "Exact current collection equals the distinct union of the preserved connected run and current affected-path rerun. Only the reviewed role/state guards changed production semantics after the connected run. Every known startup consumer was rerun; unchanged-source results are retained.",
+    "semantic_snapshot": ".unlazy/phase1-training-context/run-source-ast-sha256.json",
+    "reviewed_changes": ".unlazy/phase1-training-context/post-review-semantic-changes.json"
+  },
+  "retained_history": [
+    "The first SQL-loss test hook missed the initialized row after autoflush; it was corrected to mark the initialization before flush and terminate that exact owned backend before commit. The failed log/XML remain retained.",
+    "One affected-path run had 250 passes and 142 setup errors because the exact owned PostgreSQL container had exited cleanly. Its existing volume/loopback port were verified, the same container was started without resetting data, and strict0018 was checked before retry.",
+    "Earlier successful affected/native checkpoints remain archived before directory and provider-contract additions. All three owned native namespaces are independently read back as404."
+  ],
+  "checks": [
+    "repository Ruff",
+    "new-hunk formatting",
+    "strict schema0018",
+    "three CI preflights",
+    "root coverage preserved",
+    "36 requirements retained:2 Verified/34 Open"
+  ],
+  "limitations": [
+    "This converts initial context/validation/initialization, not the entire pipeline. Tracking/progress/result SQL and ordinary data/model/output access still require conversion; worker credentials remain necessary.",
+    "The native probe uses the real API route over verified local TLS and real Pod-bound TokenReview, then deliberately stops at the prepared-reader boundary. No data fit, maintained image, full network/IAM isolation or full credential withdrawal is qualified.",
+    "Location checks do not establish universal physical object identity, provider IAM, immutable native write custody or producer retirement. These and mixed-version rollout/drain remain open.",
+    "Current-source full backend and independent branch coverage remain required. The4862-case full checkpoint is historical; local Ray2.56.1 differs from locked2.58.0.",
+    "The user-confirmed45000000000-byte database rehearsal requires suitable capacity and representative table rows while preserving the43500000000-byte reserve.",
+    "Original abandoned phase1-deletion:G7 still requires seven missing historical QA objects; never reconstruct or re-sign them."
+  ]
+}

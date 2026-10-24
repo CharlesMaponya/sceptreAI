@@ -1,0 +1,91 @@
+{
+  "status": "verified_scoped_pod_bound_trial_control",
+  "recorded_at": "2026-10-23T06:51:16.349576+00:00",
+  "phase_complete": false,
+  "summary": {
+    "passed": 1133,
+    "worker": 44,
+    "authority": 27,
+    "failures": 0,
+    "errors": 0,
+    "skips": 0,
+    "phase_complete": false
+  },
+  "gates": {
+    "met": 5,
+    "unmet": 0,
+    "abandoned": 0,
+    "reverified": 5
+  },
+  "source_inputs": 536,
+  "source_manifest": ".unlazy/phase1-trial-control/source-sha256.json",
+  "source_manifest_sha256": "3561b8e714f4a0aa6207038406c24e8e8ab92001df8fb399f6f4cfc30c5e70a7",
+  "baseline": {
+    "cases": 4,
+    "failures": 3,
+    "positive_controls": 1,
+    "errors": 0,
+    "skips": 0,
+    "qualification": "Three original declared workers fail in their bodies on legacy admission rather than the declared RPC; the unmarked local control passes. Original fixture and four test bodies remain unchanged."
+  },
+  "behavior": [
+    "Durable fixed-CV, clustering and Tune enrollment/dispatch/start/heartbeat/result/failure operations use bounded Pod-authenticated TLS RPC when declared; worker SQL and legacy admission are bypassed for this lifecycle.",
+    "The API reuses existing trial domain mutations, binds ownership to Pod UID and worker nonce, captures and revalidates parent/source/run/candidate/child authority around native identity I/O, and discloses no child SQL fence.",
+    "Closed finite request/reply metadata is bounded at 262144 bytes. Unknown protocols, missing parent context, identity mismatches, protocol withdrawal and ambiguous publication stop execution without SQL fallback.",
+    "Shared terminal trial evidence now requires CAS version 1, closing replay of a successful-looking but uncommitted terminal state. Existing legacy SQL domain functions are otherwise unchanged.",
+    "New Ray outbox records carry ray-trial-control-v3. Configured training heads and compute workers select trial-control-v1; heads also retain parent-control-v1. Saved legacy/v1/v2 manifests remain exactly equal on nine deterministic inputs."
+  ],
+  "native": {
+    "status": "terminal_pass",
+    "context": "k3d-sceptre",
+    "namespace": "phase1-trial-67007ec0cd82",
+    "maintained_image_tested": false,
+    "full_worker_isolation": false,
+    "source_manifest_sha256": "3561b8e714f4a0aa6207038406c24e8e8ab92001df8fb399f6f4cfc30c5e70a7",
+    "namespace_uid": "6cff2894-ba95-4eb1-9e55-719be1a84036",
+    "pod_uid": "09fe6365-0550-4633-babe-9cd0a36fd372",
+    "identity_token_digests": [
+      "83a1c40e14802c04203e47b5a7e6baaecf2c63b39e2f2924cbff2f827a72a35c",
+      "51eb7f3e89c734df7264417a980ada1c545a84f914ea9f01aacff6cd5305cd8d"
+    ],
+    "child_attempt_id": "3b837e47-9f37-407f-a088-7d49f4f4de29",
+    "actual_cv_computations": 1,
+    "cv_folds": 3,
+    "terminal_replays": 2,
+    "child_terminal_cas": 1,
+    "trial_terminal_rows": 1,
+    "worker_sql_and_legacy_admission_disabled": true,
+    "worker_sql_tripwire": true,
+    "real_token_review": true,
+    "token_rotated": true,
+    "verified_tls": true,
+    "terminal_cas": 1,
+    "metric_rows": 1,
+    "pending_pod_never_ran": true,
+    "run_id": "0a7fd255-68ce-4308-a2f2-e1e67daeb02a",
+    "attempt_id": "95ae02c8-77ea-4692-81ff-b6d25799a35f",
+    "project_id": "fdf974b0-e18c-48c5-929c-a2a9bac89ead",
+    "namespace_retired": true
+  },
+  "retained_history": [
+    "Initial connected source: 1122 passing cases. Reply/withdrawal/lost-response controls increased the passing selection to 1131; two real foreign-resource controls were then added before final verification.",
+    "An initial API collection error used an incorrect test helper import; the failed log/state are retained. The test now uses the existing event append helper and all 27 API cases pass."
+  ],
+  "checks": [
+    "exact current collection/execution identities",
+    "repository Ruff",
+    "new-hunk formatting",
+    "strict schema 0018",
+    "three CI preflights",
+    "root coverage.json preserved",
+    "36 requirements retained: 2 Verified, 34 Open"
+  ],
+  "limitations": [
+    "Normal pipeline, analysis and dataset operations still need database/storage/tracking configuration; complete credential withdrawal remains required.",
+    "The native computation runs in the local test process against the real API route over verified TLS and real k3d Pod-bound TokenReview. Its pending identity Pod never runs a container; no maintained training image or full worker/network isolation is qualified.",
+    "Complete native side-effect ownership, immutable UID receipts, unknown-outcome reconciliation, physical retirement and mixed-version rollout/drain remain open.",
+    "The full 4862-case backend checkpoint remains historical. Current-source full backend and independent branch coverage remain required; local Ray 2.56.1 differs from the locked 2.58.0.",
+    "The confirmed 45000000000-byte database target needs suitable capacity and representative table row counts while preserving the 43500000000-byte reserve.",
+    "Original abandoned phase1-deletion:G7 still requires seven missing historical QA objects. Never reconstruct or re-sign them."
+  ]
+}

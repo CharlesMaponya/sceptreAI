@@ -8,7 +8,6 @@ from pathlib import Path
 from threading import Event, Thread
 from types import SimpleNamespace
 from urllib.parse import urlsplit
-from urllib.request import HTTPSHandler, ProxyHandler, Request, build_opener
 
 import httpx
 from cryptography.hazmat.primitives import serialization
@@ -21,7 +20,8 @@ from automl_api.training.champion_evaluation import (
     execute_evaluation,
 )
 from automl_api.training.champion_refit import _copy_verified
-from automl_api.training.refit_worker import _NoRedirect, _tls_context
+from automl_api.training.object_capabilities import champion_grant_reader, champion_output_writer
+from automl_api.training.refit_worker import _tls_context
 
 
 def _https(url):
@@ -39,16 +39,10 @@ def _https(url):
 class CachedPipeline:
     def __init__(self, plan, control, path, *, ca_file, progress):
         self.item, self.path = plan.frozen_pipeline, path
-        response = control.get("pipeline")
-        response.raise_for_status()
-        url = response.json()["url"]
-        _https(url)
-        opener = build_opener(
-            ProxyHandler({}), _NoRedirect(), HTTPSHandler(context=_tls_context(ca_file))
-        )
+        reader = champion_grant_reader(plan, ca_file=ca_file)
         source = SimpleNamespace(
             stat=self.stat,
-            open_stream=lambda _uri: opener.open(Request(url, method="GET"), timeout=60),
+            open_stream=reader.open_stream,
         )
         with path.open("w+b") as stream:
             _copy_verified(source, self.item, stream, progress)
@@ -67,7 +61,7 @@ def _acknowledge(operation):
     try:
         response = operation()
     except httpx.TransportError:
-        response = operation()  # Only identical result writes/commits/publications use this helper.
+        response = operation()  # Only idempotent authority commits/publications use this helper.
     response.raise_for_status()
     return response
 
@@ -100,6 +94,7 @@ def run(control, authority, *, signing_key, authority_public_key, ca_file=None):
     thread = Thread(target=heartbeat, name="evaluator-heartbeat", daemon=True)
     thread.start()
     try:
+        writer = champion_output_writer(plan, ca_file=ca_file)
         if signing_key.public_key().public_bytes_raw().hex() != plan.result_public_key:
             raise ValueError("Evaluator result key differs from its plan")
         with tempfile.TemporaryDirectory() as directory:
@@ -136,8 +131,8 @@ def run(control, authority, *, signing_key, authority_public_key, ca_file=None):
             sha256=digest,
             byte_size=len(payload),
         )
-        uploaded = _acknowledge(lambda: control.put("result", content=payload))
-        if uploaded.json() != expected:
+        uploaded = writer.write("result", payload, expected["uri"])
+        if uploaded != expected:
             raise ValueError("Evaluator result acknowledgement changed")
         progress()
         # The control API has independently verified persisted bytes before this acknowledgement.
@@ -175,8 +170,10 @@ def main():
     )
     public_key = Path(os.environ["EVALUATION_AUTHORITY_PUBLIC_KEY_FILE"]).read_text()
     options = dict(
-        verify=_tls_context(ca), follow_redirects=False, trust_env=False,
-        timeout=httpx.Timeout(60, connect=10)
+        verify=_tls_context(ca),
+        follow_redirects=False,
+        trust_env=False,
+        timeout=httpx.Timeout(60, connect=10),
     )
     with httpx.Client(
         base_url=control_url.rstrip("/") + "/",

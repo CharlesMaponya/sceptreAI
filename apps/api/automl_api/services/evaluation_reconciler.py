@@ -17,8 +17,8 @@ from sqlalchemy import or_, select
 from automl_api.models.enums import AttemptStatus, ScopeStatus, WorkflowStage
 from automl_api.models.workflows import PromotionalScope, WorkflowAttempt, WorkflowEvent
 from automl_api.services.attempt_object_grants import (
+    has_unretired_attempt_credentials,
     revoke_attempt_grants,
-    unretired_grant_deadline,
 )
 from automl_api.services.champion_planning import ACTIVE_ATTEMPTS
 from automl_api.services.champion_workloads import delete_owned_resource
@@ -123,7 +123,7 @@ def _cleanup_attempt(factory, k8s, attempt_id):
         if attempt.stage != WorkflowStage.CHAMPION_EVALUATION or attempt.scope_id is None:
             return False
         revoke_attempt_grants(db, attempt_id)
-        retiring = unretired_grant_deadline(db, attempt_id) is not None
+        retiring = has_unretired_attempt_credentials(db, attempt_id)
         event = _event(db, attempt_id, "evaluation_submission")
         if event is not None and event.result_digest != canonical_request_hash(event.payload):
             raise InvalidTransition("Evaluator cleanup submission changed")
@@ -895,7 +895,7 @@ def sweep_evaluation_resources(factory, k8s):
             retiring = False
             for attempt in attempts:
                 revoke_attempt_grants(db, attempt.id)
-                retiring = unretired_grant_deadline(db, attempt.id) is not None or retiring
+                retiring = has_unretired_attempt_credentials(db, attempt.id) or retiring
             if retiring:
                 continue
         delete_owned_resource(

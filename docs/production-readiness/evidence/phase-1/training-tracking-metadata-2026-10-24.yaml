@@ -1,0 +1,157 @@
+date: '2026-10-24'
+scope: training-tracking-metadata
+phase: 1
+phase_complete: false
+source_inputs: 570
+source_manifest_sha256: 1703bfd0be4fbfb6964b5d2a22128b89371b758c95e05618fca1d3d7e515e2a9
+checks:
+  passed: 2159
+  worker: 37
+  api: 51
+  retirement: 15
+  failures: 0
+  errors: 0
+  skips: 0
+  phase_complete: false
+  composed: true
+  original_full_run_passed: 2158
+  original_full_run_failures: 1
+  corrected_sql_fault_case_passed: 1
+  production_inputs_unchanged: true
+  original_worker_native_metadata_tripwire_failures: 3
+  numeric_overflow_negative_control_failures: 1
+  unqualified_readiness_negative_control_failures: 3
+  scoped_gates_reverified: 7
+  strict_schema: 0018_attempt_predecessor_lineage
+  repository_ruff: pass
+  changed_hunk_format: pass
+  ci_preflights: 3
+  legacy_through_v8_templates_unchanged: 27
+protocol:
+  new_saved_policy: ray-training-metadata-v9
+  training_head_and_compute_marker: training-metadata-v1
+  request_byte_budget: 262144
+  ordinary_metadata: tags, parameters, finite metrics and candidate-to-parent tag
+    mirrors
+behavior:
+- Ordinary parent/candidate/failure metadata goes through Pod-authenticated control;
+  native run context, JSON/model artifacts and registry operations remain separate
+  open work.
+- Immutable request slots bind the original workflow command, tracking receipt, Pod,
+  source, role, actor and fence before native effects. Native I/O holds no caller
+  SQL connection.
+- One synchronous native batch is followed by one per-request completion marker. Neither
+  mutation is resent after uncertainty; GET may recover only the exact original marker.
+- Pre-existing tag values cannot acknowledge a still-running writer. Missing completion
+  markers remain unresolved and block retirement.
+- Read-only background inspection uses short SKIP LOCKED claims and rechecks immutable
+  intent after I/O. It can settle known effects after cancellation/process death without
+  publishing a worker acknowledgement.
+- New v9 brokered model writes and final publication require original metadata readiness.
+  Model reservations, explicit predecessor references and final-result links freeze
+  that proof; missing/tampered history is not manufactured.
+- Saved v8 model custody remains usable under its original policy. All27 older captured
+  manifests stay unchanged.
+- Empty parameter logging remains a no-op; declared tags/parameters preserve native
+  string values, including NumPy scalars and parameter infinity. Numeric metrics outside
+  native double range are rejected before identity/I/O.
+native:
+  context: k3d-sceptre
+  verified_tls: true
+  real_pod_bound_token_review: true
+  distinct_parent_writer_pods: true
+  distinct_tokens: 3
+  worker_ordinary_metadata_sdk_disabled: true
+  worker_sql_disabled: true
+  roles:
+  - parent
+  - candidate:Ridge
+  - failure:Ridge
+  metadata_batches: 9
+  native_completion_markers: 9
+  native_tracking_runs: 3
+  tracking_backend: real MLflow SQLAlchemy SDK with an owned SQLite store
+  model_backend: in-memory conditional fixture; native provider SDK not exercised
+  model_writes: 1
+  terminal_cas: 1
+  lost_acknowledgements: receipt GET only; no batch, marker or model resend
+  namespace_sql_store_and_secrets_retired: true
+  pending_identity_pods_never_executed: true
+  maintained_image_tested: false
+  full_worker_isolation: false
+  native_context_artifacts_and_registry_isolated: false
+retained_findings:
+- Three original worker metric cases reached native metadata APIs. A huge integer
+  metric also escaped validation as OverflowError. Three v9 model/final cases accepted
+  missing metadata readiness. Their original test bodies and failed artifacts are
+  retained.
+- The first worker run had twelve fixture failures because Settings is a frozen dataclass,
+  not a Pydantic model; corrected to dataclasses.replace.
+- The first value-based native recovery design was unsafe while a writer remained
+  in flight. The final marker and retirement guards now distinguish settlement from
+  pre-existing values. The initial two failing retirement logs were accidentally overwritten
+  by their passing rerun; they are not claimed as retained automatic negative evidence.
+- The v8 fixture initially rolled its policy change back; committing that setup change
+  proved real v8 model custody without a metadata readiness record.
+- 'The full 2159-case run passed2158 cases and failed one SQL fault-injection harness
+  case: before_commit inspected an already flushed dirty set. Only that test hook
+  changed to before_flush; all assertions remained intact and the corrected case passed
+  against a real terminated PostgreSQL backend. Production inputs and all other test
+  bodies are byte-for-byte unchanged.'
+limits:
+  requirements:
+    total: 36
+    verified: 2
+    open: 34
+  remaining:
+  - Native MLflow run context/resume, JSON/model artifacts and model registry operations
+    before broad credential withdrawal
+  - Training data/model/checkpoint readers and remaining all-stage credential/network/native
+    permission boundaries
+  - Native producer custody and physical retirement, including controlled resolution
+    when no metadata completion marker exists
+  - Current full backend/release and independent 90.01 percent branch coverage
+  - Maintained images, mixed-version/native-provider and complete-pipeline process-loss
+    qualification
+  - 45 GB migration rehearsal with largest-table row targets and 15 users each uploading
+    10 GiB on suitable infrastructure
+  user_database_ceiling_bytes: 45000000000
+  largest_table_rows: not supplied
+  free_disk_reserve_bytes: 43500000000
+  minimum_free_bytes_during_regression: 43646910464
+  scale_qualified: false
+  required_handoff: 'Original phase1-deletion:G7 remains abandoned: seven missing
+    original historical QA objects (2 models, 5 signed results); do not reconstruct
+    or re-sign them'
+evidence_hashes:
+  regression-source-sha256.json: 00cc8108e7e2a3000886b65d564423bd287e050aade048aa9e500f3453ceb331
+  before-sql-loss-test.py: bebf55054b47a34598afadcf487cb3c27cdf06b7515cc8180c847299f21c68a4
+  sql-repair.log: 20e6cc85612cd5805a10550bb623c8015ec7af25323fc5e757975bc3ddc530eb
+  sql-repair.xml: 4e7a87c950422ca933f5bd637dca42cdd6b242cefa843303efe94517169bdbd5
+  sql-repair-state.json: 8d932b55ab5eae595404a0cd7649a200d1539bd79fdda081c9ce051b5cd2c9d2
+  regression.log: ddc58d3343f556e3f32b3b15f310c6d9ebe39e0faf5626cd7768aae473e4fba4
+  regression.xml: 7aceed82b357c26ef4871e53cc4ce0e86be66294a6c8acc34d4c398520858585
+  regression-state.json: c663b65e72748075037652d43914b0823b22cfae873d6f78ef1986454a5bf614
+  collection.log: a2e4e5e02e1b9e325b1ee8d28c2f4082d42896bb5bdf6248eb33591acec7a879
+  native.log: 585f46bd3eba17aabce7f468516dafdda25db45d441d2b8024e1de7a2e827618
+  native.xml: 98a134347ee85ca0a78e59953d9b2a404072b6b7af19ba848df9d1e1c4a136c0
+  native-probe-state.json: b2d3d64f3c4e9a8c352cce4d3579e25629b7935bb969f954fe967c86a5662ca5
+  test_native_metadata.py: 5f73b868ba9e7aef7597a6002f71ae882775a6ec3dceab04d6a71e7ec571f426
+  baseline.log: 0c9265adab7526d1f30264f23bba8bf0a2c87d3d035ac802095e7bd5c074959f
+  baseline.xml: 24476711db07c230fc9dfd915cf0eaae73ea25326cb09d8db210aef221bf3d78
+  numeric-baseline.log: 252af4cc4a8353396477a5eefe4b6602eb87699488521492fc12ec53f181b4b1
+  numeric-baseline.xml: 2a06f38c0eec31eb01f641e04cd161b3f3ef3a2c388ef536468456a8c9662dda
+  readiness-baseline.log: 9bcb1b552de2b9c79895e25cf938d2c22c26556a43cef2898f5c64cbde008eaf
+  readiness-baseline.xml: 58d53b7b3f2ceca80faf5615c112e9755103b4f939d6f327efa4b7f432a26957
+  negative-control-note.json: eee1a3c6fad7565883ab54ee7f0631fd3c8b5edd5acb1f882807ff10d4be5d33
+  first-worker.log: b5bd5c303a981f5c6894fda1e853b345bf5e4605d0f1e0efb0380bd2e0439b15
+  first-worker.xml: 5f34e41c5bd6fdb1c70072f1c8c000cd73cc5e831168c6434832c2b645ca5b25
+  first-readiness-expanded.log: 6a280c8a7a0ae5a19ce2c97d32075cec640e0ab9cba6bfef12a871995cc725d1
+  first-readiness-expanded.xml: ad2ec04590951f6d246b2a8a3171a1d1a664d60ae829149ab4b59ee496156481
+  lint.log: 82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18
+  legacy-reference.json: 8c186b110bd788e07fabedfbf2d6537fc82a663eb636b3c141ae5eb9ee4adf2a
+  legacy-current.json: 8c186b110bd788e07fabedfbf2d6537fc82a663eb636b3c141ae5eb9ee4adf2a
+  preflight-0.log: 00c8dcf3b37f2eac6114a4c21f9f742c56e354ada6672f1b15189664820d92a5
+  preflight-1.log: a414947a0f058a04ee8ca14e4023b0661f0892a6cb81c082ba87469dd71ed9e9
+  preflight-2.log: dffd5dbca119ddf99cc5a088942e02d1127f7108463f4627161d74775ec7e554
+  GATES.md: 3d4ae986f4d1958d3189c0b12247da5efdb5d8d772fd12411adf26d02f752309

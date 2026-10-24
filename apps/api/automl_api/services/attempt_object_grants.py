@@ -15,13 +15,18 @@ from automl_api.models.workflows import (
 )
 from automl_api.services.attempt_identity import _scope, admit_attempt, attempt_audience
 from automl_api.services.refit_access import mint_refit_read_url
-from automl_api.services.workflow_state import StaleFence, canonical_request_hash
+from automl_api.services.workflow_state import (
+    StaleFence,
+    attempt_credentials_revoked,
+    canonical_request_hash,
+)
+from automl_api.storage.contracts import immutable_object_version
 
 
 class InputGrantRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     request_id: uuid.UUID
-    role: Literal["train", "validation"]
+    role: Literal["train", "validation", "candidate", "pipeline", "checkpoint"]
     object_index: Annotated[int, Field(ge=0, lt=10000, strict=True)]
 
 
@@ -70,14 +75,8 @@ def _authority(scope):
 def _authorization(db, attempt_id, proof, request):
     scope = _scope(db, attempt_id, lock=True, expected_project=uuid.UUID(proof["project_id"]))
     attempt = db.get(WorkflowAttempt, attempt_id)
-    revoked = db.scalar(
-        select(WorkflowEvent.id).where(
-            WorkflowEvent.attempt_id == attempt_id,
-            WorkflowEvent.event_key == "attempt.credentials.revoked",
-        )
-    )
     if (
-        revoked is not None
+        attempt_credentials_revoked(db, attempt_id)
         or scope.project_id != uuid.UUID(proof["project_id"])
         or scope.generation != proof["generation"]
         or attempt_audience(scope.id, scope.fencing_token) != proof["audience"]
@@ -85,10 +84,22 @@ def _authorization(db, attempt_id, proof, request):
         or not attempt.lease_owner
         or attempt.lease_expires_at is None
         or scope.source_plan is None
-        or attempt.stage not in {WorkflowStage.PREPARATION, WorkflowStage.TRAINING_RUN}
     ):
         raise StaleFence("The attempt has no live approved safe-object declaration")
-    objects = [o for o in scope.source_plan.manifest.safe_data.objects if o.role == request.role]
+    if attempt.stage in {WorkflowStage.PREPARATION, WorkflowStage.TRAINING_RUN}:
+        objects = [
+            o for o in scope.source_plan.manifest.safe_data.objects if o.role == request.role
+        ]
+    elif attempt.stage == WorkflowStage.CHAMPION_REFIT:
+        objects = (
+            [scope.source_plan.candidate]
+            if request.role == "candidate"
+            else [o for o in scope.source_plan.partitions if o.role == request.role]
+        )
+    elif attempt.stage == WorkflowStage.CHAMPION_EVALUATION:
+        objects = [scope.source_plan.frozen_pipeline] if request.role == "pipeline" else []
+    else:
+        raise StaleFence("The attempt stage cannot issue this read capability")
     if request.object_index >= len(objects):
         raise StaleFence("The approved object does not exist")
     return scope, attempt, objects[request.object_index]
@@ -109,7 +120,8 @@ def _same_intent(row, scope, attempt, item, proof, request):
         or row.method != "GET"
         or row.role != request.role
         or row.object_uri != item.uri
-        or row.object_version != item.version
+        or (getattr(item, "version", None) is not None and row.object_version != item.version)
+        or (scope.grant_deadline is not None and row.expires_at > scope.grant_deadline)
         or row.content_sha256 != item.sha256
         or row.byte_limit != item.byte_size
     ):
@@ -134,6 +146,16 @@ def _receipt(row, url=None):
         byte_limit=row.byte_limit,
         sha256=row.content_sha256,
         url=url,
+        **(
+            {"object_version": row.object_version}
+            if (row.stage == WorkflowStage.TRAINING_RUN.value and row.role == "checkpoint")
+            or row.stage
+            in {
+                WorkflowStage.CHAMPION_REFIT.value,
+                WorkflowStage.CHAMPION_EVALUATION.value,
+            }
+            else {}
+        ),
     )
 
 
@@ -149,7 +171,30 @@ def _record_unknown(factory, grant_id, owner):
             row.failure_reason = "Capability issuance or acknowledgement is unknown"
 
 
-def issue_input_grant(factory, attempt_id, token, k8s, request, *, store_factory):
+def _validate_champion_paths(scope, store):
+    from automl_api.training.champion_refit import _within, validate_refit_paths
+
+    plan = scope.source_plan
+    if hasattr(plan, "candidate"):
+        validate_refit_paths(plan, store)
+    elif not _within(
+        plan.frozen_pipeline.uri,
+        store.uri_for_key(f"projects/{plan.project_id}/scopes/{plan.scope_id}/refit/"),
+    ):
+        raise StaleFence("The frozen pipeline is outside its approved scope")
+
+
+def issue_input_grant(
+    factory,
+    attempt_id,
+    token,
+    k8s,
+    request,
+    *,
+    store_factory,
+    authorize=_authorization,
+    validate_paths=None,
+):
     """One provider mint per nonce; replay returns a receipt, never a stored URL.
 
     A caller needing another delivery requests a fresh read intent under current
@@ -159,8 +204,9 @@ def issue_input_grant(factory, attempt_id, token, k8s, request, *, store_factory
     request = InputGrantRequest.model_validate(request)
     proof = admit_attempt(factory, attempt_id, token, k8s)
     owner = uuid.uuid4()
+    store = None
     with factory() as db, db.begin():
-        scope, attempt, item = _authorization(db, attempt_id, proof, request)
+        scope, attempt, item = authorize(db, attempt_id, proof, request)
         existing = db.scalar(
             select(WorkflowAttemptCredentialGrant)
             .where(
@@ -176,9 +222,52 @@ def issue_input_grant(factory, attempt_id, token, k8s, request, *, store_factory
                 return _receipt(existing)
             if existing.status != "pending":
                 raise StaleFence("The original object grant cannot be issued again")
-            grant_id = existing.id
+        version = (
+            existing.object_version if existing is not None else getattr(item, "version", None)
+        )
+        binding = _authority(scope)
+        declaration = (item.uri, item.byte_size, item.sha256)
+    if version is None:
+        try:
+            store = store_factory()
+            (validate_paths or _validate_champion_paths)(scope, store)
+            metadata = store.stat(item.uri)
+            if metadata.byte_size != item.byte_size:
+                raise ValueError("The approved champion object size changed")
+            key = "generation" if store.driver_name == "gcs" else "version_id"
+            version = immutable_object_version(metadata.provider_headers.get(key))
+            if len(version) > 256:
+                raise ValueError("The native object version exceeds the grant record limit")
+        except Exception:
+            raise ObjectGrantUnavailable("Immutable object version unavailable") from None
+    with factory() as db, db.begin():
+        scope, attempt, item = authorize(db, attempt_id, proof, request)
+        if _authority(scope) != binding or (item.uri, item.byte_size, item.sha256) != declaration:
+            raise StaleFence("The approved object changed during version lookup")
+        row = db.scalar(
+            select(WorkflowAttemptCredentialGrant)
+            .where(
+                WorkflowAttemptCredentialGrant.attempt_id == attempt_id,
+                WorkflowAttemptCredentialGrant.request_id == request.request_id,
+            )
+            .with_for_update()
+        )
+        if row is not None:
+            _same_intent(row, scope, attempt, item, proof, request)
+            _live(row, attempt, proof)
+            if row.status == "issued":
+                return _receipt(row)
+            if row.status != "pending":
+                raise StaleFence("The original object grant cannot be issued again")
         else:
             now = datetime.now(UTC)
+            limits = [
+                now + timedelta(seconds=60),
+                attempt.lease_expires_at,
+                datetime.fromtimestamp(proof["expires_at"], UTC),
+            ]
+            if scope.grant_deadline is not None:
+                limits.append(scope.grant_deadline)
             row = WorkflowAttemptCredentialGrant(
                 project_id=scope.project_id,
                 attempt_id=scope.id,
@@ -191,14 +280,10 @@ def issue_input_grant(factory, attempt_id, token, k8s, request, *, store_factory
                 method="GET",
                 role=request.role,
                 object_uri=item.uri,
-                object_version=item.version,
+                object_version=version,
                 byte_limit=item.byte_size,
                 content_sha256=item.sha256,
-                expires_at=min(
-                    now + timedelta(seconds=60),
-                    attempt.lease_expires_at,
-                    datetime.fromtimestamp(proof["expires_at"], UTC),
-                ),
+                expires_at=min(limits),
                 created_at=now,
             )
             if row.expires_at <= now:
@@ -206,9 +291,9 @@ def issue_input_grant(factory, attempt_id, token, k8s, request, *, store_factory
             row.grant_digest = _digest(row)
             db.add(row)
             db.flush()
-            grant_id = row.id
+        grant_id = row.id
     with factory() as db, db.begin():
-        scope, attempt, current_item = _authorization(db, attempt_id, proof, request)
+        scope, attempt, current_item = authorize(db, attempt_id, proof, request)
         row = db.get(WorkflowAttemptCredentialGrant, grant_id, with_for_update=True)
         _same_intent(row, scope, attempt, current_item, proof, request)
         _live(row, attempt, proof)
@@ -216,18 +301,23 @@ def issue_input_grant(factory, attempt_id, token, k8s, request, *, store_factory
             raise StaleFence("The object grant has already claimed issuance")
         row.status, row.issuance_owner = "issuing", owner
         row.issuance_started_at = datetime.now(UTC)
-        deadline = row.expires_at
+        deadline, version = row.expires_at, row.object_version
     try:
         from automl_api.services.provider_import import reject_owned_source_namespace
 
-        store = store_factory()
-        reject_owned_source_namespace(store, scope.source_plan.manifest)
-        grant = mint_refit_read_url(store, item, deadline, object_version=item.version)
+        store = store if store is not None else store_factory()
+        if validate_paths is not None:
+            validate_paths(scope, store)
+        elif scope.champion_resources is not None:
+            _validate_champion_paths(scope, store)
+        else:
+            reject_owned_source_namespace(store, scope.source_plan.manifest)
+        grant = mint_refit_read_url(store, item, deadline, object_version=version)
         if datetime.fromisoformat(grant["expires_at"]) != deadline:
             raise ValueError("Provider grant deadline changed")
         fresh = admit_attempt(factory, attempt_id, token, k8s)
         with factory() as db, db.begin():
-            scope, attempt, item = _authorization(db, attempt_id, fresh, request)
+            scope, attempt, item = authorize(db, attempt_id, fresh, request)
             row = db.get(WorkflowAttemptCredentialGrant, grant_id, with_for_update=True)
             _same_intent(row, scope, attempt, item, fresh, request)
             _live(row, attempt, fresh)
@@ -303,3 +393,114 @@ def unretired_grant_deadline(db, attempt_id):
             WorkflowAttemptCredentialGrant.expires_at > datetime.now(UTC),
         )
     )
+
+
+def has_unretired_attempt_credentials(db, attempt_id):
+    """Started writes and legacy reads need proof of retirement, not inferred expiry."""
+    db.flush()
+    if unretired_grant_deadline(db, attempt_id) is not None:
+        return True
+    started_writes = db.scalars(
+        select(WorkflowAttemptCredentialGrant)
+        .where(
+            WorkflowAttemptCredentialGrant.attempt_id == attempt_id,
+            WorkflowAttemptCredentialGrant.method == "PUT",
+            WorkflowAttemptCredentialGrant.issuance_started_at.is_not(None),
+        )
+        .execution_options(populate_existing=True)
+    ).all()
+    if any(output_completion(db, row) is None for row in started_writes):
+        return True
+    attempt = db.get(WorkflowAttempt, attempt_id, populate_existing=True)
+    if attempt is not None and attempt.stage == WorkflowStage.TRAINING_RUN:
+        from automl_api.services.training_metadata import has_unsettled_tracking_metadata
+
+        if has_unsettled_tracking_metadata(db, attempt):
+            return True
+    if attempt is None or attempt.stage not in {
+        WorkflowStage.CHAMPION_REFIT,
+        WorkflowStage.CHAMPION_EVALUATION,
+    }:
+        return False
+    from automl_api.training.champion_evaluation import EvaluationPlan
+    from automl_api.training.champion_refit import RefitPlan
+
+    refit = attempt.stage == WorkflowStage.CHAMPION_REFIT
+    event = db.scalar(
+        select(WorkflowEvent)
+        .where(
+            WorkflowEvent.attempt_id == attempt_id,
+            WorkflowEvent.project_id == attempt.project_id,
+            WorkflowEvent.event_key == ("refit_plan" if refit else "evaluation_plan"),
+        )
+        .execution_options(populate_existing=True)
+    )
+    if event is None:
+        return True
+    try:
+        plan = (RefitPlan if refit else EvaluationPlan).model_validate(event.payload)
+        invalid = (
+            plan.credential_protocol not in {"pod-bound-read-v1", "pod-bound-object-v2"}
+            or plan.digest != event.result_digest
+            or (plan.project_id, plan.scope_id, plan.attempt_id)
+            != (attempt.project_id, attempt.scope_id, attempt.id)
+        )
+        if invalid:
+            return True
+        output = db.scalar(
+            select(WorkflowEvent.id).where(
+                WorkflowEvent.project_id == attempt.project_id,
+                WorkflowEvent.attempt_id == attempt_id,
+                WorkflowEvent.event_key == ("refit_output" if refit else "evaluation_output"),
+            )
+        )
+        if output is not None:
+            # Legacy writers can outlive their worker; a plan marker cannot retire untracked I/O.
+            return not any(
+                row.role == ("pipeline" if refit else "result") for row in started_writes
+            )
+        return False
+    except (ValueError, TypeError):
+        return True
+
+
+def output_completion(db, row):
+    """Only the broker's bound, verified native completion can retire a started PUT."""
+    if (
+        row.method != "PUT"
+        or row.issuance_started_at is None
+        or row.issuance_owner is None
+        or row.grant_digest != _digest(row)
+    ):
+        return None
+    event = db.scalar(
+        select(WorkflowEvent)
+        .where(
+            WorkflowEvent.project_id == row.project_id,
+            WorkflowEvent.attempt_id == row.attempt_id,
+            WorkflowEvent.event_key == f"attempt.output.completed.{row.id}",
+        )
+        .execution_options(populate_existing=True)
+    )
+    if event is None or event.event_type != "attempt.output.completed":
+        return None
+    try:
+        version = immutable_object_version(event.payload["object_version"])
+        expected = {
+            "grant_id": str(row.id),
+            "grant_digest": row.grant_digest,
+            "issuance_owner": str(row.issuance_owner),
+            "uri": row.object_uri,
+            "sha256": row.content_sha256,
+            "byte_size": row.byte_limit,
+            "object_version": version,
+        }
+        if (
+            len(version) > 256
+            or event.payload != expected
+            or event.result_digest != canonical_request_hash(expected)
+        ):
+            return None
+    except (ValueError, TypeError, KeyError):
+        return None
+    return expected

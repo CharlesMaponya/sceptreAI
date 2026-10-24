@@ -127,14 +127,16 @@ def test_run_once_leaves_claim_for_lease_recovery_when_database_fails_mid_delive
 
 def test_observe_once_commits_success_and_rolls_back_failure(monkeypatch) -> None:
     session = MagicMock()
-    monkeypatch.setattr(workflow_reconciler, "observe_analysis_attempts", lambda *_: 0)
+    monkeypatch.setattr(workflow_reconciler, "observe_analysis_attempts", lambda *_, **__: 0)
     observer = MagicMock(return_value=2)
     monkeypatch.setattr(workflow_reconciler, "observe_training_ray_jobs", observer)
     k8s = MagicMock()
 
     assert workflow_reconciler.observe_once(lambda: _Context(session), k8s=k8s) == 2
-    observer.assert_called_once_with(session, k8s)
-    session.commit.assert_called_once()
+    observer.assert_called_once()
+    assert observer.call_args.args == (session,)
+    assert callable(observer.call_args.kwargs["read"])
+    assert session.commit.call_count == 4
 
     session.reset_mock()
     observer.side_effect = RuntimeError("observer unavailable")
@@ -193,6 +195,7 @@ def test_main_uses_explicit_worker_identity_and_bounded_poll_interval(
         "reconcile_refit_jobs_once",
         "reconcile_evaluation_jobs_once",
         "reconcile_tracking_once",
+        "reconcile_tracking_metadata_once",
     ):
         stages[name] = MagicMock(return_value=0)
         monkeypatch.setattr(workflow_reconciler, name, stages[name])

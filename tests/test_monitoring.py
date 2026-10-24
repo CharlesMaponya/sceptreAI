@@ -104,7 +104,7 @@ def test_monitoring_configuration_is_revisioned_and_deployment_scoped(
     user = SimpleNamespace(id=uuid.uuid4())
     db = SimpleNamespace(flush=lambda: None)
     monkeypatch.setattr(monitoring_service, "require_project_role", lambda *_: None)
-    monkeypatch.setattr(monitoring_service, "deployment_run", lambda *_: run)
+    monkeypatch.setattr(monitoring_service, "deployment_run", lambda *_, **__: run)
 
     result = update_monitoring_configuration(
         db,
@@ -165,20 +165,16 @@ def test_governance_snapshot_reuses_leaderboard_audit_report(monkeypatch) -> Non
     entry = SimpleNamespace(
         id=entry_id,
         model_name="Canonical model",
+        model_run_id=source_id,
         model_run=SimpleNamespace(id=source_id),
     )
     canonical = {"schema_version": "2.0", "document": {"title": "Canonical audit"}}
-    stored: dict[str, bytes] = {}
-    db = SimpleNamespace(add=lambda _: None, flush=lambda: None)
-
-    class Store:
-        def put_bytes(self, path, content):
-            stored[path] = content
-            return SimpleNamespace(uri=f"s3://audit/{path}")
+    artifacts = []
+    db = SimpleNamespace(add=artifacts.append, flush=lambda: None)
 
     monkeypatch.setattr(monitoring_service, "require_project_role", lambda *_: None)
-    monkeypatch.setattr(monitoring_service, "deployment_run", lambda *_: deployment)
-    monkeypatch.setattr(monitoring_service, "deployment_registry_entry", lambda *_: entry)
+    monkeypatch.setattr(monitoring_service, "deployment_run", lambda *_, **__: deployment)
+    monkeypatch.setattr(monitoring_service, "deployment_registry_entry", lambda *_, **__: entry)
     monkeypatch.setattr(monitoring_service, "_governance_artifacts", lambda *_: [])
     monkeypatch.setattr(
         monitoring_service,
@@ -186,7 +182,9 @@ def test_governance_snapshot_reuses_leaderboard_audit_report(monkeypatch) -> Non
         lambda *_: (canonical, "evidence-hash"),
     )
     monkeypatch.setattr(monitoring_service, "_audit_html", lambda report: "canonical html")
-    monkeypatch.setattr(monitoring_service, "get_object_store", Store)
+    monkeypatch.setattr(
+        monitoring_service, "get_object_store", lambda: pytest.fail("Generation must defer writes")
+    )
     monkeypatch.setattr(
         monitoring_service,
         "_report_summary",
@@ -215,8 +213,11 @@ def test_governance_snapshot_reuses_leaderboard_audit_report(monkeypatch) -> Non
     )
 
     assert result.report == canonical
-    assert any(content == b"canonical html" for content in stored.values())
-    assert any(b'"schema_version": "2.0"' in content for content in stored.values())
+    assert len(artifacts) == 1
+    assert artifacts[0].artifact_metadata["pending_html"] == "canonical html"
+    assert '"schema_version": "2.0"' in artifacts[0].artifact_metadata["pending_json"]
+    assert artifacts[0].artifact_metadata["desired_state"] == "object_write_pending"
+    assert artifacts[0].object_uri.startswith("pending://")
 
 
 def test_deployment_lookup_and_registry_identity_are_fail_closed() -> None:
@@ -268,13 +269,16 @@ def test_monitoring_metric_recording_is_idempotent_and_sequences_points(
 ) -> None:
     deployment = _deployment()
     user = SimpleNamespace(id=uuid.uuid4())
-    duplicate = _metric("error_rate", 0.01, step=2)
-    duplicate.value_json["idempotency_key"] = "same"
     added = []
+
+    lookups = [[], added, added]
 
     class DB:
         def scalars(self, _):
-            return SimpleNamespace(all=lambda: [duplicate])
+            return iter(lookups.pop(0))
+
+        def scalar(self, _):
+            return 2
 
         def add(self, value):
             value.id = uuid.uuid4()
@@ -284,7 +288,7 @@ def test_monitoring_metric_recording_is_idempotent_and_sequences_points(
             pass
 
     monkeypatch.setattr(monitoring_service, "require_project_role", lambda *_: None)
-    monkeypatch.setattr(monitoring_service, "deployment_run", lambda *_: deployment)
+    monkeypatch.setattr(monitoring_service, "deployment_run", lambda *_, **__: deployment)
     payload = MonitoringMetricPointCreate(
         name="error_rate",
         value=0.02,
@@ -293,20 +297,24 @@ def test_monitoring_metric_recording_is_idempotent_and_sequences_points(
         idempotency_key="same",
     )
 
-    reused = monitoring_service.record_monitoring_metric(
-        DB(), user, deployment.project_id, deployment.id, payload
-    )
-    assert reused.id == duplicate.id
-    assert added == []
-
-    payload.idempotency_key = "new"
     created = monitoring_service.record_monitoring_metric(
         DB(), user, deployment.project_id, deployment.id, payload
     )
+    reused = monitoring_service.record_monitoring_metric(
+        DB(), user, deployment.project_id, deployment.id, payload
+    )
+    assert reused.id == created.id and len(added) == 1
     assert created.status == "warning"
     assert created.sample_count == 20
-    assert created.metadata["idempotency_key"] == "new"
+    assert created.metadata["idempotency_key"] == "same"
     assert added[0].step == 3
+    payload.value = 0.03
+    with pytest.raises(HTTPException) as conflict:
+        monitoring_service.record_monitoring_metric(
+            DB(), user, deployment.project_id, deployment.id, payload
+        )
+    assert conflict.value.status_code == 409
+    assert len(added) == 1
 
 
 def test_monitoring_series_and_threshold_edge_cases() -> None:

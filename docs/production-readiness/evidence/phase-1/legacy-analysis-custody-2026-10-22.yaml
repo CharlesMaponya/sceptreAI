@@ -1,0 +1,68 @@
+{
+  "status": "verified_legacy_analysis_inspection_and_uid_job_cleanup",
+  "phase_complete": false,
+  "other_native_cleanup_custody_qualified": false,
+  "legacy_job_cleanup_qualified": true,
+  "shared_qa_preservation_qualified": false,
+  "regression_passed": 459,
+  "focused_cases": 84,
+  "baseline_failed": 18,
+  "baseline_errors": 0,
+  "baseline_mechanism": "Corrected test controls execute against a private source overlay containing the captured pre-change production files. Initial invalid settings/admission controls and failed isolation runs are retained, not qualified.",
+  "source_inputs": 521,
+  "source_manifest": ".unlazy/phase1-legacy-analysis-custody/source-sha256.json",
+  "minimum_free_bytes": 45356351488,
+  "reserve_bytes": 43500000000,
+  "schema_head": "0018_attempt_predecessor_lineage",
+  "gates_at_snapshot": {
+    "met": 6,
+    "unmet": 0,
+    "abandoned": 0
+  },
+  "phase1_requirements": {
+    "verified": 2,
+    "open": 34
+  },
+  "change": "Legacy validation/explainability/drift inspection now ends SQL before namespace/UID-bound Kubernetes reads, filters diagnostics to owned Pods, and revalidates current run state before publication. Fatal waiting cleanup and its terminal projection commit as one UID-bound command/outbox intent. The factory dispatcher commits ownership/start before native conditional foreground DELETE, records immutable target-bound ack/retirement facts, and acknowledges only under a live owner. Unknown/dead cleanup commands block project and associated-run deletion until verified retirement.",
+  "checks": [
+    "All 18 pre-change controls fail on captured original production code; all 84 focused controls pass on current source.",
+    "Concurrent report/cancellation, foreign Job/Pod identity, backoff grace/recovery and duplicate observers preserve current work.",
+    "Lost delete and SQL acknowledgements, owner expiry/takeover, competing native owners, exact target tampering and actual SDK wire process death recover one immutable UID operation.",
+    "32 repeated finalizer waits do not consume the failure budget; renamed owned Pods still block retirement and replacement Job/Pod UIDs are preserved.",
+    "Both project and associated training-run deletion are blocked by dead unknown cleanup and admitted after verified controlled replay.",
+    "All 12 explicitly identified failed fixture tenants/tombstones were removed by exact teardown IDs; subsequent controls roll back their final admission probe. No historical QA rows were selected.",
+    "All three CI preflights, repository Ruff, changed-code formatting and strict schema parity pass."
+  ],
+  "native_qualification": {
+    "scope": "One suspended Job and a replacement in a new owned local k3d namespace, using the actual API server/SDK and central outbox dispatcher; no Pods or maintained application images were started.",
+    "context": "k3d-sceptre",
+    "namespace": "phase1-legacy-763587326e59",
+    "namespace_uid": "378e23b4-8e00-4485-aa2b-7e91e4c52f5e",
+    "original_job_uid": "c27d3aee-fb44-42ae-977d-d0f35aee5715",
+    "replacement_uid": "47b8e4f6-540e-4352-9509-df381e1996e8",
+    "old_uid_rejected_with_409": true,
+    "replacement_preserved": true,
+    "owned_namespace_removed": true,
+    "owned_fixture_rows_removed": true,
+    "source": ".unlazy/phase1-legacy-analysis-custody/native_probe.py",
+    "state": ".unlazy/phase1-legacy-analysis-custody/native-state.json",
+    "shared_qa_preservation_claimed": false
+  },
+  "queue_inventory": {
+    "production_files": 167,
+    "explicit_skip_locked": 17,
+    "transaction_advisory": 1,
+    "positive_controls": 9
+  },
+  "primary_references": [
+    "https://kubernetes.io/docs/reference/kubernetes-api/definitions/delete-options-v1-meta/",
+    "https://kubernetes.io/docs/concepts/overview/working-with-objects/finalizers/"
+  ],
+  "remaining": [
+    "Known physical Job retirement does not prove unknown legacy producer credentials or in-flight object writes are retired; missing UID history is not automatically adopted.",
+    "Upload cleanup, managed analysis cancellation and other native outbox mutations, full worker lease/fairness/credential inventory, native provider and release-image qualification remain required.",
+    "Fresh whole-backend and independent 90.01% coverage qualification remain required after these source changes. Local Ray 2.56.1 differs from locked 2.58.0.",
+    "Actual prior-binary and physical 45GB migration qualification remain open; local capacity does not fit target plus 43.5GB reserve.",
+    "Original phase1-deletion:G7 remains abandoned because seven historical QA objects are missing and require handoff."
+  ]
+}

@@ -21,7 +21,7 @@ def control(tmp_path, monkeypatch):
 
     def client(**kwargs):
         assert kwargs["trust_env"] is False and kwargs["follow_redirects"] is False
-        assert kwargs["timeout"] == 5 and kwargs["verify"] is not False
+        assert kwargs["timeout"] == reply.get("timeout", 5) and kwargs["verify"] is not False
         return original(**kwargs, transport=httpx.MockTransport(dispatch))
 
     monkeypatch.setattr(rpc.httpx, "Client", client)
@@ -79,4 +79,39 @@ def test_invalid_budget_never_sends_identity(control, limit):
     value, _, requests, _ = control
     with pytest.raises(rpc.AttemptControlUnavailable):
         value.request("POST", "provider-import/start", max_bytes=limit)
+    assert not requests
+
+
+def test_binary_upload_binds_exact_bytes_nonce_and_fresh_projected_token(control):
+    value, token, requests, reply = control
+    reply["timeout"] = 60
+    nonce = uuid.uuid4()
+    payload = b"\x00binary-model\xff"
+    for identity in ("first-token", "rotated-token"):
+        token.write_text(identity)
+        assert value.request(
+            "PUT", "objects/pipeline/declared", content=payload, request_id=nonce, max_bytes=64
+        ) == {"ok": True}
+        request = requests[-1]
+        assert request.content == payload
+        assert request.headers["x-request-id"] == str(nonce)
+        assert request.headers["authorization"] == "Bearer " + identity
+        assert request.headers["content-type"] == "application/octet-stream"
+        assert request.headers["content-length"] == str(len(payload))
+    assert len(requests) == 2
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"content": "text"},
+        {"content": bytearray(b"binary")},
+        {"content": b"binary", "payload": {"unexpected": True}},
+        {"content": b"binary", "request_id": "invalid"},
+    ],
+)
+def test_invalid_binary_declaration_fails_before_network(control, options):
+    value, _, requests, _ = control
+    with pytest.raises(rpc.AttemptControlUnavailable):
+        value.request("PUT", "objects/pipeline/declared", max_bytes=64, **options)
     assert not requests

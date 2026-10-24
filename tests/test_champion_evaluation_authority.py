@@ -7,7 +7,6 @@ from automl_api.models.enums import AttemptStatus, ScopeStatus
 from automl_api.models.qualification import FinalTestAllocation
 from automl_api.models.workflows import WorkflowAttempt, WorkflowEvent
 from automl_api.qualification_control import create_app
-from automl_api.services.champion_planning import plan_scope_refit
 from automl_api.services.evaluation_authority import prepare_evaluator
 from automl_api.services.workflow_state import InvalidTransition
 from automl_api.training.champion_refit import (
@@ -16,6 +15,7 @@ from automl_api.training.champion_refit import (
     execute_refit,
     publish_frozen_pipeline,
 )
+from champion_planning_fixture import plan_scope_refit
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, func, select

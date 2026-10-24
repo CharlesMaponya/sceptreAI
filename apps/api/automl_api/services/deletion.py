@@ -35,7 +35,10 @@ from automl_api.models.workflows import (
     WorkflowAttemptCredentialGrant,
     WorkflowCommand,
 )
-from automl_api.services.attempt_object_grants import revoke_attempt_grants
+from automl_api.services.attempt_object_grants import (
+    has_unretired_attempt_credentials,
+    revoke_attempt_grants,
+)
 from automl_api.services.projects import user_has_project_role
 from automl_api.services.workflow_state import begin_command, enqueue_outbox, replay_dead_outbox
 from automl_api.storage.contracts import DeletionPending
@@ -50,7 +53,27 @@ STAGES = {
 TERMINAL_RUNS = {RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.CANCELLED, RunStatus.PREEMPTED}
 
 
+def _project_uploads_retained(db: Session, project_id: uuid.UUID) -> bool:
+    db.flush()
+    return (
+        db.scalar(
+            select(DatasetUploadSession.id)
+            .where(
+                DatasetUploadSession.project_id == project_id,
+                DatasetUploadSession.legal_hold.is_(True)
+                | (DatasetUploadSession.retention_until > datetime.now(UTC)),
+            )
+            .limit(1)
+        )
+        is not None
+    )
+
+
 def _require_stopped_workflows(db, project_id, run_ids=None):
+    from automl_api.services.legacy_analysis import has_unretired_cleanup
+
+    if has_unretired_cleanup(db, project_id, run_ids):
+        raise HTTPException(409, "Wait for verified legacy Job cleanup before deletion.")
     if run_ids is None:
         from automl_api.models.workflows import WorkflowEvent
 
@@ -238,15 +261,11 @@ def request_deletion(
                 status_code=409,
                 detail="Finish or cancel active uploads before deleting this project.",
             )
-        if db.scalar(
-            select(DatasetUploadSession.id)
-            .where(
-                DatasetUploadSession.project_id == project_id,
-                DatasetUploadSession.legal_hold.is_(True),
+        if _project_uploads_retained(db, project_id):
+            raise HTTPException(
+                status_code=409,
+                detail="Upload retention or legal hold prevents project deletion.",
             )
-            .limit(1)
-        ):
-            raise HTTPException(status_code=409, detail="This project contains data on legal hold.")
     # Never race an already submitted command that can still write to this resource.
     pending = select(OutboxEntry.id).where(
         OutboxEntry.project_id == project_id,
@@ -332,6 +351,8 @@ def reconcile_deletion(db: Session, entry: OutboxEntry, k8s) -> bool:
         raise LookupError("The project-scoped deletion tombstone is missing.")
     if tombstone.legal_hold:
         raise ValueError("A legal hold prevents deletion.")
+    if entry.topic == "project.delete" and _project_uploads_retained(db, project_id):
+        raise DeletionPending("Upload retention or legal hold prevents project deletion.")
     _retire_deletion_grants(db, project_id, run_ids if entry.topic == "run.delete" else None)
     names = STAGES[tombstone.resource_type]
     stages = {
@@ -410,6 +431,10 @@ def _retire_deletion_grants(db, project_id, run_ids):
         pending = DeletionPending("Waiting for attempt object credentials to expire.")
         pending.retry_after_seconds = max(1, math.ceil((deadline - now).total_seconds()))
         raise pending
+    if any(has_unretired_attempt_credentials(db, attempt_id) for attempt_id in attempt_ids):
+        raise DeletionPending(
+            "Legacy champion credentials or unknown native writes require verified retirement."
+        )
 
 
 def _delete_runtime(db, project_id, runs, k8s):

@@ -9,7 +9,11 @@ from automl_api.core.config import get_settings
 from automl_api.models.enums import AttemptStatus, ScopeStatus
 from automl_api.security.tokens import create_signed_token, decode_token
 from automl_api.services.evaluation_publication import _event, _locked
-from automl_api.services.workflow_state import StaleFence, canonical_request_hash
+from automl_api.services.workflow_state import (
+    StaleFence,
+    attempt_credentials_revoked,
+    canonical_request_hash,
+)
 from automl_api.training.champion_evaluation import EvaluationPlan
 
 
@@ -58,6 +62,16 @@ def locked_evaluation(db, attempt_id, claims, statuses=(AttemptStatus.RUNNING,))
         scope.status != ScopeStatus.RUNNING
         or scope.scope_deadline_at is None
         or scope.scope_deadline_at <= now
+        or (
+            attempt.status
+            in {
+                AttemptStatus.PENDING,
+                AttemptStatus.CLAIMED,
+                AttemptStatus.SUBMITTED,
+                AttemptStatus.RUNNING,
+            }
+            and attempt_credentials_revoked(db, attempt_id)
+        )
         or (
             attempt.status == AttemptStatus.RUNNING
             and (attempt.lease_expires_at is None or attempt.lease_expires_at <= now)

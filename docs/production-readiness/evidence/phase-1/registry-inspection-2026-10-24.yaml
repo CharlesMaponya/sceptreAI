@@ -1,0 +1,86 @@
+date: '2026-10-24'
+scope: registry-inspection
+phase: 1
+phase_complete: false
+source_inputs: 577
+source_manifest_sha256: 7c5774df02150db50b8235984ff7eabb30f8b01c6a04f8fafab756c4e920a94d
+checks:
+  passed: 269
+  focused: 27
+  failures: 0
+  errors: 0
+  skips: 0
+  phase_complete: false
+  original_negative_control_failures: 1
+  strict_schema: 0018_attempt_predecessor_lineage
+  repository_ruff: pass
+  changed_hunk_format: pass
+  ci_preflights: 3
+  scoped_gates_reverified: 3
+behavior:
+- The production factory-owned dispatcher closes SQL before registry artifact existence/size
+  reads. The old transaction-owned dispatch path refuses this topic.
+- Project/command/source and complete original delivery snapshots are reloaded under short
+  locks before publication. Changed or expired leases, same-owner reclaims, source changes,
+  inactive projects and deletion barriers cannot publish stale inspection results.
+- Registry verification, outbox delivery and running command completion commit atomically.
+  Verified replay performs no storage reads.
+- Native read failures retain existing retry/dead-letter behavior, but can record errors only
+  against their exact original delivery. A late failure cannot change a successor with another
+  owner or the same owner name.
+- Committed PostgreSQL checks exercise in-flight source changes, two competing readers, real
+  process SIGKILL, actual PostgreSQL backend termination and lost commit acknowledgement.
+- No dependency, migration, credential protocol, native write behavior or coverage threshold
+  changed.
+retained_failures:
+- Original-body baseline observed one checked-out SQL connection at the native read and failed;
+  the unchanged body now observes zero connections for both reads.
+- The first implementation check was blocked before native reads because its fixture left
+  the command PENDING. Production deferred commands are RUNNING; the fixture was corrected
+  without changing the original test body or assertions. That failed run remains retained.
+limits:
+  requirements:
+    total: 36
+    verified: 2
+    open: 34
+  native_provider_tested: false
+  native_mutation_qualified: false
+  content_hash_or_immutable_version_qualified: false
+  remaining:
+  - HTTP model registration still performs an initial storage size read under its admission
+    transaction; native producer custody and all other outbox mutation handlers remain separate
+    work.
+  - Existing registry artifact_verified means the existing existence/size check; it does not
+    attest native content SHA-256, immutable version or original model custody.
+  - Training dataset readers, Ray Tune search checkpoints, native MLflow context/artifacts/registry
+    and all-stage IAM/network permissions before broad worker credential withdrawal
+  - Current full backend/release and independent branch coverage >= 90.01 percent; maintained
+    images, native providers, mixed versions and full pipeline process loss
+  - 45 GB migration rehearsal and 15 users each uploading 10 GiB on suitable infrastructure
+  user_database_ceiling_bytes: 45000000000
+  largest_table_rows: not supplied
+  free_disk_reserve_bytes: 43500000000
+  minimum_free_bytes_during_regression: 43898347520
+  scale_qualified: false
+  required_handoff: Original phase1-deletion:G7 remains abandoned for seven missing original
+    historical QA objects (2 models, 5 signed results); do not reconstruct or re-sign.
+evidence_hashes:
+  source-sha256.json: 7c5774df02150db50b8235984ff7eabb30f8b01c6a04f8fafab756c4e920a94d
+  baseline.log: eac00d5d59b6e1c9930aacd308ede2b0f107e5554ac5940e2a78a1eca9ef10f7
+  baseline.xml: 583e775ea1d5b28b0a5951b8cffe2cb1ea7728d1444ee11b0581a667cf6dcdb6
+  baseline-state.json: f45bf3f3c414364b7d278b412e52a0c2490b35f17d700d5db7534236b3bdb74f
+  baseline-test.py: e237d60f6ab04d465bd88a4e0f021f0a13bcb19a73c3d98281f4ba5f5272752e
+  first-authority.log: f0e3fe3a653d20b0c74dcde3f86f2f456de5246bcb9c9fa1ef7583b69faa3170
+  first-authority.xml: f796c2f3ab58d584da67c5ff337de8f7cac899a19424d3669cc03c2886e1600f
+  second-authority.log: 0351ce7b6cde5c9bc63b9f0cc078e9719a699d10bb020920e2222b205bc25398
+  second-authority.xml: 81fedd0a0b4a63b42d14f819f576b9532ef31d5e9cd93c898272490e18042311
+  authority.log: 35c8f50553584c1e3f43eb615ea6cf287cdfe9d002451bb092f18739d909dbe3
+  authority.xml: ee9482d4fc446ac3d6566e652dd7796ecf6cf5ca326802157ea00fe2b2b6d376
+  authority-state.json: 0204feeb51b753279d16d407976e1128c1d6d7862adea0bcb8f12c82d72cc629
+  regression.log: c4383996b9473808a96b8398682d0b2957cf1086aa691f28c46acea08c9ab80b
+  regression.xml: 36841ff5c229606b6e14f2e4de61256a9f530fe4f48249160991fde65dfcfc24
+  regression-state.json: 2d537f9cd730e70adc6cac53cc50ccc807eaa3b58cc8644df730e8bb49f7db0c
+  lint.log: 82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18
+  preflight-0.log: 00c8dcf3b37f2eac6114a4c21f9f742c56e354ada6672f1b15189664820d92a5
+  preflight-1.log: a414947a0f058a04ee8ca14e4023b0661f0892a6cb81c082ba87469dd71ed9e9
+  preflight-2.log: dffd5dbca119ddf99cc5a088942e02d1127f7108463f4627161d74775ec7e554

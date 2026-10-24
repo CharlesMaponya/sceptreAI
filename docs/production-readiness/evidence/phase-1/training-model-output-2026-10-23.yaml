@@ -1,0 +1,83 @@
+schema_version: 1
+recorded_at: '2026-10-23'
+scope: training model output broker
+phase_complete: false
+requirements:
+  total: 36
+  verified: 2
+  open: 34
+source_inputs: 545
+provenance: Connected run plus current manifest rerun after alphabetical ordering
+  of two existing constant imports; exact source-diff and case accounting preserved.
+checks:
+  passed: 1302
+  retained_connected: 1302
+  current_manifest: 272
+  worker: 14
+  authority: 24
+  failures: 0
+  errors: 0
+  skips: 0
+  phase_complete: false
+baseline:
+  body_failures: 3
+  reason: declared model writer opened ambient worker storage
+  original_fixtures_and_tests_preserved: true
+behavior:
+- New declared writers serialize a model and upload once through Pod-authenticated
+  control RPC.
+- The server derives project/run/attempt/candidate/digest locations from sealed input
+  and candidate authority plus the saved submit declaration.
+- Each candidate has one durable slot, issuance owner and native intent before I/O;
+  distinct candidates can write concurrently.
+- Verified immutable completion survives cancellation; stale acknowledgement is denied.
+  Unknown outcomes never authorize another upload.
+- Lost worker acknowledgement permits receipt lookup only. Closed receipts bind all
+  identities, bytes, digest, expiry, URI and immutable version.
+- A reusable SQL publication guard rejects models without their exact verified native
+  completion; progress/result publication remains a separate required boundary.
+protocols:
+  new_saved_policy: ray-model-output-v5
+  model_writer: training-model-output-v1
+  unchanged_saved_templates: 15
+  preserved_policies:
+  - legacy
+  - ray-pod-env-v1
+  - ray-parent-control-v2
+  - ray-trial-control-v3
+  - ray-training-context-v4
+native_probe:
+  context: k3d-sceptre
+  namespace: phase1-model-a65197decae0
+  namespace_uid: 91af625d-a052-4c46-be68-242fd3c6e230
+  namespace_retired: true
+  model_serialized: true
+  verified_completion: true
+  receipt_only_recovery: true
+  native_writes: 1
+  storage_backend: in-memory conditional fixture; native provider SDK not exercised
+  real_token_review: true
+  verified_tls: true
+  token_rotated: true
+  pending_pod_never_ran: true
+  maintained_image_tested: false
+  full_worker_isolation: false
+qualification_limits:
+- Native probe uses real local TLS and Kubernetes Pod identity with a conditional
+  in-memory storage fixture; it does not qualify live provider SDKs or permissions.
+- Pending identity Pod never executes a container; no maintained image, full pipeline
+  or full worker credential isolation is qualified.
+- Single model upload is capped at 5,000,000,000 bytes; larger models require tracked
+  multipart custody.
+- Current full backend and branch-coverage requalification, mixed-version rollout,
+  process loss and physical retirement remain required.
+- 45,000,000,000 physical database bytes is the user qualification ceiling; largest-table
+  row targets remain unspecified. The 43,500,000,000 free-byte reserve is unchanged;
+  no 45 GB rehearsal was run.
+- Original abandoned phase1-deletion:G7 requires seven missing historical QA objects;
+  none were reconstructed.
+remaining_work:
+- Training progress/result/control publication and tracking SQL withdrawal
+- Training data/model reads and analysis/dataset capability conversion
+- Native producer identity/custody and physical retirement across remaining paths
+- Full/release/coverage and 45 GB migration qualification

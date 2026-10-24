@@ -14,7 +14,7 @@ from automl_api.models.workflows import (
     WorkflowCheckpoint,
     WorkflowEvent,
 )
-from automl_api.services.attempt_object_grants import unretired_grant_deadline
+from automl_api.services.attempt_object_grants import has_unretired_attempt_credentials
 from automl_api.services.final_test_credentials import FinalDataManifest
 from automl_api.services.workflow_state import InvalidTransition, canonical_request_hash
 from automl_api.training.champion_evaluation import EvaluationDataPolicy, EvaluationPlan, _final_uri
@@ -149,6 +149,21 @@ def register_evaluation_plan(db, scope_id, *, allocation_id, result_public_key, 
     elif existing is None and generation != 1:
         raise InvalidTransition("Evaluator replacement requires an initial attempt")
     attempt_id = existing.id if existing is not None else uuid.uuid4()
+    recorded_plan = (
+        db.scalar(
+            select(WorkflowEvent).where(
+                WorkflowEvent.attempt_id == existing.id,
+                WorkflowEvent.event_key == "evaluation_plan",
+            )
+        )
+        if existing is not None
+        else None
+    )
+    protocol = (
+        recorded_plan.payload.get("credential_protocol")
+        if recorded_plan is not None
+        else "pod-bound-object-v2"
+    )
     plan = EvaluationPlan(
         **policy.model_dump(exclude={"final_data"}),
         final_manifest=FinalDataManifest(**policy.final_data.model_dump(), scope_id=scope.id),
@@ -157,6 +172,7 @@ def register_evaluation_plan(db, scope_id, *, allocation_id, result_public_key, 
         attempt_id=attempt_id,
         allocation_id=allocation_id,
         result_public_key=result_public_key,
+        credential_protocol=protocol,
         frozen_pipeline=RefitObject(
             uri=output.frozen_pipeline_uri,
             sha256=output.frozen_pipeline_digest,
@@ -164,8 +180,8 @@ def register_evaluation_plan(db, scope_id, *, allocation_id, result_public_key, 
         ),
     )
     if previous_plan is not None and previous_plan.model_dump(
-        exclude={"attempt_id", "result_public_key"}
-    ) != plan.model_dump(exclude={"attempt_id", "result_public_key"}):
+        exclude={"attempt_id", "result_public_key", "credential_protocol"}
+    ) != plan.model_dump(exclude={"attempt_id", "result_public_key", "credential_protocol"}):
         raise InvalidTransition("Evaluator replacement changed the frozen evaluation policy")
     if existing is not None:
         recorded = db.scalar(
@@ -189,7 +205,7 @@ def register_evaluation_plan(db, scope_id, *, allocation_id, result_public_key, 
         dataset_version_id=refit.dataset_version_id,
         stage=WorkflowStage.CHAMPION_EVALUATION,
         logical_key=f"evaluation:{scope.id}",
-        workload_identity=f"evaluation:{attempt_id}",
+        workload_identity=f"project-{scope.project_id}-evaluation",
         generation=generation,
         retry_count=generation - 1,
         fencing_token=uuid.uuid4().hex,
@@ -238,7 +254,7 @@ def validate_replacement(db, scope_id):
         is not None
     ):
         raise InvalidTransition("Evaluator replacement requires a failed attempt without output")
-    if first.cleanup_state != "complete" or unretired_grant_deadline(db, first.id) is not None:
+    if first.cleanup_state != "complete" or has_unretired_attempt_credentials(db, first.id):
         raise InvalidTransition(
             "Evaluator replacement requires retired predecessor resources and capabilities"
         )
