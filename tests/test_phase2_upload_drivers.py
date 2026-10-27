@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import base64
 import io
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from automl_api.storage.azure import AzureBlobObjectStoreDriver
 from automl_api.storage.contracts import (
@@ -50,16 +52,23 @@ class S3Client:
         self.parts: list[dict[str, object]] = []
         self.objects: dict[str, bytes] = {}
         self.aborts = 0
+        self.cancelled = set()
         self.completed: dict[str, object] | None = None
         self.fail: Exception | None = None
         self.bucket_exists = True
         self.multipart_uploads: list[dict[str, object]] = []
         self.create_count = 0
+        self.meta = SimpleNamespace(config=SimpleNamespace(retries={"total_max_attempts": 1}))
 
     def list_multipart_uploads(self, **_kwargs: object) -> dict[str, object]:
         if self.fail:
             raise self.fail
-        return {"Uploads": list(self.multipart_uploads)}
+        return {
+            "Uploads": [
+                row for row in self.multipart_uploads if row["Key"].startswith(_kwargs["Prefix"])
+            ],
+            "IsTruncated": False,
+        }
 
     def create_multipart_upload(self, **kwargs: object) -> dict[str, str]:
         if self.fail:
@@ -79,16 +88,20 @@ class S3Client:
     def list_parts(self, **_kwargs: object) -> dict[str, object]:
         if self.fail:
             raise self.fail
-        return {"Parts": self.parts}
+        if (_kwargs.get("Key"), _kwargs.get("UploadId")) in self.cancelled:
+            raise ProviderError("NoSuchUpload", 404)
+        return {"Parts": self.parts, "IsTruncated": False}
 
-    def complete_multipart_upload(self, **kwargs: object) -> None:
+    def complete_multipart_upload(self, **kwargs: object) -> dict[str, str]:
         self.completed = kwargs
         self.objects[str(kwargs["Key"])] = b"0123456789"
+        return {"VersionId": "v1", "ChecksumSHA256": "provider-sha"}
 
     def abort_multipart_upload(self, **_kwargs: object) -> None:
         if self.fail:
             raise self.fail
         self.aborts += 1
+        self.cancelled.add((_kwargs.get("Key"), _kwargs.get("UploadId")))
 
     def head_object(self, *, Bucket: str, Key: str) -> dict[str, object]:
         del Bucket
@@ -270,19 +283,35 @@ def test_s3_compatible_and_failure_contracts() -> None:
     assert not driver.healthcheck().healthy
 
 
-class GCSResponse:
-    def __init__(self, status_code: int, headers: dict[str, str] | None = None) -> None:
-        self.status_code = status_code
-        self.headers = headers or {}
+class GCSResponse(httpx.Response):
+    def __init__(
+        self, status_code: int, headers: dict[str, str] | None = None, receipt=None
+    ) -> None:
+        if receipt is None and status_code in {200, 201}:
+            receipt = dict(
+                bucket="bucket",
+                name="projects/p/raw/file.csv",
+                generation="1",
+                size="10",
+                crc32c="crc",
+            )
+        super().__init__(status_code, headers=headers, json=receipt)
 
 
 class GCSHttp:
     def __init__(self) -> None:
         self.response = GCSResponse(308, {"Range": "bytes=0-5"})
-        self.deleted = 204
+        self.deleted = 499
 
-    def put(self, *_args: object, **_kwargs: object) -> GCSResponse:
-        return self.response
+    @contextmanager
+    def stream(self, *_args: object, **_kwargs: object):
+        response = httpx.Response(
+            self.response.status_code, headers=self.response.headers, content=self.response.content
+        )
+        try:
+            yield response
+        finally:
+            response.close()
 
     def delete(self, *_args: object, **_kwargs: object) -> GCSResponse:
         return GCSResponse(self.deleted)
@@ -417,12 +446,13 @@ class AzureBlob:
         self.blocks: list[SimpleNamespace] = []
         self.committed: list[str] = []
 
-    def get_block_list(self, **_kwargs: object) -> SimpleNamespace:
-        return SimpleNamespace(committed_blocks=[], uncommitted_blocks=self.blocks)
+    def get_block_list(self, **_kwargs: object):
+        return [], self.blocks
 
-    def commit_block_list(self, values: list[str]) -> None:
+    def commit_block_list(self, values: list[str], **kwargs) -> dict[str, str]:
         self.committed = values
         self.objects[self.blob_name] = b"0123456789"
+        return {"version_id": "v1"}
 
     def get_blob_properties(self) -> SimpleNamespace:
         value = self.objects[self.blob_name]
@@ -500,15 +530,15 @@ def test_azure_block_contract_and_object_operations() -> None:
     assert "comp=block" in instruction.url and "sig=secret" in instruction.url
     blob = service.container.get_blob_client(upload.object_key)
     blob.blocks = [
-        SimpleNamespace(id=driver._block_id(2), size=4, etag="e2"),
-        SimpleNamespace(id=driver._block_id(1), size=6, etag="e1"),
+        SimpleNamespace(id="sceptre-00000002", size=4, etag="e2"),
+        SimpleNamespace(id="sceptre-00000001", size=6, etag="e1"),
     ]
     progress = driver.query_progress(upload)
     assert progress.complete and progress.confirmed_bytes == 10
     completed = driver.complete_upload(upload, list(progress.receipts))
     assert completed.uri.startswith("az://account/data/")
     assert driver.uri_for_key(upload.object_key) == completed.uri
-    assert blob.committed == [driver._block_id(1), driver._block_id(2)]
+    assert blob.committed == ["sceptre-00000001", "sceptre-00000002"]
     assert driver.read_bytes(completed.uri) == b"0123456789"
     assert driver.read_head(completed.uri, 2) == b"01"
     assert driver.open_stream(completed.uri, ByteRange(3, 5)).read() == b"345"
@@ -521,7 +551,9 @@ def test_azure_block_contract_and_object_operations() -> None:
     assert driver.healthcheck().healthy
     service.container.healthy = False
     assert not driver.healthcheck().healthy
-    driver.abort_upload(upload)
+    assert driver.capabilities().supports_abort is False
+    with pytest.raises(UploadContractError, match="Azure staged blocks"):
+        driver.abort_upload(upload)
 
     with pytest.raises(UploadContractError):
         driver.create_transfer_instruction(upload, TransferCursor(2, 5, 4))
@@ -543,20 +575,18 @@ def test_gcs_contract_edge_branches(monkeypatch) -> None:
     assert driver.open_stream(uri).read() == b"0123456789"
     assert driver.read_head(uri, 0) == b""
     http.deleted = 404
-    driver.abort_upload(upload)
+    with pytest.raises(UploadContractError, match="cancellation returned 404"):
+        driver.abort_upload(upload)
 
     http.response = GCSResponse(308)
     assert driver.query_progress(upload).confirmed_bytes == 0
     with pytest.raises(UploadContractError, match="not confirmed"):
         driver.complete_upload(upload, [])
 
-    http.response = GCSResponse(201)
-    monkeypatch.setattr(
-        driver,
-        "stat",
-        lambda object_uri: ObjectMetadata(uri=object_uri, byte_size=9),
+    http.response = GCSResponse(
+        201, receipt=dict(bucket="bucket", name=upload.object_key, generation="1", size="9")
     )
-    with pytest.raises(UploadContractError, match="unexpected size"):
+    with pytest.raises(UploadContractError, match="immutable receipt"):
         driver.complete_upload(upload, [])
 
     with pytest.raises(UploadContractError, match="one-based"):
@@ -621,7 +651,8 @@ def test_azure_contract_edge_branches(monkeypatch) -> None:
         lambda object_uri: ObjectMetadata(uri=object_uri, byte_size=9),
     )
     receipts = [TransferReceipt(1, 0, 6), TransferReceipt(2, 6, 4)]
-    with pytest.raises(UploadContractError, match="unexpected size"):
+    monkeypatch.setattr(blob, "commit_block_list", lambda *args, **kwargs: {"version_id": None})
+    with pytest.raises(UploadContractError, match="immutable object version"):
         driver.complete_upload(upload, receipts)
 
     for unit_number in (0, 50_001):
@@ -645,9 +676,10 @@ def test_azure_contract_edge_branches(monkeypatch) -> None:
         return fail
 
     monkeypatch.setattr(blob, "delete_blob", fail_delete(404))
-    driver.abort_upload(upload)
+    with pytest.raises(UploadContractError, match="Azure staged blocks"):
+        driver.abort_upload(upload)
     monkeypatch.setattr(blob, "delete_blob", fail_delete(500))
-    with pytest.raises(AzureDeleteError):
+    with pytest.raises(UploadContractError, match="Azure staged blocks"):
         driver.abort_upload(upload)
     for key in ("", "../bad", "folder/../bad"):
         with pytest.raises(ValueError, match="inside"):

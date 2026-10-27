@@ -4,6 +4,9 @@
 {{- fail "Evaluator image must be pinned by sha256 digest" -}}
 {{- end -}}
 {{- end -}}
+{{- if and .Values.inference.identity.caSecret (not (regexMatch "^https://[^?#@]+/internal/attempts/?$" .Values.attemptIdentity.controlBaseUrl)) -}}
+{{- fail "Inference identity requires an HTTPS attempt admission URL ending in /internal/attempts" -}}
+{{- end -}}
 {{/* Fail closed before creating any production resources. */}}
 {{- if eq .Values.environment "production" -}}
 {{- if not .Values.championEvaluation.enabled -}}
@@ -35,7 +38,10 @@
 {{- if index .Values "kuberay-operator" "enabled" -}}
 {{- fail "Production requires a platform-managed, signature-verified KubeRay operator" -}}
 {{- end -}}
-{{- if not (regexMatch "^https://[^?#@]+$" .Values.attemptIdentity.controlBaseUrl) -}}
+{{- if not (regexMatch "^https://[^?#@]+/internal/attempts/?$" .Values.attemptIdentity.controlBaseUrl) -}}
 {{- fail "Production requires an HTTPS attempt admission control URL" -}}
+{{- end -}}
+{{- if not .Values.inference.identity.caSecret -}}
+{{- fail "Production requires inference.identity.caSecret with its original serving authority" -}}
 {{- end -}}
 {{- end -}}

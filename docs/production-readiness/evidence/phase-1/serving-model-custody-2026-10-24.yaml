@@ -1,0 +1,139 @@
+date: '2026-10-24'
+scope: serving-model-custody
+phase: 1
+phase_complete: false
+source_inputs: 582
+source_manifest_sha256: e9f3986f120541d116dd5d575b5300ee77ea6306283112df3424479677cc970b
+checks:
+  passed: 272
+  focused: 34
+  failures: 0
+  errors: 0
+  skips: 0
+  original_negative_control_failures: 7
+  first_focused_passed: 108
+  strict_schema: 0018_attempt_predecessor_lineage
+  repository_ruff: pass
+  changed_hunk_format: pass
+  ci_preflights: 3
+  native_tls_s3_cases: 1
+  registry_custody_cases: 19
+  http_registry_cases: 26
+  background_registry_cases: 32
+  scoped_gates_reverified: 4
+behavior:
+- New deployment admission requires the verified original registry model custody and saves its canonical
+  digest. Restart and authenticated model download require the same saved binding, original producer receipts
+  and native completion.
+- The internal download endpoint uses a project-first SQL selection, commits before native reads, reads
+  only the original immutable native version, and verifies exact size and full SHA-256 before returning
+  bytes. It then refreshes and rechecks current deployment status/tags, project, registry/artifact proof
+  and project/source/artifact deletion barriers.
+- 'Reuse the common verifier with an optional spool sink: read at most 64 KiB at a time, retain up to
+  8 MiB in memory and spill larger models to a temporary file. Existing original model size ceiling is
+  5 GB. Native reads check the existing 60-second deadline before and after each read; blocking calls
+  still depend on SDK timeouts.'
+- The verified response sends exact Content-Length and Cache-Control no-store. Read/availability/spool-write
+  errors, corrupt/truncated/extra bytes and changes during native I/O return no model bytes and close
+  temporary files. Normal spill-to-disk cleanup is covered with a reduced test threshold, not a large
+  native model.
+- Legacy deployments missing original bindings return a qualification-required error rather than receiving
+  reconstructed history. No historical deployment or receipt is rewritten.
+- Registry-entry and deployment-row selectors refresh preloaded ORM objects. Cached archived stages or
+  removed bindings cannot authorize a deployment or restart. Both serving authentication endpoints compare
+  credential bytes consistently so malformed non-ASCII inputs are denied cleanly. Original serving authentication/project
+  checks and deployment lifecycle/business assertions remain intact. No public schema, dependency, database
+  migration or runtime image changed.
+native_storage:
+  provider: owned local SeaweedFS S3-compatible fixture on k3d
+  tls_verified: true
+  conditional_model_writes: 1
+  conditional_overwrite_denied: true
+  original_version_served_after_latest_changed: true
+  missing_original_denied_without_latest_fallback: true
+  native_reads_sql_connections: 0
+  owned_versions_created: 2
+  owned_versions_retired: 2
+  preserved_versions_checked_before_and_after: 5
+  shared_kubernetes_mutated: false
+  real_deployment_hmac: true
+  real_pod_token_review: false
+  cloud_iam_qualified: false
+  maintained_image_tested: false
+  actual_inference_deployment_started: false
+retained_failures:
+- Three unchanged original negative-control bodies observed a checked-out SQL connection, returned corrupt
+  native bytes with HTTP 200, and returned model bytes despite missing original producer receipts. The
+  current bodies pass with zero native-read connections and closed unsafe paths.
+- Four additional boundary controls reproduced stale cached binding restoration, admission from a cached
+  archived registry stage, and non-ASCII credential exceptions in both serving endpoints. Their unchanged
+  bodies pass after refreshing the shared selectors and comparing credential bytes consistently.
+- The first private boundary-control collection failed because tests was missing from its import path;
+  no test case ran. Its diagnostic is retained separately. After correcting the private harness, all four
+  genuine boundary controls failed as expected, then passed unchanged after the code fixes.
+limits:
+  requirements:
+    total: 36
+    verified: 2
+    open: 34
+  user_database_ceiling_bytes: 45000000000
+  largest_table_rows: not supplied
+  free_disk_reserve_bytes: 43500000000
+  minimum_free_bytes_during_regression: 43846705152
+  scale_qualified: false
+  required_handoff: Original phase1-deletion:G7 remains abandoned for seven missing original historical
+    QA objects (2 models, 5 signed results); do not reconstruct or re-sign.
+  remaining:
+  - Controlled qualification of legacy models and deployment bindings; already-running inference processes
+    and maintained images require rollout qualification
+  - Static deployment HMAC authentication is unchanged; complete identity, IAM/network and downstream
+    consumer/retirement qualification remains required
+  - The optional standalone inference storage fallback, inference HTTP payload materialization, training
+    data readers, Ray Tune checkpoints and native MLflow lifecycle/artifacts/registry before broad worker
+    credential withdrawal
+  - Deployment/restart native mutations still need durable custody and full SQL/I-O separation; other
+    native mutations and physical retirement remain open
+  - Current full backend/release, independent branch coverage >=90.01 percent, maintained images, cloud
+    providers, mixed versions and complete-pipeline process loss
+  - 45 GB migration rehearsal and 15 users each uploading 10 GiB on suitable infrastructure
+evidence_hashes:
+  source-sha256.json: e9f3986f120541d116dd5d575b5300ee77ea6306283112df3424479677cc970b
+  before-source-sha256.json: ef2b884fed7c1fd6c7763d06a98f50f5e6f3bfdd7856e72435a58be8542ceb56
+  baseline-source-sha256.json: a506a45ccdd4138796b58f1b7421f2f3011e5ddf86c22c5154fbacc7a1a92341
+  boundary-baseline-source-sha256.json: a96d34049d3d1cff4a740f923fa7208ac95cfd00010a520468811ae7110590c6
+  baseline-test.py: ae15aebbef57fb5f4d3e99277313cfe613f5f8ff9ff6531a30bf4d27d3313d3a
+  first-source-sha256.json: 0097706bca4955c62b7a65bbcb9e5a92274cc48441e9a4c5c7dc51bb90ede794
+  first-regression-source-sha256.json: a96d34049d3d1cff4a740f923fa7208ac95cfd00010a520468811ae7110590c6
+  test_boundary_controls.py: e3fce5400a0e1e4d9dc2160e5aca07cc6b2d371995b56795361983e82cda46d6
+  run.py: 0cc392e2b4a93c0b69c01f64b93cda4b148c8c5d4309931815a6ca6197eb33ed
+  audit.py: d8c95f6b727fc31733fad0e3576bd1d94213ed8819d0a0eeab6bfafc407a3020
+  test_native_serving.py: c3938e7dbec19d18d79f0039640cd3f3910cce2046f5218ced38d736f520ec93
+  native-probe-state.json: 80171efd8a39b00812471df45b981bf0ff7470246e796f02b8893db2277aea0d
+  lint.log: 82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18
+  preflight-0.log: 00c8dcf3b37f2eac6114a4c21f9f742c56e354ada6672f1b15189664820d92a5
+  preflight-1.log: a414947a0f058a04ee8ca14e4023b0661f0892a6cb81c082ba87469dd71ed9e9
+  preflight-2.log: dffd5dbca119ddf99cc5a088942e02d1127f7108463f4627161d74775ec7e554
+  baseline.log: b943f259cc0ccb994854f59591adc9b058b74db90e5c9a789f1c9f0a1706c969
+  baseline.xml: 849d172b1260d354bed65619f998de7435f7ced8d66c1518148196ac638c2000
+  baseline-state.json: 11fd0d724111fb859fc4d3dbc9c0185dbb8d6fbbe2fbf277d8a39cf023540173
+  boundary-collection-error.log: fcc6ad5f167063c9653195303a26b72c519bfab72a0d13ea374102029a4b5175
+  boundary-collection-error.xml: 551d406521033843555d2a29a447425296db580c91e27086bc0069faf5d56390
+  boundary-collection-error-state.json: 64561e8bf1781523aa8521d42c0e86013cffbe54ebeb1a939f6ccfca5b5fbd66
+  boundary-baseline.log: 4f6cb6261ebb00eea576354695a0a84eed382d4ef28eef1d97af5e0493deb579
+  boundary-baseline.xml: dda8cd627ad58f3a056f708f40919f018f485dcecc721ff3b684101b8f1b82f7
+  boundary-baseline-state.json: f4f22b6471b2cc1dfe6a3287b8f3cc704f2b1ee19c160256d32372638829ceb0
+  repair.log: 54b75226f4d18f7fd53eb7f781ee41cce32bbc9fa0f58fd930f23e0280583603
+  repair.xml: 66092f37095c53fc6e5baed3d2ebfe7cadccf51f71264ccd97f113ae3248ca27
+  repair-state.json: f56e33a940ef1a3962e6c15bc68a73f6e1b4a430530f69035fd81a04b8658bdf
+  first-focused.log: 0d42acefa6bd266d1770b32a5d737517bc0f29fe6c3af9ec94bb08cab5a97733
+  first-focused.xml: ea0c205f7524bd728eb61a7d76a145ea864b61517aaeea23eebfd8c8083000a5
+  first-focused-state.json: b166eea989b1c22c0a7f35a2c3f3d37c54507ef5860279aee12c9cadb5c69a71
+  first-regression.log: 07a42ea4b69b99ab228ff0253bd139e07183446bd2ee182dd4d96c1ac77f47aa
+  first-regression.xml: 6e9019acb9bd5ace8ecc6cdb15ab585ef0c0a7d0422a22d34b01ea36e9609a81
+  first-regression-state.json: 0e3cba582fe1b001bcb4b65e262a492191010273ebb10f15669d9016fdf1c64c
+  regression.log: dfe22f59e8c9837aec475a70972aeee80c39feb40b9a5826cb1f9aa7b6d88660
+  regression.xml: 92d2fd96faf4b675e050f76c02091f38d99f9d8dd1245aac2c94d89a8b81a533
+  regression-state.json: bd2e70612625c0814d15745206b15ffb46674327bc2c125a49af593fe59ffc0f
+  native.log: 5d4f0344374361e04bec2e7da123e375b151e8dd707a36ea9eddc24257ca4271
+  native.xml: ea212f654fdb2fa75877674f85b6503172cae88a4de0dc136f9073a8a8afba13
+  native-state.json: cf32d37b5b8ad0282f2d89d7dd7f1da6f462a9cc680787a78d6f367a477e9d9e

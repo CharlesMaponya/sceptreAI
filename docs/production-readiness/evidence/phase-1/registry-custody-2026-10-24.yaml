@@ -1,0 +1,114 @@
+date: '2026-10-24'
+scope: registry-custody
+phase: 1
+phase_complete: false
+source_inputs: 581
+source_manifest_sha256: ef2b884fed7c1fd6c7763d06a98f50f5e6f3bfdd7856e72435a58be8542ceb56
+checks:
+  passed: 443
+  focused_custody: 19
+  focused_http: 26
+  focused_background: 32
+  failures: 0
+  errors: 0
+  skips: 0
+  original_negative_control_failures: 2
+  strict_schema: 0018_attempt_predecessor_lineage
+  repository_ruff: pass
+  changed_hunk_format: pass
+  ci_preflights: 3
+  native_tls_s3_cases: 1
+  scoped_gates_reverified: 5
+behavior:
+- New HTTP registration and background verification require original producer slot, input-bound reference,
+  tracking/metadata receipts, native completion and explicit predecessor authority. Stored custody is
+  revalidated on replay; canonical hashes detect numeric representation changes.
+- Read the original immutable native version in bounded 64 KiB chunks and verify full SHA-256 and exact
+  size outside SQL; revalidate authority and source before atomic publication. The stream checks a 60-second
+  deadline before and after each read; blocking transport calls still depend on provider SDK timeouts.
+- Original input-reference digests are preserved through the existing validated reference; this increment
+  does not recompute the entire historical input graph.
+- Models and existing registry entries without original qualified custody return HTTP 409 and require
+  controlled qualification. No historical receipt is reconstructed, no historical row is rewritten, and
+  a legacy verified flag cannot grant approval.
+- The prior SQL-release, role/source revalidation, concurrent-registration, lost acknowledgement, actual
+  backend loss and actual process-death controls remain covered. Every original selected-model persistence
+  assertion is retained.
+- No schema, dependency, Ray credential protocol or public request schema changed.
+native_storage:
+  provider: local SeaweedFS S3-compatible fixture
+  tls_verified: true
+  conditional_model_writes: 1
+  conditional_overwrite_denied: true
+  owned_versions_created: 2
+  original_version_registered_after_latest_changed: true
+  owned_versions_retired: 2
+  preserved_versions_checked_before_and_after: 5
+  shared_kubernetes_mutated: false
+  real_pod_token_review: false
+  cloud_iam_qualified: false
+  maintained_image_tested: false
+retained_failures:
+- Two unchanged original negative-control bodies registered missing custody and corrupt native bytes with
+  HTTP 201 before conversion; both now return HTTP 409.
+- 'The first new-boundaries run had one numeric-rewrite test failure and five passes: SQLAlchemy treated
+  10 and 10.0 as equal and did not emit the intended corrupting UPDATE. The repaired fault injection uses
+  an explicit SQL UPDATE and asserts a fresh stored float. Production rejection assertions are unchanged;
+  the focused repair and current connected run pass.'
+limits:
+  requirements:
+    total: 36
+    verified: 2
+    open: 34
+  user_database_ceiling_bytes: 45000000000
+  largest_table_rows: not supplied
+  free_disk_reserve_bytes: 43500000000
+  minimum_free_bytes_during_regression: 43854307328
+  scale_qualified: false
+  required_handoff: Original phase1-deletion:G7 remains abandoned for seven missing original historical
+    QA objects (2 models, 5 signed results); do not reconstruct or re-sign.
+  remaining:
+  - Controlled qualification or resolution of legacy models without original receipts; pinned custody
+    enforcement for serving, deployment and other consumers
+  - Training dataset readers, Ray Tune search checkpoints, native MLflow lifecycle/artifacts/registry
+    and all-stage IAM/network permissions before broad worker credential withdrawal
+  - Remaining native mutation custody and physical retirement; current full backend/release and independent
+    branch coverage >=90.01 percent
+  - Maintained images, cloud native providers, mixed versions and complete-pipeline process loss
+  - 45 GB migration rehearsal and 15 users each uploading 10 GiB on suitable infrastructure
+evidence_hashes:
+  source-sha256.json: ef2b884fed7c1fd6c7763d06a98f50f5e6f3bfdd7856e72435a58be8542ceb56
+  before-source-sha256.json: ad006a390d350b123f853294bb518921cb7874c662e83d297d8dab9f2c9ac8bc
+  baseline-test.py: 76acbd191fbd7ac6b2d09d2b21b2815c2a820da6db7714e4d9e79036a1d78ec2
+  run.py: cb97c5725049ded76684e64feb8a686c6af461ae63a9e262b45ca03348eccaa5
+  audit.py: f0f903943012956545346ebbb4e8f39cd0abc429815a8e7fdd9936ac28f005c7
+  test_native_registry.py: 86b2341a3a7b425760ab85bb31cc4064a77f6ecbe6150e2b7769778ff9f5b693
+  native-probe-state.json: 957e2a165950e4680a2bca9ca824f9460e42672c9640cd43dc24f1aa7f6d43fc
+  lint.log: 82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18
+  preflight-0.log: 00c8dcf3b37f2eac6114a4c21f9f742c56e354ada6672f1b15189664820d92a5
+  preflight-1.log: a414947a0f058a04ee8ca14e4023b0661f0892a6cb81c082ba87469dd71ed9e9
+  preflight-2.log: dffd5dbca119ddf99cc5a088942e02d1127f7108463f4627161d74775ec7e554
+  baseline.log: da9a31a0807f80add2a8ceb0471ef6c90419b5f160a4d9d8ac4ec8598e3370f3
+  baseline.xml: f87413b686a5304d8f297038de92fe2a1b672881f0580edfeeca0638a1890903
+  baseline-state.json: 7ae4606211b600f54948e288a3d08f804b5ca1dd984b47a1c2ea3b9e26c71843
+  first-authority.log: 26182c345d7bd1c8661a413618d92e6e01411d27d0809a4dffe2fa1730b40c36
+  first-authority.xml: aafd5fa61790fa07e92b61ee40e71cf05261027c02632a463e980dbf81a5449f
+  first-authority-state.json: e48c53fb9610f8fcc6cc25f7829b7493ae1ba7e4b4934cc785d2ecd37b4534d6
+  first-background.log: 217a3a10a586331a8db5807b8ef6d006f4882ee5e458e17d8663c10a5bb3983a
+  first-background.xml: e6ed2dce7fced388559d9055e867e66708586447fcab70fca1d00fbf27d8d0ba
+  first-background-state.json: fe59731b461fa1ecaec5d43f5516ca93c90de921cc683accaf908f8029a1c4cd
+  expanded.log: d3cdbfd3168f7be52428fdde30bfac5a1b46713b3d908de7d6cef96db3bd7256
+  expanded.xml: 52880de05b766a266d70f1e096808ec9063ccf5f7e2978e59689fa94e890c12d
+  expanded-state.json: 79fb36dc3e7de411fb97be35bdef14c0a221e6ee48c136726e89902a80b6f482
+  first-new-boundaries.log: e1aa7530491513b546cf58b60f061996038adf22b1939999f6ac89aa722f90f6
+  first-new-boundaries.xml: 1a77da22a04b4a3b2ac91179b52dfc5f9f3685fcce4f12f52e40853efb027dff
+  first-new-boundaries-state.json: f476d7f017659ea111bef7802b411666c92f762fb83993ea7af44c98d93e9d06
+  numeric-repair.log: 3337ed06d681cbf5ba459e91d286b978c27a07805e2345c513bc501ec947727f
+  numeric-repair.xml: 1a66057bcb9a9b6171c2d8bbba5526423eb19aa920d2b22e07e2024f2c1bb902
+  numeric-repair-state.json: a2ddc1905055d379dbfc90f4019a409f3184fee2606a486bf482091f32faf118
+  regression.log: 6ee037ad4d368c2cae9c429b5d66051eb3beebb6d6e310f35fba9b9eeacd8a6a
+  regression.xml: b1e1b102b054c13cf0e9ada01e4f064890e8cb09fe3936913605965aa52d0dab
+  regression-state.json: 9d9eea21ef738e03193054a143c28e782305174640d0df630eda9eb00a4d8c19
+  native.log: cc1b5e4b0ec8bd8f3fdf96cb8d1061fcbc3c0b957ca73b5f83a30d858dbddf5b
+  native.xml: 774a9e7f28aae4ed4e4c6d6f5d9b665e825e079eddef4a0a87a9c52f0f49231f
+  native-state.json: e57a51bf4827db9884b753b82a9c641feb9268e158e6704a77290cf0b0f70ec9

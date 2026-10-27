@@ -1,17 +1,22 @@
 from __future__ import annotations
 
-import asyncio
+import ipaddress
 import json
 import re
 import secrets
+import ssl
+import time
 import uuid
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
+from functools import partial
 
+import anyio
 import httpx
 from fastapi import HTTPException, Request, Response, status
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import JSONResponse, StreamingResponse
+from kubernetes.client import ApiException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -19,9 +24,12 @@ from automl_api.core.config import get_settings
 from automl_api.models.enums import ProjectRole, RunKind, RunStatus
 from automl_api.models.iam import User
 from automl_api.models.runs import ModelRun
-from automl_api.security.deployments import deployment_token
+from automl_api.services import inference_identity, upload_verification
+from automl_api.services.inference_tls import DATA_PORT, PROTOCOL, PeerIdentity
+from automl_api.services.kubernetes_training import KubernetesTrainingClient
 from automl_api.services.projects import require_project_role
 from automl_api.services.uploads import get_upload_session, require_verified_upload_digest
+from automl_api.services.workflow_state import StaleFence, canonical_request_hash
 from automl_api.storage.contracts import UploadContractError
 from automl_api.storage.object_store import get_object_store
 
@@ -62,16 +70,50 @@ class DeploymentInferenceTarget:
     service_name: str
     namespace: str
     deployment_id: uuid.UUID | None = None
+    peer: PeerIdentity | None = None
+    address: str | None = None
+    tls_context: ssl.SSLContext | None = None
+    selection: InferenceSelection | None = None
 
-    def authenticated_headers(self) -> dict[str, str]:
-        return (
-            {"X-Sceptre-Deployment-Token": deployment_token(self.deployment_id)}
-            if self.deployment_id
-            else {}
-        )
+    def require_admission(self):
+        if (
+            self.peer is None
+            or self.selection is None
+            or not self.address
+            or not isinstance(self.tls_context, ssl.SSLContext)
+            or self.tls_context.verify_mode != ssl.CERT_REQUIRED
+            or not self.tls_context.check_hostname
+            or self.tls_context.hostname_checks_common_name
+            or str(self.deployment_id) != self.peer.run_id
+            or self.selection.deployment_id != self.deployment_id
+            or str(self.selection.project_id) != self.peer.project_id
+        ):
+            raise HTTPException(409, "The deployment requires original pod TLS admission.")
 
     def url_for(self, path: str) -> str:
-        return f"http://{self.service_name}.{self.namespace}.svc:8080/{path}"
+        self.require_admission()
+        address = ipaddress.ip_address(self.address)
+        host = f"[{address}]" if address.version == 6 else str(address)
+        return f"https://{host}:{DATA_PORT}/{path}"
+
+
+@dataclass(frozen=True)
+class InferenceSelection:
+    project_id: uuid.UUID
+    actor_id: uuid.UUID
+    token_version: int
+    deployment_id: uuid.UUID
+    service_name: str
+    namespace: str
+    scope: inference_identity.IdentityScope
+
+
+@dataclass(frozen=True)
+class InferenceInspection:
+    selection: InferenceSelection
+    peer: PeerIdentity
+    address: str
+    tls_context: ssl.SSLContext
 
 
 def resolve_deployment_inference_target(
@@ -79,7 +121,11 @@ def resolve_deployment_inference_target(
     user: User,
     project_id: uuid.UUID,
     run_id: uuid.UUID,
-) -> DeploymentInferenceTarget:
+    *,
+    inspection: InferenceSelection | None = None,
+) -> InferenceSelection:
+    from automl_api.services.operations import _deployment_reader
+
     require_project_role(db, user, project_id, ProjectRole.VIEWER)
     run = db.scalar(
         select(ModelRun).where(
@@ -119,10 +165,128 @@ def resolve_deployment_inference_target(
                 "Redeploy the registered model."
             ),
         )
-    return DeploymentInferenceTarget(
+    if (run.tags or {}).get("inference_identity_protocol") != PROTOCOL:
+        raise HTTPException(409, "Redeploy this model to qualify its pod TLS identity.")
+    current = _deployment_reader(db, user, project_id, inspection)
+    try:
+        scope = inference_identity.select_scope(db, run_id, None)
+        if (
+            scope.request["project_id"] != str(project_id)
+            or run.status not in _ACTIVE_DEPLOYMENT_STATUSES
+        ):
+            raise StaleFence("Inference deployment changed during selection")
+    except (StaleFence, ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(409, "Original inference custody could not be qualified.") from exc
+    return InferenceSelection(
+        project_id=project_id,
+        actor_id=current.id,
+        token_version=current.token_version,
         service_name=service_name,
         namespace=namespace,
         deployment_id=run.id,
+        scope=scope,
+    )
+
+
+def _ready_pod(pod):
+    status = pod.get("status") or {}
+    return (
+        not pod["metadata"].get("deletionTimestamp")
+        and status.get("phase") == "Running"
+        and any(
+            item.get("type") == "Ready" and item.get("status") == "True"
+            for item in status.get("conditions") or []
+        )
+    )
+
+
+def inspect_deployment_inference_target(selection: InferenceSelection) -> InferenceInspection:
+    try:
+        if canonical_request_hash(selection.scope.request) != selection.scope.digest:
+            raise StaleFence("Inference selection changed")
+        signer = inference_identity.authority()
+        if signer.digest != selection.scope.request["ca_digest"]:
+            raise StaleFence("Inference authority changed")
+        k8s = KubernetesTrainingClient()
+        if not k8s._configured:
+            raise RuntimeError("Native identity verification unavailable")
+        deadline = time.monotonic() + 30
+        result = k8s.core.list_namespaced_pod(
+            namespace=selection.namespace,
+            label_selector=f"automl.platform/deployment-id={selection.deployment_id}",
+            limit=100,
+            _request_timeout=5,
+        )
+        if getattr(result.metadata, "_continue", None) or len(result.items) > 100:
+            raise StaleFence("Incomplete inference pod inventory")
+        pods = [inference_identity._object(item) for item in result.items]
+        uids = [pod["metadata"]["uid"] for pod in pods]
+        if len(set(uids)) != len(uids):
+            raise StaleFence("Repeated inference pod identity")
+        for candidate in pods:
+            if not _ready_pod(candidate):
+                continue
+            peer, pod = inference_identity.verify_pod(
+                k8s,
+                selection.scope,
+                candidate["metadata"]["name"],
+                candidate["metadata"]["uid"],
+                deadline=deadline,
+            )
+            if not _ready_pod(pod):
+                raise StaleFence("Inference pod readiness changed")
+            address = ipaddress.ip_address(pod["status"]["podIP"])
+            if getattr(address, "scope_id", None) is not None:
+                raise StaleFence("Scoped inference address is not admissible")
+            address = getattr(address, "ipv4_mapped", None) or address
+            if (
+                address.is_loopback
+                or address.is_unspecified
+                or address.is_link_local
+                or address.is_multicast
+            ):
+                raise StaleFence("Invalid inference pod address")
+            if inference_identity.authority().digest != signer.digest:
+                raise StaleFence("Inference authority changed during inspection")
+            return InferenceInspection(selection, peer, str(address), signer.client_context())
+        raise StaleFence("No original ready inference pod")
+    except (
+        ValueError,
+        KeyError,
+        TypeError,
+        AttributeError,
+        RuntimeError,
+        OSError,
+        ApiException,
+    ) as exc:
+        raise HTTPException(503, "The original inference pod could not be admitted.") from exc
+
+
+def finalize_deployment_inference_target(db, user, inspected: InferenceInspection):
+    selected = inspected.selection
+    if canonical_request_hash(selected.scope.request) != selected.scope.digest:
+        raise HTTPException(409, "The inference selection changed during admission.")
+    current = resolve_deployment_inference_target(
+        db,
+        user,
+        selected.project_id,
+        selected.deployment_id,
+        inspection=selected,
+    )
+    if current.scope.digest != selected.scope.digest:
+        raise HTTPException(409, "The deployment changed during inference admission.")
+    try:
+        inference_identity.bound_peer(db, current.scope, inspected.peer)
+    except (StaleFence, ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(409, "The inference pod has no original key binding.") from exc
+    return DeploymentInferenceTarget(
+        current.service_name,
+        current.namespace,
+        current.deployment_id,
+        inspected.peer,
+        inspected.address,
+        inspected.tls_context,
+        current,
     )
 
 
@@ -154,16 +318,14 @@ async def proxy_deployment_inference(
     upstream_url = httpx.URL(target.url_for(upstream_path)).copy_with(
         query=request.scope.get("query_string", b""),
     )
-    client = _new_http_client()
+    client = _new_http_client(target)
     upstream_request = client.build_request(
         request.method,
         upstream_url,
-        headers={
-            **_selected_headers(request.headers, _FORWARDED_REQUEST_HEADERS),
-            **target.authenticated_headers(),
-        },
+        headers=_selected_headers(request.headers, _FORWARDED_REQUEST_HEADERS),
         content=request.stream(),
     )
+    upstream_request.extensions["sni_hostname"] = target.peer.hostname
     upstream_response = await _send_upstream(client, upstream_request, target)
 
     if path in {"docs", "openapi.json"}:
@@ -185,14 +347,15 @@ async def proxy_object_backed_offline_inference(
     project_id: uuid.UUID,
 ) -> Response:
     """Stream a verified direct upload to inference without browser retransmission."""
+    target.require_admission()
     body = bytearray()
     async for chunk in request.stream():
-        body.extend(chunk)
-        if len(body) > _MAX_OBJECT_REQUEST_BYTES:
+        if len(body) + len(chunk) > _MAX_OBJECT_REQUEST_BYTES:
             raise HTTPException(
                 status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                 detail="The object-backed inference request is too large.",
             )
+        body.extend(chunk)
     try:
         document = json.loads(body)
         session_id = uuid.UUID(str(document["upload_session_id"]))
@@ -202,6 +365,12 @@ async def proxy_object_backed_offline_inference(
             detail="A valid offline-scoring upload_session_id is required.",
         ) from exc
 
+    db.expire_all()
+    target = finalize_deployment_inference_target(
+        db,
+        user,
+        InferenceInspection(target.selection, target.peer, target.address, target.tls_context),
+    )
     upload = get_upload_session(db, user, project_id, session_id)
     if upload.upload_kind != "offline_scoring":
         raise HTTPException(
@@ -219,37 +388,43 @@ async def proxy_object_backed_offline_inference(
         raise HTTPException(
             status_code=409, detail="The offline-scoring upload lacks verified digest evidence."
         ) from exc
+    try:
+        selected = upload_verification.verified_object(db, upload, get_settings())
+    except (
+        UploadContractError,
+        StaleFence,
+        KeyError,
+        TypeError,
+        ValueError,
+        AttributeError,
+    ) as exc:
+        raise HTTPException(409, "The upload lacks original versioned verification proof.") from exc
+    db.commit()
     store = get_object_store()
-    if upload.provider_driver != store.driver_name:
+    if selected.driver != store.driver_name:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="The upload provider does not match the active object-store driver.",
+            409, "The upload provider does not match the active object-store driver."
         )
 
-    source = store.open_stream(upload.completed_object_uri)
     boundary = f"sceptre-{secrets.token_hex(16)}"
     upstream_url = httpx.URL(target.url_for("v1/predict/offline")).copy_with(
         query=request.scope.get("query_string", b""),
     )
     headers = _selected_headers(request.headers, {"accept", "accept-encoding", "accept-language"})
     headers["content-type"] = f"multipart/form-data; boundary={boundary}"
-    client = _new_http_client()
-    upstream_request = client.build_request(
-        "POST",
-        upstream_url,
-        headers={**headers, **target.authenticated_headers()},
-        content=_multipart_object_body(
-            source,
-            boundary=boundary,
-            filename=upload.original_filename,
-            content_type=upload.content_type or "application/octet-stream",
-        ),
-    )
+    client = _new_http_client(target)
+    body = _multipart_object_body(store, selected, boundary=boundary)
     try:
+        upstream_request = client.build_request("POST", upstream_url, headers=headers, content=body)
+        upstream_request.extensions["sni_hostname"] = target.peer.hostname
         upstream_response = await _send_upstream(client, upstream_request, target)
     except BaseException:
-        source.close()
+        with anyio.CancelScope(shield=True):
+            await client.aclose()
         raise
+    finally:
+        with anyio.CancelScope(shield=True):
+            await body.aclose()
     return _streaming_upstream_response(upstream_response, client)
 
 
@@ -282,6 +457,25 @@ async def _send_upstream(
         raise
 
 
+class _InferenceStreamingResponse(StreamingResponse):
+    def __init__(self, content, *, upstream, client, **kwargs):
+        self.upstream, self.client = upstream, client
+        super().__init__(content, **kwargs)
+
+    async def close_upstream(self):
+        with anyio.CancelScope(shield=True):
+            try:
+                await self.upstream.aclose()
+            finally:
+                await self.client.aclose()
+
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            await self.close_upstream()
+
+
 def _streaming_upstream_response(
     upstream_response: httpx.Response,
     client: httpx.AsyncClient,
@@ -296,38 +490,45 @@ def _streaming_upstream_response(
             async for chunk in upstream_response.aiter_raw():
                 yield chunk
         finally:
-            await upstream_response.aclose()
-            await client.aclose()
+            await response.close_upstream()
 
-    return StreamingResponse(
+    response = _InferenceStreamingResponse(
         response_body(),
+        upstream=upstream_response,
+        client=client,
         status_code=upstream_response.status_code,
         headers=response_headers,
     )
+    return response
 
 
 async def _multipart_object_body(
-    source,
-    *,
-    boundary: str,
-    filename: str,
-    content_type: str,
+    store, selected: upload_verification.VerifiedObject, *, boundary: str
 ) -> AsyncIterator[bytes]:
-    safe_filename = re.sub(r"[^A-Za-z0-9._-]+", "_", filename).strip("._") or "input.csv"
-    yield (
-        f'--{boundary}\r\nContent-Disposition: form-data; name="file"; '
-        f'filename="{safe_filename}"\r\nContent-Type: {content_type}\r\n\r\n'
-    ).encode("ascii")
+    source = None
     try:
-        while chunk := await asyncio.to_thread(source.read, 1024 * 1024):
+        # HTTPX consumes this iterator only after authenticating the TLS peer.
+        source = await anyio.to_thread.run_sync(
+            partial(store.open_stream, selected.uri, version=selected.version)
+        )
+        filename = re.sub(r"[^A-Za-z0-9._-]+", "_", selected.filename).strip("._") or "input.csv"
+        yield (
+            f'--{boundary}\r\nContent-Disposition: form-data; name="file"; '
+            f'filename="{filename}"\r\nContent-Type: {selected.content_type}\r\n\r\n'
+        ).encode("ascii")
+        while chunk := await anyio.to_thread.run_sync(source.read, 1024 * 1024):
             yield chunk
     finally:
-        source.close()
+        if source is not None:
+            with anyio.CancelScope(shield=True):
+                await anyio.to_thread.run_sync(source.close)
     yield f"\r\n--{boundary}--\r\n".encode("ascii")
 
 
-def _new_http_client() -> httpx.AsyncClient:
+def _new_http_client(target: DeploymentInferenceTarget) -> httpx.AsyncClient:
+    target.require_admission()
     return httpx.AsyncClient(
+        verify=target.tls_context,
         follow_redirects=False,
         timeout=httpx.Timeout(
             connect=10.0,

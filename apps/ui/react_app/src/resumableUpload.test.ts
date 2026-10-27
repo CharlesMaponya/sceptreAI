@@ -315,6 +315,50 @@ describe("resumable browser uploads", () => {
     expect(api.calls.filter((path) => path.endsWith("/abort"))).toHaveLength(1);
   });
 
+  it("retries failed cancellation with the same key and retains the resume record", async () => {
+    installApi([pendingProgress()]);
+    const original = vi.mocked(apiModule.api).getMockImplementation()!;
+    const keys: Array<string | null> = [];
+    vi.mocked(apiModule.api).mockImplementation(async (path, init) => {
+      if (path.endsWith("/abort")) {
+        keys.push(new Headers(init?.headers).get("Idempotency-Key"));
+        if (keys.length === 1) throw new Error("Original retirement pending");
+      }
+      return original(path, init);
+    });
+    const telemetry: string[] = [];
+    const file = new File(["abcdef"], "records.csv", { type: "text/csv", lastModified: 65 });
+    const controller = createResumableUpload({ ...options(file), onTelemetry: (value) => telemetry.push(value.stage) });
+    const rejected = expect(controller.result).rejects.toThrow("cancelled");
+    controller.pause();
+    await waitFor(() => telemetry.includes("paused"));
+    await expect(controller.cancel()).rejects.toThrow("retirement pending");
+    expect(await loadPersistedUpload(`${projectId}:records.csv:6`)).toBeDefined();
+    await Promise.all([controller.cancel(), controller.cancel()]);
+    await rejected;
+    expect(keys).toEqual([`upload-abort:${session.id}`, `upload-abort:${session.id}`]);
+    expect(await loadPersistedUpload(`${projectId}:records.csv:6`)).toBeUndefined();
+  });
+
+  it("cancels a session admitted after the user stopped the upload", async () => {
+    const calls = installApi([pendingProgress()]);
+    const original = vi.mocked(apiModule.api).getMockImplementation()!;
+    let release: ((value: UploadSession) => void) | undefined;
+    vi.mocked(apiModule.api).mockImplementation(async (path, init) => {
+      if (path.endsWith("/datasets/uploads")) return new Promise<UploadSession>((resolve) => { release = resolve; });
+      return original(path, init);
+    });
+    const file = new File(["abcdef"], "records.csv", { type: "text/csv", lastModified: 66 });
+    const controller = createResumableUpload(options(file));
+    const rejected = expect(controller.result).rejects.toThrow("cancelled");
+    await waitFor(() => Boolean(release));
+    await controller.cancel();
+    release!(session);
+    await rejected;
+    expect(calls.calls.filter((path) => path.endsWith("/abort"))).toHaveLength(1);
+    expect(calls.calls.filter((path) => path.endsWith("/progress"))).toHaveLength(0);
+  });
+
   it("uses a valid saved session and discards a stale file fingerprint", async () => {
     const file = new File(["abcdef"], "records.csv", { type: "text/csv", lastModified: 6 });
     const key = `${projectId}:records.csv:6`;

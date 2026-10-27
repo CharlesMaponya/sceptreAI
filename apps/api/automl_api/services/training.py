@@ -69,6 +69,7 @@ from automl_api.services.workflow_state import (
     canonical_request_hash,
     enqueue_outbox,
     seal_promotional_scope,
+    supersede_trial_attempts,
     transition_attempt,
     transition_command,
 )
@@ -1003,6 +1004,12 @@ def cancel_training_run(
     if run.status in {RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.PREEMPTED}:
         return run
     now = datetime.now(UTC)
+    supersede_trial_attempts(
+        db,
+        project_id=project_id,
+        model_run_id=run.id,
+        terminal_reason="training run cancelled by user",
+    )
     if run.status == RunStatus.CANCELLED:
         run.tags = _cancelled_training_tags(run.tags, run.finished_at or now)
         run.finished_at = run.finished_at or now

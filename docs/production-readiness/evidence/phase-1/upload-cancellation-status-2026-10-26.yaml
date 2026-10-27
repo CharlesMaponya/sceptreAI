@@ -1,0 +1,124 @@
+date: '2026-10-26'
+phase: 1
+scope: qualified-s3-multipart-absence-status
+status: verified_scope_only
+phase_complete: false
+full_upload_admission_complete: false
+source_inputs: 653
+source_manifest_sha256: 15d79c68cf142c869aa0a075e842dcfd54289c98027d1eba15458ab8bca9423a
+private_evidence_directory: .unlazy/phase1-upload-cancellation-status
+checks:
+  cancellation:
+    passed: 69
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43628990464
+    xml_sha256: 01fa80f7b0ad7dccb2c4a7f053847d09f0e8c0c8d88002dab3b5e7ddd77d3df7
+  connected:
+    passed: 560
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43625656320
+    xml_sha256: 37d5f8ecb339a59884108b5a44da7cdd388efdc563302792d7daabf573f5fcf2
+counts_overlap: true
+status_boundary_gates:
+  met: 3
+  unmet: 0
+  abandoned: 0
+admission_gates:
+  met: 0
+  unmet: 4
+upload_completion_gates:
+  met: 0
+  unmet: 6
+parent_inference_gates:
+  met: 0
+  unmet: 8
+phase_1_requirements:
+  verified: 2
+  open: 34
+baseline:
+  failed: 43
+  passed: 5
+  errors: 0
+  skips: 0
+  real_sdk_failures: 6
+original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+integration_readonly:
+  status: terminal_pass
+  read_only: true
+  source_manifest_sha256: 15d79c68cf142c869aa0a075e842dcfd54289c98027d1eba15458ab8bca9423a
+  observed_at: '2026-10-26T18:46:47.451216+00:00'
+  revision: 0018_attempt_predecessor_lineage
+  tables: 44
+  schema_differences: []
+  namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+  original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+  reserve_bytes: 43500000000
+  free_bytes: 43628294144
+behavior:
+- The shared S3 multipart absence helper requires both NoSuchUpload and an actual
+  integer HTTP404. A permission failure, throttle, contradictory success/error status,
+  missing metadata or string404 cannot prove cancellation or trigger the specific
+  expired-session mapping.
+- Upload precheck, abort acknowledgement and confirmation checks preserve errors.
+  Six installed-SDK/local HTTP controls return a NoSuchUpload body with HTTP403 or503
+  at those three boundaries; controlled later recovery proves original-session replay
+  without hidden native retries.
+- Prefix cleanup also preserves the original ClientError and stops before deleting
+  object versions. Ten negative cases cover both abort and list-parts errors; original
+  peer preservation/replay assertions remain unchanged.
+- The previous prefix fixture omitted HTTP status from its NoSuchUpload exception.
+  It now models a truthful404 without removing any original assertions. Existing genuine404,
+  surviving empty session, permission, throttle, SDK retry and provider regression
+  controls remain.
+- The baseline has43 failures and5 preserved passing controls. All selected current-source
+  cases pass after the shared fix. This is a provider error-boundary prerequisite;
+  it does not implement native admission cleanup or qualify the entire Phase1 objective.
+limits:
+  user_database_ceiling_bytes: 45000000000
+  largest_table_rows: null
+  missing_historical_objects: 7
+  native_admission_cleanup: unqualified
+  production_sized_migration: unqualified
+  large_upload_load: unqualified
+  maintained_images: unqualified
+  deployed_cloud_iam: unqualified
+  mixed_version: unqualified
+  full_release_coverage: unqualified
+  whole_phase_1: unqualified
+remaining:
+- Authenticated known/unknown/superseded native admission session cleanup and bounded
+  background reconciliation remain required. Superseded replies can alias a winner
+  and lack separate arrival anchors.
+- Complete factory/current-actor/source/command conversion of instruction/progress
+  native I/O and full admission/completion/inference acceptance remain required.
+- 45GB physical database qualification cannot fit alongside the43.5GB reserve; largest-table
+  row counts remain unspecified.15-by-10GiB load, maintained images, full release/branch
+  coverage, mixed-version and deployed cloud/native journeys remain unqualified.
+- UI and offline/TLS profiles were not repeated for this S3 mutation/error change;
+  their prior snapshots remain historical, and no full current-source release qualification
+  is claimed.
+- Original deletion:G7 requires seven missing historical objects (two models, five
+  signed results); none were reconstructed or re-signed.
+evidence_hashes:
+  source-sha256.json: 15d79c68cf142c869aa0a075e842dcfd54289c98027d1eba15458ab8bca9423a
+  before-source-sha256.json: 26ace55faee89285fdb444003cbca351b34ce54231ee501c6f6cae4b928b175d
+  baseline-source-sha256.json: 823413c833ac274aa7653db1e55e1074259b485853f794c0dafabad8ccc1a46b
+  before-s3.py: 51b712359a6923cead59dd836268bdd80c96e026509e9b7efb4e9801884b333a
+  before-tests.py: dcb3efaafaf5ea3c4e2d27761ffff6d349928a83284f3827edc6fae60ad6e80a
+  before-object-store-tests.py: edec9b9077a77c193ff2761c9ac117873d165c3154ff4ccef1886b6dc794e28f
+  baseline-test.py: 6d877a82536a04fe1038c69c985f7728757ab65c6ee952d1474adb6d0ec598cf
+  baseline-object-store-tests.py: 4a73ab7291ecb4b0c99a1191c0d40e40e1a480c8e7f6249f2755135126335270
+  baseline.xml: ede5a467921db0d0dc6a235278a90692d01b4fab366c2f114c19f913079dc309
+  baseline-state.json: 07b707ef0169853f86a518b8a52ffa6998e1e05b59876e126116250f83193860
+  run.py: fcd5ba00d4a04868a6094cc18dd1d430e4762f93639675cff58d918a152c5cb4
+  audit.py: cfafc1a2970adffb5e8ec9498baf125baab5ed25110f0949187203eaeb312fbd
+  integration-readonly.json: a6260f1e4ff985254a51264f646278c2c85d3eb0877a3a2336e151a320149507
+  cancellation-state.json: c209c7f29b9bbd4cd4c3f9bdc55ed3eb2488d36be6ea26bf99b19dc929edb2db
+  cancellation.xml: 01fa80f7b0ad7dccb2c4a7f053847d09f0e8c0c8d88002dab3b5e7ddd77d3df7
+  connected-state.json: 1526e8a605448bbf021a3e9785604ac8abd28bd507cad2e6a278835cefe9b2b4
+  connected.xml: 37d5f8ecb339a59884108b5a44da7cdd388efdc563302792d7daabf573f5fcf2

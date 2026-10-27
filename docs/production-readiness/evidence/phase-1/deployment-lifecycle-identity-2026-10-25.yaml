@@ -1,0 +1,177 @@
+date: '2026-10-25'
+scope: deployment-lifecycle-identity
+phase: 1
+phase_complete: false
+source_inputs: 588
+source_manifest_sha256: 3389fd41a2f9a5b3c7a5f72057ab427594a244a36a51db1992f374ae82a2f36f
+checks:
+  passed: 275
+  focused: 50
+  failures: 0
+  errors: 0
+  skips: 0
+  original_negative_control_failures: 3
+  strict_schema: 0018_attempt_predecessor_lineage
+  repository_ruff: pass
+  changed_hunk_format: pass
+  ci_preflights: 3
+  native_k3d_cases: 1
+  actual_postgresql_backend_termination: true
+  scoped_gates_reverified: 4
+behavior:
+- All three control services require original modern deployment admission and immutable
+  submission receipts. Namespace, run/project identity, actor/command, manifest/request
+  digests, original object receipt and native UID/spec are checked; legacy or partial
+  native histories cannot fall back to names.
+- Scale operations read original custody, normalize only the approved replica field
+  when comparing the saved full observed spec, and use JSON patches testing original
+  UID and current resourceVersion before changing replicas. Observed native CAS conflicts
+  return HTTP 409 without overwriting logical state.
+- Cleanup preflights every original resource before deletion and follows the saved
+  Ingress/Service/Deployment inventory even when current ingress configuration is
+  disabled. Every DELETE has the exact original UID precondition and foreground propagation;
+  replacement resources are never adopted or deleted.
+- A cleanup acknowledgement is not retirement. Original resources must be absent and
+  labeled ReplicaSets/Pods and list continuation must be empty in the original namespace.
+  Pending retirement returns 409, preserves metadata and keeps the submission deletion
+  barrier.
+- Physical retirement is stored as a canonical receipt bound to the unchanged creation
+  journal, original namespace UID and original resource UID map. Missing/malformed/coerced
+  or misbound evidence cannot lift the barrier; SQL connection loss after native deletion
+  recovers without deleting again.
+- Known unstarted modern launches retain SQL-only cancellation/cleanup. Their original
+  admission and protocol are checked and the original producer subsequently acknowledges
+  cancellation without object/Kubernetes writes. This does not classify unknown native
+  starts as unstarted.
+- Permission and model-custody gates, active replacement checks, stop/start logical
+  state and qualified restart/download behavior remain covered. Old unit fixtures
+  now explicitly stub the native-custody dependency; committed PostgreSQL tests exercise
+  the real proof and retirement paths.
+native_kubernetes:
+  provider: owned local k3d-sceptre
+  tls_verified: true
+  zero_replica_resources: true
+  pods_started: 0
+  conditional_zero_patch_attempts: 1
+  conditional_zero_patch_passed: true
+  stale_resource_version_http_status: 422
+  same_name_replacement_rejected_actions:
+  - stop
+  - start
+  - cleanup
+  foreign_mutation_attempts: 0
+  original_retirement_observed: true
+  explicit_deployment_service_creates: 4
+  explicit_resource_uids_retired: 4
+  owned_namespace_retired: true
+  shared_fixture_namespace_uid_preserved: true
+  maintained_image_tested: false
+  positive_replica_restart_qualified: false
+  sql_control_workflow_qualified: false
+  cloud_iam_qualified: false
+retained_failures:
+- Three unchanged baseline control bodies reproduced foreign same-name mutations through
+  stop, start and cleanup. All pass after conversion; the earlier equivalent draft
+  baseline is retained.
+- The first three-control implementation run passed, followed by 35 unit identity/retirement
+  cases. Draft lint found a leftover calls variable in a combined legacy test after
+  its fixture conversion; the original job-cleanup callback was restored.
+- The first PostgreSQL expansion passed 45 and failed 1 because a test helper returned
+  an expired ORM instance after closing its session. It now captures the status inside
+  that session, preserving the business assertions.
+- The second expansion passed 47 and failed 1 because its test directly assigned a
+  frozen Settings field. The fixture now uses dataclasses.replace; the current 50
+  focused cases pass.
+- The first caller pilot passed 121 and failed 9 because older business fixtures omitted
+  the new custody dependency, including a bare404 standing in for verified retirement.
+  Explicit test-only dependency stubs restore their intended scope;403/503 assertions
+  remain, while raw404 handling and actual retirement are tested below that abstraction.
+  The repaired 130-case pilot passes.
+limits:
+  requirements:
+    total: 36
+    verified: 2
+    open: 34
+  sql_free_control_workflow_qualified: false
+  user_database_ceiling_bytes: 45000000000
+  largest_table_rows: not supplied
+  free_disk_reserve_bytes: 43500000000
+  minimum_observed_free_bytes_during_regression: 43851689984
+  scale_qualified: false
+  required_handoff: Original phase1-deletion:G7 remains abandoned for seven missing
+    original historical QA objects (2 models,5 signed results); do not reconstruct
+    or re-sign.
+  remaining:
+  - Stop/restart/cleanup native calls still run under the caller SQL transaction.
+    Factory-owned control admission/dispatch, committed control generations and complete
+    process-loss/ordering qualification remain required; this is native target identity
+    and retirement observation, not full lifecycle completion.
+  - DELETEs currently pin the original UID. The durable control conversion must also
+    fence resourceVersion/control generation so a delayed older cleanup cannot override
+    a newer control, including no-op scales.
+  - Legacy, partial and unknown native histories require controlled qualification;
+    no guessed native UID or rewritten historical proof is accepted. Modern launches
+    known not to have started Kubernetes work remain cancellable.
+  - Namespace admission fencing for creation and complete worker credential withdrawal/IAM/network
+    restrictions remain required. Native deployment observers still need SQL separation
+    and complete lifecycle custody.
+  - The native probe keeps replicas at zero. It verifies primitives and same-name
+    replacement refusal, not a running inference image, positive-replica restart,
+    native Pod finalizer/process-loss campaign, real cloud IAM or the complete control
+    workflow.
+  - Current full backend/release and independent branch coverage >=90.01 percent,
+    maintained images, actual prior binaries/mixed versions/cloud providers and complete
+    native workflow journeys remain required.
+  - 45 GB migration qualification and 15 users each uploading 10 GiB require suitable
+    infrastructure; neither was run locally.
+evidence_hashes:
+  source-sha256.json: 3389fd41a2f9a5b3c7a5f72057ab427594a244a36a51db1992f374ae82a2f36f
+  before-source-sha256.json: 873bf093a00e1b0c5349a174d1b22dfd3e921b91bc9aed8dc89a493970292391
+  baseline-source-sha256.json: 4762fa844aae397ae52952ff7f490561644ffd8dd27f431f880c966aae142648
+  baseline-test.py: 3f9394d4555055220f031e64a14c3e03312bef9ab66b6a01851af5d165ebdf3d
+  first-passing-source-sha256.json: 6fe897ae835fa8a0ff36d9b232217ce66a77db9f04132e216f28b68ca0e15c67
+  unit-passing-source-sha256.json: 79d8eec007905e7588c475405f2d0c9f787c9b8eebb8dec4123f9b9a7dbb328f
+  first-integration-source-sha256.json: 6552b93a65bf036bbd3ff71e62a0bf7f945a7e38ee8f04d4fc61dba2bae7a430
+  second-integration-source-sha256.json: c10354c0ae15654e7c79500fceaacf2e269c22a75779eee26d90e89ee345165a
+  first-callers-source-sha256.json: 687c9ca05a951710de999822758d84e95f43f753ba3953d10cb5f376130f9a80
+  run.py: 24c036fe6de84ecbd3cb982ca8e830f1b90ca5309c04f1c1853dff5ccf384fc1
+  audit.py: fad6ba7188639eed13dc8181453e3de0cf27b529f984e3d79b883794f220a63b
+  test_native_identity.py: bc19ac157386237b25e6de733937aaf5256bf263df0409835dc6c37add2efd25
+  native-probe-state.json: b148d276f6569e0f76da94de34f7318a31e9cd1a1f1428da573917e9dfd618f2
+  lint.log: 82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18
+  preflight-0.log: 00c8dcf3b37f2eac6114a4c21f9f742c56e354ada6672f1b15189664820d92a5
+  preflight-1.log: a414947a0f058a04ee8ca14e4023b0661f0892a6cb81c082ba87469dd71ed9e9
+  preflight-2.log: dffd5dbca119ddf99cc5a088942e02d1127f7108463f4627161d74775ec7e554
+  draft-baseline.log: 226d0dff81d8d919cd37f6bce5a7d90837e5cf1a2eaddbb249519a8fe72424ae
+  draft-baseline.xml: 5057aac321a8114b0151707f86a54c42c7d854e43a51b36d0e61fcf2a98aaed4
+  draft-baseline-state.json: 6e1b49bc11ebc1e381401969a11738ec92106c9f194044a1e1499c545fb7bced
+  baseline.log: 53c14a4d40fb78af61445d338dbf11d23b452e8761e44c3e3c0a2fb6a2ffc7af
+  baseline.xml: 7acd08563ca81d0dcf32e5e6d91e8d4687afb86585281f544585b3960e7b7504
+  baseline-state.json: 54190db5e4e8dac415c78a0a0743a1f28925a0ec046f0140226e7ff252af5503
+  first-passing-focused.log: c82bef8283473b73cc356a97c8f3c1bf33fc20eb7bd0889bc28f20fb28e3f591
+  first-passing-focused.xml: 8cec26c7da3bf056ffa180f68169817bf06f519193751392a4c18d4412c6c24f
+  first-passing-focused-state.json: d66d3b6a2d431b2a3beb82d6786480eff6b6d819a517693568317c45f2c9eb4b
+  unit-passing-focused.log: cc0da3087e651c8f7c3b278422701d0739e16e8c0b7a8e69ace12d6910279f0b
+  unit-passing-focused.xml: efef3155b5a8d20d034fdb4bd7d84e07427ce91cb81ccfef34bde0c0aa1c5b4c
+  unit-passing-focused-state.json: 2e20b7d3c82e5925b705d516455632ab09118647a4d508b04ad56ac525adb359
+  first-integration-focused.log: 640b4db4f0e5c0b2bc4b28214b373da73e8c88956e9c9b089499f9024ca6380b
+  first-integration-focused.xml: 739ee6e7c2ec91d6d68aa145e4e8847fe447e7fc001fb268f5a8ebab467af7f6
+  first-integration-focused-state.json: 4a0f68a353ab44038e1e9fd5ca48c4790cd82da0efad2bcf5d9955b582046bdc
+  second-integration-focused.log: c1b50e79e5901389a3b20abe6195b551e9654ba0b53e429fd931e30aee560e52
+  second-integration-focused.xml: 4a29225b86a8392ee9018487478a5bf821e55500b5ae85f072a9c4d09c1e4195
+  second-integration-focused-state.json: 815434bf24ba09073213fb6ddb0b23858feb43f755a86bac948098c513a9ad63
+  first-callers.log: e15962554981837d6d2f2c3781c31c9218dfd0ef438fa78c84e61f7dc883cbfb
+  first-callers.xml: 0f01209e1eeb38caaaee2bd81c8c68f30fcc3775124bd23d5a2150a30648e0fe
+  first-callers-state.json: 5488d2747cc3ebc8002471cd67b684659a627b4bb176a6d492712c8e9f771e60
+  callers.log: cef40b63f4d8bd9d256be5b35441b788e32ffbad90d4eafe45fb52450ce010be
+  callers.xml: eed669fc50ef8f81e882732db2e86f01c05fba9edd27110fcaaa2fb5b1764518
+  callers-state.json: 5618b25778d933a7af51489338bc024901f3f807fb94b3eb4c2f867847989cd4
+  focused.log: 01c8e62657a19b544bea28d4ba65dcf3a0cb1f71f827637128b954d11b7c7754
+  focused.xml: dac492c35960e78280ce4757710b21f15af0822f3bdc8f4e1921c30f582e61b2
+  focused-state.json: c2ba9f2dfcffe6e4270d42c25f1b0c14b0bb263c23a06b77a93ef5c27113b784
+  regression.log: 69c06bfdc8c719d9cc6db20665ca3a50d4007840de8bd1584773656c4ddd7a9b
+  regression.xml: 97e126f13c472c05f844eb46b4c4778e3d7e61d7a60d1e3fd6b9cc574357eca1
+  regression-state.json: 4ca1cb28dd6eba82ef355f654098b3bc80e24307c90129f43944f628a504431f
+  native.log: 0756c73fb5c2842cfacef9e821102b254f1171babea5eded056f00e77561dc40
+  native.xml: 2f62b31e994bb1ed47048b31ae740fa6480661cd482a38506261e09a764955f0
+  native-state.json: 15c383c63a00262501aa51d90fb1fa3061f98d4db3ab8804e90f500fb6a31184

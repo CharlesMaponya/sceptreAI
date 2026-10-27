@@ -27,10 +27,11 @@ from automl_api.models.workflows import (
     WorkflowAttemptCredentialGrant,
     WorkflowCommand,
 )
-from automl_api.services import deletion, reconciler
+from automl_api.services import deletion, deletion_workflow, reconciler
 from automl_api.services import workflow_state as state
 from automl_api.storage.contracts import DeletionPending
 from automl_api.storage.embedded import EmbeddedObjectStoreDriver
+from kubernetes.client import ApiException
 from sqlalchemy import delete, select
 from sqlalchemy.orm import sessionmaker
 from test_attempt_object_grant_schema import grant_values, make_attempt
@@ -38,6 +39,7 @@ from test_attempt_object_grants import grant_case as grant_case  # noqa: F401
 from test_attempt_object_grants import issue
 from test_grant_retirement import clock as clock  # noqa: F401
 from test_grant_retirement import started_grant
+from test_project_management_integration import reconcile_deletion_stage, record_known_ray_job
 from test_provider_import_consumers import source_case as source_case  # noqa: F401
 from test_provider_import_registration import registration_case as registration_case  # noqa: F401
 
@@ -50,6 +52,7 @@ def cleanup_case(phase1_engine, committed_tenant, tmp_path, monkeypatch, clock):
     factory = sessionmaker(phase1_engine, expire_on_commit=False)
     monkeypatch.setattr(state, "datetime", deletion.datetime)
     monkeypatch.setattr(reconciler, "datetime", deletion.datetime)
+    monkeypatch.setattr(deletion_workflow, "datetime", deletion.datetime)
     with factory() as db, db.begin():
         user, project = db.get(User, actor_id), db.get(Project, project_id)
         other = Project(owner_id=actor_id, created_by_id=actor_id, name="unrelated grant project")
@@ -58,11 +61,23 @@ def cleanup_case(phase1_engine, committed_tenant, tmp_path, monkeypatch, clock):
         other_id = other.id
         attempts = [make_attempt(db, user, project) for _ in range(2)]
         foreign = make_attempt(db, user, other)
+        native_jobs = {}
+        native_labels = {}
         for attempt in [*attempts, foreign]:
             attempt.status = AttemptStatus.FAILED
             run = db.get(ModelRun, attempt.model_run_id)
             run.status = RunStatus.FAILED
-            run.k8s_job_name = f"retirement-{run.id.hex}"
+            name = f"retirement-{run.id.hex}"
+            uid = record_known_ray_job(
+                db, actor_id, run, attempt, namespace="retirement-test", name=name
+            )
+            native_jobs[name] = uid
+            native_labels[name] = {
+                "automl.platform/project-id": str(run.project_id),
+                "automl.platform/run-id": str(run.id),
+                "automl.platform/attempt-id": str(attempt.id),
+                "automl.platform/generation": str(attempt.generation),
+            }
         rows = [started_grant(a, clock[0]) for a in [*attempts, foreign]]
         db.add_all(rows)
         db.flush()
@@ -79,6 +94,23 @@ def cleanup_case(phase1_engine, committed_tenant, tmp_path, monkeypatch, clock):
     store.delete_prefix = MagicMock(side_effect=original)
     get_store = MagicMock(return_value=store)
     monkeypatch.setattr(deletion, "get_object_store", get_store)
+
+    def read_ray(name, namespace=None):
+        if name not in native_jobs:
+            raise ApiException(status=404)
+        return {
+            "metadata": {
+                "name": name,
+                "namespace": namespace,
+                "uid": native_jobs[name],
+                "labels": native_labels[name],
+            }
+        }
+
+    def delete_ray(name, namespace=None, *, uid=None):
+        assert namespace == "retirement-test" and native_jobs[name] == uid
+        del native_jobs[name]
+
     c = SimpleNamespace(
         factory=factory,
         project_id=project_id,
@@ -96,11 +128,17 @@ def cleanup_case(phase1_engine, committed_tenant, tmp_path, monkeypatch, clock):
         k8s=SimpleNamespace(
             delete_job=MagicMock(),
             job_state=MagicMock(return_value="missing"),
-            delete_ray_job=MagicMock(),
-            ray_job=MagicMock(),
+            delete_ray_job=MagicMock(side_effect=delete_ray),
+            ray_job=MagicMock(side_effect=read_ray),
+            core=MagicMock(),
+            batch=MagicMock(),
+            custom=MagicMock(),
         ),
         clock=clock,
     )
+    c.k8s.core.list_namespaced_pod.return_value = SimpleNamespace(items=[], metadata=None)
+    c.k8s.batch.list_namespaced_job.return_value = SimpleNamespace(items=[], metadata=None)
+    c.k8s.custom.list_namespaced_custom_object.return_value = {"items": [], "metadata": {}}
     try:
         yield c
     finally:
@@ -138,11 +176,9 @@ def dispatch(c):
     with c.factory() as db:
         claimed = state.claim_outbox(db, worker_id="cleanup", now=c.clock[0])
         assert [e.id for e in claimed] == [c.entry_id]
+        entry_id = claimed[0].id
         db.commit()
-        try:
-            reconciler.reconcile_entry(db, claimed[0], worker_id="cleanup", k8s=c.k8s)
-        finally:
-            db.commit()
+    deletion_workflow.reconcile_deletion(c.factory, entry_id, "cleanup", k8s=c.k8s)
 
 
 @pytest.mark.parametrize("kind", ["run", "project"])
@@ -253,8 +289,8 @@ def test_deletion_defers_durably_then_finishes_without_touching_unrelated_data(c
     with c.store.open_stream(c.foreign_object) as reader:
         assert reader.read() == b"foreign"
     assert c.store.delete_prefix.call_count == (2 if kind == "project" else 1)
-    assert c.k8s.delete_job.call_count == (2 if kind == "project" else 1)
-    c.k8s.delete_ray_job.assert_not_called()
+    assert c.k8s.delete_ray_job.call_count == (2 if kind == "project" else 1)
+    c.k8s.delete_job.assert_not_called()
 
 
 def test_associated_scope_grants_retire_but_unknown_champion_history_blocks_deletion(cleanup_case):
@@ -308,13 +344,12 @@ def test_legal_hold_prevents_cleanup_and_grant_mutation(cleanup_case):
     request(c, "run")
     with c.factory() as db, db.begin():
         db.get(DeletionTombstone, c.tombstone_id).legal_hold = True
-    with pytest.raises(ValueError, match="legal hold"):
-        dispatch(c)
+    dispatch(c)
     with c.factory() as db:
         assert db.get(WorkflowAttemptCredentialGrant, c.grant_ids[0]).status == "issued"
         assert db.get(ModelRun, c.run_ids[0]) is not None
         entry = db.get(OutboxEntry, c.entry_id)
-        assert entry.status == OutboxStatus.PENDING and entry.delivery_attempts == 1
+        assert entry.status == OutboxStatus.PENDING and entry.delivery_attempts == 0
         assert "legal hold" in entry.last_error
     c.get_store.assert_not_called()
     assert all(not method.mock_calls for method in vars(c.k8s).values())
@@ -382,13 +417,13 @@ def test_pending_intent_is_retired_without_wait_and_cannot_mint_after_tombstone(
             row = WorkflowAttemptCredentialGrant(**grant_values(attempt))
             db.add(row)
             deletion.request_deletion(db, db.get(User, c.actor_id), c.project_id, c.run_id)
-        with c.factory() as db, db.begin():
+        with c.factory() as db:
             entry = db.scalar(
                 select(OutboxEntry).where(
                     OutboxEntry.project_id == c.project_id, OutboxEntry.topic == "run.delete"
                 )
             )
-            assert deletion.reconcile_deletion(db, entry, MagicMock()) is False
+            assert reconcile_deletion_stage(db, entry, MagicMock()) is False
             row = db.get(WorkflowAttemptCredentialGrant, row.id)
             assert row.status == "revoked" and row.issuance_started_at is None
             assert row.expires_at > deletion.datetime.now(deletion.UTC)

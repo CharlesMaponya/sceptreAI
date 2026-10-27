@@ -5,6 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from automl_api.api.deps import get_current_user
 from automl_api.db.session import get_db
@@ -26,15 +27,19 @@ from automl_api.schemas.operations import (
 from automl_api.schemas.training import ModelRunRead
 from automl_api.services.idempotency import durable_mutation
 from automl_api.services.inference_gateway import (
+    finalize_deployment_inference_target,
+    inspect_deployment_inference_target,
     proxy_deployment_inference,
     proxy_object_backed_offline_inference,
     resolve_deployment_inference_target,
 )
 from automl_api.services.operations import (
+    DeploymentInspection,
     RegistrationInspection,
     cleanup_model_deployment,
     cleanup_project_resources,
     deploy_registered_model,
+    inspect_model_deployments,
     inspect_model_registration,
     launch_drift_check,
     list_drift_runs,
@@ -193,6 +198,8 @@ def deploy(
         Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S"),
     ],
 ) -> ModelDeploymentLaunchRead:
+    from automl_api.services.deployment_objects import TOPIC
+
     result = durable_mutation(
         db,
         current_user,
@@ -204,7 +211,7 @@ def deploy(
         execute=lambda: deploy_registered_model(db, current_user, project_id, entry_id, payload),
         response_model=ModelDeploymentLaunchRead,
         response_status=status.HTTP_202_ACCEPTED,
-        outbox_topic="deployment.reconcile",
+        outbox_topic=TOPIC,
         aggregate_type="model_run",
         outbox_payload=lambda result: {
             "run_id": str(result.run.id),
@@ -226,6 +233,13 @@ def deployments(
 ) -> list[DeploymentStatusRead]:
     result = list_model_deployments(db, current_user, project_id, offset=offset, limit=limit)
     db.commit()
+    if isinstance(result, DeploymentInspection):
+        inspected = inspect_model_deployments(result)
+        db.expire_all()
+        result = list_model_deployments(
+            db, current_user, project_id, offset=offset, limit=limit, inspection=inspected
+        )
+        db.commit()
     return result
 
 
@@ -248,6 +262,11 @@ async def deployment_inference_gateway(
         project_id,
         run_id,
     )
+    db.commit()
+    inspected = await run_in_threadpool(inspect_deployment_inference_target, target)
+    db.expire_all()
+    target = finalize_deployment_inference_target(db, current_user, inspected)
+    db.commit()
     if path == "v1/predict/offline" and request.headers.get("content-type", "").startswith(
         "application/json"
     ):

@@ -1,0 +1,187 @@
+date: '2026-10-26'
+phase: 1
+scope: original-s3-multipart-session-cancellation
+status: verified_scope_only
+phase_complete: false
+full_upload_admission_complete: false
+source_inputs: 653
+source_manifest_sha256: 26ace55faee89285fdb444003cbca351b34ce54231ee501c6f6cae4b928b175d
+private_evidence_directory: .unlazy/phase1-upload-cancellation-session
+checks:
+  cancellation:
+    passed: 26
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43637477376
+    xml_sha256: 86ef91524324fa8cde49d767291c80036eb5fc2668d03e969919c11c78d4c429
+  focused:
+    passed: 77
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43635302400
+    xml_sha256: af4a46c3bbedae15020bb0b115b0fc1df8c7d28f56ff172a0462051eeff7acaa
+  services:
+    passed: 181
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43632578560
+    xml_sha256: 97f5fc0a3e44c02e7362177cf79c7227ef8e0f3bd6f27595f3efb236e5da1364
+  connected:
+    passed: 212
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43626962944
+    xml_sha256: a56817ef1876d245e1e3137372b0068ee661fbb6c22be4aa7b42553ff54db478
+  workflow:
+    passed: 74
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43629944832
+    xml_sha256: 4ee802f0fabc58719cce63150e90e1b7e2c0bf38ddb5803918148654b428e5eb
+  verification:
+    passed: 117
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43628752896
+    xml_sha256: 13c90e2c9b8e415ccf038c0842421f6441de66adfaf226265961136175bec944
+  worker:
+    passed: 28
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43628544000
+    xml_sha256: 314fcc069e05c91194e52f60b19b85124f8812a1fac9c90f88c800e654064028
+  sdk:
+    passed: 63
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43628789760
+    xml_sha256: f86468fe206c5930306cd848b1135df9eb56152a75c026596c6b492a081a9cdf
+  provider:
+    passed: 210
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43628601344
+    xml_sha256: 92110c4cf939e918b39a6f881183759c56dc29444236bf9edfd6e85f5b983de5
+  staged:
+    passed: 173
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43628126208
+    xml_sha256: 8f89ecd4b2cd12f023acf3a6175bd3b3c18818f17fab9c443f0dd7b400f4e0fc
+  offline:
+    passed: 74
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43625021440
+    xml_sha256: b008064dc6703154564f2272b2b72d184e8735ed10259799969e39f492c6ad1e
+counts_overlap: true
+cancellation_gates:
+  met: 3
+  unmet: 0
+  abandoned: 0
+admission_gates:
+  met: 0
+  unmet: 4
+upload_completion_gates:
+  met: 0
+  unmet: 6
+parent_inference_gates:
+  met: 0
+  unmet: 8
+phase_1_requirements:
+  verified: 2
+  open: 34
+original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+integration_readonly:
+  status: terminal_pass
+  read_only: true
+  source_manifest_sha256: 26ace55faee89285fdb444003cbca351b34ce54231ee501c6f6cae4b928b175d
+  observed_at: '2026-10-26T18:31:21.119151+00:00'
+  revision: 0018_attempt_predecessor_lineage
+  tables: 44
+  schema_differences: []
+  namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+  original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+  reserve_bytes: 43500000000
+  free_bytes: 43634036736
+behavior:
+- S3 abort now requires the exact original multipart session to be absent. An accepted
+  abort followed by a visible empty nontruncated session remains DeletionPending;
+  no cancellation receipt may be published from that result.
+- Both a service-double case and installed single-attempt SDK/local HTTP case failed
+  before the fix because the expected DeletionPending was not raised. Both pass after
+  the fix.
+- The local HTTP negative control keeps the original session active with zero parts
+  after accepting abort, then permits real disappearance on a later controlled call.
+  Existing absence, remaining parts, permission failure, malformed/truncated inventory,
+  hidden retry, disconnect and throttle controls remain.
+- Original key/session parameters are asserted for all wire reads/writes. This cancellation
+  prerequisite does not qualify native admission cleanup, deployed cloud outcomes
+  or the entire upload lifecycle.
+limits:
+  user_database_ceiling_bytes: 45000000000
+  largest_table_rows: null
+  missing_historical_objects: 7
+  native_admission_cleanup: unqualified
+  production_sized_migration: unqualified
+  large_upload_load: unqualified
+  maintained_images: unqualified
+  deployed_cloud_iam: unqualified
+  mixed_version: unqualified
+  full_release_coverage: unqualified
+  whole_phase_1: unqualified
+remaining:
+- Authenticated known/unknown/superseded admission session cleanup and bounded background
+  reconciliation remain required; superseded identities may alias a winner.
+- Factory/current-actor/source/command conversion of instruction/progress native I/O
+  and complete admission/completion/inference acceptance remain required.
+- 45GB physical database qualification cannot fit alongside the existing43.5GB reserve.
+  Largest-table row counts remain unspecified. The15-by-10GiB campaign remains deferred.
+- Original deletion:G7 requires seven missing historical objects (two models, five
+  signed results). None were reconstructed or re-signed.
+evidence_hashes:
+  source-sha256.json: 26ace55faee89285fdb444003cbca351b34ce54231ee501c6f6cae4b928b175d
+  before-source-sha256.json: 87b56e0e62131ff0e0b5656b0ef6aea095b055509229defe0dee49225996fdef
+  baseline-source-sha256.json: df352cc5a4a60a4457fa11aa5a181224ce25c4ba3c77f4d5681dec3164a082ca
+  before-s3.py: 125e259950d6a1d90520aad008339cc0b3431b32511069e084bd39c723d53ff9
+  before-tests.py: 96dab2f07e40926648b0c4cbd0682cd6f85cad623f54f5cb3be4da181beadc0f
+  baseline-test.py: dcb3efaafaf5ea3c4e2d27761ffff6d349928a83284f3827edc6fae60ad6e80a
+  baseline.xml: c97a7dc017f2a80c7bd37b1f63c5823e53841a99ede5c5dc95b643a0606d4816
+  baseline-state.json: 5fdeac4e280dd7f08052c38bcfd63b506d1994999e660fb6d214cfcdcc8c3755
+  run.py: 2a0fcde0bddc1257f9897cf93969b6ff0e6f9278a0b503e6337e059f012fcde8
+  audit.py: d59a136e62aa10d7d994fea12948b8df9bf1d5c229f4dc6ec0336cc640285062
+  integration-readonly.json: 85929184a50a16f8cea2ae2f87902c29f7deaaad93055ac319b76f8126ea1678
+  cancellation-state.json: e0f65b0353437b3d3989e33d0bc9e9575ace2ca1eb81ebb70b833437f3ce444b
+  cancellation.xml: 86ef91524324fa8cde49d767291c80036eb5fc2668d03e969919c11c78d4c429
+  focused-state.json: b7ff48ff7fa20c45c68a0294ac2de564dc29e67a9333d74038bdf93fbcf5b735
+  focused.xml: af4a46c3bbedae15020bb0b115b0fc1df8c7d28f56ff172a0462051eeff7acaa
+  services-state.json: 934b116d2d195cb30975037d1286600d2977807b39c005ea2bae922656063592
+  services.xml: 97f5fc0a3e44c02e7362177cf79c7227ef8e0f3bd6f27595f3efb236e5da1364
+  connected-state.json: 230682fe863c798fbd22c5f9f77b1bbfa96a85e164084e07a73ef079f01cd9b4
+  connected.xml: a56817ef1876d245e1e3137372b0068ee661fbb6c22be4aa7b42553ff54db478
+  workflow-state.json: f00616a4a2028ad055d99ac07fc448e6ad2397a65c5f2795e7a8830121f2c00b
+  workflow.xml: 4ee802f0fabc58719cce63150e90e1b7e2c0bf38ddb5803918148654b428e5eb
+  verification-state.json: 5e64fab264b226005ed8b9db74a26fd8c355fbfa5f0aa9d9da3508473717e59d
+  verification.xml: 13c90e2c9b8e415ccf038c0842421f6441de66adfaf226265961136175bec944
+  worker-state.json: ec967996459a5af829a153ffbfe3efc1aa03d09071571ddf26ce4fedddcd07f5
+  worker.xml: 314fcc069e05c91194e52f60b19b85124f8812a1fac9c90f88c800e654064028
+  sdk-state.json: 27c9417a564a60eb0623d519598ad9735741b8b89f3d581f104636009c6ec1a1
+  sdk.xml: f86468fe206c5930306cd848b1135df9eb56152a75c026596c6b492a081a9cdf
+  provider-state.json: 3a12d361f2c99b2eada2634b2938189ab285f971deba3421fd05ff1dee76a42a
+  provider.xml: 92110c4cf939e918b39a6f881183759c56dc29444236bf9edfd6e85f5b983de5
+  staged-state.json: 89bfd7fa8262c0d344c759ab8b2d3aef920c4efbaad8c7611f5170b3e916cd38
+  staged.xml: 8f89ecd4b2cd12f023acf3a6175bd3b3c18818f17fab9c443f0dd7b400f4e0fc
+  offline-state.json: 11c6e5d4782b35f531753c26e5417d2646beabb620bf21264722d4f5b5e88392
+  offline.xml: b008064dc6703154564f2272b2b72d184e8735ed10259799969e39f492c6ad1e

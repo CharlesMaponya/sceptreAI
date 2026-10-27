@@ -295,6 +295,9 @@ training:
     value: -1000
 
 inference:
+  identity:
+    # Existing Secret with ca.crt and ca.key; provision once outside Helm.
+    caSecret: ""
   image:
     repository: sceptreai
     tagPrefix: inference

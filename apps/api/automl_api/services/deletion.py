@@ -7,12 +7,16 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import HTTPException
-from kubernetes.client.exceptions import ApiException
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from automl_api.db.base import Base
-from automl_api.models.datasets import DatasetProviderImport, DatasetUploadSession, ProfilingJob
+from automl_api.models.datasets import (
+    DatasetProviderImport,
+    DatasetUploadSession,
+    DatasetVersion,
+    ProfilingJob,
+)
 from automl_api.models.enums import (
     AttemptStatus,
     CommandStatus,
@@ -42,7 +46,7 @@ from automl_api.services.attempt_object_grants import (
 from automl_api.services.projects import user_has_project_role
 from automl_api.services.workflow_state import begin_command, enqueue_outbox, replay_dead_outbox
 from automl_api.storage.contracts import DeletionPending
-from automl_api.storage.object_store import get_object_store
+from automl_api.storage.object_store import get_object_store as get_object_store
 
 STAGES = {
     "project": ("runtime", "object_store", "prepared_store", "metadata"),
@@ -55,23 +59,130 @@ TERMINAL_RUNS = {RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.CANCELLED, Run
 
 def _project_uploads_retained(db: Session, project_id: uuid.UUID) -> bool:
     db.flush()
-    return (
+    for model in (DatasetUploadSession, DatasetVersion):
+        if (
+            db.scalar(
+                select(model.id)
+                .where(
+                    model.project_id == project_id,
+                    model.legal_hold.is_(True) | (model.retention_until > datetime.now(UTC)),
+                )
+                .limit(1)
+            )
+            is not None
+        ):
+            return True
+    return False
+
+
+def _project_uploads_unsettled(db, project_id):
+    from automl_api.services.upload_deletion import OPERATIONS, require_retired
+
+    db.flush()
+    if (
         db.scalar(
             select(DatasetUploadSession.id)
             .where(
                 DatasetUploadSession.project_id == project_id,
-                DatasetUploadSession.legal_hold.is_(True)
-                | (DatasetUploadSession.retention_until > datetime.now(UTC)),
+                DatasetUploadSession.status.in_(
+                    {"initiated", "uploading", "object_completed", "verifying", "retiring"}
+                ),
             )
             .limit(1)
         )
         is not None
+    ):
+        return True
+    missing_upload = (
+        ~select(DatasetUploadSession.id)
+        .where(
+            DatasetUploadSession.project_id == project_id,
+            DatasetUploadSession.id == WorkflowCommand.resource_id,
+        )
+        .correlate(WorkflowCommand)
+        .exists()
     )
+    if (
+        db.scalar(
+            select(WorkflowCommand.id)
+            .where(
+                WorkflowCommand.project_id == project_id,
+                WorkflowCommand.operation.in_(OPERATIONS),
+                WorkflowCommand.resource_id.is_not(None),
+                missing_upload,
+            )
+            .limit(1)
+        )
+        is not None
+    ):
+        return True
+    candidates = db.scalars(
+        select(DatasetUploadSession)
+        .where(DatasetUploadSession.project_id == project_id)
+        .execution_options(populate_existing=True)
+    )
+    for upload in candidates:
+        try:
+            require_retired(db, upload, now=datetime.now(UTC))
+        except (KeyError, TypeError, ValueError, AttributeError):
+            return True
+    return False
+
+
+def deployment_retirements(db, project_id, run_ids=None):
+    from automl_api.services.deployment_submission import lifecycle_custody
+    from automl_api.services.workflow_state import StaleFence
+
+    registry_ids = (
+        None
+        if run_ids is None
+        else set(
+            map(
+                str,
+                db.scalars(
+                    select(ModelRegistryEntry.id).where(
+                        ModelRegistryEntry.project_id == project_id,
+                        ModelRegistryEntry.model_run_id.in_(run_ids),
+                    )
+                ),
+            )
+        )
+    )
+    result = []
+    for run in db.scalars(
+        select(ModelRun).where(
+            ModelRun.project_id == project_id, ModelRun.run_kind == RunKind.DEPLOYMENT
+        )
+    ):
+        if registry_ids is not None and run.tags.get("registry_entry_id") not in registry_ids:
+            continue
+        try:
+            custody = lifecycle_custody(db, run, allow_unstarted=True)
+        except StaleFence as exc:
+            raise HTTPException(
+                409, "Original deployment retirement requires controlled qualification."
+            ) from exc
+        if custody.get("retired") is not True:
+            raise HTTPException(409, "Complete verified deployment retirement before deletion.")
+        result.append(
+            dict(
+                run_id=str(run.id),
+                custody={key: value for key, value in custody.items() if key != "manifests"},
+            )
+        )
+    return sorted(result, key=lambda value: value["run_id"])
 
 
 def _require_stopped_workflows(db, project_id, run_ids=None):
+    from automl_api.services.deployment_objects import has_unretired_deployment_writes
     from automl_api.services.legacy_analysis import has_unretired_cleanup
 
+    deployment_retirements(db, project_id, run_ids)
+
+    if has_unretired_deployment_writes(db, project_id, run_ids):
+        raise HTTPException(
+            409, "Wait for verified deployment object write retirement before deletion."
+        )
     if has_unretired_cleanup(db, project_id, run_ids):
         raise HTTPException(409, "Wait for verified legacy Job cleanup before deletion.")
     if run_ids is None:
@@ -247,19 +358,10 @@ def request_deletion(
             raise HTTPException(
                 status_code=409, detail="Wait for dataset preparation to finish before deletion."
             )
-        if db.scalar(
-            select(DatasetUploadSession.id)
-            .where(
-                DatasetUploadSession.project_id == project_id,
-                DatasetUploadSession.status.in_(
-                    ["initiated", "uploading", "object_completed", "verifying"]
-                ),
-            )
-            .limit(1)
-        ):
+        if _project_uploads_unsettled(db, project_id):
             raise HTTPException(
                 status_code=409,
-                detail="Finish or cancel active uploads before deleting this project.",
+                detail="Finish active uploads and pending upload cleanup first.",
             )
         if _project_uploads_retained(db, project_id):
             raise HTTPException(
@@ -321,12 +423,14 @@ def request_deletion(
     return {"status": "pending", "id": str(tombstone.id)}
 
 
-def reconcile_deletion(db: Session, entry: OutboxEntry, k8s) -> bool:
-    """Checkpoint one stage; the outbox remains the sole lease and retry owner."""
+def deletion_context(db: Session, entry: OutboxEntry):
+    """Validate current deletion policy without constructing a native client."""
+    from automl_api.services.deployment_objects import has_unretired_deployment_writes
+
     project_id = entry.project_id
     project = db.scalar(select(Project).where(Project.id == project_id).with_for_update())
     if project is None:
-        return True
+        return None
     run_ids = [uuid.UUID(value) for value in entry.payload["run_ids"]]
     all_runs = list(
         db.scalars(
@@ -345,12 +449,18 @@ def reconcile_deletion(db: Session, entry: OutboxEntry, k8s) -> bool:
         raise RuntimeError("Deployments must be shut down and cleaned up before deletion.")
     if any(run.status not in TERMINAL_RUNS for run in runs):
         raise RuntimeError("An active run still needs to stop before deletion.")
+    if entry.topic == "project.delete" and _project_uploads_unsettled(db, project_id):
+        raise DeletionPending("Active uploads or pending upload cleanup prevent project deletion.")
+    if has_unretired_deployment_writes(
+        db, project_id, run_ids if entry.topic == "run.delete" else None
+    ):
+        raise DeletionPending("Deployment native object writes require verified retirement.")
     _require_stopped_workflows(db, project_id, run_ids if entry.topic == "run.delete" else None)
     tombstone = db.get(DeletionTombstone, uuid.UUID(entry.payload["tombstone_id"]))
     if tombstone is None or tombstone.project_id != project_id:
         raise LookupError("The project-scoped deletion tombstone is missing.")
     if tombstone.legal_hold:
-        raise ValueError("A legal hold prevents deletion.")
+        raise DeletionPending("A legal hold prevents deletion.")
     if entry.topic == "project.delete" and _project_uploads_retained(db, project_id):
         raise DeletionPending("Upload retention or legal hold prevents project deletion.")
     _retire_deletion_grants(db, project_id, run_ids if entry.topic == "run.delete" else None)
@@ -371,39 +481,19 @@ def reconcile_deletion(db: Session, entry: OutboxEntry, k8s) -> bool:
             ]
         )
         db.flush()
-        return False
+        return project, runs, run_ids, tombstone, stages, None, False
     stage = next((stages[name] for name in names if stages[name].status != "completed"), None)
-    if stage is None:
+    return project, runs, run_ids, tombstone, stages, stage, stage is None
+
+
+def reconcile_deletion(db: Session, entry: OutboxEntry, k8s) -> bool:
+    """Legacy callers may validate/backfill plans; native work requires factory ownership."""
+    context = deletion_context(db, entry)
+    if context is None:
         return True
-    if stage.resource_class == "runtime":
-        _delete_runtime(db, project_id, runs, k8s)
-    elif stage.resource_class == "object_store":
-        store = get_object_store()
-        from automl_api.services.provider_import import assert_provider_cleanup_safe
-
-        prefixes = (
-            [f"projects/{project_id}"]
-            if entry.topic == "project.delete"
-            else [f"projects/{project_id}/runs/{run_id}" for run_id in run_ids]
-        )
-        for prefix in prefixes:
-            assert_provider_cleanup_safe(db, store, prefix)
-            store.delete_prefix(prefix)
-    elif stage.resource_class == "prepared_store":
-        from automl_api.services.provider_import import assert_provider_cleanup_safe
-
-        store = get_object_store()
-        assert_provider_cleanup_safe(db, store, f"automl/projects/{project_id}")
-        store.delete_prefix(f"automl/projects/{project_id}")
-    else:
-        _delete_metadata(db, entry, project, run_ids)
-        tombstone.status = "complete"
-        if tombstone.completed_at is None:
-            tombstone.completed_at = datetime.now(UTC)
-    stage.status = "completed"
-    stage.heartbeat_at = datetime.now(UTC)
-    db.flush()
-    return stage.resource_class == "metadata"
+    if context[-2] is None and not context[-1]:
+        return False
+    raise RuntimeError("Deletion requires the factory-owned dispatcher.")
 
 
 def _retire_deletion_grants(db, project_id, run_ids):
@@ -435,36 +525,6 @@ def _retire_deletion_grants(db, project_id, run_ids):
         raise DeletionPending(
             "Legacy champion credentials or unknown native writes require verified retirement."
         )
-
-
-def _delete_runtime(db, project_id, runs, k8s):
-    for run in runs:
-        names = {
-            (attempt.ray_job_name, "RayJob")
-            for attempt in db.scalars(
-                select(WorkflowAttempt).where(
-                    WorkflowAttempt.project_id == project_id, WorkflowAttempt.model_run_id == run.id
-                )
-            ).all()
-            if attempt.ray_job_name
-        }
-        if run.k8s_job_name and run.run_kind != RunKind.DEPLOYMENT:
-            names.add(
-                (run.k8s_job_name, "RayJob" if run.tags.get("orchestrator") == "kuberay" else "Job")
-            )
-        for name, kind in names:
-            try:
-                if kind == "RayJob":
-                    k8s.delete_ray_job(name)
-                    k8s.ray_job(name)
-                    raise RuntimeError("Waiting for the training cluster to finish shutting down.")
-                else:
-                    k8s.delete_job(name)
-                    if k8s.job_state(name) != "missing":
-                        raise RuntimeError("Waiting for the worker to finish shutting down.")
-            except ApiException as exc:
-                if exc.status != 404:
-                    raise
 
 
 def _delete_metadata(db, entry, project, run_ids):

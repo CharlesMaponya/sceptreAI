@@ -1,0 +1,118 @@
+date: '2026-10-26'
+phase: 1
+scope: upload-offline-inference-progress
+status: in_progress
+phase_complete: false
+scope_integration_complete: false
+source_inputs: 644
+source_manifest_sha256: eba387c2cffbf41356b5e7b6abc3ccc9261a293222e880d9df1660cd8389ebd1
+private_evidence_directory: .unlazy/phase1-upload-completion
+driver_sha256: b47a6a312315eeafece768f19b22dc4aad6a8a96145a0e9aab4a0256515a2c3a
+checks:
+  offline:
+    passed: 74
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43703373824
+    test_xml_sha256: 35582cffa0c866b5df60c53f361a028a18509187e5b6be98284abe9f5f44f690
+  verification:
+    passed: 116
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43702484992
+    test_xml_sha256: b2fb9c20f01262d7dac75737c9ea1768167bfcd96fe77a87ffcf947c809e663b
+  workflow:
+    passed: 74
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43702345728
+    test_xml_sha256: 2d79fac4dee32ff20ce867c7bf669797bee479fb7a82ec307d98a35be9165763
+  metadata:
+    passed: 94
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43702296576
+    test_xml_sha256: 93bf6bd51d9d1831374a8b32c2b665229d53ca7fa04273f2c976726df2690774
+  providers:
+    passed: 128
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43702054912
+    test_xml_sha256: 30cd049d00977ff5a59ce135090e62d1d076f75831a6b9e50af4a02c5d7d080f
+  connected:
+    passed: 216
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43696144384
+    test_xml_sha256: e43b15da66b73e44e02dab175d6b63d4d487f3276eb573308897e9afbc0ef079
+counts_overlap: true
+upload_completion_gates:
+  met: 0
+  unmet: 6
+parent_inference_gates:
+  met: 0
+  unmet: 8
+phase_1_requirements:
+  verified: 2
+  open: 34
+original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+strict_schema:
+  status: terminal_pass
+  read_only: true
+  tables: 44
+  revision: 0018_attempt_predecessor_lineage
+lint: ruff apps/api tests scripts and git diff --check passed
+shared_native_fixture_uids:
+  namespace: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service: 365dd74f-551c-4fb3-8d9b-fe4026273558
+behavior:
+- The real JSON offline route bounds body buffering before extending its buffer, parses outside SQL, expires cached
+  state and repeats current actor/token/project/model/control/key-binding checks after parsing. Existing editor
+  permission on upload reads is preserved.
+- Offline selection shares original completion/source/dataset/proof validation with the verifier, requires the original
+  delivered outbox and successful command, ready byte/SHA/scanner evidence and unchanged verification policy, then
+  commits before provider construction. A frozen descriptor carries only the original URI/version, driver and safe
+  input metadata.
+- Original-version open/read/close occurs lazily inside the HTTPS multipart iterator, after TLS peer authentication.
+  Request-send failures, early consumer stop and read failure close sources/clients without holding SQL. Browser
+  credentials are not forwarded.
+- A newly admitted/completed/verified upload traverses the actual route and real local mTLS server. The original
+  peer receives original-v1 bytes. A same-CA certificate for a foreign Pod is refused before any object open/read.
+  Body, store construction, read and close observe zero checked-out connections.
+- One actual-route test independently changes token, membership role, project deletion, deployment desired state,
+  upload source, original receipt, verification proof, outbox anchor and scanner policy while the JSON body is read.
+  All nine refuse before object-store construction. Ten additional real PostgreSQL descriptor-tamper cases and a
+  positive descriptor read pass.
+correction_to_previous_progress:
+- 'The previous644-input G3 snapshot passed its component tests but did not read the outbox verification anchor
+  back as a consumer. The new positive consumer exposed a real bug: complete_outbox refreshes the row under no_autoflush
+  and discarded its pending verification_digest.'
+- The verifier now flushes readiness/proof/anchor in the same transaction before delivery refresh; commit remains
+  atomic. The original pre-fix consumer failure and51 passing gateway checks are retained, followed by successful
+  consumer and expanded regression runs. This report supersedes the previous claim that the anchor was durably persisted;
+  it does not rewrite historical measurements.
+- The first combined fixture attempt hit its100-byte test quota because deployment dataset metadata already existed.
+  The offline test profile now uses a45-billion-byte logical quota without allocating that data. This is not a45GB
+  migration or load qualification. Two pre-fix real-route cases then independently exposed SQL held during provider
+  construction.
+limitations:
+- Qualified exact-version retirement/cancellation remains unfinished. Completed, quarantined, native-started and
+  unknown histories are held; no latest-object deletion or missing-receipt inference is authorized. Azure staged
+  abort is unsupported. Broader training/dataset/download consumers are not all qualified pinned readers.
+- New route tests combine real owned PostgreSQL, real local HTTPS/mTLS and controlled provider streams. Separate
+  installed-SDK/local HTTP completion and metadata tests are not one deployed cloud-provider-to-running-image journey.
+  No Kubernetes mutation, image execution or cloud write occurred in this increment.
+- The focused ordinary-route/TLS regression cases passed; the whole inference-identity suite and whole release/branch
+  coverage were not rerun in this increment. Full integration audits, maintained images, cloud IAM/admission/network
+  policy, prior-binary/mixed-version compatibility and complete native journeys remain Open.
+- All six upload scope and eight parent scope gates remain unmet pending complete integration and executable audits.
+  No requirement is promoted; Phase1 stays2 Verified/34 Open.
+- The migration qualification ceiling is45,000,000,000 physical bytes; largest-table row counts are unspecified.
+  That migration and deferred15-by-10-GiB load remain unqualified. Original deletion:G7 is still a seven-missing-object
+  handoff; none were reconstructed or re-signed.

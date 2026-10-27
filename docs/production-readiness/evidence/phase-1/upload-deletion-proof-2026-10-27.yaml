@@ -1,0 +1,300 @@
+date: '2026-10-27'
+phase: 1
+scope: project-deletion-original-upload-authority-proof
+status: in_progress
+phase_complete: false
+full_upload_admission_complete: false
+full_native_deletion_complete: false
+source_inputs: 666
+source_manifest_sha256: 54c21b994a5970784ec1eaf992c621c7c04193f273ad128e90ebc7be1d81c528
+private_evidence_directory: .unlazy/phase1-upload-deletion-proof
+observed_at: '2026-10-27T05:40:34.223975+00:00'
+checks:
+  focused:
+    passed: 424
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43672625152
+    xml_sha256: c5528082478438c3ce7a5d3381fbf0f1f7f20ad90b613e2071eae15950d3bbd4
+  connected:
+    passed: 560
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43671506944
+    xml_sha256: 5c186e8c8e6d6e3540f27037da3f0881d88e4f18126b6113926be5b6bdbf4bc9
+  deletion:
+    passed: 200
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43671314432
+    xml_sha256: cd1a7de9434f8c0d9a032c399e74e0ce8e3cbdd75618732ba65459ab5078ec72
+  worker:
+    passed: 28
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43672539136
+    xml_sha256: 6a47d365606c2f49cabd0b8a3d5caa26a73ee083ee7cdb89a447e9bbc335d369
+  cancellation:
+    passed: 69
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43672354816
+    xml_sha256: 7db6e478773808409e873817ebe63d519437a933b8ae9619cf24930ed7972880
+  process:
+    passed: 6
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43671990272
+    xml_sha256: 6b75f5a264ffe070f5c7ce8b4aaf59747c6e4401658dc97968cc47d2a6dd004b
+counts_overlap: true
+new_deletion_proof_cases: 78
+admission_gates:
+  met: 0
+  unmet: 4
+upload_completion_gates:
+  met: 0
+  unmet: 6
+parent_inference_gates:
+  met: 0
+  unmet: 8
+phase_1_requirements:
+  verified: 2
+  open: 34
+baselines:
+- name: Actual request accepted a false terminal upload flag
+  expected_failures: 1
+  xml_sha256: 616fb3ca28a22392271550737ad0df7c2567b64996935ca0f4a9252f7b0b0a9b
+- name: Dataset-version hold was omitted when upload hold was clear
+  expected_failures: 1
+  xml_sha256: 3aa97d4c2d983c16f020916c0b18d52d558a827c8eb05b7d242d41e8b4b7d3d8
+intermediate_runs:
+- snapshot: first
+  cases: 47
+  failures: 0
+  returncode: 0
+- snapshot: second
+  cases: 60
+  failures: 2
+  returncode: 2
+- snapshot: third
+  cases: 62
+  failures: 3
+  returncode: 1
+- snapshot: fourth
+  cases: 65
+  failures: 0
+  returncode: 0
+fixture_incident: Second development run was intentionally interrupted after an unmocked
+  Azure completion factory entered default-credential discovery. Authentication was
+  unavailable and the storage completion/write path was not reached. Corrected the
+  injected factory and decoded-block fixture, replaced dynamic fixture selection with
+  explicit dependencies, and added a negative-tested nonlocal socket guard to the
+  new test module. Interrupted/failed runs are diagnostic history, not passing qualification.
+failure_windows:
+  scope: Existing original native cleanup crash windows rerun on final source
+  sigkill: 4
+  own_backend_termination: 2
+  witnesses:
+    after_record:
+      mode: after_record
+      pid: 823715
+      native_done: true
+      backend_killed: false
+      phase: recorded
+    after_publish:
+      mode: after_publish
+      pid: 823799
+      native_done: true
+      backend_killed: false
+      phase: published
+    after_native:
+      mode: after_native
+      pid: 823632
+      native_done: true
+      backend_killed: false
+      phase: native_accepted
+    intent_commit_loss:
+      mode: intent_commit_loss
+      pid: 823871
+      native_done: false
+      backend_killed: true
+      backend_pid: 43574
+      phase: issued_before_commit
+      error_type: OperationalError
+    receipt_commit_loss:
+      mode: receipt_commit_loss
+      pid: 823965
+      native_done: true
+      backend_killed: true
+      backend_pid: 43577
+      phase: recorded_before_commit
+      error_type: OperationalError
+    before_native:
+      mode: before_native
+      pid: 823585
+      native_done: false
+      backend_killed: false
+      phase: issued
+integration_readonly:
+  read_only: true
+  revision: 0018_attempt_predecessor_lineage
+  tables: 44
+  schema_differences: []
+  namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+  original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+  reserve_bytes: 43500000000
+  free_bytes: 43676794880
+prior_published_evidence:
+  path: docs/production-readiness/evidence/phase-1/upload-instruction-workflow-2026-10-27.yaml
+  sha256: d4540359a96ed429340fbd1699930aaa5377e5b111588285f938d129047783ce
+  unchanged_private_artifacts: 46
+changes:
+- Project deletion admission and every queued stage now use SQL-only proof of original
+  upload authority retirement. Terminal/READY/expired metadata alone, missing or relabelled
+  history, and orphan native completion/retirement/instruction commands cannot bypass
+  the guard before storage/runtime effects.
+- Ordinary remote uploads need original published admission/store/byte/namespace context
+  plus authenticated published native completion pinned to its immutable receipt,
+  or original verified retirement through existing journals and fresh checks. Existing
+  unpublished-admission cleanup retains its independent proof path.
+- All instruction request/actor/source bindings are checked, including superseded
+  keys, with bounded-memory batches. The101-entry control independently counts all101
+  inspected records, without relying on PostgreSQL row order. Current instruction
+  receipt/projection corruption and altered historical source/request hashes hold
+  deletion.
+- Azure native block completion is not treated as revocation of write/create SAS authority.
+  The existing conservative upload-expiry upper bound must pass, AND original native
+  closure must still be qualified. Actual Azure driver with an injected service covers
+  before/equal/after expiry and refuses expiry-only staged authority. These are local
+  contract checks, not deployed cloud/IAM evidence.
+- Independent DatasetVersion legal holds/retention now participate in the shared deletion
+  policy guard, alongside upload-session policy. A real failing request baseline is
+  corrected; all four queued stages honor version-only holds/future retention, while
+  equal/past deadline positive controls proceed.
+- Legacy remote or contradictory native history is held for controlled source qualification,
+  never guessed or re-signed. Legacy embedded metadata without native command/marker/instruction/external-URI
+  evidence retains its no-browser-credential path; actual Embedded driver cannot issue
+  browser transfer authority. This does not qualify all legacy physical cross-store
+  cleanup.
+- Original verified completion and staged retirement both traverse all four project
+  deletion stages in positive controls without blanket blocking. Retention, store
+  and provenance corruption preserve data before any provider construction or runtime
+  effect.
+provider_sources:
+- url: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CompleteMultipartUpload.html
+  basis: NoSuchUpload includes completed or aborted multipart IDs.
+- url: https://learn.microsoft.com/en-us/rest/api/storageservices/create-user-delegation-sas
+  basis: 'SAS lifetime and supported key/RBAC/ACL revocation, with caching delays;
+    inference: blob commit alone is not revocation.'
+- url: https://docs.cloud.google.com/storage/docs/resumable-uploads
+  basis: Resumable session URI and persisted-byte semantics; application instruction
+    expiry is not native cancellation.
+limits:
+  user_database_ceiling_bytes: 45000000000
+  largest_table_rows: null
+  missing_historical_objects: 7
+  native_admission_cleanup: unqualified
+  production_sized_migration: unqualified
+  large_upload_load: unqualified
+  maintained_images: unqualified
+  deployed_cloud_iam: unqualified
+  mixed_version: unqualified
+  full_release_coverage: unqualified
+  whole_phase_1: unqualified
+remaining:
+- Original admission acceptance remains0/4, completion0/6,inference0/8; wholePhase1
+  remains2Verified/34Open. Raw progress checks are not automatic parent-gate evidence.
+- Deletion storage/runtime effects still run inside SQL and require factory-owned
+  original stage intent/attempt/receipt, post-I/O source/policy fencing and crash/lost-response
+  qualification. Current guard checks do not qualify all concurrent policy races or
+  physical cross-store legacy cleanup.
+- Remote legacy uploads without original provider/source context require controlled
+  native qualification; statuses/expiry or a new record must not invent historical
+  context. Complete unknown/superseded admission cleanup for every provider and resume/result
+  SDK construction/public/browser contracts.
+- All-stage brokers/remove ambient credentials, pooler, full current-release/independent
+  branch coverage, images and mixed-version/prior-binary qualification remain open.45GB
+  cannot fit alongside43.5GB reserve; largest-table rows unspecified.15-by-10GiB and
+  deployed cloud/runtime remain unqualified.
+- Original deletion:G7 still needs seven historical objects(two models,five signed
+  results); none reconstructed or re-signed.
+evidence_hashes:
+  source-sha256.json: 54c21b994a5970784ec1eaf992c621c7c04193f273ad128e90ebc7be1d81c528
+  before-source-sha256.json: f3856ac69eae88f48b22c29685f187b2f3eead92378db64bceab382eeb1e418f
+  baseline-source-sha256.json: a255d3a5c7d26cdce3a87dc134006ec81c2f3bca66cff1137d4df2d6b23f41ee
+  baseline-test.py: 02afd357fa0518295cf138512ba2b4fa5367c571fef80d62615dab69f3ea19e0
+  baseline.log: d3cd8b44ae667bd2008f450095995d89f1178f959e37949b282301bb2bf9c1c0
+  baseline.xml: 616fb3ca28a22392271550737ad0df7c2567b64996935ca0f4a9252f7b0b0a9b
+  baseline-state.json: d4230a15e5821c53c41d32c1496009a806062b0f192d46fed1264068dfddf122
+  policy-baseline-source-sha256.json: 70aef1d8fc921fdbbf4d47df238e9628bda6fe898d3cbb152e02959a89046b97
+  policy-baseline-test.py: d0ab778d5c12a903f8891931631b841b74a48070a866017c5fdce521db2b2c5c
+  policy-baseline.log: ddd78b70c964460373ee761902a5104b08e218d57e16879d95c258511b896c17
+  policy-baseline.xml: 3aa97d4c2d983c16f020916c0b18d52d558a827c8eb05b7d242d41e8b4b7d3d8
+  policy-baseline-state.json: 045e1e15a3d016e5aaf1a3090aa8b5cff73fc426eb1adcfd362c51043f2d593c
+  before-deletion.py: 55d53fe19b35da852fadfe468ffcdce90ba613242ead7d7aa0aa4c876298427b
+  before-policy-deletion.py: 2c9ebe2350fa81c3cc209bb690f94ae7e7fccc21f5e5afb5bc506267d25c71b6
+  run.py: 6e29421bc1b31c9303325255794a82b2281f871cf71953648d4265e53d08cea6
+  audit.py: e76a1207352aaeb393c2f1a7c709c543bc01ec320efd5e9816dd9a9e9d77d936
+  report.py: f9f546531267e4abff0c1dc0707ffaaaa09ad451dde9e257ea57b680c35037b3
+  PLAN.md: ab8cb57b83b618f16e99e9fd950f076159820a05e4010f08c8c3bbf3463f73dc
+  integration-readonly.json: 35735abb384dd471318671cc7f5f456146c1267a9c5df4c819638ffdc47ce491
+  first-focused.xml: 6f9f3c3fcf4b7624e49ed064648fc33f64c9ee2ba4e173b270105f9767f42959
+  first-focused-state.json: b3241b3b0412994b97e8f06fb78ec765a74032c871928e732085616102f06c8e
+  first-focused-source-sha256.json: 0a607ecde775310c5c793d208ed63f875673d8577130fd86aec8e0dded6fce2b
+  review-source-sha256.json: 234cdd6a6ae385fa31b9e9ff85f2360db8bb610d89f30fefcfeaf3164d186c0a
+  first-proof.xml: 985b6e998285c54c3a3db9c97f134b124dfabbfe03b674fdc979a3cca31a37ca
+  first-proof-state.json: 995b9a9decd38e0158583d4e2925f147762a597dc86ff5d615ec329184ac7078
+  first-source-sha256.json: 948d20e77aa9df4bcf856da169a9fa220fdbc69e6a759b352fa61dd1c2bbf508
+  second-proof.xml: df0cf67640d1db597a0f54b2cdae7f953d1996602acdce933082a14fb4c5f5da
+  second-proof-state.json: 8c2d7162e04c5a150596f5cd65d3f0e17138837b05630375e65ffef45cd50ffd
+  second-source-sha256.json: 0f8ee85fec4fa25ee6a1d104a77f9a12a20dcc21d620f7969ec8f15da250aea9
+  third-proof.xml: e2adcecee316656fd01cfc8e8e39c6316866bc2b60c52523059ccaa0a30d6848
+  third-proof-state.json: 06d0cf8d10090f5ff66ece95a720d83273ec8825fe8f6c546690bcf4b5b7f258
+  third-source-sha256.json: 683c16245f671aa66d4acc486bf363d319568603c646788db72e33725d53ceeb
+  fourth-proof.xml: ba1c441b8864389726c30e4abd88ef7881a338f2387346f84fa1949ce6c7f3ac
+  fourth-proof-state.json: 9d7000edeb353988624754d73c4282f4c1de2ee14d71daa2c1d3fc0c3750503e
+  fourth-source-sha256.json: d397e84953be141995335f89770dc18ba562dc7b63b1887ff0691a85fa64d01f
+  focused.xml: c5528082478438c3ce7a5d3381fbf0f1f7f20ad90b613e2071eae15950d3bbd4
+  focused-state.json: 8e81e942cdb5489cf63b2ca2d3d246404be1b64ce6fcbb3e3ce3cf15971b2bba
+  review-focused.xml: 517800bb1428198ecc11a6d4a8d83e9d1ec28c9d13c6d16016bd766d56a48f42
+  review-focused-state.json: 7f57f99626ec806f18a8ac71c55297ff566ee57a1169081dbf2eab99bbf2a6d7
+  connected.xml: 5c186e8c8e6d6e3540f27037da3f0881d88e4f18126b6113926be5b6bdbf4bc9
+  connected-state.json: 9d2474c2a0b12f4a23ba367bb17eeadcf5851251fffe13ad0f16ce5f5e46d893
+  review-connected.xml: af0c3a18e981a6a5984b1dab9c4e3a340be1df91bb9dfbc963ab30deeec7ae19
+  review-connected-state.json: 259ba85a15bad04f528cd6202c1c30ce06a175a59036e9b25e1f86dd00540636
+  deletion.xml: cd1a7de9434f8c0d9a032c399e74e0ce8e3cbdd75618732ba65459ab5078ec72
+  deletion-state.json: 0cf718e12cc726864ca8b97ff412e16f24716500f5deb2422d8b26bc51c08756
+  review-deletion.xml: 2328736b9baf356d42ff3ac4313ca036dd29c3fad82c07b709d167b509c1727a
+  review-deletion-state.json: 5194801b2f5289e60316c6a33c8fda89dc570b72a4a9914fca7dfdc5bfe31d48
+  worker.xml: 6a47d365606c2f49cabd0b8a3d5caa26a73ee083ee7cdb89a447e9bbc335d369
+  worker-state.json: 0d103905ef2e4ad75c1f5021d843f0b98f6a93b50e429de55d48b2888060cb48
+  review-worker.xml: 6b88082330af4db3f3a1228b0fd95903e48cdeab721c9315c105800a71056730
+  review-worker-state.json: 14dc6fd79f768f08674f6daed93dcdbeff6a1bf1eba3da3b7986855217f8e3c1
+  cancellation.xml: 7db6e478773808409e873817ebe63d519437a933b8ae9619cf24930ed7972880
+  cancellation-state.json: 77d2eed3679dcd4157ed8f8303e83d7a001c5272d97a972582f665aaed39cfd3
+  review-cancellation.xml: 886bee42ff12fc90efa10d87184dd877f85a1544da3143fdb56e2f3fd6ab4f6e
+  review-cancellation-state.json: 6772b3fbb574adf6a769bd38be01215efeb9dc00a851142accffb11cb4b3711e
+  process.xml: 6b75f5a264ffe070f5c7ce8b4aaf59747c6e4401658dc97968cc47d2a6dd004b
+  process-state.json: b6404e0f8327f4efad7323aae2783d9fc5f32343c5f14f82d354318aecc52111
+  review-process.xml: 7ad94ea23ab2a59c7ae72bc3dc3c3dfff64581d992f17a99227929a8154614a6
+  review-process-state.json: 881996524884ad2784f86c536d7159718cdf40d1d613ef1c63fa135efbb946ed
+  crash-witnesses/after_native.json: f1b4f014d484b358c130dbee70a0f80f1157067d9e6e2b5cdb95967eff66f0fa
+  review-crash-witnesses/after_native.json: 17d5f1157bd354bb1b82592a9eed51ad9c43c4d202eedd5d8706425922f74432
+  crash-witnesses/after_publish.json: 8927a546e71d15dc7d23b08f1c2637a5acb42c47bb0ad724fd84295cafb4a37d
+  review-crash-witnesses/after_publish.json: 98d0056ce0e220f4129f0f517eb9c8432733516ba649f1198ec4fb585291f741
+  crash-witnesses/after_record.json: 9998dbcf0ddefcc7a27c2fe03ecabf604e25638def688cc579137cfafef70bf9
+  review-crash-witnesses/after_record.json: 84700403126bd02e1a44f45d77b3c8da109a9d53661070a263669acae3ea580d
+  crash-witnesses/before_native.json: 2473a3ec4243b9c3c57dc4c6f8a3a10e7a5797af767fde33109b9089a17c096b
+  review-crash-witnesses/before_native.json: 205dae3fac972f9d54c3075a4499d437fd0c233d87eec0a954137a92fcf80670
+  crash-witnesses/intent_commit_loss.json: 7dbbf1a71b36aa574bf75a18e8bca535fca38418d8953607470e194b8175593c
+  review-crash-witnesses/intent_commit_loss.json: 189dddc87db9ab1d599aaf99f7c3b8362620226b8882af029113933f16354a9d
+  crash-witnesses/receipt_commit_loss.json: daeb39e66e3d0d87c4deccd8438f44f5733a05822c7c82134dbc759900f14665
+  review-crash-witnesses/receipt_commit_loss.json: c73582d21b65a69af7941e738d968d2093022d92f4e8e41cc7950f880ad14443
+runbook_sha256: 5e906fac03b8a9f2946dc350ebd2568d8cfa8d162bfda22a258b33c05a2f96cf

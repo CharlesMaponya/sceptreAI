@@ -78,11 +78,11 @@ def durable_mutation[ResponseModel: BaseModel](
             detail={"code": "idempotency_key_reused", "message": str(exc)},
         ) from exc
     if replayed:
-        return response_model.model_validate(replay_response(command))
+        return response_model.model_validate(replay_response(command), by_name=True)
 
     result = execute()
     command.response_status = response_status
-    command.response_payload = result.model_dump(mode="json")
+    command.response_payload = result.model_dump(mode="json", by_alias=True)
     resource = getattr(result, "id", None)
     if resource is None and (nested := getattr(result, "run", None)) is not None:
         resource = getattr(nested, "id", None)

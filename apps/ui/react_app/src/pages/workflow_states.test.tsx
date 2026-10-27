@@ -341,6 +341,29 @@ describe("governed workflow states", () => {
     expect(screen.getByText(/session token is unavailable/i)).toBeInTheDocument();
   });
 
+  it("blocks restart after cleanup admission and allows retry after cleanup failure", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");
+      if (url.endsWith("/operations/health")) return response(health);
+      if (url.endsWith("/operations/deployments")) return response([
+        { run: { ...trainingRun, id: "cleaning", run_name: "Cleanup pending", tags: { desired_state: "deployment_cleanup_pending" } }, status: "cancelled", runtime_state: "cleaning", endpoint: null },
+        { run: { ...trainingRun, id: "failed-cleanup", run_name: "Cleanup failed", tags: { desired_state: "deployment_cleanup_pending" } }, status: "cancelled", runtime_state: "unavailable", endpoint: null },
+        { run: { ...trainingRun, id: "failed-stop", run_name: "Shutdown failed", tags: { desired_state: "deployment_stop_pending" } }, status: "cancelled", runtime_state: "unavailable", endpoint: null },
+        { run: { ...trainingRun, id: "failed-start", run_name: "Start failed", tags: { desired_state: "deployment_start_pending" } }, status: "queued", runtime_state: "unavailable", endpoint: null },
+      ]);
+      return response([]);
+    });
+    renderRoute(<OperationsPage />, "/projects/project-1/operations");
+    const pending = (await screen.findByText("Cleanup pending")).closest("tr")!;
+    const failed = screen.getByText("Cleanup failed").closest("tr")!;
+    expect(within(pending).queryByRole("button", { name: "Start" })).not.toBeInTheDocument();
+    expect(within(pending).getByRole("button", { name: "Cleanup" })).toBeDisabled();
+    expect(within(failed).queryByRole("button", { name: "Start" })).not.toBeInTheDocument();
+    expect(within(failed).getByRole("button", { name: "Cleanup" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Retry shutdown" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Retry start" })).toBeEnabled();
+  });
+
   it("keeps a failed stop confirmation open with an actionable error", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
       const url = String(input).replace(/\?(?:offset|limit)=.*$/, "");

@@ -1,0 +1,115 @@
+date: '2026-10-26'
+phase: 1
+scope: upload-staged-cancellation-progress
+status: in_progress
+phase_complete: false
+scope_integration_complete: false
+source_inputs: 646
+source_manifest_sha256: 7901881af0eada2b7136d7b9bcc2edbaafc3bd7856d89c24822d289ceed02e83
+private_evidence_directory: .unlazy/phase1-upload-retirement
+checks:
+  staged:
+    passed: 171
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43672522752
+    test_xml_sha256: aa94e4ac24b66d9e570798a6d0218248fc3d1c7bf220404227eca7ed77b8907e
+  provider:
+    passed: 210
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43682775040
+    test_xml_sha256: 944682a8377e840435c1f105537de5473fb7770c94f93b51c0c58886db04b78c
+  verification:
+    passed: 116
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43681841152
+    test_xml_sha256: 777f98c077ef07dd254fc3e1335f9340fe85fec351f8eb63208221c25a1ccb38
+  workflow:
+    passed: 74
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43680972800
+    test_xml_sha256: a0550e3e2734176ef27f629120c8bd875ee298011c2255d27848924a6ad7efa9
+  connected:
+    passed: 216
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43673960448
+    test_xml_sha256: d6f368955045537ffd814f510ce0f9a6341b3d6d0d95aba174b4cf00d1b019ad
+counts_overlap: true
+focused_staged_cases: 24
+real_s3_sdk_local_http_cases: 4
+retirement_gates:
+  met: 0
+  unmet: 3
+upload_completion_gates:
+  met: 0
+  unmet: 6
+parent_inference_gates:
+  met: 0
+  unmet: 8
+phase_1_requirements:
+  verified: 2
+  open: 34
+original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+strict_schema:
+  status: terminal_pass
+  read_only: true
+  tables: 44
+  revision: 0018_attempt_predecessor_lineage
+lint: ruff apps/api tests scripts, five-file format and git diff --check passed
+shared_native_fixture_uids:
+  namespace: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service: 365dd74f-551c-4fb3-8d9b-fe4026273558
+behavior:
+- S3 staged abort requires original multipart identity and single-attempt SDK configuration. It probes original
+  parts before abort, skips another abort if that multipart identity is already absent, then independently checks
+  original parts after an accepted abort. Remaining or truncated parts stay pending; malformed/foreign inventory
+  and permission failures cannot qualify cancellation.
+- Only explicit NoSuchUpload is interpreted as multipart absence. NoSuchBucket or an arbitrary404 is not accepted.
+  Provider disconnects with response=None preserve their transport exception rather than being masked by an AttributeError;
+  shared original project/prefix cleanup uses the same narrow error guard.
+- GCS JSON resumable cancellation now requires its documented499 acknowledgement.200,204,404 and410 do not prove
+  cancellation of the original session before completion. Missing/completed/expired outcomes remain unknown instead
+  of allowing a false aborted/expired state.
+- 'Connected fixture changes reflect the native contracts: cancelled S3 session IDs return NoSuchUpload, and the
+  GCS JSON cancellation positive fixture returns499. The prior explicit404 success assertion now asserts controlled
+  refusal. Six pre-fix failures and the original499 positive control are retained.'
+evidence_detail:
+- The staged profile includes24 focused cases and4 real installed-S3-SDK loopback HTTP cases for success, accepted
+  disconnect,503 response loss and residual parts. Lost-acknowledgement replay observes the original absent session
+  without another abort. Residual parts remain pending and require another abort against the same original identity.
+- The first wire pilot passed167 and failed2. A real disconnect exposed response=None in the new S3 error guard;503
+  was correctly translated to the existing UploadThrottled type but the test had omitted it. The guard and typed
+  expectation were corrected, with both failures retained. Two project/prefix transport-error cases cover the shared
+  guard.
+- All final profiles run on the same646-input snapshot; the24 focused cases do not by themselves qualify a factory-owned
+  SQL cancellation service. Existing116 verifier,74 completion and216 connected checks passed as regressions.
+limitations:
+- The planned factory-owned cancellation/cleanup service has not been implemented yet. The actual abort route still
+  uses durable_mutation around a native helper, and cleanup_uploads_once still holds a SQL transaction across staged
+  provider work. Their conversion is still required; native component results do not qualify those callers.
+- S3 NoSuchUpload proves multipart-part absence, not absence of a completed object. The service must fence missing/legacy/unknown
+  completion histories and use original native version receipts for known completed objects. It must never infer
+  completed-object retirement from an absent multipart ID.
+- A GCS browser can finish the native object before the API records completion. The new service must inspect only
+  the original resumable session, persist any qualified original completion receipt before exact-version deletion,
+  or hold an unknown outcome. A404 must not authorize latest-object adoption or a false cancellation.
+- New durable intent/outcome custody, current actor/token/project/source/retention/hold checks, concurrency/lease
+  attempts, publication rollback and known-outcome capture after revocation remain required. Azure staged abort
+  remains unsupported, and ready immutable datasets must remain protected.
+- No whole identity/release/branch>=90.01%, maintained image, prior-binary/mixed-version, cloud IAM/admission,45GB
+  migration or15-by-10-GiB qualification is claimed. Original deletion:G7 still requires seven missing historical
+  objects; none were reconstructed or re-signed. All retirement/upload/parent gates remain formally unmet; Phase1
+  stays2 Verified/34 Open.
+provider_references:
+- https://docs.aws.amazon.com/AmazonS3/latest/API/API_AbortMultipartUpload.html
+- https://docs.cloud.google.com/storage/docs/performing-resumable-uploads
+- https://cloud.google.com/storage/docs/json_api/v1/status-codes

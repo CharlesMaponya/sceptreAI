@@ -1,0 +1,225 @@
+date: '2026-10-27'
+phase: 1
+scope: upload-cleanup-operator-replay-progress
+status: in_progress
+phase_complete: false
+full_upload_admission_complete: false
+source_inputs: 658
+source_manifest_sha256: b6c02ce8e50e12bd762002209a187b6d8e280c5a433af3506e45a0c5d447ccd1
+private_evidence_directory: .unlazy/phase1-upload-cleanup-replay
+checks:
+  focused:
+    passed: 199
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43625594880
+    xml_sha256: 0dbc3c6f72b880414577bb9ac0a1a260590c9527aae522f20164def06848bcd0
+  deletion:
+    passed: 200
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43625013248
+    xml_sha256: 8fb7d506cf1ae0237137eb23dc7d6c7ad755c10fea382d58bef547cb66c244de
+  connected:
+    passed: 560
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43621806080
+    xml_sha256: 6e50d1bea9c460c4b59b85e57f05146d060a964fae33590183c53dc03975070a
+  worker:
+    passed: 28
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43621756928
+    xml_sha256: dc731c8a24f8bd412856d0c5d89b85b51c274926e260edad316e41fc64897d2e
+  cancellation:
+    passed: 69
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43623358464
+    xml_sha256: 90a67ea6e5d47b55edc8d176f6df84893f42becf902176b81a2a1abc9599b8a2
+  process:
+    passed: 6
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43622727680
+    xml_sha256: f85bf669d7ffd783635f626a329aa68a1e365f92f62ea6e9f25a24c1ddb8f5c1
+counts_overlap: true
+admission_gates:
+  met: 0
+  unmet: 4
+upload_completion_gates:
+  met: 0
+  unmet: 6
+parent_inference_gates:
+  met: 0
+  unmet: 8
+phase_1_requirements:
+  verified: 2
+  open: 34
+failure_windows:
+  sigkill: 4
+  own_backend_termination: 2
+  witnesses:
+    intent_commit_loss:
+      mode: intent_commit_loss
+      pid: 4047791
+      native_done: false
+      backend_killed: true
+      backend_pid: 36624
+      phase: issued_before_commit
+      error_type: OperationalError
+    receipt_commit_loss:
+      mode: receipt_commit_loss
+      pid: 4047875
+      native_done: true
+      backend_killed: true
+      backend_pid: 36627
+      phase: recorded_before_commit
+      error_type: OperationalError
+    after_record:
+      mode: after_record
+      pid: 4047640
+      native_done: true
+      backend_killed: false
+      phase: recorded
+    before_native:
+      mode: before_native
+      pid: 4047484
+      native_done: false
+      backend_killed: false
+      phase: issued
+    after_publish:
+      mode: after_publish
+      pid: 4047711
+      native_done: true
+      backend_killed: false
+      phase: published
+    after_native:
+      mode: after_native
+      pid: 4047558
+      native_done: true
+      backend_killed: false
+      phase: native_accepted
+original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+integration_readonly:
+  status: terminal_pass
+  read_only: true
+  source_manifest_sha256: b6c02ce8e50e12bd762002209a187b6d8e280c5a433af3506e45a0c5d447ccd1
+  observed_at: '2026-10-26T21:04:01.833295+00:00'
+  revision: 0018_attempt_predecessor_lineage
+  tables: 44
+  schema_differences: []
+  namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+  original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+  reserve_bytes: 43500000000
+  free_bytes: 43623596032
+behavior:
+- The baseline actual HTTP request returned404. POST/projects/{project_id}/datasets/uploads/{session_id}/cleanup/replay
+  now requires current owner-level authorization and a bounded reason plus Idempotency-Key.
+  It returns202 with the approval/root cleanup/session IDs and authorized total budget,
+  never a native capability.
+- Each approval adds exactly five attempts for the same original known single-creation
+  target. The original cleanup remains the sole native owner; the API performs only
+  SQL. It preserves the prior attempt, error, terminal reason and ordered approval
+  history in a separate succeeded workflow command.
+- The root cleanup independently anchors the authorization list. Every approval command
+  binds original intent, prior attempt/epoch/chain, actor/token snapshot and reason.
+  Missing, erased, duplicated, foreign or corrupted authority fails before native
+  work; mutable reporting fields still cannot extend the budget.
+- Fresh actor/token/membership, owner role, project, original source/store, hold/retention
+  and exhausted/expired-lease checks fence approval. Reused keys return the same approval,
+  conflicting reasons/actors fail, and concurrent same/different keys grant one epoch.
+  Live, known-result or completed cleanup cannot be reset into another native effect.
+- Actual PostgreSQL backend termination during approval commit and injected rollback
+  preserve the exhausted root without a partial approval. A committed approval with
+  lost HTTP reply replays the same result without more budget. Two full epochs preserve
+  prior5/10 attempt snapshots and resume the original command at attempt11 with budget15.
+- 'Authenticated replay history participates in project deletion: a corrupted approval
+  blocks a queued stage before native effects, and orphan approval commands preserve
+  the deletion barrier if parent metadata disappears. The operator procedure is documented
+  in phase-1-queue-claims.md.'
+- 'Existing six real native cleanup failure windows pass again on current inputs:
+  four SIGKILL and two owning-backend terminations, with retained witnesses. Local
+  SQL/SDK/HTTP evidence does not qualify all provider/cloud/prior-binary failure windows.'
+- The final reserve check initially fell below43.5GB after all functional profiles
+  had passed. Only regenerable downloads identified by public PyPI metadata were evicted
+  (630039117 cached bytes); installed packages, source, built-wheel cache, fixtures
+  and evidence were preserved. The reserve recovered above43.5GB and current integration
+  was rechecked.
+operator_endpoint:
+  method: POST
+  path: /projects/{project_id}/datasets/uploads/{session_id}/cleanup/replay
+  minimum_role: owner
+  native_attempts_per_approval: 5
+  direct_provider_io: false
+limits:
+  user_database_ceiling_bytes: 45000000000
+  largest_table_rows: null
+  missing_historical_objects: 7
+  native_admission_cleanup: unqualified
+  production_sized_migration: unqualified
+  large_upload_load: unqualified
+  maintained_images: unqualified
+  deployed_cloud_iam: unqualified
+  mixed_version: unqualified
+  full_release_coverage: unqualified
+  whole_phase_1: unqualified
+remaining:
+- The four original admission acceptance gates remain unmet; their audit.py commands
+  are still unimplemented. This report does not promote progress tests into automatic
+  parent acceptance.
+- Complete provider-specific unknown/superseded original creation cleanup, missing
+  opaque GCS URI handling, Azure/embedded semantics, other-provider/process/runtime
+  qualification and background original admission publication/recovery.
+- Complete instruction/progress factory/current-actor/source/command conversion and
+  project deletion provider I/O separation from SQL; complete completion/inference/full-release
+  and independent branch acceptance.
+- Operator replay is intentionally limited to authenticated known exhausted cleanup.
+  It is not authority to guess native identities, repair missing history, alter targets,
+  bypass retention or restart original admission.
+- 45GB migration cannot fit alongside43.5GB reserve; largest-table rows remain unspecified.15-by-10GiB
+  load, maintained images, mixed-version, deployed cloud/native and full UI/offline/TLS/release
+  qualification remain open.
+- Original deletion:G7 requires seven missing historical objects (two models, five
+  signed results). None were reconstructed or re-signed.
+evidence_hashes:
+  source-sha256.json: b6c02ce8e50e12bd762002209a187b6d8e280c5a433af3506e45a0c5d447ccd1
+  before-source-sha256.json: d767b37701619887b44b3403657fd89b6a592b5e50923d7cea929f21b2a16a75
+  baseline-source-sha256.json: d1f8aed42f7c54d1d71cdf725a1542ede974b70bff10a6f33768e8e12f4dacce
+  baseline-test.py: 6e6e3f644c65e81067d8d3e3bdd69d23cd7ccdba1b758361aebd7a09fc515f21
+  baseline.xml: 69999b90bca8f55a513883cf8f3480704e92aebdf217d7e672f61f62c0836b6f
+  baseline-state.json: f3bd4c149fd636fc9624c43418ed0b65a29ecbdd497901cbf4e8f316e6a7c95d
+  before-cleanup.py: ededcd86009bf4db4c548dbbd3488f5bdeaf727da89948f4edb7e9439c9ba8e8
+  before-deletion.py: df373f66fdb67a6a24de0f80072805e66d7fef86e9c47849c87b00819621030f
+  run.py: fc439221bab77c4da718062bf08b19f2720bda7984faaef0d53218826200ac7e
+  audit.py: 14af9b1706f10cd2f10df97903b2cfb6099ff5ee9cb60578a3189a3620307900
+  integration-readonly.json: 7c27cf17b039a74beacc3e3efa9e937412173f97d1b80bdf9448d75ddb3c8858
+  disk-reserve-recovery.json: f43776b80ad4c2035c8c5c780f86efd2111356bbe48fb6dae630358c5545ea09
+  PLAN.md: 7ec780c68c67a33803b7588c7d43b49d37c8998736b6d2a0770dc9c50c17d752
+  focused-state.json: 8155eae043962b258f7f8c916ed4ba0ba8f368adcf5fcbad66790dc3a9e6b27b
+  focused.xml: 0dbc3c6f72b880414577bb9ac0a1a260590c9527aae522f20164def06848bcd0
+  deletion-state.json: 33f2a539d1978bc3686d5511c822698d108ea1e683b8b17dcf64b67740c42ee3
+  deletion.xml: 8fb7d506cf1ae0237137eb23dc7d6c7ad755c10fea382d58bef547cb66c244de
+  connected-state.json: 8990665756aef016a51f3250d58514d1c9f6102534a48e732a01e57f54d29c14
+  connected.xml: 6e50d1bea9c460c4b59b85e57f05146d060a964fae33590183c53dc03975070a
+  worker-state.json: bef4cd6668a389c51f296998fc814b58b50cb97a8a66292879a06e6c51a408bb
+  worker.xml: dc731c8a24f8bd412856d0c5d89b85b51c274926e260edad316e41fc64897d2e
+  cancellation-state.json: 90a931251e56fd943aaf23698ecd60cb45c3ccd9580f3933c65509c0e3983b3d
+  cancellation.xml: 90a67ea6e5d47b55edc8d176f6df84893f42becf902176b81a2a1abc9599b8a2
+  process-state.json: 472275b07ac9a6d5209a54ca29baab0fd5e49e4bdb7e4a804ad72fb42a5ae85e
+  process.xml: f85bf669d7ffd783635f626a329aa68a1e365f92f62ea6e9f25a24c1ddb8f5c1
+  crash-witnesses/after_native.json: 1a8a8c39fd949c87c05738950c1322247452ea235fedc265682293c247e1457f
+  crash-witnesses/after_publish.json: 483a39e03f1a74bc0bcca444689bb2129d91bfc58ddff801c35ab8be2e159e21
+  crash-witnesses/after_record.json: 9b807b49d13d40fe864249bec676141fcafd269f538e22cb6c90e53308c82d40
+  crash-witnesses/before_native.json: d7f535d620fa16008d0e81a5e2a2630680722ca272024609c9630b6d26360677
+  crash-witnesses/intent_commit_loss.json: f4efc121b634ccd0158f7e7da401c8a13948ba505dbd31ed325f8d451b4dc066
+  crash-witnesses/receipt_commit_loss.json: 1513c1585466c91296ebbe7820b66918308f7733b161215b8a9ff047a8ad6ef4
+runbook_sha256: e5ea3c00dd68934bdc04ed60b21b5d7579fdd44132f07a2e1fc79e8dd002bcbb

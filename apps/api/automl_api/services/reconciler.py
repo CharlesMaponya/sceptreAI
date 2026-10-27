@@ -40,7 +40,6 @@ from automl_api.services.kubernetes_training import (
     mount_provider_source_configuration,
     object_store_workload_environment,
 )
-from automl_api.services.upload_policy import inspect_and_scan_stream
 from automl_api.services.uploads import require_upload_byte_digest
 from automl_api.services.workflow_state import (
     RAY_CREDENTIAL_PROTOCOL,
@@ -62,7 +61,12 @@ from automl_api.services.workflow_state import (
     transition_attempt,
     transition_command,
 )
-from automl_api.storage.contracts import ByteRange, DeletionPending, ObjectStoreDriver
+from automl_api.storage.contracts import (
+    ByteRange,
+    DeletionPending,
+    ObjectStoreDriver,
+    UploadContractError,
+)
 from automl_api.storage.object_store import get_object_store
 
 
@@ -98,6 +102,7 @@ class _BoundedObjectReader:
         uri: str,
         byte_size: int,
         *,
+        version: str,
         range_size: int = UPLOAD_VERIFICATION_RANGE_BYTES,
     ) -> None:
         if byte_size < 0 or range_size <= 0:
@@ -105,6 +110,7 @@ class _BoundedObjectReader:
         self._store = store
         self._uri = uri
         self._byte_size = byte_size
+        self._version = version
         self._range_size = range_size
         self._offset = 0
         self._range_end = -1
@@ -123,7 +129,10 @@ class _BoundedObjectReader:
             if self._source is None:
                 self._open_next_range()
             range_remaining = self._range_end - self._offset + 1
-            chunk = self._source.read(min(requested - len(result), range_remaining))
+            limit = min(requested - len(result), range_remaining)
+            chunk = self._source.read(limit)
+            if not isinstance(chunk, bytes) or len(chunk) > limit:
+                raise OSError("Object storage violated its bounded binary read contract.")
             if not chunk:
                 raise OSError("Object storage ended a verification range before its declared size.")
             result.extend(chunk)
@@ -146,6 +155,7 @@ class _BoundedObjectReader:
         self._source = self._store.open_stream(
             self._uri,
             ByteRange(self._offset, self._range_end),
+            version=self._version,
         )
 
     def _close_range(self) -> None:
@@ -165,8 +175,13 @@ RETRY_OWNER = {
     "kubernetes.analysis.cancel": "workflow-reconciler",
     "kubernetes.analysis.legacy.cancel": "workflow-reconciler",
     "upload.reconcile": "workflow-reconciler",
+    "upload.reconcile.v2": "workflow-reconciler",
     "registry.reconcile": "workflow-reconciler",
     "deployment.reconcile": "workflow-reconciler",
+    "deployment.reconcile.v3": "workflow-reconciler",
+    "deployment.reconcile.v4": "workflow-reconciler",
+    "deployment.control.v1": "workflow-reconciler",
+    "deployment.reconcile.v2": "workflow-reconciler",
     "governance.reconcile": "workflow-reconciler",
     "cleanup.execute": "workflow-reconciler",
     "project.delete": "workflow-reconciler",
@@ -200,19 +215,29 @@ def reconcile_entry(
     entry = _lock_outbox_delivery(db, entry.id, worker_id)
     if entry is None:
         return
-    if entry.topic in {"kubernetes.analysis.legacy.cancel", "registry.reconcile"}:
+    if entry.topic in {
+        "ray.training.submit",
+        "ray.dataset.split.submit",
+        "ray.dataset.prepare.submit",
+        "project.delete",
+        "run.delete",
+        "upload.reconcile.v2",
+        "kubernetes.analysis.legacy.cancel",
+        "registry.reconcile",
+        "deployment.reconcile",
+        "deployment.reconcile.v3",
+        "deployment.reconcile.v4",
+        "deployment.control.v1",
+        "deployment.reconcile.v2",
+    }:
         raise RuntimeError("This topic requires the factory-owned dispatcher.")
     try:
         if entry.topic == "dataset.profile.local":
             from automl_api.services.profiling_jobs import run_local_profile
 
             run_local_profile(db, entry, worker_id)
-        elif entry.topic in {"ray.dataset.split.submit", "ray.dataset.prepare.submit"}:
-            submit_dataset_ray_job(db, entry, k8s or KubernetesTrainingClient())
         elif entry.topic == "ray.dataset.cancel":
             cancel_dataset_ray_job(db, entry, k8s or KubernetesTrainingClient())
-        elif entry.topic == "ray.training.submit":
-            submit_training_ray_job(db, entry, k8s or KubernetesTrainingClient())
         elif entry.topic == "ray.training.cancel":
             cancel_training_ray_job(db, entry, k8s or KubernetesTrainingClient())
         elif entry.topic == "kubernetes.analysis.submit":
@@ -223,19 +248,8 @@ def reconcile_entry(
             cancel_analysis_job(db, entry, k8s or KubernetesTrainingClient())
         elif entry.topic == "upload.reconcile":
             reconcile_upload_session(db, entry)
-        elif entry.topic == "deployment.reconcile":
-            reconcile_deployment(db, entry, k8s or KubernetesTrainingClient())
         elif entry.topic == "governance.reconcile":
             reconcile_governance_object(db, entry)
-        elif entry.topic in {"project.delete", "run.delete"}:
-            from automl_api.services.deletion import reconcile_deletion
-
-            project_deletion = entry.topic == "project.delete"
-            if not reconcile_deletion(db, entry, k8s or KubernetesTrainingClient()):
-                defer_outbox(db, entry, worker_id=worker_id)
-                return
-            if project_deletion:
-                return  # The project cascade removed this outbox entry and its command.
         elif entry.topic == "cleanup.execute":
             reconcile_cleanup(db, entry, k8s or KubernetesTrainingClient())
         elif handlers and entry.topic in handlers:
@@ -539,195 +553,11 @@ def reconcile_upload_session(db: Session, entry: OutboxEntry) -> DatasetUploadSe
         raise LookupError("The tracked upload session no longer exists.")
     if session.status in {"expired", "aborted", "quarantined", "failed", "ready"}:
         return session
-    if session.status not in {"completed", "object_completed", "verifying"}:
-        if session.expires_at <= datetime.now(UTC):
-            session.status = "expired"
-            session.terminal_reason = "upload session expired before durable completion"
-            session.lease_owner = None
-            session.lease_expires_at = None
-            db.flush()
-            return session
-        raise RuntimeError("The upload session is not yet eligible for terminal reconciliation.")
-    expected_digest = require_upload_byte_digest(session)
-    upload_kind = getattr(session, "upload_kind", "dataset")
-    version = None
-    if session.dataset_version_id is not None:
-        version = db.scalar(
-            select(DatasetVersion).where(
-                DatasetVersion.project_id == session.project_id,
-                DatasetVersion.id == session.dataset_version_id,
-            )
-        )
-    if upload_kind == "dataset" and session.dataset_version_id is None:
-        _quarantine_upload(session, "completed upload has no dataset version")
-        db.flush()
-        return session
-    if session.dataset_version_id is not None and version is None:
-        _quarantine_upload(session, "completed upload references a missing dataset version")
-        db.flush()
-        return session
-    store = get_object_store()
-    object_uri = getattr(session, "completed_object_uri", None) or (
-        version.object_uri if version is not None else None
+    require_upload_byte_digest(session)
+    raise UploadContractError(
+        "Legacy upload verification requires original immutable completion custody; "
+        "no latest object was read."
     )
-    if not object_uri:
-        _quarantine_upload(session, "completed upload has no durable object URI")
-        db.flush()
-        return session
-    entry_id, worker_id = entry.id, entry.lease_owner
-    session_id = session.id
-    project_id = session.project_id
-    expected_size = session.byte_size
-    filename = getattr(session, "original_filename", "legacy.csv")
-    version_id = session.dataset_version_id
-    session.status = "verifying"
-    lease_seconds = max(60, get_settings().upload_scanner_timeout_seconds + 120)
-    lease_started_at = datetime.now(UTC)
-    entry.lease_expires_at = lease_started_at + timedelta(seconds=lease_seconds)
-    session.lease_owner = entry.lease_owner or "workflow-reconciler"
-    session.lease_expires_at = entry.lease_expires_at
-    session.heartbeat_at = lease_started_at
-    db.flush()
-    # Storage reads and scanners can take minutes for multi-GiB objects. Commit the
-    # durable verifying state and extended outbox lease before any external I/O so
-    # PostgreSQL never sits idle in a transaction while bytes are streamed.
-    db.commit()
-
-    if not store.exists(object_uri):
-        raise OSError("The completed upload object is not visible in durable storage.")
-    observed_size = store.size(object_uri)
-    inspection = None
-    inspection_error: TimeoutError | ValueError | None = None
-    if observed_size == expected_size:
-        last_heartbeat_at = lease_started_at
-
-        def renew_verification_lease(processed_bytes: int) -> None:
-            nonlocal last_heartbeat_at
-            observed_at = datetime.now(UTC)
-            if (
-                processed_bytes < expected_size
-                and (observed_at - last_heartbeat_at).total_seconds() < 30
-            ):
-                return
-            if _lock_outbox_delivery(db, entry_id, worker_id) is None:
-                raise StaleFence("Upload verification no longer owns an active delivery.")
-            with db.no_autoflush:
-                db.refresh(session, with_for_update=True)
-            if session.lease_owner != worker_id or session.status != "verifying":
-                raise StaleFence("Upload verification ownership changed.")
-            session.heartbeat_at = observed_at
-            session.lease_expires_at = observed_at + timedelta(seconds=lease_seconds)
-            entry.lease_expires_at = session.lease_expires_at
-            db.flush()
-            db.commit()
-            last_heartbeat_at = observed_at
-
-        source = _BoundedObjectReader(
-            store,
-            object_uri,
-            expected_size,
-            range_size=UPLOAD_VERIFICATION_RANGE_BYTES,
-        )
-        try:
-            inspection = inspect_and_scan_stream(
-                source,
-                filename=filename,
-                expected_size=expected_size,
-                settings=get_settings(),
-                on_progress=renew_verification_lease,
-            )
-        except StaleFence:
-            raise
-        except (TimeoutError, ValueError) as exc:
-            inspection_error = exc
-        finally:
-            source.close()
-
-    if _lock_outbox_delivery(db, entry_id, worker_id) is None:
-        raise StaleFence("Upload verification no longer owns an active delivery.")
-    session = db.scalar(
-        select(DatasetUploadSession)
-        .where(
-            DatasetUploadSession.project_id == project_id,
-            DatasetUploadSession.id == session_id,
-        )
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
-    if session is None:
-        raise LookupError("The tracked upload session no longer exists.")
-    if session.status in {"expired", "aborted", "quarantined", "failed", "ready"}:
-        return session
-    if session.lease_owner != worker_id:
-        raise StaleFence("Upload verification ownership changed.")
-    if observed_size != expected_size:
-        _quarantine_upload(
-            session,
-            f"object byte size mismatch: expected {expected_size}, observed {observed_size}",
-            version,
-        )
-        db.flush()
-        return session
-    if inspection_error is not None:
-        session.scanner_status = "denied" if isinstance(inspection_error, ValueError) else "failed"
-        _quarantine_upload(session, str(inspection_error), version)
-        db.flush()
-        return session
-    if inspection is None:
-        raise RuntimeError("Upload inspection did not produce a terminal result.")
-    session.observed_object_digest = inspection.sha256
-    if inspection.sha256 != expected_digest:
-        _quarantine_upload(session, "object SHA-256 differs from the client manifest", version)
-        db.flush()
-        return session
-    verified_at = datetime.now(UTC)
-    session.status = "ready"
-    session.checksum_verified_at = verified_at
-    session.scanner_status = inspection.scanner_status
-    session.scanner_name = inspection.scanner_name
-    session.scanner_version = inspection.scanner_version
-    session.scanner_signature_version = inspection.signature_version
-    session.scanner_evidence = inspection.evidence
-    session.terminal_reason = None
-    session.lease_owner = None
-    session.lease_expires_at = None
-    session.heartbeat_at = verified_at
-    if version_id is not None:
-        version = db.scalar(
-            select(DatasetVersion)
-            .where(
-                DatasetVersion.project_id == project_id,
-                DatasetVersion.id == version_id,
-            )
-            .with_for_update()
-        )
-    else:
-        version = None
-    if version is not None:
-        version.content_hash = inspection.sha256
-        version.content_hash_algorithm = "sha256"
-        version.content_hash_scope = "byte_stream"
-        version.content_hash_verification_status = "verified"
-        version.content_hash_verified_at = verified_at
-        version.status = DatasetStatus.READY
-        if inspection.schema_columns and not (getattr(version, "schema_json", {}) or {}).get(
-            "columns"
-        ):
-            version.column_count = len(inspection.schema_columns)
-            version.schema_json = {
-                "columns": [{"name": name} for name in inspection.schema_columns],
-                "source": "verified_upload_stream",
-            }
-            version.inferred_types_json = {
-                name: {"semantic_type": "pending", "nullable": None}
-                for name in inspection.schema_columns
-            }
-            version.quality_report_json = {
-                "completeness_score": None,
-                "warnings": ["Rich column statistics are pending dataset preparation."],
-            }
-    db.flush()
-    return session
 
 
 def _quarantine_upload(
@@ -746,53 +576,6 @@ def _quarantine_upload(
     session.lease_expires_at = None
     if version is not None:
         version.status = DatasetStatus.FAILED
-
-
-def reconcile_deployment(
-    db: Session, entry: OutboxEntry, k8s: KubernetesTrainingClient
-) -> ModelRun:
-    run = db.scalar(
-        select(ModelRun)
-        .where(
-            ModelRun.project_id == entry.project_id,
-            ModelRun.id == uuid.UUID(str(entry.payload["run_id"])),
-        )
-        .with_for_update()
-    )
-    if run is None:
-        raise LookupError("The tracked deployment run no longer exists.")
-    if run.status == RunStatus.CANCELLED or run.tags.get("desired_state") in {
-        "deployment_active",
-        "deployment_stopped",
-        "deployment_cleaned",
-    }:
-        return run
-    artifact = db.scalar(
-        select(RunArtifact).where(
-            RunArtifact.project_id == run.project_id,
-            RunArtifact.model_run_id == run.id,
-            RunArtifact.object_uri == str(entry.payload["dockerfile_uri"]),
-        )
-    )
-    if artifact is None:
-        raise LookupError("The tracked deployment Dockerfile no longer exists.")
-    content = str(artifact.artifact_metadata.get("content") or "")
-    if not content:
-        raise ValueError("The tracked deployment Dockerfile content is empty.")
-    key = artifact.object_uri.split("/", 3)[-1]
-    stored = get_object_store().put_bytes(key, content.encode("utf-8"))
-    artifact.object_uri = stored.uri
-    artifact.artifact_metadata = {
-        key: value
-        for key, value in artifact.artifact_metadata.items()
-        if key not in {"content", "desired_state"}
-    }
-    k8s.create_model_deployment(dict(entry.payload["manifests"]))
-    run.status = RunStatus.RUNNING
-    run.started_at = run.started_at or datetime.now(UTC)
-    run.tags = {**run.tags, "desired_state": "deployment_active"}
-    db.flush()
-    return run
 
 
 def reconcile_governance_object(db: Session, entry: OutboxEntry) -> RunArtifact:
@@ -834,6 +617,8 @@ def reconcile_governance_object(db: Session, entry: OutboxEntry) -> RunArtifact:
 def reconcile_cleanup(
     db: Session, entry: OutboxEntry, k8s: KubernetesTrainingClient
 ) -> list[uuid.UUID]:
+    from automl_api.services.deployment_objects import unretired_deployment_write
+
     artifact_ids = [uuid.UUID(str(value)) for value in entry.payload.get("artifact_ids", [])]
     completed: list[uuid.UUID] = []
     store = get_object_store()
@@ -845,6 +630,7 @@ def reconcile_cleanup(
                 RunArtifact.id == artifact_id,
             )
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
         tombstone = db.scalar(
             select(DeletionTombstone).where(
@@ -868,6 +654,10 @@ def reconcile_cleanup(
             )
         )
         if artifact is not None:
+            if unretired_deployment_write(artifact):
+                raise DeletionPending(
+                    "Deployment native object write requires verified retirement."
+                )
             store.delete(artifact.object_uri)
             db.delete(artifact)
         if stage is not None:
@@ -900,9 +690,134 @@ def _ray_credential_protocol(entry):
     return entry.payload["credential_protocol"]
 
 
-def submit_training_ray_job(
-    db: Session, entry: OutboxEntry, k8s: KubernetesTrainingClient
-) -> WorkflowAttempt:
+def _ray_submission_sequence(db, attempt):
+    existing = db.scalar(
+        select(WorkflowEvent).where(
+            WorkflowEvent.attempt_id == attempt.id,
+            WorkflowEvent.event_key == "ray.submitted",
+        )
+    )
+    if existing is not None:
+        raise StaleFence("Original Ray submission receipt prevents native reissuance.")
+    return 1 + (
+        db.scalar(
+            select(func.max(WorkflowEvent.sequence)).where(WorkflowEvent.attempt_id == attempt.id)
+        )
+        or 0
+    )
+
+
+def _record_ray_submission(db, attempt, entry, manifest, created, sequence, fingerprints):
+    if fingerprints != {
+        "request_sha256": canonical_request_hash(entry.payload),
+        "manifest_sha256": canonical_request_hash(manifest),
+    }:
+        raise StaleFence("Original Ray submission request changed during native creation.")
+    metadata = created.get("metadata") if isinstance(created, dict) else None
+    if (
+        not isinstance(metadata, dict)
+        or not isinstance(metadata.get("uid"), str)
+        or not metadata["uid"].strip()
+        or metadata.get("namespace") != manifest["metadata"]["namespace"]
+        or metadata.get("name") != manifest["metadata"]["name"]
+    ):
+        raise StaleFence("Original Ray submission native identity is incomplete or changed.")
+    payload = {
+        "uid": metadata["uid"],
+        "namespace": metadata["namespace"],
+        "job_name": metadata["name"],
+        "outbox_id": str(entry.id),
+        **fingerprints,
+    }
+    db.add(
+        WorkflowEvent(
+            project_id=attempt.project_id,
+            attempt_id=attempt.id,
+            sequence=sequence,
+            event_key="ray.submitted",
+            event_type="ray.submitted",
+            payload=payload,
+            result_digest=canonical_request_hash(payload),
+        )
+    )
+
+
+def _ray_submission(db, attempt):
+    event = db.scalar(
+        select(WorkflowEvent)
+        .where(
+            WorkflowEvent.attempt_id == attempt.id,
+            WorkflowEvent.event_key == "ray.submitted",
+        )
+        .execution_options(populate_existing=True)
+    )
+    if (
+        event is None
+        or event.project_id != attempt.project_id
+        or event.event_type != "ray.submitted"
+        or event.attempt_id != attempt.id
+        or not isinstance(event.payload, dict)
+        or event.result_digest != canonical_request_hash(event.payload)
+        or event.payload.get("job_name") != attempt.ray_job_name
+        or any(
+            not isinstance(event.payload.get(key), str) or not event.payload[key].strip()
+            for key in (
+                "uid",
+                "namespace",
+                "job_name",
+                "outbox_id",
+                "request_sha256",
+                "manifest_sha256",
+            )
+        )
+    ):
+        raise StaleFence("Original Ray submission evidence is missing or changed.")
+    try:
+        outbox_id = uuid.UUID(event.payload["outbox_id"])
+        resource_id = (
+            attempt.model_run_id
+            if attempt.stage == WorkflowStage.TRAINING_RUN
+            else uuid.UUID(attempt.logical_key.split(":")[1])
+        )
+    except (ValueError, IndexError, AttributeError) as exc:
+        raise StaleFence("Original Ray submission source identity is malformed.") from exc
+    source = db.get(OutboxEntry, outbox_id, populate_existing=True)
+    training = attempt.stage == WorkflowStage.TRAINING_RUN
+    topic = (
+        "ray.training.submit"
+        if training
+        else "ray.dataset.split.submit"
+        if attempt.stage == WorkflowStage.SPLITTER
+        else "ray.dataset.prepare.submit"
+        if attempt.stage == WorkflowStage.PREPARATION
+        else None
+    )
+    if (
+        source is None
+        or source.project_id != attempt.project_id
+        or topic is None
+        or source.topic != topic
+        or source.aggregate_type != ("model_run" if training else "profiling_job")
+        or source.aggregate_id != resource_id
+        or not isinstance(source.payload, dict)
+        or source.payload.get("attempt_id") != str(attempt.id)
+        or source.payload.get("fencing_token") != attempt.fencing_token
+        or canonical_request_hash(source.payload) != event.payload["request_sha256"]
+    ):
+        raise StaleFence("Original Ray submission request no longer matches its evidence.")
+    return event.payload, source
+
+
+@dataclass(frozen=True)
+class RaySubmissionPlan:
+    attempt: WorkflowAttempt
+    manifest: dict | None = None
+    fingerprints: dict | None = None
+    resource: ModelRun | ProfilingJob | None = None
+    version: DatasetVersion | None = None
+
+
+def prepare_training_ray_job(db: Session, entry: OutboxEntry) -> RaySubmissionPlan:
     attempt_id = uuid.UUID(str(entry.payload["attempt_id"]))
     fencing_token = str(entry.payload["fencing_token"])
     attempt = db.scalar(
@@ -933,7 +848,7 @@ def submit_training_ray_job(
         AttemptStatus.CANCELLED,
         AttemptStatus.SUPERSEDED,
     }:
-        return attempt
+        return RaySubmissionPlan(attempt)
 
     run = db.scalar(
         select(ModelRun).where(
@@ -946,33 +861,21 @@ def submit_training_ray_job(
     from automl_api.services.provider_source import validate_attempt_source
 
     validate_attempt_source(db, attempt, run)
+    _ray_submission_sequence(db, attempt)
     if attempt.status == AttemptStatus.PENDING:
         transition_attempt(attempt, AttemptStatus.CLAIMED, fencing_token=fencing_token)
     name = f"sceptre-run-{str(run.id)[:8]}-g{attempt.generation}"
     manifest = build_ray_job_manifest(
         run, attempt, name=name, credential_protocol=credential_protocol
     )
-    k8s.ensure_service_account(attempt.workload_identity)
-    created = k8s.create_ray_job(manifest)
-    metadata = created.get("metadata", {})
-    status = created.get("status", {})
-    transition_attempt(attempt, AttemptStatus.SUBMITTED, fencing_token=fencing_token)
-    attempt.ray_job_name = str(metadata.get("name") or name)
-    attempt.ray_cluster_name = status.get("rayClusterName") or f"{name}-raycluster"
-    attempt.ray_submission_id = status.get("jobId")
-    run.k8s_job_name = attempt.ray_job_name
-    run.failure_code = None
-    run.failure_message = None
-    run.plain_english_failure = None
-    run.finished_at = None
-    run.tags = {**run.tags, "desired_state": "ray_submitted"}
-    db.flush()
-    return attempt
+    fingerprints = {
+        "request_sha256": canonical_request_hash(entry.payload),
+        "manifest_sha256": canonical_request_hash(manifest),
+    }
+    return RaySubmissionPlan(attempt, manifest, fingerprints, run)
 
 
-def submit_dataset_ray_job(
-    db: Session, entry: OutboxEntry, k8s: KubernetesTrainingClient
-) -> WorkflowAttempt:
+def prepare_dataset_ray_job(db: Session, entry: OutboxEntry) -> RaySubmissionPlan:
     attempt_id = uuid.UUID(str(entry.payload["attempt_id"]))
     fencing_token = str(entry.payload["fencing_token"])
     profile_job_id = uuid.UUID(str(entry.payload["profiling_job_id"]))
@@ -1005,7 +908,7 @@ def submit_dataset_ray_job(
         raise StaleFence("Dataset submission scope differs from its attempt.")
     credential_protocol = _ray_credential_protocol(entry)
     if attempt.status not in {AttemptStatus.PENDING, AttemptStatus.CLAIMED}:
-        return attempt
+        return RaySubmissionPlan(attempt)
     job = db.scalar(
         select(ProfilingJob)
         .where(
@@ -1032,34 +935,55 @@ def submit_dataset_ray_job(
     from automl_api.services.provider_source import validate_attempt_source
 
     validate_attempt_source(db, attempt)
+    _ray_submission_sequence(db, attempt)
 
     if attempt.status == AttemptStatus.PENDING:
         transition_attempt(attempt, AttemptStatus.CLAIMED, fencing_token=fencing_token)
     stage_name = expected_stage.value
     name = f"sceptre-{stage_name}-{str(job.id)[:8]}-g{attempt.generation}"
-    k8s.ensure_service_account(attempt.workload_identity)
     manifest = build_dataset_ray_job_manifest(
         job, version, attempt, name=name, credential_protocol=credential_protocol
     )
-    created = k8s.create_ray_job(manifest)
+    fingerprints = {
+        "request_sha256": canonical_request_hash(entry.payload),
+        "manifest_sha256": canonical_request_hash(manifest),
+    }
+    return RaySubmissionPlan(attempt, manifest, fingerprints, job, version)
+
+
+def publish_ray_submission(db, entry, plan, created):
+    attempt, manifest, fingerprints = plan.attempt, plan.manifest, plan.fingerprints
+    if manifest is None or fingerprints is None:
+        raise StaleFence("Ray publication has no original prepared manifest.")
+    sequence = _ray_submission_sequence(db, attempt)
+    _record_ray_submission(db, attempt, entry, manifest, created, sequence, fingerprints)
     metadata = created.get("metadata", {})
     ray_status = created.get("status", {})
-    transition_attempt(attempt, AttemptStatus.SUBMITTED, fencing_token=fencing_token)
-    attempt.ray_job_name = str(metadata.get("name") or name)
+    transition_attempt(attempt, AttemptStatus.SUBMITTED, fencing_token=attempt.fencing_token)
+    name = manifest["metadata"]["name"]
+    attempt.ray_job_name = metadata["name"]
     attempt.ray_cluster_name = ray_status.get("rayClusterName") or f"{name}-raycluster"
     attempt.ray_submission_id = ray_status.get("jobId")
-    job.status = "running"
-    job.current_stage = stage_name
-    job.started_at = job.started_at or datetime.now(UTC)
-    job.heartbeat_at = datetime.now(UTC)
-    job.overview_json = {
-        **job.overview_json,
-        "workflow_attempt_id": str(attempt.id),
-        "workflow_generation": attempt.generation,
-        "ray_job_name": attempt.ray_job_name,
-        "ray_job_namespace": manifest["metadata"]["namespace"],
-    }
-    version.status = DatasetStatus.PROFILING
+    if attempt.stage == WorkflowStage.TRAINING_RUN:
+        run = plan.resource
+        run.k8s_job_name = attempt.ray_job_name
+        run.failure_code = run.failure_message = run.plain_english_failure = None
+        run.finished_at = None
+        run.tags = {**run.tags, "desired_state": "ray_submitted"}
+    else:
+        job, version = plan.resource, plan.version
+        job.status = "running"
+        job.current_stage = attempt.stage.value
+        job.started_at = job.started_at or datetime.now(UTC)
+        job.heartbeat_at = datetime.now(UTC)
+        job.overview_json = {
+            **job.overview_json,
+            "workflow_attempt_id": str(attempt.id),
+            "workflow_generation": attempt.generation,
+            "ray_job_name": attempt.ray_job_name,
+            "ray_job_namespace": manifest["metadata"]["namespace"],
+        }
+        version.status = DatasetStatus.PROFILING
     db.flush()
     return attempt
 

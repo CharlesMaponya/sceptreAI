@@ -1,0 +1,105 @@
+date: '2026-10-26'
+phase: 1
+scope: upload-completion-workflow-progress
+status: in_progress
+phase_complete: false
+scope_integration_complete: false
+source_inputs: 641
+source_manifest_sha256: 55bb47911026f6f5f089435b936da0e22a165b5d0c192e55a389a7a0e154b826
+private_evidence_directory: .unlazy/phase1-upload-completion
+checks:
+  workflow:
+    passed: 74
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43729592320
+    test_xml_sha256: 1c15bad8e6e82746e1ca84f5df8d91813036c1da7c55fd0b7a76f0dff2156c0d
+  connected:
+    passed: 216
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43724185600
+    test_xml_sha256: a13983b244c742d192c135ade9243e236d93e4ee8b765d22de9f7b043b37409a
+  providers:
+    passed: 128
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43729076224
+    test_xml_sha256: be2619848b74038a004e69328194dc7898e82b2a10477d7bdf9851b454b053dd
+counts_overlap: false
+workflow_suite_breakdown:
+  tests.test_upload_completion_workflow: 61
+  tests.test_phase1_idempotency: 5
+  tests.test_route_delegation: 8
+upload_completion_gates:
+  met: 0
+  unmet: 6
+parent_inference_gates:
+  met: 0
+  unmet: 8
+phase_1_requirements:
+  verified: 2
+  open: 34
+original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+strict_schema:
+  status: terminal_pass
+  read_only: true
+  revision: 0018_attempt_predecessor_lineage
+behavior:
+- The real completion route captures the current actor/token version, commits its authentication DB session
+  and delegates to a factory-owned service. Project-before-upload locks, fresh actor/token/membership/project
+  checks and an immutable source precede native work and final publication.
+- The old direct-native complete_upload_session helper and its latest-object recovery branch are removed. SQL-only
+  record_completed_upload materializes a receipt already retained by the custody service; all repository callers
+  are migrated.
+- Admission, native start, original receipt capture and typed publication use separate short transactions.
+  SDK construction, progress and native completion hold zero SQL connections in actual route/service tests.
+  Current source and caller authority are revalidated after provider work.
+- A known native receipt is anchored to its original command and persisted before permission-dependent publication.
+  Revocation or publication rollback retains the original version without publishing data or scheduling verification.
+  Recovery of a known recorded result does not repeat a provider commit.
+- S3/Azure issued outcomes without receipts remain explicitly unknown and never reissue or inspect latest.
+  GCS can recover only by reading the same original session. Concurrent same/different-key requests cannot
+  repeat the accepted commit.
+- Independent native-start and command anchors prevent missing/downgraded journals from authorizing another
+  completion or unsafe abort/expiry cleanup. Such uploads remain held for qualified original-version retirement
+  or recovery.
+- New uploads carry the v2 completion admission marker. Unqualified old histories are refused without inferring
+  an original version. Published typed responses replay without provider I/O.
+- Dataset-version aliases exposed a durable replay bug. Both the new service and shared idempotency helper
+  serialize aliases; shared replay also reads known historical field-name payloads without rewriting them.
+  Real dataset publication/rollback/replay and nested old/new alias cases pass.
+coverage_detail:
+- The workflow profile contains real owned PostgreSQL source/command/receipt tests, an actual FastAPI completion
+  route, concurrent request, publication rollback and committed-result replay cases, and the shared idempotency/route delegation
+  checks.
+- Forty malformed-manifest cases moved from mock-only service coverage. Thirty-two exercise the factory guard;
+  eight null algorithm/scope cases are rejected by existing PostgreSQL NOT NULL constraints. Separate pure-guard
+  null cases remain covered. No constraint was relaxed.
+- Provider response tests use actual installed SDKs with local protocol servers; service/route native callbacks
+  are controlled and assert zero checked-out connections. This is not one deployed cloud-provider-to-inference
+  journey.
+retained_pilots:
+- The first workflow setup used retention_days=0 and was rejected by the unchanged request schema. The fixture
+  now uses its documented optional None value.
+- 'The expanded workflow pilot passed52 and failed9: one dataset-version alias replay and eight attempts to
+  persist forbidden null digest fields. The alias bug was fixed in serialization, and the null cases now assert
+  the real existing constraints instead of weakening them.'
+limitations:
+- upload.reconcile.v2 is intentionally not dispatched to the old unpinned reader yet. New completion acknowledgements
+  queue pending verification; readiness is not qualified until the new topic is wired to original-version metadata/range/scanner
+  verification. This is a material unfinished integration.
+- 'The legacy verifier and JSON object-backed offline inference still read latest. Exact-version size metadata
+  must precede pinned ranges: truncating a reader at expected_size alone could miss larger Azure blocks changed
+  before commit. Fresh source/lease/receipt validation and SQL-free scanner/body streaming remain required.'
+- Abort and expiry cleanup hold completion custody, including missing-journal start markers. Qualified exact-version
+  retirement/recovery is still required; these guards do not implement complete cancellation or cleanup.
+- Old pending/ready upload histories without original v2 admission/receipts require controlled recovery or
+  a new upload. Actual prior binaries, mixed-version deployment and full native/provider/IAM/admission compatibility
+  remain unqualified.
+- No complete scope gate or Phase1 requirement is promoted. Full release/branch>=90.01%, maintained images,
+  the45,000,000,000-byte migration, deferred15-by-10-GiB load and original deletion:G7 seven-missing-object
+  handoff remain Open. No missing object was reconstructed or re-signed.

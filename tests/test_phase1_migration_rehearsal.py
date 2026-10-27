@@ -278,13 +278,14 @@ def test_storage_values_remain_readable_after_actual_migration(migrated_template
 def test_deletion_evidence_upgrade_and_guarded_downgrade(migrated_case):
     from automl_api.models.projects import Project
     from automl_api.models.workflows import DeletionStage, DeletionTombstone
-    from sqlalchemy import delete, select
+    from sqlalchemy import MetaData, Table, delete, select
     from sqlalchemy.exc import IntegrityError
 
     target, _ = migrated_case
     previous = "0010_phase3_contract_target"
     rehearsal._run(target, rehearsal.sys.executable, "-m", "alembic", "downgrade", previous)
     engine = create_engine(target)
+    historical_stage = Table("deletion_stages", MetaData(), autoload_with=engine)
     try:
         with Session(engine) as db, db.begin():
             owner = db.scalar(text("SELECT id FROM users LIMIT 1"))
@@ -303,8 +304,9 @@ def test_deletion_evidence_upgrade_and_guarded_downgrade(migrated_case):
             db.add(tombstone)
             db.flush()
             tombstone_id = tombstone.id
-            db.add(
-                DeletionStage(
+            db.execute(
+                historical_stage.insert().values(
+                    id=uuid.uuid4(),
                     project_id=project_id,
                     tombstone_id=tombstone_id,
                     resource_class="object_store",
@@ -312,7 +314,7 @@ def test_deletion_evidence_upgrade_and_guarded_downgrade(migrated_case):
                     retry_count=2,
                 )
             )
-        tables = (DeletionTombstone.__table__, DeletionStage.__table__)
+        tables = (DeletionTombstone.__table__, historical_stage)
         with engine.connect() as connection:
             before = [
                 connection.execute(select(t).where(t.c.project_id == project_id)).all()

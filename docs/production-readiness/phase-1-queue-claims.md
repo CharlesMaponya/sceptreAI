@@ -33,7 +33,71 @@ Native credential removal, source-current release/runtime checks, actual prior-b
 The legacy cleanup selector now lives in `legacy_analysis.observe_jobs`; the existing outbox selector remains its sole lease allocator. Short blocking `Session.get(..., with_for_update=True)` checks bind the cleanup command, run and native facts and end before native I/O. The current explicit-selector rescan does not extend qualification to all blocking/no-lock paths or dynamic SQL.
 
 
-Background registry inspection now commits its selection, closes SQL for storage existence/size reads and revalidates the exact delivery/source before atomic verification and acknowledgement. Late failures also preserve successor deliveries, including reclaims using the same worker name. 269 connected checks include 27 focused PostgreSQL/process-loss cases. HTTP registration now also releases SQL for its initial size read and revalidates before publication (registry-registration-2026-10-24.yaml). Native hash/version/custody remain required. See [evidence](evidence/phase-1/registry-inspection-2026-10-24.yaml).
+Background registry inspection now commits its selection, closes SQL for storage existence/size reads and revalidates the exact delivery/source before atomic verification and acknowledgement. Late failures also preserve successor deliveries, including reclaims using the same worker name. 269 connected checks include 27 focused PostgreSQL/process-loss cases. HTTP registration now also releases SQL for its initial size read and revalidates before publication (registry-registration-2026-10-24.yaml). At that checkpoint, native hash/version/custody remained required; the subsequent custody increment below covers registration and background verification. See [evidence](evidence/phase-1/registry-inspection-2026-10-24.yaml).
 
 
-The HTTP registration boundary passes 288 connected checks, including 26 focused HTTP/PostgreSQL cases and all 27 background-inspection cases. It retains canonical registration replay and serial version allocation while native read failures, source/role changes, concurrent requests and lost SQL acknowledgements are covered. This does not qualify immutable native bytes or producer custody. [Evidence](evidence/phase-1/registry-registration-2026-10-24.yaml).
+The HTTP registration boundary passes 288 connected checks, including 26 focused HTTP/PostgreSQL cases and all 27 background-inspection cases. It retains canonical registration replay and serial version allocation while native read failures, source/role changes, concurrent requests and lost SQL acknowledgements are covered. That earlier checkpoint did not qualify immutable native bytes or producer custody; see the subsequent custody increment below. [Evidence](evidence/phase-1/registry-registration-2026-10-24.yaml).
+
+Original model custody now also gates HTTP registration and background verification. Both read and hash the pinned native version outside SQL, then revalidate original receipts before publication. The local TLS S3-compatible test preserves original-version registration after latest changes. Historical verified flags alone are rejected; legacy qualification and custody enforcement in downstream consumers remain required. [Evidence](evidence/phase-1/registry-custody-2026-10-24.yaml).
+
+Deployment model downloads now also commit before pinned native reads and revalidate authority/deletion barriers before returning verified bytes. New deployments persist the registry custody digest and restart checks it. Deployment/restart native mutations still require durable custody and SQL/I-O separation. [Evidence](evidence/phase-1/serving-model-custody-2026-10-24.yaml).
+
+Deployment Dockerfile publication now uses a factory-owned storage stage and versioned topic: committed one-shot intent, conditional native creation outside SQL, original metadata/version/hash receipt recovery, and retirement barriers. A later Kubernetes failure cannot upload it again. The Kubernetes handoff still performs native creation under SQL and requires UID/spec custody; this stage does not qualify those effects. [Evidence](evidence/phase-1/deployment-object-custody-2026-10-25.yaml).
+
+The 2026-10-25 deployment creation safety increment passes333 connected checks (39 focused) on585 frozen inputs plus one owned zero-replica k3d probe. The creator rejects foreign/requested-spec conflicts and preserves partial resources on later error; it performs no compensating name-only deletes. This does not move creation outside SQL or provide durable UID/namespace-lifetime custody. W03 and native lifecycle qualification remain Open. See [evidence](evidence/phase-1/deployment-create-safety-2026-10-25.yaml).
+
+The 2026-10-25 durable deployment submission increment passes328 connected checks (31 focused) on 587 frozen inputs and one owned zero-replica k3d probe. The factory commits per-resource starts, ends SQL before Kubernetes calls, stores original annotated UID/spec receipts independently and revalidates the observed receipts before publication. The old SQL-bound helper is removed. Namespace admission fencing, UID-bound native lifecycle/physical retirement and full W03 qualification remain Open. [Evidence](evidence/phase-1/deployment-submission-2026-10-25.yaml).
+
+The 2026-10-25 lifecycle identity increment passes 275 connected checks (50 focused) on 588 frozen inputs and one zero-replica k3d probe. Stop/start/cleanup pin original UID/spec and namespace custody; scale patches test UID/resourceVersion, deletes use UID preconditions and retirement requires empty original resources/ReplicaSets/Pods. The recorded native retirement lifts only the matching submission barrier. These control services still hold SQL across native calls; durable factory-owned control dispatch/generations and full W03 remain Open. [Evidence](evidence/phase-1/deployment-lifecycle-identity-2026-10-25.yaml).
+
+The 2026-10-25 durable deployment control increment passes 273 connected checks (22 focused) on 590 frozen inputs and one zero-replica k3d dispatcher probe. SQL-only admission and generation-fenced native dispatch cover stop/start/cleanup; cleanup records physical retirement. Pending listing/UI states stay explicit. Active observer SQL separation, producer/namespace admission, legacy histories and full W03 qualification remain Open. [Evidence](evidence/phase-1/deployment-control-workflows-2026-10-25.yaml).
+
+The 2026-10-25 deployment-observer increment passes 211 connected checks (37 focused) on 626 frozen inputs and a temporary-service-account zero-replica k3d probe. Deployment status/URL reads no longer span SQL; original UID/spec/control and workload lineage plus SQL observation revisions fence publication. API model writes are withdrawn in Helm; reconciler patch and own-namespace metadata reads are explicit. Other workload I/O, producer/namespace admission and full W03 qualification remain Open. [Evidence](evidence/phase-1/deployment-observers-2026-10-25.yaml).
+
+## Operator replay of exhausted unpublished-upload cleanup
+
+A project owner can authorize five more cleanup attempts for an exhausted upload
+cleanup. The target stays fixed to the original known native session. This does
+not reopen the upload, create another native session, or release held data.
+
+```http
+POST /projects/{project_id}/datasets/uploads/{session_id}/cleanup/replay
+Authorization: Bearer <current-owner-token>
+Idempotency-Key: <unique-operator-request-key>
+Content-Type: application/json
+
+{"reason":"Provider access restored; retry the original cleanup"}
+```
+
+The response is HTTP 202 with the approval ID, original cleanup command ID,
+session ID and total authorized attempt budget. The first approval raises the
+budget from five to ten; the existing background worker performs the next attempt.
+Repeating the same key and reason returns the same approval without more budget.
+A different reason with that key conflicts. Another approval requires the current
+epoch to exhaust first.
+
+The API requires fresh authentication with owner-level project access, an active project,
+unchanged source and storage identity, and no retention or legal hold. Live,
+recorded, completed, ambiguous or missing-target cleanup cannot be reset. Unknown
+creation outcomes need their provider-specific recovery procedure.
+
+Each approval preserves the prior attempt, error and approval chain in a separate
+workflow command. Inspect `replayed_by`, `terminal_reason` and the linked approval
+commands when diagnosing recovery. Do not edit reporting retry limits or clear
+provider-state history to authorize more work.
+
+Unpublished upload admission now has background recovery. New native attempts retain the authenticated actor token version in their independently hashed attempt. The worker reuses that snapshot, the original command request and exact object key; it rechecks current actor, token version, membership, project, source and store before publication. A recorded reply needs no new provider construction or creation. Legacy attempts without the snapshot need an explicit authenticated API retry.
+
+Expired unknown S3 creation attempts use the existing bounded exact-key inventory path and five-attempt limit. Unknown GCS/Azure creation replies remain held because the worker cannot recover an opaque missing native identity safely. A live lease is preserved; exhausted attempts pass to logical expiry without renewing backoff. Logical expiry still does not prove native absence. See the scoped [recovery evidence](evidence/phase-1/upload-admission-recovery-progress-2026-10-27.yaml); complete provider recovery and original admission gates remain open.
+
+Upload progress now uses a factory-owned observation: request SQL ends before provider construction, and both construction and native inspection are followed by current authorization/source checks. Publication also compares the original progress projection, so a late observation cannot overwrite a newer one or completion/retirement state. Malformed provider byte counts and part receipts are rejected; cached terminal reads do not construct a provider. This read does not verify file bytes or grant READY status.
+
+S3 progress now traverses bounded part pages instead of silently stopping at the first page. The installed-SDK/local-HTTP test covers 1,001 metadata parts and two pages without allocating a large upload. The 15-user/10 GiB load remains unqualified. Instruction issuance still needs its separate SQL/provider and command-custody conversion. See the scoped [progress evidence](evidence/phase-1/upload-progress-workflow-2026-10-27.yaml).
+
+Upload instructions now commit original command/request/source and per-unit ownership before provider construction or credential/signing work. Known replies commit separately before fresh actor/token/membership/project/source checks can deliver them. Their released native lease also prevents missing reply metadata from being treated as a new issuance. Replaying the original key uses the retained response without another provider call, while expired, corrupted or superseded delivery authority is rejected. An explicit new key may refresh a settled unit; older command history remains stored. This is a five-attempt budget per original command, not a global credential rate limit.
+
+GCS partial instructions now retain the confirmed offset and original resumable URL. Orphan instruction commands participate in project deletion's existing missing-upload barrier. Full ordinary terminal-upload retirement proof and deletion's SQL/provider separation still require work. The scoped [instruction evidence](evidence/phase-1/upload-instruction-workflow-2026-10-27.yaml) records PostgreSQL failures and provider-driver controls; it does not qualify deployed cloud credentials, large load or complete Phase 1.
+
+Project deletion now requires SQL-only evidence that original upload authority retired, at admission and before every queued stage. A terminal or READY flag cannot replace the original admission/store context and published native completion/retirement proof. Instruction source bindings are checked across all retained keys, including superseded keys; processing uses batches rather than loading every instruction payload at once. Independent dataset-version holds and retention deadlines are checked alongside upload-session policy.
+
+Azure block completion is not counted as SAS revocation. The guard retains the existing conservative upload-expiry bound and still requires native closure evidence; expiry alone does not qualify staged-block cleanup. This design follows the documented SAS lifetime and [revocation mechanisms](https://learn.microsoft.com/en-us/rest/api/storageservices/create-user-delegation-sas). Legacy remote history without original context is held for controlled qualification. Deletion's native storage/runtime effects still need their separate SQL-boundary and durable stage-custody conversion; these guards do not complete that work. See the scoped [deletion-proof evidence](evidence/phase-1/upload-deletion-proof-2026-10-27.yaml).

@@ -1,0 +1,242 @@
+date: '2026-10-27'
+phase: 1
+scope: upload-progress-observation-and-parts-inventory
+status: in_progress
+phase_complete: false
+full_upload_admission_complete: false
+full_transfer_workflow_complete: false
+source_inputs: 662
+source_manifest_sha256: b55c1b6878195c68e2300447db4e2207316d2630ee89caf6cd31c9a16056b917
+private_evidence_directory: .unlazy/phase1-upload-progress
+observed_at: '2026-10-27T04:27:08.980964+00:00'
+checks:
+  focused:
+    passed: 294
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43683602432
+    xml_sha256: eb1aa32dbb56a81fca3904710ec8d749a471e43b079f426493915d229e7347e3
+  deletion:
+    passed: 200
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43692380160
+    xml_sha256: 26853b71f9bffc5305b4a7164599bbd85076db1684104814f7b6f155ab0af3bf
+  connected:
+    passed: 560
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43692793856
+    xml_sha256: 6903cc979d0775c2c039380b7398c2e0148eddbc251a1f08b99a74179142375c
+  worker:
+    passed: 28
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43693027328
+    xml_sha256: ef6286aa1f3ceed11d48d387d6b47cd0c052a4f4bce93029ad884321993eca35
+  cancellation:
+    passed: 69
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43692879872
+    xml_sha256: cbaff2dd25693323926dad353b974c8567c912f72b419585ed3bcd9e7513a286
+  process:
+    passed: 6
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43692478464
+    xml_sha256: bd414e67f1528723403d267a24e3c7622a940d0d1205b6d3e4ec83b5838eed93
+counts_overlap: true
+new_cases:
+  test_upload_progress_workflow: 51
+  test_upload_progress_provider: 19
+admission_gates:
+  met: 0
+  unmet: 4
+upload_completion_gates:
+  met: 0
+  unmet: 6
+parent_inference_gates:
+  met: 0
+  unmet: 8
+phase_1_requirements:
+  verified: 2
+  open: 34
+baselines:
+- name: HTTP progress SQL boundary
+  expected_failures: 1
+  reason: Actual route constructed the provider with SQL checked out.
+  xml_sha256: b08b2d29b3678b67a620555aa65cf23ea4931253eba888c668ba6e27ffec03f3
+- name: S3 truncated inventory
+  expected_failures: 1
+  reason: First-page6bytes were returned instead of complete10bytes.
+  xml_sha256: 65ec5560bf896884e3bcbedc3c3ec7ae9d888a14c9f86a40ed9a574e1b16fa95
+intermediate_runs:
+- snapshot: first
+  passed: 269
+  failed: 0
+- snapshot: second
+  passed: 291
+  failed: 0
+failure_windows:
+  scope: Existing original native cleanup crash windows rerun on current source
+  sigkill: 4
+  own_backend_termination: 2
+  witnesses:
+    after_record:
+      mode: after_record
+      pid: 672123
+      native_done: true
+      backend_killed: false
+      phase: recorded
+    after_publish:
+      mode: after_publish
+      pid: 672216
+      native_done: true
+      backend_killed: false
+      phase: published
+    after_native:
+      mode: after_native
+      pid: 672033
+      native_done: true
+      backend_killed: false
+      phase: native_accepted
+    intent_commit_loss:
+      mode: intent_commit_loss
+      pid: 672269
+      native_done: false
+      backend_killed: true
+      backend_pid: 39946
+      phase: issued_before_commit
+      error_type: OperationalError
+    receipt_commit_loss:
+      mode: receipt_commit_loss
+      pid: 672360
+      native_done: true
+      backend_killed: true
+      backend_pid: 39949
+      phase: recorded_before_commit
+      error_type: OperationalError
+    before_native:
+      mode: before_native
+      pid: 671967
+      native_done: false
+      backend_killed: false
+      phase: issued
+integration_readonly:
+  read_only: true
+  revision: 0018_attempt_predecessor_lineage
+  tables: 44
+  schema_differences: []
+  namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+  original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+  reserve_bytes: 43500000000
+  free_bytes: 43683631104
+prior_published_evidence:
+  path: docs/production-readiness/evidence/phase-1/upload-admission-recovery-progress-2026-10-27.yaml
+  sha256: 59ad6b66a01114aa5c7a648af8c4483d03fcbad51f0a7e1348512d5977bddaf8
+  unchanged_private_artifacts: 40
+changes:
+- Actual progress HTTP handler commits request authentication SQL and invokes a factory-owned
+  observation. Project-first locks freshly check actor/token/membership, project,
+  original admission/source/store and completion/retirement command barriers. SDK
+  construction and native reads hold no SQL connection.
+- Original private observation identity and projection are compared after SDK construction
+  and after native reads. Concurrent actor/source/hold/terminal/instruction changes,
+  lost completion metadata with independent command history, and older observations
+  cannot overwrite current rows. Actual concurrent PostgreSQL commits occur during
+  the provider callback.
+- Provider byte counts and exact transfer receipt bounds are validated before publication;
+  malformed, duplicated, regressing or synthetic offset receipts are rejected. GCS
+  offset-only progress and fresh terminal cached reads remain supported. A ready flag
+  alone does not claim bytes were confirmed, and progress never grants digest/READY
+  verification authority.
+- Actual owning PostgreSQL backend termination during progress commit rolls the projection
+  back; retry succeeds. Provider failure and projection-response failure also preserve
+  existing state.
+- Shared S3 progress enumerates all original part pages with bounded100calls/1000parts
+  per page and the existing10000-part ceiling. Repeated/nonadvancing markers, foreign
+  targets and malformed parts fail without adopting partial inventory. Installed SDK
+  plus local HTTP and real PostgreSQL read1001metadata parts over two pages without
+  large data allocation.
+limits:
+  user_database_ceiling_bytes: 45000000000
+  largest_table_rows: null
+  missing_historical_objects: 7
+  native_admission_cleanup: unqualified
+  production_sized_migration: unqualified
+  large_upload_load: unqualified
+  maintained_images: unqualified
+  deployed_cloud_iam: unqualified
+  mixed_version: unqualified
+  full_release_coverage: unqualified
+  whole_phase_1: unqualified
+remaining:
+- Original full admission gates remain0/4; completion0/6, inference0/8 and Phase1
+  requirements2Verified/34Open. Raw progress scripts are not automatic parent acceptance.
+- Instruction issuance still performs provider work inside SQL and requires original
+  command/attempt/receipt custody plus current auth/source publication. GCS partial-offset
+  instruction semantics and browser/provider retry integration still require completion.
+  Resume/result capability construction also needs review.
+- Complete provider-specific unknown/superseded admission recovery and cleanup, opaque
+  GCS identities, Azure/embedded semantics, remaining deletion/provider SQL separation,
+  all-stage brokers, pooler and public contracts.
+- 45GB migration cannot fit alongside43.5GB reserve; largest-table rows remain unspecified.15-by-10GiB
+  load, maintained images, deployed cloud/IAM, mixed-version, full UI/offline/runtime
+  and independent full branch coverage remain unqualified.
+- Original deletion:G7 still requires seven missing historical objects(two models,five
+  signed results); none reconstructed or re-signed.
+evidence_hashes:
+  source-sha256.json: b55c1b6878195c68e2300447db4e2207316d2630ee89caf6cd31c9a16056b917
+  before-source-sha256.json: 02798bff68fe8d49aa88e09d7ea417d846270130875ab0a10e75d8700eb2c880
+  baseline-source-sha256.json: a5c56e01a308fcc73e4e629f99654582466eb1eabf4f46e538aaeddcb43cf0b3
+  baseline-test.py: 4f6da4faa1942233f64ce4c1be7cc3f7f72b6864c591f7bd89eca4b7c7244895
+  baseline.log: 70fbba7ba36e536fe490b94e2885b4cc8321b74697ecbe9b8ccb48336cb7e80b
+  baseline.xml: b08b2d29b3678b67a620555aa65cf23ea4931253eba888c668ba6e27ffec03f3
+  baseline-state.json: baa57c504af32079b6c15b56da06d99d9ced4551fb37d34db5050bdad14468fe
+  provider-baseline-source-sha256.json: 632681ae570fe7671ae4e3296bfcc0c0d4fccf887dd5ae770ebbb96cf77e95f0
+  provider-baseline-test.py: 5fa5f2d4f71363d6b713d9f36bf56557d6e71070a752113f440c553df506df1e
+  provider-baseline.log: 7419beb32edc53711cf27912047d35a7c313297fa6f371503d835a540cff34b0
+  provider-baseline.xml: 65ec5560bf896884e3bcbedc3c3ec7ae9d888a14c9f86a40ed9a574e1b16fa95
+  provider-baseline-state.json: 27bde536e95f9d3852a82311bb6d4a05ad1b7b9d60a2d6244ae4ada9ad4223ac
+  provider-fixture-error.log: 03e5be29528b11fcd38e7ba717ecb03996f27ca6a6a1288677fdd5b0bf618cd7
+  before-uploads.py: 6cf8a72418a2e1242e4ffc85d1f1f60ba2d8b4c2225b7d1d88fabe28b92c047e
+  before-route.py: f471932809d54e1122a5843bd51f63c636cccdaedf3f632b0b1be9dd895f5c44
+  before-s3.py: ee7338c5ce7dfdbba27746e607ece3264cdcdc7147f34748da1160ddce0fba18
+  run.py: 9cbd10b041b9698c82fa2bba54b4d6cf8333176d8486b363e870aec788f42710
+  audit.py: 16c288c883c7365eb05ca24d796c88438a6374bf6afedc42ee25f0f01f94c5a0
+  report.py: cd4bae8e96dfc81bc2fc47a1c89ad6654e8324168f8075deb406eac19defe765
+  PLAN.md: 685e8bfb2690b53288d53571975529d6ecb2a3fc47b9ede813fef75d6cff7b38
+  integration-readonly.json: 202fcf1ccc9b30bd8eddc86cc6cc7688cde28f492567d9087fb3c2db766a1b1e
+  first-focused.xml: 2756b369b51f9a5e4cfc87374708f4f63b9aad86318bdd130403bff545838242
+  first-focused-state.json: d58942e264160f196763d39acfb9ace25f805f0c9da96dadde9d64490da3a765
+  first-source-sha256.json: 15bd03526ef7056008dc8a7c2d241e9582969b610166d905d40cee6b36649e85
+  second-focused.xml: 3bd72efc8e802a98a1c24da334e2991fe9cd44b50591004b6e9adac51286f939
+  second-focused-state.json: 259205227566e469af53da438ff84078ac5d9bd395065550102a0455fa2d4195
+  second-source-sha256.json: 82f61294cc98cc606a9cdb027e3522447b4d9481496a201bc1464dfe96ecd83f
+  focused.xml: eb1aa32dbb56a81fca3904710ec8d749a471e43b079f426493915d229e7347e3
+  focused-state.json: 350e2a68583f528f58c102ca1aea187df0072232ba7e53d4217d607b85ecdda8
+  deletion.xml: 26853b71f9bffc5305b4a7164599bbd85076db1684104814f7b6f155ab0af3bf
+  deletion-state.json: 21346ee352c9764bd104e4bef7598331aef4287cab88644ddfb9db17569cbc83
+  connected.xml: 6903cc979d0775c2c039380b7398c2e0148eddbc251a1f08b99a74179142375c
+  connected-state.json: 0091f7d44116494f8dcd954a72a6fff42911a150edb3e2b7b2ca997c32ea47fa
+  worker.xml: ef6286aa1f3ceed11d48d387d6b47cd0c052a4f4bce93029ad884321993eca35
+  worker-state.json: 1635349fd960bb6fe4a0e5e1763ab63b623181b943df0a3b5dc8488478c965a6
+  cancellation.xml: cbaff2dd25693323926dad353b974c8567c912f72b419585ed3bcd9e7513a286
+  cancellation-state.json: 26dd53c83a0aa306a84d1b0eaf60df5a5109a074c94777eb0cd874b0d931fcb0
+  process.xml: bd414e67f1528723403d267a24e3c7622a940d0d1205b6d3e4ec83b5838eed93
+  process-state.json: 4d54d8abe35893396d1fecb405f958bf205ca12c0abd605cb8f8ad1f8d05edd4
+  crash-witnesses/after_native.json: 849d314fdb65a5021b93e7650b692c73a19b5b79f69dac8cc139fc4867a64775
+  crash-witnesses/after_publish.json: a2f43a31c72268894d1be6f124ee2bfc0eaac150f0ada18171b09966f86bda0e
+  crash-witnesses/after_record.json: dca625f7613df1a8c38971b3528e925fe0e8f40c525023b97b49c86522beb3c0
+  crash-witnesses/before_native.json: b83fe3185110007e0c74bf496b3880ff4da734c773844c9796b9936df31d3f53
+  crash-witnesses/intent_commit_loss.json: 5bf39d37766129e90a4962d8d0f0839eb71bbd114180a11352ec6ba581a85a64
+  crash-witnesses/receipt_commit_loss.json: 2dc21ac7cc4c20d0a987cf2cf187e91d4fdf4fd9f60ff4d47ab2cf4b5c4695cb
+runbook_sha256: 6a7a68453af406526e3203cfc09591fbdbd741c729ab4e3245f98ae39ac2fcca

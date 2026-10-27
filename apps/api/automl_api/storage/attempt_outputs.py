@@ -32,6 +32,29 @@ def _verify_bytes(source, byte_size, sha256):
         raise UploadContractError("Attempt output differs from its declared size or digest")
 
 
+def inspect_attempt_output(store, uri, *, byte_size, sha256, grant_digest):
+    """Recover only a visible original write; absence never authorizes another PUT."""
+    metadata = store.stat(uri)
+    version_key = "generation" if store.driver_name == "gcs" else "version_id"
+    if (
+        metadata.uri != uri
+        or type(metadata.byte_size) is not int
+        or metadata.byte_size != byte_size
+        or metadata.provider_headers.get("sceptre_grant") != grant_digest
+    ):
+        raise UploadContractError("Native output does not match its original write intent")
+    version = immutable_object_version(metadata.provider_headers.get(version_key))
+    if len(version) > 256:
+        raise UploadContractError("Attempt output version exceeds its receipt budget")
+    with store.open_stream(uri, version=version) as remote:
+        _verify_bytes(remote, byte_size, sha256)
+    return ObjectMetadata(
+        uri=uri,
+        byte_size=byte_size,
+        provider_headers={version_key: version, "sceptre_grant": grant_digest},
+    )
+
+
 def write_attempt_output(store, uri, source, *, byte_size, sha256, grant_digest):
     """One conditional write, followed by exact-version byte verification.
 

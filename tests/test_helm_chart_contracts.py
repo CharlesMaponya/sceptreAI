@@ -15,6 +15,197 @@ CHART_DIR = Path(__file__).resolve().parents[1] / "infra" / "helm" / "sceptre"
 SCHEMA_PATH = CHART_DIR / "values.schema.json"
 
 
+def test_inference_authority_is_an_existing_secret_mounted_only_by_api():
+    import subprocess
+
+    import yaml
+
+    rendered = subprocess.run(
+        [
+            "helm",
+            "template",
+            "identity",
+            str(CHART_DIR),
+            "--set",
+            "inference.identity.caSecret=owned-inference-ca",
+            "--set",
+            "attemptIdentity.controlBaseUrl=https://control.invalid/api/v1/internal/attempts",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    docs = [doc for doc in yaml.safe_load_all(rendered.stdout) if doc]
+    api = next(
+        doc
+        for doc in docs
+        if doc["kind"] == "Deployment" and doc["metadata"]["name"].endswith("-api")
+    )
+    pod = api["spec"]["template"]["spec"]
+    assert pod["securityContext"]["fsGroup"] == 10001
+    volume = next(value for value in pod["volumes"] if value["name"] == "inference-authority")
+    assert volume["secret"] == dict(
+        secretName="owned-inference-ca",
+        defaultMode=0o440,
+        items=[dict(key="ca.crt", path="ca.crt"), dict(key="ca.key", path="ca.key")],
+    )
+    for container in pod["containers"] + pod.get("initContainers", []):
+        mounted = any(
+            item["name"] == "inference-authority" for item in container.get("volumeMounts", [])
+        )
+        paths = {
+            item["name"]: item.get("value")
+            for item in container.get("env", [])
+            if item["name"].startswith("INFERENCE_IDENTITY_CA_")
+        }
+        if container["name"] == "api":
+            assert mounted and paths == dict(
+                INFERENCE_IDENTITY_CA_CERTIFICATE_FILE="/inference-authority/ca.crt",
+                INFERENCE_IDENTITY_CA_PRIVATE_KEY_FILE="/inference-authority/ca.key",
+            )
+        else:
+            assert not mounted and not paths
+    for doc in docs:
+        if doc["kind"] == "Deployment" and doc is not api:
+            assert all(
+                volume["name"] != "inference-authority"
+                for volume in doc["spec"]["template"]["spec"].get("volumes", [])
+            )
+        if doc["kind"] == "ConfigMap":
+            assert not any(key.startswith("INFERENCE_IDENTITY_CA_") for key in doc.get("data", {}))
+    assert not any(
+        doc["kind"] == "Secret" and doc["metadata"]["name"] == "owned-inference-ca" for doc in docs
+    )
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "",
+        "http://control.invalid/api/v1/internal/attempts",
+        "https://control.invalid/custom/attempts",
+        "https://actor:password@control.invalid/api/v1/internal/attempts",
+    ],
+)
+def test_configured_inference_authority_requires_the_real_https_control_path(url):
+    import subprocess
+
+    rendered = subprocess.run(
+        [
+            "helm",
+            "template",
+            "identity",
+            str(CHART_DIR),
+            "--set",
+            "inference.identity.caSecret=owned-inference-ca",
+            "--set",
+            "attemptIdentity.controlBaseUrl=" + url,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert rendered.returncode != 0
+
+
+@pytest.mark.parametrize("namespace", ["owned-observer-a", "owned-observer-b"])
+def test_deployment_custody_rbac_is_scoped_and_supports_current_protocols(namespace):
+    import subprocess
+
+    import yaml
+
+    rendered = subprocess.run(
+        [
+            "helm",
+            "template",
+            "observer",
+            str(CHART_DIR),
+            "--namespace",
+            namespace,
+            "--show-only",
+            "templates/rbac.yaml",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    docs = [doc for doc in yaml.safe_load_all(rendered.stdout) if doc]
+    namespace_roles = [
+        doc
+        for doc in docs
+        if doc["kind"] == "ClusterRole"
+        and any("namespaces" in rule.get("resources", []) for rule in doc["rules"])
+    ]
+    assert len(namespace_roles) == 1
+    role = namespace_roles[0]
+    assert role["rules"] == [
+        dict(apiGroups=[""], resources=["namespaces"], resourceNames=[namespace], verbs=["get"])
+    ]
+    binding = next(
+        doc
+        for doc in docs
+        if doc["kind"] == "ClusterRoleBinding"
+        and doc["roleRef"]["name"] == role["metadata"]["name"]
+    )
+    assert {subject["namespace"] for subject in binding["subjects"]} == {namespace}
+    assert len(binding["subjects"]) == 2
+    for suffix in ("workloads", "reconciler"):
+        rules = next(
+            doc["rules"]
+            for doc in docs
+            if doc["kind"] == "Role" and doc["metadata"]["name"].endswith("-" + suffix)
+        )
+        assert any(
+            rule.get("apiGroups") == ["apps"]
+            and rule.get("resources") == ["replicasets"]
+            and rule.get("verbs") == ["get", "list"]
+            for rule in rules
+        )
+        deployment = next(rule for rule in rules if rule.get("resources") == ["deployments"])
+        assert ("patch" in deployment["verbs"]) == (suffix == "reconciler")
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_observer_rbac_retains_original_ingress_reads_and_retirement(enabled):
+    import subprocess
+
+    import yaml
+
+    rendered = subprocess.run(
+        [
+            "helm",
+            "template",
+            "observer",
+            str(CHART_DIR),
+            "--set",
+            "inference.ingress.enabled=" + str(enabled).lower(),
+            "--show-only",
+            "templates/rbac.yaml",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    docs = [doc for doc in yaml.safe_load_all(rendered.stdout) if doc]
+    for suffix in ("workloads", "reconciler"):
+        rules = next(
+            doc["rules"]
+            for doc in docs
+            if doc["kind"] == "Role" and doc["metadata"]["name"].endswith("-" + suffix)
+        )
+        verbs = {
+            verb
+            for rule in rules
+            if "ingresses" in rule.get("resources", [])
+            for verb in rule["verbs"]
+        }
+        expected = {"get", "list", "watch"}
+        if suffix == "reconciler":
+            expected.add("delete")
+            if enabled:
+                expected.add("create")
+        assert verbs == expected
+
+
 @pytest.mark.parametrize(
     "override, message",
     [
@@ -29,6 +220,7 @@ SCHEMA_PATH = CHART_DIR / "values.schema.json"
         ("inference.ingress.enabled=true", "direct inference"),
         ("api.image.digest=", "pinned by sha256"),
         ("attemptIdentity.controlBaseUrl=", "attempt admission"),
+        ("inference.identity.caSecret=", "inference.identity.caSecret"),
         ("kuberay-operator.enabled=true", "platform-managed"),
     ],
 )
@@ -271,13 +463,13 @@ def test_rendered_analysis_workers_have_a_provisioned_secret_and_observer_permis
     assert any("pods" in rule["resources"] and "list" in rule["verbs"] for rule in role["rules"])
 
 
-def test_manual_serving_controls_have_narrow_scale_and_delete_permissions() -> None:
+def test_manual_serving_controls_leave_api_model_resources_read_only() -> None:
     rbac = (CHART_DIR / "templates" / "rbac.yaml").read_text(encoding="utf-8")
     workloads = rbac.split('name: {{ include "sceptre.fullname" . }}-workloads', 1)[1]
     workloads = workloads.split("---", 1)[0]
-    assert 'resources: ["deployments/scale"]\n    verbs: ["get", "patch"]' in workloads
+    assert 'resources: ["deployments/scale"]' not in workloads
     for resource in ("services", "deployments"):
-        rule = f'resources: ["{resource}"]\n    verbs: ["get", "list", "watch", "delete"]'
+        rule = f'resources: ["{resource}"]\n    verbs: ["get", "list", "watch"]'
         assert rule in workloads
 
 

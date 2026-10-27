@@ -1,0 +1,112 @@
+date: '2026-10-26'
+phase: 1
+scope: upload-version-retirement-provider-progress
+status: in_progress
+phase_complete: false
+scope_integration_complete: false
+source_inputs: 645
+source_manifest_sha256: cab28e040f373a95db45f577b71336c4f5e7890238ed06b1ce8c0407b6ac1e14
+private_evidence_directory: .unlazy/phase1-upload-retirement
+driver_sha256: 54dc6c1270bcbb74bba4924e25a7ced8fc36bc1961fddf26830928ce0f8c47e8
+checks:
+  provider:
+    passed: 208
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43687563264
+    test_xml_sha256: 27b585c75612f8b37d10fe02b2bfde5fb9e316936d3fbaa00210e0825f1d638e
+  verification:
+    passed: 116
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43697479680
+    test_xml_sha256: 999ff0ed39247995e8c81c39d1781d9d1a8045424aa8e33925811ed8ea18cc3f
+  workflow:
+    passed: 74
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43696947200
+    test_xml_sha256: f8a966f77448976cdb6936b998c224de8c28e9dff97383fd914a004c6be2cdf6
+  connected:
+    passed: 216
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43691106304
+    test_xml_sha256: dc2f3c2181cabe52c1b947c2ac2a0223eb9b7e81cb4755c04bf6ba6e8102bf37
+counts_overlap: true
+versioned_deletion_cases: 63
+real_sdk_local_http_cases: 14
+retirement_gates:
+  met: 0
+  unmet: 3
+upload_completion_gates:
+  met: 0
+  unmet: 6
+parent_inference_gates:
+  met: 0
+  unmet: 8
+phase_1_requirements:
+  verified: 2
+  open: 34
+original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+strict_schema:
+  status: terminal_pass
+  read_only: true
+  tables: 44
+  revision: 0018_attempt_predecessor_lineage
+lint: ruff apps/api tests scripts, seven-file format check and git diff --check passed
+shared_native_fixture_uids:
+  namespace: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service: 365dd74f-551c-4fb3-8d9b-fe4026273558
+behavior:
+- ObjectStoreDriver.delete and every concrete driver now accept optional immutable version. Supplying a version
+  selects a separate exact identity path; existing project-wide/all-version callers retain their behavior. Embedded
+  rejects versioned retirement without touching its file.
+- S3/S3-compatible retirement requires single-attempt SDK configuration, inventories the exact key/version including
+  advancing pagination, sends a version-bound delete and independently checks absence. Missing identities, malformed/truncated/nonadvancing
+  inventories and permission failures cannot claim retirement.
+- Azure sends the original version_id with per-request retry_total=0 and checks version/deleted inventory before
+  and after. GCS binds original generation and ifGenerationMatch, disables mutation retries and checks the same
+  live and soft-deleted generation. Soft-deleted originals remain pending, with replacement and neighboring objects
+  preserved.
+- An unknown accepted-write outcome recovers by checking the original identity; absent originals do not cause another
+  delete. Confirmation failure after accepted deletion remains a failure until a later independent original-absence
+  check succeeds.
+- 'Large or incomplete inventories hold instead of claiming absence: S3 caps100pages, Azure10,000entries. The bounded
+  exhaustion and later-page original controls pass. These limits are explicit shortcuts requiring resumable scans
+  for larger histories.'
+evidence_detail:
+- Three retained pre-fix positive-control cases failed because existing drivers did not accept a version argument.
+  Current63 versioned-deletion cases include14 installed-SDK loopback HTTP cases across S3,S3-compatible,Azure,GCS;
+  success, accepted-disconnect and503 loss each issue one exact delete. Actual Azure/GCS SDK parsing also holds
+  soft-deleted originals until the fixture expires them.
+- The initial GCS wire assertion incorrectly treated background bucket-metadata requests as unversioned object reads.
+  The corrected check distinguishes bucket metadata from object GETs, verifies all retirement object GETs carry
+  original generation, and deliberately performs a real unversioned replacement read afterward to prove that the
+  detector fails. The failed pilot is retained.
+- New provider tests are local HTTP/controlled inventory tests. The116 verifier,74 completion and216 connected checks
+  are existing real-SQL/service regressions on the new645-input snapshot; they do not execute a new retirement workflow.
+limitations:
+- Cancellation and cleanup services are not yet wired to exact-version deletion. Existing staged abort and expiry
+  cleanup still perform provider work inside SQL; known completion custody and unknown histories remain held. This
+  is the next implementation gap, not production-ready cancellation.
+- Next work must introduce factory-owned original intent/outcome custody and reach the actual abort route, cleanup
+  worker and direct-service tests together. Preserve actor/token/project/source/retention/hold fences, ready immutable
+  dataset protection, concurrency/replay and known-outcome capture after revocation. Do not insert native deletion
+  into the existing durable_mutation callback or infer receipts for legacy histories.
+- Full release/branch>=90.01%, whole identity suite, maintained images, prior-binary/mixed-version compatibility
+  and complete deployed native/provider/cloudIAM/admission journeys were not qualified here. New listing/version-delete
+  permissions still require actual cloud IAM qualification.
+- The45,000,000,000 physical-byte migration and deferred15-by-10-GiB load remain unqualified; largest-table row
+  counts remain unspecified. Original deletion:G7 still requires seven missing historical objects. No missing object
+  was reconstructed or re-signed. All retirement/upload/parent gates remain formally unmet; Phase1 stays2 Verified/34
+  Open.
+provider_references:
+- https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObject.html
+- https://learn.microsoft.com/en-us/azure/storage/blobs/versioning-overview
+- https://docs.cloud.google.com/storage/docs/json_api/v1/objects/delete
+- https://docs.cloud.google.com/storage/docs/soft-delete

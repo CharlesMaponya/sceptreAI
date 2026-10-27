@@ -1,0 +1,148 @@
+date: '2026-10-26'
+phase: 1
+scope: upload-admission-cleanup-progress
+status: in_progress
+phase_complete: false
+full_upload_admission_complete: false
+source_inputs: 655
+source_manifest_sha256: 39bb421feb125d882f4afbb033b2d22465f1317111d512c78679f2c7db001d18
+private_evidence_directory: .unlazy/phase1-upload-admission-cleanup
+checks:
+  focused:
+    passed: 112
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43634860032
+    xml_sha256: 7ecdf9f40ef3f2051c38cc09bed88e158b080caab333aed82930cf7ad7cebab9
+  connected:
+    passed: 560
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43623211008
+    xml_sha256: cefc5d03cf9a8ac460796713a2e36a2cc360cd9a032d69bf7baf84d813d5d34b
+  worker:
+    passed: 28
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43626225664
+    xml_sha256: a28b68fe7ed0d0cd598a00b2ae3a192e0ffef3924c678e1c8aac8dd9ae026c46
+  cancellation:
+    passed: 69
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43626078208
+    xml_sha256: c3e3539584f9479e014769a98f60fdea2022c82cbbbc63d75b2ca16129c3d68b
+counts_overlap: true
+admission_gates:
+  met: 0
+  unmet: 4
+upload_completion_gates:
+  met: 0
+  unmet: 6
+parent_inference_gates:
+  met: 0
+  unmet: 8
+phase_1_requirements:
+  verified: 2
+  open: 34
+original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+integration_readonly:
+  status: terminal_pass
+  read_only: true
+  source_manifest_sha256: 39bb421feb125d882f4afbb033b2d22465f1317111d512c78679f2c7db001d18
+  observed_at: '2026-10-26T19:17:28.716199+00:00'
+  revision: 0018_attempt_predecessor_lineage
+  tables: 44
+  schema_differences: []
+  namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+  original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+  reserve_bytes: 43500000000
+  free_bytes: 43634954240
+behavior:
+- The actual worker baseline left one known retired native session uncancelled. A
+  separate idempotent cleanup command now commits original retirement/receipt/store
+  binding and an exclusive bounded attempt before SDK construction or cancellation
+  outside SQL.
+- Only a single known original creation attempt is eligible. Original source/no-transfer
+  proof, command/intent/attempt/receipt/result anchors, actual store context and current
+  hold/retention/project policy fence issuance and publication. Actor deactivation
+  does not erase original cleanup custody.
+- Known native cancellation replies commit independently before fresh policy/source
+  publication. A changed filename, hold, extended retention, deleting project or failed
+  publication preserves the known reply; recovery publishes it without constructing
+  another SDK client or repeating cancellation.
+- Unknown errors retain the original target and a five-minute lease. At most five
+  attempts run; exhaustion retains a failed command and controlled-recovery terminal
+  reason. Corrupt-row backoff permits the next eligible row without shortening a live
+  native lease.
+- Two actual SQL workers selecting the same row count one cleanup and issue one native
+  abort. Thread-local pool events verify the native caller holds no SQL connection
+  while another worker can use its own transaction. Late old-owner replies remain
+  superseded metadata and cannot replace the winner.
+- 'Three installed S3 SDK/local HTTP journeys combine actual creation, SQL-backed
+  retirement and cleanup: normal cancellation, accepted abort with disconnected response,
+  and surviving empty session. Recovery preserves one original native creation, exact
+  key/session and durable custody. GCS uses controlled creation plus the actual driver
+  over local HTTP;499 confirms cancellation and404 remains unknown.'
+- Logical retirement history remains unchanged with native_absence_confirmed=false.
+  Cleanup has its own separately anchored outcome; project deletion remains conservatively
+  held on retired admission records. No deployed cloud or mixed-version qualification
+  is claimed.
+- Provider replies cannot inject the reserved cleanup state, and unexplained cleanup
+  history prevents logical expiry. Previous unknown creation attempts, absent native
+  receipts and raw superseded creation replies never become guessed cancellation targets.
+limits:
+  user_database_ceiling_bytes: 45000000000
+  largest_table_rows: null
+  missing_historical_objects: 7
+  native_admission_cleanup: unqualified
+  production_sized_migration: unqualified
+  large_upload_load: unqualified
+  maintained_images: unqualified
+  deployed_cloud_iam: unqualified
+  mixed_version: unqualified
+  full_release_coverage: unqualified
+  whole_phase_1: unqualified
+remaining:
+- The four original admission gates remain unmet. Their audit.py acceptance commands
+  are still unimplemented; this progress report does not convert raw test successes
+  into automatic gate acceptance.
+- Complete provider-specific unknown/superseded creation cleanup, including missing
+  opaque GCS URIs and Azure/embedded resource semantics; never blindly abort raw superseded
+  identities or infer object-version absence from multipart absence.
+- Authenticated project-deletion release after confirmed admission cleanup, full cleanup
+  process-kill/connection-loss windows, operator recovery/replay, and full background
+  admission publication/recovery remain required.
+- Complete factory/current-actor/source/command conversion of instruction/progress
+  native I/O and complete admission/completion/inference acceptance.
+- 45GB migration cannot fit alongside the43.5GB reserve; largest-table row counts
+  remain unspecified.15-by-10GiB load, maintained images, full release/branch coverage,
+  mixed-version and deployed cloud/native journeys remain unqualified.
+- UI/offline/TLS were not repeated for this backend cleanup increment. Earlier snapshots
+  remain historical; no full current-source release/coverage claim is made.
+- Original deletion:G7 requires seven missing historical objects (two models, five
+  signed results). None were reconstructed or re-signed.
+evidence_hashes:
+  source-sha256.json: 39bb421feb125d882f4afbb033b2d22465f1317111d512c78679f2c7db001d18
+  before-source-sha256.json: 15d79c68cf142c869aa0a075e842dcfd54289c98027d1eba15458ab8bca9423a
+  baseline-source-sha256.json: e852bb19dc8360debab96cbeeea92f96a7f46b798162e0d9a67c9483c3edb70a
+  baseline-test.py: c0e74a7061d22fde38a842cb257ca533a8cb21b1df93d62c1e133fe858da928c
+  baseline.xml: 68c117f474fadeae29b21cb5df6b239530b105e070ea69549102f8160d9b9c68
+  baseline-state.json: 072cd4534ab3b362e38b242f5147733aa15f7fdcb8654273abb90dd9c3d437bf
+  run.py: 5564247ea3faac88d8fdab0b4ff54950256335e292013d4c41d6ddbda710d645
+  audit.py: cb87118912340e1cb6b05f8cafcc7fec761c6d72291d044ddd4ac1da361cb534
+  integration-readonly.json: 3acdc92d25f43418bea5bc778255ad2ac0528710c89e870e4ee3de10817aa64a
+  PLAN.md: fd531016e05e09fbed06d7a9d343569ff739098632dde0889d6be09bfd141225
+  focused-state.json: 9b629900162568c34a5dc2e60473ea8b1f27a5ec6a1392dee221a46f399df1f3
+  focused.xml: 7ecdf9f40ef3f2051c38cc09bed88e158b080caab333aed82930cf7ad7cebab9
+  connected-state.json: 452232645bdc4f6845e4d4107ee7c6db373a8e3d6d28c730be8bf23da2f57e97
+  connected.xml: cefc5d03cf9a8ac460796713a2e36a2cc360cd9a032d69bf7baf84d813d5d34b
+  worker-state.json: 8234827c9f11b2d7315636b7e2cdc6a6385294069a70d8b4cd8fafa1196b50c4
+  worker.xml: a28b68fe7ed0d0cd598a00b2ae3a192e0ffef3924c678e1c8aac8dd9ae026c46
+  cancellation-state.json: b82e99d8229e2691f823f8e2f7a5c3995b2e40ca278460b2bfee5bd5432c891d
+  cancellation.xml: c3e3539584f9479e014769a98f60fdea2022c82cbbbc63d75b2ca16129c3d68b

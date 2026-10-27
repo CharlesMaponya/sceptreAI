@@ -762,7 +762,11 @@ def cancel_provider_import(db, actor_id, version_id):
 
 
 def assert_provider_cleanup_safe(db, store, prefix):
-    """A later bucket/configuration change must not turn foreign copies into owned data."""
+    return assert_provider_uri_cleanup_safe(db, store.uri_for_key(prefix))
+
+
+def assert_provider_uri_cleanup_safe(db, uri):
+    """A committed native root must never overlap externally owned provider copies."""
     from automl_api.services.provider_distribution import DistributionReceipt
 
     root = None
@@ -772,7 +776,7 @@ def assert_provider_cleanup_safe(db, store, prefix):
     for receipt in receipts:
         manifest = DistributionReceipt.model_validate(receipt).payload.manifest
         if root is None:
-            root = urlsplit(store.uri_for_key(prefix))
+            root = urlsplit(uri)
         for item in manifest.safe_data.objects:
             parts = urlsplit(item.uri)
             aliases = {"s3c": "s3", "az": "azure"}

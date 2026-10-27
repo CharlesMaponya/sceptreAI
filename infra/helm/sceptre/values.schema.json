@@ -906,6 +906,15 @@
             "tlsSecretName": {}
           },
           "additionalProperties": false
+        },
+        "identity": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "caSecret": {
+              "type": "string"
+            }
+          }
         }
       },
       "additionalProperties": false

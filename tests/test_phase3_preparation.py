@@ -22,6 +22,7 @@ from automl_api.services import reconciler
 from automl_api.storage.contracts import ObjectMetadata, RayDataSourceDescriptor
 from automl_shared.data_identity import content_fingerprint, split_role, stable_row_id
 from digest_fixtures import verified_digest_metadata, verified_raw_version
+from ray_submission_helpers import submit_dataset_ray_job
 
 
 def _dataset_attempt(stage: WorkflowStage = WorkflowStage.SPLITTER) -> WorkflowAttempt:
@@ -152,20 +153,22 @@ def test_dataset_submit_tracks_ray_identity_and_rejects_wrong_stage() -> None:
     values = iter([attempt, profile, version])
     db.scalar.side_effect = lambda statement: (
         None
-        if statement.column_descriptions[0]["entity"].__name__ == "DatasetProviderImport"
+        if statement.column_descriptions[0]["entity"].__name__
+        in {"DatasetProviderImport", "WorkflowEvent"}
         else next(values)
     )
     db.get.return_value = version
     k8s = MagicMock()
-    k8s.create_ray_job.return_value = {
-        "metadata": {"name": "created-split"},
+    k8s.create_ray_job.side_effect = lambda body: {
+        **body,
+        "metadata": {**body["metadata"], "uid": "original-split-uid"},
         "status": {"rayClusterName": "split-cluster", "jobId": "split-job"},
     }
 
-    result = reconciler.submit_dataset_ray_job(db, entry, k8s)
+    result = submit_dataset_ray_job(db, entry, k8s)
 
     assert result.status == AttemptStatus.SUBMITTED
-    assert result.ray_job_name == "created-split"
+    assert result.ray_job_name == k8s.create_ray_job.call_args.args[0]["metadata"]["name"]
     assert profile.current_stage == "splitter"
     assert profile.status == "running"
     k8s.ensure_service_account.assert_called_once_with(attempt.workload_identity)
@@ -175,7 +178,7 @@ def test_dataset_submit_tracks_ray_identity_and_rejects_wrong_stage() -> None:
     wrong_entry.topic = "ray.dataset.split.submit"
     db.scalar.side_effect = [wrong]
     with pytest.raises(ValueError, match="does not match"):
-        reconciler.submit_dataset_ray_job(db, wrong_entry, k8s)
+        submit_dataset_ray_job(db, wrong_entry, k8s)
 
 
 def test_dataset_submit_is_idempotent_and_checks_scope_and_fence() -> None:
@@ -185,15 +188,15 @@ def test_dataset_submit_is_idempotent_and_checks_scope_and_fence() -> None:
     attempt.status = AttemptStatus.SUBMITTED
     db = MagicMock()
     db.scalar.return_value = attempt
-    assert reconciler.submit_dataset_ray_job(db, entry, MagicMock()) is attempt
+    assert submit_dataset_ray_job(db, entry, MagicMock()) is attempt
 
     entry.payload["fencing_token"] = "stale"
     with pytest.raises(ValueError, match="fence"):
-        reconciler.submit_dataset_ray_job(db, entry, MagicMock())
+        submit_dataset_ray_job(db, entry, MagicMock())
 
     db.scalar.return_value = None
     with pytest.raises(LookupError, match="attempt"):
-        reconciler.submit_dataset_ray_job(db, entry, MagicMock())
+        submit_dataset_ray_job(db, entry, MagicMock())
 
 
 def test_dataset_observer_marks_running_and_replaces_lost_generation(monkeypatch) -> None:
@@ -219,7 +222,8 @@ def test_dataset_observer_marks_running_and_replaces_lost_generation(monkeypatch
     values = iter([profile, profile, command])
     db.scalar.side_effect = lambda statement: (
         None
-        if statement.column_descriptions[0]["entity"].__name__ == "DatasetProviderImport"
+        if statement.column_descriptions[0]["entity"].__name__
+        in {"DatasetProviderImport", "WorkflowEvent"}
         else next(values)
     )
     db.get.return_value = version
@@ -272,7 +276,8 @@ def test_dataset_observer_retries_nested_image_pull_failure_after_grace(monkeypa
     values = iter([profile, profile, command])
     db.scalar.side_effect = lambda statement: (
         None
-        if statement.column_descriptions[0]["entity"].__name__ == "DatasetProviderImport"
+        if statement.column_descriptions[0]["entity"].__name__
+        in {"DatasetProviderImport", "WorkflowEvent"}
         else next(values)
     )
     db.get.return_value = version

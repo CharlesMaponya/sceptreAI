@@ -1,0 +1,159 @@
+date: '2026-10-26'
+phase: 1
+scope: upload-retirement-acceptance
+status: scoped_acceptance_verified
+phase_complete: false
+source_inputs: 648
+source_manifest_sha256: 23ae3cae17d45087b1e5fe3dabbd315f845db04f1f23b3488847654c11cfe2c2
+private_evidence_directory: .unlazy/phase1-upload-retirement
+checks:
+  cancel:
+    passed: 46
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43666219008
+    xml_sha256: c47258165c98bd4c58e4d051701cb77236b48bb1dd75216f4ea861fd9d507530
+  connected:
+    passed: 212
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43663798272
+    xml_sha256: 6dfa51b421358b47e48a09d2fff07469cd2b0e6f46cdf6995a753087fb951057
+  workflow:
+    passed: 74
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43667161088
+    xml_sha256: 529965a13b49f72d9c68eb9b3d86c20328c3a2acfe62caef9e238dd38b204c85
+  verification:
+    passed: 116
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43666534400
+    xml_sha256: 789ee9525b42a88096ac5e998b6b8d72cbdea8f1ecf2e8a4e275be0c5f83ba69
+  worker:
+    passed: 28
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43665891328
+    xml_sha256: 0b447928bc952f06d3a05f065f8bac11da036ba3f9115b6973b8736d0f15599a
+  provider:
+    passed: 210
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43665444864
+    xml_sha256: 09fd21b3f4fce5de0769d28dd53ea54609db312c1c31879b9fa8b01e5d7d364c
+  staged:
+    passed: 171
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43665113088
+    xml_sha256: e866950b06df1f20477bc62c5d7bb058b3057b8f6840272c2cb0204498f81890
+  ui-tests:
+    passed: 60
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43665244160
+    xml_sha256: b3e4cbd29b1c74300a4d62b99944be9aa6c21e3ab9afa931a44183363eaaa83a
+counts_overlap: true
+evidence_hashes:
+  source-sha256.json: 23ae3cae17d45087b1e5fe3dabbd315f845db04f1f23b3488847654c11cfe2c2
+  run.py: 431de61aef139fe28382329041d0f5dd649b3c3dc0afffe928a723364419dfdf
+  run_ui.py: 5571c45b31c0beaedbc45ead1b4d825c05d29c094f983b9117450ad76ec0d99b
+  audit.py: 949819721b174fac851155f655c6e90a3b78142337e0f40a474ac375ede0bdb3
+  cancel-state.json: 66aa568261df1dce675b13ea02b00d0895d59b0dd882d10c42edea78191a4ff9
+  cancel.xml: c47258165c98bd4c58e4d051701cb77236b48bb1dd75216f4ea861fd9d507530
+  connected-state.json: 2d394791b5e905aca02f7e37c357ad37b6a2c10cec35a61f837b1a1440d7d4c6
+  connected.xml: 6dfa51b421358b47e48a09d2fff07469cd2b0e6f46cdf6995a753087fb951057
+  workflow-state.json: 9085c0944b811b65ff0b1278d2c9fb078b9a258ca360d28c6b35972feefa934f
+  workflow.xml: 529965a13b49f72d9c68eb9b3d86c20328c3a2acfe62caef9e238dd38b204c85
+  verification-state.json: f2c68068314267cf5606f062b1bc71b3f9b1cfae2c8e53a79d51cc7849c8ffec
+  verification.xml: 789ee9525b42a88096ac5e998b6b8d72cbdea8f1ecf2e8a4e275be0c5f83ba69
+  worker-state.json: df170d887ae70c7364014dcae38718e8c0b90938a8782a883ea9580acb52d073
+  worker.xml: 0b447928bc952f06d3a05f065f8bac11da036ba3f9115b6973b8736d0f15599a
+  provider-state.json: e842178f44a6b5b4a1162bed1fd058e56bef027033c112e0a78137f8a27949e5
+  provider.xml: 09fd21b3f4fce5de0769d28dd53ea54609db312c1c31879b9fa8b01e5d7d364c
+  staged-state.json: c5ea232f5574313195bd1435cf20111bdaa8145848efdae70204bbb31ed55ae9
+  staged.xml: e866950b06df1f20477bc62c5d7bb058b3057b8f6840272c2cb0204498f81890
+  ui-tests-state.json: 739c23049f5c72dac9c57ed93f74edd77ffbd637d8b314abc7dfaa4788c59acb
+  ui-tests.xml: b3e4cbd29b1c74300a4d62b99944be9aa6c21e3ab9afa931a44183363eaaa83a
+  ui-types-state.json: b99e666a066a698087b7605192aacc4045b149d23d02d9cca5cf6a68819842af
+  ui-lint-state.json: 2e919e980f5e4f73746bac43f04616d868741cc1c860b3868becc59769b55669
+  provider-baseline-state.json: bccdf69fee544db2241168519459b79419ec800bc286ee96d70f7c6a4c943c56
+  provider-baseline.xml: c4a6bf1ea06f4d6a1afe97677f30155d24782fac30701aa74ed732e5bed1eaa6
+  cancel-baseline-state.json: 5276291b1c900c68b36525eca682e3ced9892357765bfd84da35842e8a76e68d
+  cancel-baseline.xml: d46639a90234e00204a50b2b1039523f9163bc0f24d06b01b9774dd90643f29a
+  azure-capability-baseline-state.json: c19bbbf50ca1f6a8ae9fe40ecd5adb16dbb47d324adcf437caf41a1e7cd1fec5
+  azure-capability-baseline.xml: 47f82eeb287547b0741a88a61a030139fad2a0b9804b109f882d98f0d47e3e2e
+  provider-baseline-source-sha256.json: ca039d1d16e27897bece27a9eed8142f66807dfa1d688782169a5cbbeb3af02a
+  cancel-baseline-source-sha256.json: 6ff2c9fea0edb3e96eadf302ce379e76f384a03e674d49892f6402fe92129165
+  azure-capability-baseline-source-sha256.json: 62b29c970db15d6ae5b511f448ee98e3d9136067f71d50a5b8acf6816a5b52a1
+retirement_gates:
+  met: 3
+  unmet: 0
+upload_completion_gates:
+  met: 0
+  unmet: 6
+parent_inference_gates:
+  met: 0
+  unmet: 8
+phase_1_requirements:
+  verified: 2
+  open: 34
+original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+behavior:
+- Factory-owned cancellation and cleanup are wired to the actual abort route and cleanup worker. Original
+  intent, issued attempt, known outcome and publication use separate short transactions; native callbacks
+  hold zero SQL connections.
+- Twelve additional real-PostgreSQL dataset-version cases prove allowed unready/unreferenced retirement
+  after none/past/equal retention; refusal for READY/hold/future retention/model references before provider
+  construction; and held publication after those fences or the original URI change during native work.
+- A failing Azure capability regression exposed irreversible retirement admission before unsupported staged
+  abort was rejected. The shared service now rejects before begin_command or provider construction. The
+  positive regression retains uploading status and no retirement markers.
+- The current 46-case retirement matrix retains actual route/worker, completion/cancellation race, concurrent
+  keys, stale attempts, publication rollback, original GCS-session recovery, custody corruption and subprocess-loss
+  coverage. The subprocess acceptance witness is controlled provider state, not a deployed cloud process-loss
+  journey.
+- Provider suites include fourteen installed-SDK/local-HTTP exact-version/lost-response cases plus staged
+  S3 SDK controls. Version replacements/neighbors, incomplete inventories, permission/transport failures,
+  soft-deleted holds and original-session ambiguity remain checked.
+- All seven backend profiles plus 60 browser/API/hash cases and Node24 type/lint checks use the same frozen
+  source manifest. Counts overlap. Only the retirement service and its tests changed from the prior 648-input
+  connected checkpoint.
+- The acceptance oracle checks current source binding, terminal success, backend testcase uniqueness,
+  the two inspected Vitest parameterized display-name multiplicities, no skips/failures/errors, every
+  focused test function, failing baselines, original coverage and the disk reserve. Its self-check rejects
+  running/failed/stale/under-reserve evidence.
+limits:
+  user_database_ceiling_bytes: 45000000000
+  largest_table_rows: null
+  production_sized_migration: unqualified
+  large_upload_load: unqualified
+  maintained_images: unqualified
+  deployed_cloud_iam: unqualified
+  whole_phase_1: unqualified
+  missing_historical_objects: 7
+  whole_branch_coverage: unqualified
+  prior_binary_mixed_version: unqualified
+  full_deployed_native_journeys: unqualified
+remaining:
+- 'The broader upload lifecycle remains open: begin, transfer instructions/progress and other native-in-SQL
+  paths require conversion/assessment. This acceptance does not complete the upload or inference scopes.'
+- Pending user retirement requires the original request identity. Original-actor fresh-authentication
+  recovery is covered; broader operator and mixed-version journeys remain unqualified.
+- Strict read-only schema0018, 44 tables, repository lint, changed-file format, original coverage and
+  shared k3d fixture UIDs are rechecked by the integration oracle. No new image execution, native write
+  or cloud qualification is claimed.
+- The user supplied a 45 GB qualification ceiling, interpreted as 45,000,000,000 physical bytes. No production-sized
+  migration or deferred fifteen-users-by-ten-GiB campaign ran here. Largest-table row counts remain unspecified.
+- Original deletion:G7 remains abandoned, requiring seven missing historical objects. None were reconstructed
+  or re-signed. Phase1 stays 2 Verified / 34 Open.

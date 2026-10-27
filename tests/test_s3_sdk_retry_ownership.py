@@ -10,7 +10,7 @@ from urllib.parse import parse_qs, urlsplit
 from xml.sax.saxutils import escape
 
 import pytest
-from automl_api.storage.contracts import BeginUpload
+from automl_api.storage.contracts import BeginUpload, TransferReceipt
 from automl_api.storage.s3 import S3ObjectStoreDriver
 
 
@@ -22,7 +22,9 @@ def storage_http(monkeypatch):
     monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
     monkeypatch.setenv("AWS_MAX_ATTEMPTS", "9")
     monkeypatch.setenv("AWS_RETRY_MODE", "standard")
-    state = SimpleNamespace(fault=None, uploads=[], writes=[], objects={})
+    state = SimpleNamespace(
+        fault=None, uploads=[], writes=[], objects={}, completions=[], inventory=None, listings=[]
+    )
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -54,7 +56,14 @@ def storage_http(monkeypatch):
             return True
 
         def do_GET(self):
-            assert "uploads" in parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+            query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+            assert "uploads" in query
+            state.listings.append(query)
+            if state.inventory:
+                self.respond(
+                    200, state.inventory(query).encode(), **{"Content-Type": "application/xml"}
+                )
+                return
             entries = "".join(
                 f"<Upload><Key>{escape(key)}</Key><UploadId>{value}</UploadId><Initiated>2026-01-01T00:00:00Z</Initiated></Upload>"
                 for key, value in state.uploads
@@ -70,7 +79,22 @@ def storage_http(monkeypatch):
             )
 
         def do_POST(self):
-            assert "uploads" in parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+            query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+            if "uploadId" in query:
+                assert query["uploadId"] == ["upload-1"]
+                assert self.headers["If-None-Match"] == "*"
+                state.completions.append(self.rfile.read(int(self.headers["Content-Length"])))
+                if not self.lost(len(state.completions)):
+                    self.respond(
+                        200,
+                        b"<CompleteMultipartUploadResult><Bucket>bucket</Bucket><Key>projects/owned/raw/file.csv</Key><ETag>original</ETag></CompleteMultipartUploadResult>",
+                        **{
+                            "Content-Type": "application/xml",
+                            "x-amz-version-id": "original-completion",
+                        },
+                    )
+                return
+            assert "uploads" in query
             self.rfile.read(int(self.headers.get("Content-Length", "0")))
             key = urlsplit(self.path).path.removeprefix("/bucket/")
             upload_id = "upload-" + str(len(state.uploads) + 1)
@@ -137,6 +161,31 @@ def request():
         expires_at=datetime.now(UTC) + timedelta(minutes=10),
         origin="https://test.invalid",
     )
+
+
+@pytest.mark.parametrize("compatible", [False, True])
+@pytest.mark.parametrize("fault", [None, "503", "disconnect"])
+def test_completion_response_loss_never_replays_an_accepted_sdk_commit(
+    storage_http, compatible, fault
+):
+    state = storage_http
+    store = driver(state, compatible)
+    try:
+        upload = store.begin_upload(request())
+        state.fault = fault
+        error, result = None, None
+        try:
+            result = store.complete_upload(upload, [TransferReceipt(1, 0, 12, "part")])
+        except Exception as exc:
+            error = exc
+        assert len(state.completions) == 1
+        if fault is None:
+            assert error is None, repr(error)
+            assert result.provider_headers == {"version_id": "original-completion"}
+        else:
+            assert error is not None
+    finally:
+        store.client.close()
 
 
 @pytest.mark.parametrize("compatible", [False, True])

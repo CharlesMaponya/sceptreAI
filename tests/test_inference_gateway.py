@@ -112,9 +112,30 @@ def _gateway_path(path: str, *, project_id: uuid.UUID, run_id: uuid.UUID) -> str
 
 
 def _target() -> gateway.DeploymentInferenceTarget:
+    from automl_api.services.inference_tls import Authority, PeerIdentity
+    from test_inference_tls import authority_material
+
+    run_id = uuid.UUID("22222222-2222-4222-8222-222222222222")
+    project_id = uuid.uuid4()
+    authority = Authority.from_pem(*authority_material())
+    peer = PeerIdentity(str(project_id), str(run_id), "namespace", "deployment", "pod")
+    selection = gateway.InferenceSelection(
+        project_id,
+        uuid.uuid4(),
+        1,
+        run_id,
+        "automl-model-22222222",
+        "sceptre",
+        gateway.inference_identity.IdentityScope({}, "transport-fixture"),
+    )
     return gateway.DeploymentInferenceTarget(
         service_name="automl-model-22222222",
         namespace="sceptre",
+        deployment_id=run_id,
+        peer=peer,
+        address="10.42.0.7",
+        tls_context=authority.client_context(),
+        selection=selection,
     )
 
 
@@ -126,6 +147,34 @@ def _mock_client(
         follow_redirects=False,
         trust_env=False,
     )
+
+
+@pytest.mark.parametrize("spec", ["2.3", "2.4"])
+def test_gateway_closes_upstream_when_browser_drops_before_response_headers(monkeypatch, spec):
+    stream = _TrackingStream(b"result")
+
+    async def handler(_request):
+        return httpx.Response(200, stream=stream)
+
+    client = _mock_client(handler)
+    monkeypatch.setattr(gateway, "_new_http_client", lambda *_: client)
+
+    async def scenario():
+        request = _request("GET", "/gateway/health/live")
+        request.scope["asgi"]["spec_version"] = spec
+        response = await gateway.proxy_deployment_inference(request, _target(), "health/live")
+
+        async def receive():
+            await asyncio.Event().wait()
+
+        async def send(_message):
+            raise RuntimeError("browser dropped before response headers")
+
+        with pytest.raises((RuntimeError, ExceptionGroup)):
+            await response(request.scope, receive, send)
+        assert stream.closed and client.is_closed
+
+    _run(scenario())
 
 
 def test_gateway_route_requires_platform_authentication() -> None:
@@ -148,6 +197,8 @@ def test_gateway_route_selects_object_backed_offline_protocol(
     target = _target()
     calls: list[str] = []
     monkeypatch.setattr(operation_routes, "resolve_deployment_inference_target", lambda *_: target)
+    monkeypatch.setattr(operation_routes, "inspect_deployment_inference_target", lambda *_: target)
+    monkeypatch.setattr(operation_routes, "finalize_deployment_inference_target", lambda *_: target)
 
     async def object_backed(*_args):
         calls.append("object")
@@ -164,7 +215,7 @@ def test_gateway_route_selects_object_backed_offline_protocol(
         uuid.uuid4(),
         "v1/predict/offline",
         _request("POST", "/gateway", headers={"content-type": "application/json"}),
-        SimpleNamespace(),
+        MagicMock(),
         SimpleNamespace(),
     )
     assert _run(operation_routes.deployment_inference_gateway(*arguments)).status_code == 202
@@ -271,7 +322,7 @@ def test_resolver_rejects_deployments_that_are_not_ready(
     assert error.value.status_code == status.HTTP_409_CONFLICT
 
 
-def test_resolver_derives_fixed_service_target_for_ready_deployment(
+def test_resolver_refuses_unqualified_ready_rows_with_arbitrary_endpoint_tags(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     project_id = uuid.uuid4()
@@ -290,18 +341,14 @@ def test_resolver_derives_fixed_service_target_for_ready_deployment(
         lambda: SimpleNamespace(training_namespace="sceptre"),
     )
 
-    target = gateway.resolve_deployment_inference_target(
-        _RecordingSession(run),
-        SimpleNamespace(id=uuid.uuid4()),
-        project_id,
-        run_id,
-    )
-
-    assert target.service_name == "automl-model-22222222"
-    assert target.namespace == "sceptre"
-    assert target.url_for("v1/predict") == (
-        "http://automl-model-22222222.sceptre.svc:8080/v1/predict"
-    )
+    with pytest.raises(HTTPException) as error:
+        gateway.resolve_deployment_inference_target(
+            _RecordingSession(run),
+            SimpleNamespace(id=uuid.uuid4()),
+            project_id,
+            run_id,
+        )
+    assert error.value.status_code == 409
 
 
 @pytest.mark.parametrize(
@@ -363,7 +410,7 @@ def test_gateway_rejects_unknown_and_traversal_paths_before_connecting(
     monkeypatch.setattr(
         gateway,
         "_new_http_client",
-        lambda: pytest.fail("rejected paths must not open an upstream connection"),
+        lambda *_: pytest.fail("rejected paths must not open an upstream connection"),
     )
     request = _request("POST", f"/gateway/{path}")
 
@@ -389,7 +436,7 @@ def test_gateway_rejects_encoded_path_ambiguity_before_connecting(
     monkeypatch.setattr(
         gateway,
         "_new_http_client",
-        lambda: pytest.fail("ambiguous paths must not open an upstream connection"),
+        lambda *_: pytest.fail("ambiguous paths must not open an upstream connection"),
     )
     request = _request(
         "POST",
@@ -430,7 +477,7 @@ def test_gateway_enforces_exact_method_allowlist_before_connecting(
     monkeypatch.setattr(
         gateway,
         "_new_http_client",
-        lambda: pytest.fail("rejected methods must not open an upstream connection"),
+        lambda *_: pytest.fail("rejected methods must not open an upstream connection"),
     )
     request = _request(actual_method, f"/gateway/{path}")
 
@@ -467,7 +514,7 @@ def test_gateway_does_not_forward_credentials_host_or_hop_headers(
         )
 
     client = _mock_client(handler)
-    monkeypatch.setattr(gateway, "_new_http_client", lambda: client)
+    monkeypatch.setattr(gateway, "_new_http_client", lambda *_: client)
     request = _request(
         "POST",
         path,
@@ -498,10 +545,13 @@ def test_gateway_does_not_forward_credentials_host_or_hop_headers(
     assert body == b'{"predictions":[1]}'
     assert len(captured) == 1
     upstream = captured[0]
-    assert upstream.url.host == "automl-model-22222222.sceptre.svc"
-    assert upstream.url.port == 8080
+    assert upstream.url.host == "10.42.0.7"
+    assert upstream.url.scheme == "https"
+    assert upstream.url.port == 8443
+    assert upstream.extensions["sni_hostname"].endswith(".inference.sceptre.invalid")
+    assert "x-sceptre-deployment-token" not in upstream.headers
     assert upstream.url.params["target"] == "http://169.254.169.254"
-    assert upstream.headers["host"] == "automl-model-22222222.sceptre.svc:8080"
+    assert upstream.headers["host"] == "10.42.0.7:8443"
     for header in (
         "authorization",
         "cookie",
@@ -538,7 +588,7 @@ def test_gateway_closes_client_and_sanitizes_upstream_connection_failures(
         raise upstream_error
 
     client = _mock_client(handler)
-    monkeypatch.setattr(gateway, "_new_http_client", lambda: client)
+    monkeypatch.setattr(gateway, "_new_http_client", lambda *_: client)
     request = _request("GET", "/gateway/health/ready")
 
     with pytest.raises(HTTPException) as error:
@@ -569,7 +619,7 @@ def test_gateway_streams_status_and_body_then_closes_upstream(
         )
 
     client = _mock_client(handler)
-    monkeypatch.setattr(gateway, "_new_http_client", lambda: client)
+    monkeypatch.setattr(gateway, "_new_http_client", lambda *_: client)
     request = _request("POST", "/gateway/v1/predict", body=b"{}")
 
     async def scenario() -> tuple[Any, bytes]:
@@ -596,7 +646,7 @@ def test_gateway_closes_upstream_when_response_consumer_stops_early(
         return httpx.Response(200, stream=upstream_stream)
 
     client = _mock_client(handler)
-    monkeypatch.setattr(gateway, "_new_http_client", lambda: client)
+    monkeypatch.setattr(gateway, "_new_http_client", lambda *_: client)
     request = _request("GET", "/gateway/health/live")
 
     async def scenario() -> bytes:
@@ -634,7 +684,7 @@ def test_gateway_streams_offline_upload_without_trusting_content_length(
         )
 
     client = _mock_client(handler)
-    monkeypatch.setattr(gateway, "_new_http_client", lambda: client)
+    monkeypatch.setattr(gateway, "_new_http_client", lambda *_: client)
     request = _request(
         "POST",
         "/gateway/v1/predict/offline",
@@ -667,8 +717,38 @@ def test_gateway_streams_offline_upload_without_trusting_content_length(
     assert client.is_closed
 
 
+@pytest.fixture
+def offline_boundary(monkeypatch):
+    monkeypatch.setattr(
+        gateway,
+        "finalize_deployment_inference_target",
+        lambda _db, _user, inspected: gateway.DeploymentInferenceTarget(
+            inspected.selection.service_name,
+            inspected.selection.namespace,
+            inspected.selection.deployment_id,
+            inspected.peer,
+            inspected.address,
+            inspected.tls_context,
+            inspected.selection,
+        ),
+    )
+    monkeypatch.setattr(
+        gateway.upload_verification,
+        "verified_object",
+        lambda _db, upload, _settings: gateway.upload_verification.VerifiedObject(
+            upload.completed_object_uri,
+            "original-v1",
+            upload.provider_driver,
+            getattr(upload, "original_filename", "input.csv"),
+            "text/csv",
+        ),
+    )
+    return SimpleNamespace(expire_all=lambda: None, commit=lambda: None)
+
+
 def test_gateway_streams_verified_object_backed_offline_upload(
     monkeypatch: pytest.MonkeyPatch,
+    offline_boundary,
 ) -> None:
     project_id = uuid.uuid4()
     session_id = uuid.uuid4()
@@ -687,7 +767,7 @@ def test_gateway_streams_verified_object_backed_offline_upload(
         )
 
     client = _mock_client(handler)
-    monkeypatch.setattr(gateway, "_new_http_client", lambda: client)
+    monkeypatch.setattr(gateway, "_new_http_client", lambda *_: client)
     monkeypatch.setattr(
         gateway,
         "get_upload_session",
@@ -705,7 +785,9 @@ def test_gateway_streams_verified_object_backed_offline_upload(
     monkeypatch.setattr(
         gateway,
         "get_object_store",
-        lambda: SimpleNamespace(driver_name="s3_compatible", open_stream=lambda _uri: source),
+        lambda: SimpleNamespace(
+            driver_name="s3_compatible", open_stream=lambda _uri, *, version: source
+        ),
     )
     request = _request(
         "POST",
@@ -717,7 +799,7 @@ def test_gateway_streams_verified_object_backed_offline_upload(
 
     async def scenario() -> tuple[Any, bytes]:
         response = await gateway.proxy_object_backed_offline_inference(
-            request, _target(), SimpleNamespace(), SimpleNamespace(), project_id
+            request, _target(), offline_boundary, SimpleNamespace(), project_id
         )
         return response, b"".join([chunk async for chunk in response.body_iterator])
 
@@ -740,6 +822,7 @@ def test_gateway_streams_verified_object_backed_offline_upload(
 )
 def test_object_backed_offline_upload_requires_eligible_session(
     monkeypatch: pytest.MonkeyPatch,
+    offline_boundary,
     upload: SimpleNamespace,
     expected_detail: str,
 ) -> None:
@@ -751,14 +834,14 @@ def test_object_backed_offline_upload_requires_eligible_session(
     with pytest.raises(HTTPException) as error:
         _run(
             gateway.proxy_object_backed_offline_inference(
-                request, _target(), SimpleNamespace(), SimpleNamespace(), uuid.uuid4()
+                request, _target(), offline_boundary, SimpleNamespace(), uuid.uuid4()
             )
         )
     assert expected_detail in error.value.detail
 
 
 def test_object_backed_offline_upload_rejects_invalid_or_oversized_request() -> None:
-    for body, expected_status in ((b"{}", 422), (b"x" * 16385, 413)):
+    for body, expected_status in ((b"{}", 422), (b"null", 422), (b"[]", 422), (b"x" * 16385, 413)):
         with pytest.raises(HTTPException) as error:
             _run(
                 gateway.proxy_object_backed_offline_inference(
@@ -774,6 +857,7 @@ def test_object_backed_offline_upload_rejects_invalid_or_oversized_request() -> 
 
 def test_object_backed_offline_upload_rejects_provider_change(
     monkeypatch: pytest.MonkeyPatch,
+    offline_boundary,
 ) -> None:
     monkeypatch.setattr(
         gateway,
@@ -795,7 +879,7 @@ def test_object_backed_offline_upload_rejects_provider_change(
     with pytest.raises(HTTPException) as error:
         _run(
             gateway.proxy_object_backed_offline_inference(
-                request, _target(), SimpleNamespace(), SimpleNamespace(), uuid.uuid4()
+                request, _target(), offline_boundary, SimpleNamespace(), uuid.uuid4()
             )
         )
     assert error.value.status_code == 409
@@ -838,7 +922,7 @@ def test_gateway_rewrites_openapi_server_and_bearer_security(
         )
 
     client = _mock_client(handler)
-    monkeypatch.setattr(gateway, "_new_http_client", lambda: client)
+    monkeypatch.setattr(gateway, "_new_http_client", lambda *_: client)
     request = _request(
         "GET",
         request_path,
@@ -903,7 +987,7 @@ def test_gateway_docs_embed_sanitized_openapi_without_follow_up_fetch(
         return httpx.Response(200, stream=upstream_stream)
 
     client = _mock_client(handler)
-    monkeypatch.setattr(gateway, "_new_http_client", lambda: client)
+    monkeypatch.setattr(gateway, "_new_http_client", lambda *_: client)
     request = _request(
         "GET",
         "/api/v1/projects/project/operations/deployments/run/inference/docs",
@@ -938,7 +1022,9 @@ def test_gateway_docs_embed_sanitized_openapi_without_follow_up_fetch(
         {"byte_size": None},
     ],
 )
-def test_ready_offline_upload_requires_digest_evidence_before_provider(monkeypatch, changes):
+def test_ready_offline_upload_requires_digest_evidence_before_provider(
+    monkeypatch, changes, offline_boundary
+):
     upload = SimpleNamespace(
         **{**verified_upload_metadata(), **changes},
         upload_kind="offline_scoring",
@@ -954,9 +1040,41 @@ def test_ready_offline_upload_requires_digest_evidence_before_provider(monkeypat
     with pytest.raises(HTTPException) as error:
         _run(
             gateway.proxy_object_backed_offline_inference(
-                request, _target(), SimpleNamespace(), SimpleNamespace(), uuid.uuid4()
+                request, _target(), offline_boundary, SimpleNamespace(), uuid.uuid4()
             )
         )
     assert error.value.status_code == 409
     assert "digest" in error.value.detail
     store.assert_not_called()
+
+
+@pytest.mark.parametrize("read_error", [False, True])
+def test_pinned_multipart_reader_closes_after_early_stop_or_read_error(read_error):
+    source = io.BytesIO(b"private input")
+    opened = []
+
+    class Store:
+        def open_stream(self, uri, *, version):
+            opened.append((uri, version))
+            return source
+
+    async def scenario():
+        body = gateway._multipart_object_body(
+            Store(),
+            gateway.upload_verification.VerifiedObject(
+                "s3://original/key", "version-7", "s3_compatible", "input.csv", "text/csv"
+            ),
+            boundary="test",
+        )
+        assert not opened
+        assert b'filename="input.csv"' in await anext(body)
+        if read_error:
+            source.close()
+            with pytest.raises(ValueError):
+                await anext(body)
+        else:
+            await body.aclose()
+        assert source.closed
+
+    _run(scenario())
+    assert opened == [("s3://original/key", "version-7")]

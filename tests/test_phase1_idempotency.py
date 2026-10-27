@@ -9,7 +9,7 @@ from automl_api.models.enums import CommandStatus
 from automl_api.services import idempotency
 from automl_api.services.workflow_state import IdempotencyConflict
 from fastapi import HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 @pytest.fixture(autouse=True)
@@ -24,6 +24,55 @@ class _Result(BaseModel):
 
 class _NestedResult(BaseModel):
     run: _Result
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_nested_aliased_response_round_trips_through_durable_replay(monkeypatch, legacy):
+    class Version(BaseModel):
+        dataset_schema: dict = Field(alias="schema_json")
+
+    class Envelope(BaseModel):
+        id: uuid.UUID
+        version: Version
+
+    command = SimpleNamespace(
+        status=CommandStatus.PENDING, response_payload={}, response_status=None
+    )
+    monkeypatch.setattr(idempotency, "begin_command", lambda *a, **kw: (command, False))
+    result = Envelope(id=uuid.uuid4(), version=Version(schema_json={"columns": ["feature"]}))
+    arguments = dict(
+        operation="dataset.aliased",
+        idempotency_key="same",
+        payload={},
+        response_model=Envelope,
+        response_status=200,
+    )
+    assert (
+        idempotency.durable_mutation(
+            MagicMock(),
+            SimpleNamespace(id=uuid.uuid4()),
+            uuid.uuid4(),
+            execute=lambda: result,
+            **arguments,
+        )
+        == result
+    )
+    assert command.response_payload["version"] == {"schema_json": {"columns": ["feature"]}}
+    if legacy:
+        command.response_payload = result.model_dump(mode="json")
+    monkeypatch.setattr(idempotency, "begin_command", lambda *a, **kw: (command, True))
+    execute = MagicMock()
+    assert (
+        idempotency.durable_mutation(
+            MagicMock(),
+            SimpleNamespace(id=uuid.uuid4()),
+            uuid.uuid4(),
+            execute=execute,
+            **arguments,
+        )
+        == result
+    )
+    execute.assert_not_called()
 
 
 def test_durable_mutation_replays_and_persists_resource(monkeypatch) -> None:

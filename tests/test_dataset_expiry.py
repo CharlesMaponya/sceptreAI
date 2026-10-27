@@ -11,6 +11,7 @@ from automl_api.models.workflows import OutboxEntry, WorkflowAttempt, WorkflowCo
 from automl_api.services import reconciler
 from automl_api.services.workflow_state import StaleFence
 from kubernetes.client import ApiException
+from ray_submission_helpers import submit_dataset_ray_job
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from test_local_profiling_delivery import profile_source  # noqa: F401
@@ -366,7 +367,7 @@ def test_retired_submission_never_recreates_old_ray_job(expired_dataset, status)
                 "profiling_job_id": str(profile_id),
             },
         )
-        assert reconciler.submit_dataset_ray_job(cached, entry, k8s) is old
+        assert submit_dataset_ray_job(cached, entry, k8s) is old
         assert old.status == status
         k8s.create_ray_job.assert_not_called()
         k8s.ensure_service_account.assert_not_called()
@@ -407,6 +408,6 @@ def test_dataset_submit_scope_fails_before_native_creation(expired_dataset, inva
             db.flush()
         k8s = MagicMock()
         with pytest.raises(StaleFence):
-            reconciler.submit_dataset_ray_job(db, entry, k8s)
+            submit_dataset_ray_job(db, entry, k8s)
         k8s.create_ray_job.assert_not_called()
         k8s.ensure_service_account.assert_not_called()

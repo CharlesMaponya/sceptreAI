@@ -367,7 +367,10 @@ class _PrefixS3Client:
             return {"Parts": [{"PartNumber": 1}]}
         from botocore.exceptions import ClientError
 
-        raise ClientError({"Error": {"Code": "NoSuchUpload"}}, "ListParts")
+        raise ClientError(
+            {"Error": {"Code": "NoSuchUpload"}, "ResponseMetadata": {"HTTPStatusCode": 404}},
+            "ListParts",
+        )
 
     def list_object_versions(self, *, Bucket, Prefix, MaxKeys):
         assert Bucket == "bucket" and MaxKeys == 1000
@@ -467,3 +470,45 @@ def test_embedded_stream_replacement_never_exposes_partial_content(tmp_path, fai
         store.put_stream(uri, Source())
         assert store.read_bytes(uri) == b"replacement"
     assert len(list(tmp_path.rglob("*"))) == 2  # bucket directory and the complete object
+
+
+@pytest.mark.parametrize("operation", ["abort_multipart_upload", "list_parts"])
+def test_s3_prefix_cleanup_preserves_response_less_transport_error(monkeypatch, operation):
+    class NativeTransportError(OSError):
+        response = None
+
+    client = _PrefixS3Client()
+
+    def fail(**_kwargs):
+        raise NativeTransportError("Original provider connection was lost")
+
+    monkeypatch.setattr(client, operation, fail)
+    with pytest.raises(NativeTransportError, match="Original provider connection was lost"):
+        S3ObjectStoreDriver(bucket="bucket", client=client).delete_prefix("projects/p")
+    assert ("projects/peer/keep", "v1") in client.versions
+    assert ("projects/peer/keep", "u3") in client.uploads
+
+
+@pytest.mark.parametrize("status", [None, 403, 429, 503, "404"])
+@pytest.mark.parametrize("operation", ["abort_multipart_upload", "list_parts"])
+def test_s3_prefix_cleanup_cannot_treat_unqualified_missing_status_as_absence(
+    monkeypatch, operation, status
+):
+    from botocore.exceptions import ClientError
+
+    client = _PrefixS3Client()
+    original_versions = list(client.versions)
+    response = {"Error": {"Code": "NoSuchUpload"}}
+    if status is not None:
+        response["ResponseMetadata"] = {"HTTPStatusCode": status}
+    failure = ClientError(response, operation)
+
+    def fail(**_kwargs):
+        raise failure
+
+    monkeypatch.setattr(client, operation, fail)
+    with pytest.raises(ClientError) as caught:
+        S3ObjectStoreDriver(bucket="bucket", client=client).delete_prefix("projects/p")
+    assert caught.value is failure
+    assert client.versions == original_versions and client.deleted == []
+    assert ("projects/peer/keep", "u3") in client.uploads

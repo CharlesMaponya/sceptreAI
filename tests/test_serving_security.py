@@ -81,11 +81,14 @@ def test_model_download_credential_and_project_are_scoped():
         serving_artifacts.download_deployment_model(deployment_id, db, deployment_token(other_id))
     assert error.value.status_code == 401
     db.get.assert_not_called()
+    project_id = uuid.uuid4()
+    db.scalar.return_value = project_id
     db.get.side_effect = [
+        SimpleNamespace(id=project_id),
         SimpleNamespace(
             run_kind=RunKind.DEPLOYMENT,
             status=RunStatus.RUNNING,
-            project_id=uuid.uuid4(),
+            project_id=project_id,
             tags={"model_artifact_id": str(uuid.uuid4())},
         ),
         SimpleNamespace(project_id=uuid.uuid4()),
@@ -95,3 +98,27 @@ def test_model_download_credential_and_project_are_scoped():
             deployment_id, db, deployment_token(deployment_id)
         )
     assert error.value.status_code == 404
+
+
+def test_model_download_non_ascii_credential_is_denied_without_sql():
+    from unittest.mock import MagicMock
+
+    from automl_api.api.routes import serving_artifacts
+    from fastapi import HTTPException
+
+    db = MagicMock()
+    with pytest.raises(HTTPException) as failure:
+        serving_artifacts.download_deployment_model(uuid.uuid4(), db, token="é")
+    assert failure.value.status_code == 401
+    db.get.assert_not_called()
+    db.scalar.assert_not_called()
+
+
+def test_inference_non_ascii_credential_is_denied(monkeypatch):
+    from automl_api.inference import app as inference
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setenv("INFERENCE_GATEWAY_TOKEN", "owned-ascii-credential")
+    with TestClient(inference.create_app()) as client:
+        response = client.get("/openapi.json", headers={b"X-Sceptre-Deployment-Token": b"\xe9"})
+    assert response.status_code == 401

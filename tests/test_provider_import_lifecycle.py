@@ -19,6 +19,7 @@ from automl_api.services.provider_import import assert_provider_cleanup_safe, ca
 from automl_api.services.workflow_state import StaleFence
 from fastapi import HTTPException
 from sqlalchemy import delete, select
+from test_project_management_integration import reconcile_deletion_stage
 from test_provider_import_consumers import source_case as source_case  # noqa: F401
 from test_provider_import_registration import begin, run
 from test_provider_import_registration import registration_case as registration_case  # noqa: F401
@@ -102,20 +103,26 @@ def test_project_deletion_removes_only_owned_descriptor_and_metadata(source_case
                 del c.store.descriptors[name]
 
     c.store.delete_prefix = remove
-    monkeypatch.setattr(deletion, "get_object_store", lambda: c.store)
+    c.store.prefix_absent = lambda prefix: (
+        not any(
+            uri.startswith(c.store.uri_for_key(prefix).rstrip("/") + "/")
+            for uri in [*c.store.descriptors, *[key[0] for key in c.store.objects]]
+        )
+    )
+    monkeypatch.setattr(deletion, "get_object_store", lambda *_: c.store)
     try:
         with c.factory() as db, db.begin():
             deletion.request_deletion(db, db.get(User, c.actor_id), c.project_id)
         done = False
         for _ in range(4):
-            with c.factory() as db, db.begin():
+            with c.factory() as db:
                 entry = db.scalar(
                     select(OutboxEntry).where(
                         OutboxEntry.project_id == c.project_id,
                         OutboxEntry.topic == "project.delete",
                     )
                 )
-                done = deletion.reconcile_deletion(db, entry, MagicMock())
+                done = reconcile_deletion_stage(db, entry, MagicMock())
         assert done
         assert prefixes == [f"projects/{c.project_id}", f"automl/projects/{c.project_id}"]
         assert not c.store.descriptors and c.store.objects == before

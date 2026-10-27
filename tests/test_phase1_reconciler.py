@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import io
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -13,7 +12,6 @@ from automl_api.core.config import Settings
 from automl_api.models.enums import (
     AttemptStatus,
     CommandStatus,
-    DatasetStatus,
     OutboxStatus,
     RunKind,
     RunStatus,
@@ -33,6 +31,7 @@ from automl_api.services.kubernetes_training import (
 )
 from digest_fixtures import verified_raw_version
 from kubernetes.client import ApiException
+from ray_submission_helpers import submit_training_ray_job
 
 
 def _run() -> ModelRun:
@@ -258,18 +257,19 @@ def test_submit_reconciler_persists_ray_identity_and_is_idempotent() -> None:
     db.scalar.side_effect = lambda statement: (
         None
         if statement.column_descriptions[0]["entity"].__name__
-        in {"DatasetProviderImport", "PromotionalScopeMember"}
+        in {"DatasetProviderImport", "PromotionalScopeMember", "WorkflowEvent"}
         else next(values)
     )
     db.get.return_value = verified_raw_version(id=run.dataset_version_id, project_id=run.project_id)
     k8s = MagicMock()
-    k8s.create_ray_job.return_value = {
-        "metadata": {"name": "created-job"},
+    k8s.create_ray_job.side_effect = lambda body: {
+        **body,
+        "metadata": {**body["metadata"], "uid": "original-ray-uid"},
         "status": {"rayClusterName": "created-cluster", "jobId": "ray-id"},
     }
-    result = reconciler.submit_training_ray_job(db, entry, k8s)
+    result = submit_training_ray_job(db, entry, k8s)
     assert result.status == AttemptStatus.SUBMITTED
-    assert result.ray_job_name == "created-job"
+    assert result.ray_job_name == k8s.create_ray_job.call_args.args[0]["metadata"]["name"]
     assert result.ray_cluster_name == "created-cluster"
     assert result.ray_submission_id == "ray-id"
     assert run.tags["desired_state"] == "ray_submitted"
@@ -281,7 +281,7 @@ def test_submit_reconciler_persists_ray_identity_and_is_idempotent() -> None:
     k8s.ensure_service_account.assert_called_once_with("project-training")
 
     db.scalar.side_effect = [attempt]
-    assert reconciler.submit_training_ray_job(db, entry, k8s) is attempt
+    assert submit_training_ray_job(db, entry, k8s) is attempt
     k8s.create_ray_job.assert_called_once()
 
 
@@ -294,14 +294,17 @@ def test_submit_reconciler_claims_a_new_pending_attempt_before_submission() -> N
     db.scalar.side_effect = lambda statement: (
         None
         if statement.column_descriptions[0]["entity"].__name__
-        in {"DatasetProviderImport", "PromotionalScopeMember"}
+        in {"DatasetProviderImport", "PromotionalScopeMember", "WorkflowEvent"}
         else next(values)
     )
     db.get.return_value = verified_raw_version(id=run.dataset_version_id, project_id=run.project_id)
     k8s = MagicMock()
-    k8s.create_ray_job.return_value = {"metadata": {"name": "created-job"}}
+    k8s.create_ray_job.side_effect = lambda body: {
+        **body,
+        "metadata": {**body["metadata"], "uid": "original-ray-uid"},
+    }
 
-    reconciler.submit_training_ray_job(db, entry, k8s)
+    submit_training_ray_job(db, entry, k8s)
 
     assert attempt.status == AttemptStatus.SUBMITTED
     k8s.create_ray_job.assert_called_once()
@@ -314,17 +317,17 @@ def test_submit_reconciler_rejects_missing_and_stale_attempt() -> None:
     db = MagicMock()
     db.scalar.return_value = None
     with pytest.raises(LookupError, match="attempt"):
-        reconciler.submit_training_ray_job(db, entry, MagicMock())
+        submit_training_ray_job(db, entry, MagicMock())
     db.scalar.return_value = attempt
     entry.payload["fencing_token"] = "old"
     with pytest.raises(ValueError, match="fence"):
-        reconciler.submit_training_ray_job(db, entry, MagicMock())
+        submit_training_ray_job(db, entry, MagicMock())
 
     pending = _attempt(run)
     pending_entry = _entry(pending)
     db.scalar.side_effect = [pending, None]
     with pytest.raises(LookupError, match="training run"):
-        reconciler.submit_training_ray_job(db, pending_entry, MagicMock())
+        submit_training_ray_job(db, pending_entry, MagicMock())
 
 
 def test_cancel_reconciler_deletes_once_and_terminal_state_is_stable() -> None:
@@ -361,7 +364,7 @@ def test_pending_submission_cannot_create_work_after_terminal_fence(status) -> N
     attempt = _attempt(_run(), status)
     db, k8s = MagicMock(), MagicMock()
     db.scalar.return_value = attempt
-    assert reconciler.submit_training_ray_job(db, _entry(attempt), k8s) is attempt
+    assert submit_training_ray_job(db, _entry(attempt), k8s) is attempt
     k8s.create_ray_job.assert_not_called()
     k8s.ensure_service_account.assert_not_called()
 
@@ -622,8 +625,13 @@ def test_entry_dispatch_requeues_failure_and_delivers_success(monkeypatch) -> No
     entry = _entry(attempt)
     complete = MagicMock()
     monkeypatch.setattr(reconciler, "complete_outbox", complete)
-    monkeypatch.setattr(reconciler, "submit_training_ray_job", MagicMock())
-    reconciler.reconcile_entry(_delivery_db(entry), entry, worker_id="worker-a", k8s=MagicMock())
+    entry.topic = "custom.success"
+    reconciler.reconcile_entry(
+        _delivery_db(entry),
+        entry,
+        worker_id="worker-a",
+        handlers={"custom.success": MagicMock()},
+    )
     assert complete.call_args.kwargs["delivered"] is True
 
     handler = MagicMock(side_effect=RuntimeError("external down"))
@@ -649,7 +657,6 @@ def test_entry_dispatch_requeues_failure_and_delivers_success(monkeypatch) -> No
         ("ray.training.cancel", "cancel_training_ray_job"),
         ("kubernetes.analysis.submit", "submit_analysis_job"),
         ("upload.reconcile", "reconcile_upload_session"),
-        ("deployment.reconcile", "reconcile_deployment"),
         ("governance.reconcile", "reconcile_governance_object"),
         ("cleanup.execute", "reconcile_cleanup"),
     ],
@@ -681,224 +688,13 @@ def test_entry_rejects_known_topic_without_a_handler(monkeypatch) -> None:
     assert complete.call_args.kwargs["delivered"] is False
 
 
-def test_upload_reconciler_handles_terminal_expired_and_quarantined_sessions(
-    monkeypatch,
-) -> None:
-    entry = _entry(_attempt(_run()), "upload.reconcile")
-    entry.payload = {"session_id": str(uuid.uuid4())}
-    db = MagicMock()
-    db.scalar.return_value = None
-    with pytest.raises(LookupError, match="upload session"):
-        reconciler.reconcile_upload_session(db, entry)
-
-    session = SimpleNamespace(status="aborted")
-    db.scalar.return_value = session
-    assert reconciler.reconcile_upload_session(db, entry) is session
-
-    session = SimpleNamespace(
-        id=uuid.UUID(str(entry.payload["session_id"])),
-        status="pending",
-        expires_at=reconciler.datetime.now(reconciler.UTC),
-        terminal_reason=None,
-        lease_owner="worker",
-        lease_expires_at=reconciler.datetime.now(reconciler.UTC),
-    )
-    db.scalar.return_value = session
-    reconciler.reconcile_upload_session(db, entry)
-    assert session.status == "expired"
-    assert session.lease_owner is None
-
-    session = SimpleNamespace(
-        status="pending",
-        expires_at=reconciler.datetime.now(reconciler.UTC).replace(year=2099),
-    )
-    db.scalar.return_value = session
-    with pytest.raises(RuntimeError, match="not yet eligible"):
-        reconciler.reconcile_upload_session(db, entry)
-
-    session = SimpleNamespace(
-        id=uuid.UUID(str(entry.payload["session_id"])),
-        status="completed",
-        dataset_version_id=None,
-        digest_algorithm="sha256",
-        digest_scope="byte_stream",
-        expected_object_digest="a" * 64,
-        quarantine_reason=None,
-        terminal_reason=None,
-    )
-    db.scalar.return_value = session
-    reconciler.reconcile_upload_session(db, entry)
-    assert session.status == "quarantined"
-
-
-def test_upload_reconciler_verifies_object_size_and_visibility(monkeypatch) -> None:
-    entry = _entry(_attempt(_run()), "upload.reconcile")
-    entry.payload = {"session_id": str(uuid.uuid4())}
-    session = SimpleNamespace(
-        id=uuid.UUID(str(entry.payload["session_id"])),
-        status="completed",
-        project_id=entry.project_id,
-        dataset_version_id=uuid.uuid4(),
-        byte_size=10,
-        digest_algorithm="sha256",
-        digest_scope="byte_stream",
-        expected_object_digest="a" * 64,
-        quarantine_reason=None,
-        terminal_reason=None,
-        lease_owner="worker",
-        lease_expires_at=reconciler.datetime.now(reconciler.UTC),
-        heartbeat_at=None,
-    )
-    db = MagicMock()
-    db.get.return_value = entry
-    db.scalar.side_effect = [session, None]
-    reconciler.reconcile_upload_session(db, entry)
-    assert session.status == "quarantined"
-    assert "missing dataset version" in session.quarantine_reason
-
-    version = SimpleNamespace(object_uri="minio://automl/object")
-    store = MagicMock()
-    monkeypatch.setattr(reconciler, "get_object_store", lambda: store)
-    session.status = "completed"
-    db.scalar.side_effect = [session, version, session]
-    store.exists.return_value = False
-    with pytest.raises(OSError, match="not visible"):
-        reconciler.reconcile_upload_session(db, entry)
-
-    db.scalar.side_effect = [session, version, session]
-    store.exists.return_value = True
-    store.size.return_value = 9
-    reconciler.reconcile_upload_session(db, entry)
-    assert session.status == "quarantined"
-    assert "expected 10, observed 9" in session.quarantine_reason
-
-
-def test_phase2_upload_reconciler_streams_scans_and_verifies_sha256(monkeypatch) -> None:
-    content = b"a,b\n1,2\n"
-    digest = hashlib.sha256(content).hexdigest()
-    entry = _entry(_attempt(_run()), "upload.reconcile")
-    entry.payload = {"session_id": str(uuid.uuid4())}
-    session = SimpleNamespace(
-        id=uuid.UUID(str(entry.payload["session_id"])),
-        status="object_completed",
-        project_id=entry.project_id,
-        upload_kind="dataset",
-        dataset_version_id=uuid.uuid4(),
-        completed_object_uri="s3c://automl/object.csv",
-        original_filename="object.csv",
-        byte_size=len(content),
-        digest_algorithm="sha256",
-        digest_scope="byte_stream",
-        expected_object_digest=digest,
-        scanner_status="pending",
-        quarantine_reason=None,
-        terminal_reason=None,
-        lease_owner="worker",
-        lease_expires_at=reconciler.datetime.now(reconciler.UTC),
-        heartbeat_at=None,
-    )
-    version = SimpleNamespace(
-        object_uri=session.completed_object_uri,
-        content_hash="pending",
-        content_hash_algorithm="sha256",
-        content_hash_scope="byte_stream",
-        content_hash_verification_status="pending",
-        content_hash_verified_at=None,
-        status=DatasetStatus.UPLOADED,
-        schema_json={},
-        inferred_types_json={},
-        quality_report_json={},
-        column_count=None,
-    )
-    db = MagicMock()
-    db.get.return_value = entry
-    db.scalar.side_effect = [session, version, session, version]
-    store = MagicMock()
-    store.exists.return_value = True
-    store.size.return_value = len(content)
-    store.open_stream.return_value = io.BytesIO(content)
-    monkeypatch.setattr(reconciler, "get_object_store", lambda: store)
-    monkeypatch.setattr(
-        reconciler,
-        "get_settings",
-        lambda: Settings(upload_scanner_signature_version="builtin-v1"),
-    )
-
-    assert reconciler.reconcile_upload_session(db, entry) is session
-    assert session.status == "ready"
-    assert session.observed_object_digest == digest
-    assert session.scanner_status == "allowed"
-    assert session.lease_owner is None
-    assert session.lease_expires_at is None
-    assert version.status == DatasetStatus.READY
-    assert version.content_hash_verification_status == "verified"
-    assert version.column_count == 2
-    assert version.schema_json == {
-        "columns": [{"name": "a"}, {"name": "b"}],
-        "source": "verified_upload_stream",
-    }
-    assert version.inferred_types_json["a"]["semantic_type"] == "pending"
-    assert store.open_stream.return_value.closed
-
-
-def test_phase2_upload_reconciler_quarantines_digest_and_scanner_failures(
-    monkeypatch,
-) -> None:
-    entry = _entry(_attempt(_run()), "upload.reconcile")
-    entry.payload = {"session_id": str(uuid.uuid4())}
-    content = b"a,b\n1,2\n"
-    version = SimpleNamespace(object_uri="s3c://automl/object.csv")
-    store = MagicMock()
-    store.exists.return_value = True
-    store.size.return_value = len(content)
-    monkeypatch.setattr(reconciler, "get_object_store", lambda: store)
-    monkeypatch.setattr(reconciler, "get_settings", lambda: Settings())
-
-    def session(filename: str = "object.csv") -> SimpleNamespace:
-        return SimpleNamespace(
-            id=uuid.UUID(str(entry.payload["session_id"])),
-            status="object_completed",
-            project_id=entry.project_id,
-            upload_kind="dataset",
-            dataset_version_id=uuid.uuid4(),
-            completed_object_uri=version.object_uri,
-            original_filename=filename,
-            byte_size=len(content),
-            digest_algorithm="sha256",
-            digest_scope="byte_stream",
-            expected_object_digest="0" * 64,
-            scanner_status="pending",
-            quarantine_reason=None,
-            terminal_reason=None,
-            lease_owner="worker",
-            lease_expires_at=reconciler.datetime.now(reconciler.UTC),
-        )
-
-    mismatch = session()
-    store.open_stream.return_value = io.BytesIO(content)
-    db = MagicMock()
-    db.get.return_value = entry
-    db.scalar.side_effect = [mismatch, version, mismatch]
-    reconciler.reconcile_upload_session(db, entry)
-    assert mismatch.status == "quarantined"
-    assert version.status == DatasetStatus.FAILED
-    assert "SHA-256" in mismatch.quarantine_reason
-
-    denied = session()
-    store.open_stream.return_value = io.BytesIO(b"MZ bad!!")
-    denied.byte_size = 8
-    db.scalar.side_effect = [denied, version, denied]
-    reconciler.reconcile_upload_session(db, entry)
-    assert denied.status == "quarantined"
-    assert denied.scanner_status == "denied"
-
-
 def test_phase2_upload_verification_uses_bounded_provider_ranges() -> None:
     content = b"0123456789"
     opened: list[io.BytesIO] = []
     store = MagicMock()
 
-    def open_range(_uri, byte_range):
+    def open_range(_uri, byte_range, *, version):
+        assert version == "original-v1"
         source = io.BytesIO(content[byte_range.start : byte_range.end_inclusive + 1])
         opened.append(source)
         return source
@@ -909,6 +705,7 @@ def test_phase2_upload_verification_uses_bounded_provider_ranges() -> None:
         "s3c://automl/large.csv",
         len(content),
         range_size=4,
+        version="original-v1",
     )
 
     assert reader.read(3) == b"012"
@@ -930,7 +727,9 @@ def test_phase2_upload_verification_uses_bounded_provider_ranges() -> None:
 def test_phase2_upload_verification_rejects_short_provider_range() -> None:
     store = MagicMock()
     store.open_stream.return_value = io.BytesIO(b"x")
-    reader = reconciler._BoundedObjectReader(store, "s3c://automl/object.csv", 2)
+    reader = reconciler._BoundedObjectReader(
+        store, "s3c://automl/object.csv", 2, version="original-v1"
+    )
     with pytest.raises(OSError, match="before its declared size"):
         reader.read(2)
     reader.close()
@@ -1008,57 +807,10 @@ def test_analysis_queued_command_cannot_resurrect_terminal_run(terminal):
     k8s.capacity_snapshot.assert_not_called()
 
 
-def test_deployment_reconciler_writes_object_and_submits_once(monkeypatch) -> None:
-    run = _run()
-    run.status = RunStatus.QUEUED
-    run.tags = {"desired_state": "deployment_pending"}
-    artifact = SimpleNamespace(
-        object_uri="minio://automl/projects/p/deployments/d/Dockerfile",
-        artifact_metadata={"content": "FROM scratch", "desired_state": "object_write_pending"},
-    )
-    entry = _entry(_attempt(run), "deployment.reconcile")
-    entry.payload = {
-        "run_id": str(run.id),
-        "dockerfile_uri": artifact.object_uri,
-        "manifests": {"deployment": {}, "service": {}},
-    }
-    db = MagicMock()
-    db.scalar.side_effect = [run, artifact]
-    store = MagicMock()
-    store.put_bytes.return_value = SimpleNamespace(uri=artifact.object_uri)
-    monkeypatch.setattr(reconciler, "get_object_store", lambda: store)
-    k8s = MagicMock()
-
-    assert reconciler.reconcile_deployment(db, entry, k8s) is run
-    store.put_bytes.assert_called_once_with("projects/p/deployments/d/Dockerfile", b"FROM scratch")
-    k8s.create_model_deployment.assert_called_once_with(entry.payload["manifests"])
-    assert run.status == RunStatus.RUNNING
-    assert run.tags["desired_state"] == "deployment_active"
-    db.scalar.side_effect = [run]
-    assert reconciler.reconcile_deployment(db, entry, k8s) is run
-    k8s.create_model_deployment.assert_called_once()
-
-
-def test_deployment_reconciler_rejects_missing_run_artifact_and_content() -> None:
-    run = _run()
-    run.tags = {"desired_state": "deployment_pending"}
-    entry = _entry(_attempt(run), "deployment.reconcile")
-    entry.payload = {
-        "run_id": str(run.id),
-        "dockerfile_uri": "minio://automl/deployment/Dockerfile",
-        "manifests": {},
-    }
-    db = MagicMock()
-    db.scalar.side_effect = [None]
-    with pytest.raises(LookupError, match="deployment run"):
-        reconciler.reconcile_deployment(db, entry, MagicMock())
-    db.scalar.side_effect = [run, None]
-    with pytest.raises(LookupError, match="Dockerfile"):
-        reconciler.reconcile_deployment(db, entry, MagicMock())
-    empty = SimpleNamespace(object_uri=entry.payload["dockerfile_uri"], artifact_metadata={})
-    db.scalar.side_effect = [run, empty]
-    with pytest.raises(ValueError, match="content is empty"):
-        reconciler.reconcile_deployment(db, entry, MagicMock())
+def test_deployment_topic_requires_factory_dispatcher():
+    entry = _entry(_attempt(_run()), "deployment.reconcile")
+    with pytest.raises(RuntimeError, match="factory-owned dispatcher"):
+        reconciler.reconcile_entry(_delivery_db(entry), entry, worker_id="worker-a")
 
 
 def test_governance_reconciler_writes_both_objects_once(monkeypatch) -> None:
@@ -1207,7 +959,10 @@ def test_kubernetes_rayjob_methods_handle_conflicts_and_not_found() -> None:
         **manifest,
         "metadata": {**manifest["metadata"], "uid": "native-ray-uid"},
     }
-    assert client.create_ray_job(manifest)["metadata"]["name"] == "ray-job"
+    with pytest.raises(ApiException) as held:
+        client.create_ray_job(manifest)
+    assert held.value.status == 409
+    client.custom.get_namespaced_custom_object.assert_not_called()
     assert client.ray_job("ray-job")["metadata"]["name"] == "ray-job"
     client.custom.delete_namespaced_custom_object.side_effect = ApiException(status=404)
     client.delete_ray_job("ray-job")
@@ -1357,3 +1112,40 @@ def test_upload_reconciler_blocks_unqualified_digest_without_mutating_history(
     db.flush.assert_not_called()
     db.commit.assert_not_called()
     assert vars(session) == original
+
+
+@pytest.mark.parametrize("status", ["completed", "object_completed", "verifying"])
+def test_legacy_upload_custody_cannot_infer_readiness_or_mutate_history(monkeypatch, status):
+    entry = _entry(_attempt(_run()), "upload.reconcile")
+    entry.payload = {"session_id": str(uuid.uuid4())}
+    session = SimpleNamespace(
+        status=status,
+        digest_algorithm="sha256",
+        digest_scope="byte_stream",
+        expected_object_digest="a" * 64,
+    )
+    original = vars(session).copy()
+    db = MagicMock()
+    db.scalar.return_value = session
+    store = MagicMock()
+    monkeypatch.setattr(reconciler, "get_object_store", store)
+    with pytest.raises(ValueError, match="original immutable completion custody"):
+        reconciler.reconcile_upload_session(db, entry)
+    assert vars(session) == original
+    store.assert_not_called()
+    db.flush.assert_not_called()
+    db.commit.assert_not_called()
+
+
+def test_legacy_upload_terminal_replay_is_read_only():
+    entry = _entry(_attempt(_run()), "upload.reconcile")
+    entry.payload = {"session_id": str(uuid.uuid4())}
+    db = MagicMock()
+    db.scalar.return_value = None
+    with pytest.raises(LookupError, match="upload session"):
+        reconciler.reconcile_upload_session(db, entry)
+    session = SimpleNamespace(status="aborted")
+    db.scalar.return_value = session
+    assert reconciler.reconcile_upload_session(db, entry) is session
+    db.flush.assert_not_called()
+    db.commit.assert_not_called()

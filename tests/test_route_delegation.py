@@ -79,6 +79,8 @@ def _schema_stub() -> MagicMock:
 def _patch_boundaries(monkeypatch: pytest.MonkeyPatch, module: object) -> None:
     for name, value in vars(module).items():
         origin = getattr(value, "__module__", "")
+        if inspect.isclass(value) and origin.startswith("automl_api.services"):
+            continue
         if origin.startswith("automl_api.services"):
             result = SPECIAL_SERVICE_RESULTS.get(name, MagicMock())
             replacement: MagicMock

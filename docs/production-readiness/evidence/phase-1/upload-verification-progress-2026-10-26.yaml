@@ -1,0 +1,92 @@
+date: '2026-10-26'
+phase: 1
+scope: upload-verification-progress
+status: in_progress
+phase_complete: false
+scope_integration_complete: false
+source_inputs: 644
+source_manifest_sha256: 3adcde09abaef1aab7187442d674e4967cca3dbd45d3fdbee2439c82f25ed083
+private_evidence_directory: .unlazy/phase1-upload-completion
+checks:
+  verification:
+    passed: 105
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43709886464
+    test_xml_sha256: 34755e69079c97429dcf28678ddc0b52ab136d10c72da687e1694134c9eeadd3
+  metadata:
+    passed: 94
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43706052608
+    test_xml_sha256: b739b0db1b5eb3348c9f873e3c7c8a5c3d16b9b017ae5f271732694933548b5a
+  providers:
+    passed: 128
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43709005824
+    test_xml_sha256: f38fd00da5cb7954c4b5cc8c780960f7926f7b7dfa3881716bea4f5b8e9a958d
+  workflow:
+    passed: 74
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43707334656
+    test_xml_sha256: 1b2903c559914bcad3940596f15fffa9c57e7bef07267a8fe5028971810800d9
+  connected:
+    passed: 216
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43705438208
+    test_xml_sha256: 7c10f8235c85b851dabd869ea996d85e3748775d3b2e1e01e8c666efc7a23611
+counts_overlap: true
+upload_completion_gates:
+  met: 0
+  unmet: 6
+parent_inference_gates:
+  met: 0
+  unmet: 8
+phase_1_requirements:
+  verified: 2
+  open: 34
+original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+strict_schema:
+  status: terminal_pass
+  read_only: true
+  revision: 0018_attempt_predecessor_lineage
+lint: ruff apps/api tests scripts and git diff --check passed
+shared_native_fixture_uids:
+  namespace: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service: 365dd74f-551c-4fb3-8d9b-fe4026273558
+behavior:
+- upload.reconcile.v2 now dispatches a factory-owned verifier. Exact-version metadata validates original identity
+  and size before every range is pinned to the original receipt version. Store construction, metadata, streaming,
+  scanner and close hold zero SQL connections in real PostgreSQL tests.
+- Fresh project, receipt/source, dataset core, scanner policy, delivery owner and delivery-attempt checks fence
+  readiness. An old reader failure cannot fail a newer delivery attempt with the same worker name. Original completion
+  responses remain replayable after verification.
+- Original verification proof is anchored to the outbox payload and original completion command/source; dataset
+  versions retain the native pointer. Digest mismatch, denied content, size mismatch and scanner timeout quarantine
+  without readiness.
+- S3/Azure/GCS stat accept exact immutable versions and reject missing/foreign metadata identities. Embedded refuses
+  supplied native versions. Three pre-fix unsupported-version failures are retained; actual installed SDK boundary
+  tests and existing local HTTP provider tests pass.
+- Legacy active histories cannot read latest or infer original verification. Cleanup no longer deletes completed/quarantined
+  objects by URI. Unknown and native-started histories remain held; eligible original staged non-Azure uploads can
+  still expire. Azure staged abort explicitly reports unsupported rather than deleting by key.
+limitations:
+- JSON object-backed offline inference still needs a fresh reader/source fence after parsing and a lazy, exact-version
+  read after original TLS peer authentication. This component result does not qualify the whole inference path.
+- Qualified exact-version retirement/cancellation is unfinished. Held histories require controlled recovery or a
+  new upload; broad dataset/training consumers are not all qualified pinned readers.
+- New verifier tests use real owned PostgreSQL and controlled native responses. SDK boundary/local HTTP checks are
+  separate. No deployed maintained-image/cloud-provider/IAM/admission or prior-binary/mixed-version journey is claimed.
+- All six upload scope and eight parent scope gates remain unmet pending complete integration and their executable
+  audits. Phase1 stays 2 Verified /34 Open.
+- Full release/branch>=90.01%, maintained images, 45,000,000,000 physical-byte migration and deferred15-by-10-GiB
+  load remain unqualified. Largest-table row counts remain unspecified. Original deletion:G7 still requires seven
+  missing historical objects; none were reconstructed or re-signed.

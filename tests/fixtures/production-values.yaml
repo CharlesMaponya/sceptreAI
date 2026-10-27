@@ -56,6 +56,8 @@ training:
     image:
       digest: *digest
 inference:
+  identity:
+    caSecret: inference-authority
   image:
     digest: *digest
 

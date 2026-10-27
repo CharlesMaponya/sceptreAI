@@ -1,0 +1,168 @@
+date: '2026-10-26'
+phase: 1
+scope: upload-retirement-workflow-progress
+status: in_progress
+phase_complete: false
+scope_integration_complete: false
+source_inputs: 648
+source_manifest_sha256: 1142dee62623843ba9d4ec1918d215b21cd76811231593991abde54f25c452e2
+private_evidence_directory: .unlazy/phase1-upload-retirement
+checks:
+  cancel:
+    passed: 33
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43668496384
+    test_xml_sha256: 83f0c7446ba1686077336294554124c1af65d785227f96d78bc2531e5cc2907a
+  connected:
+    passed: 212
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43662839808
+    test_xml_sha256: 81112954d112d60b0392bd77b76d25a3a8050d4968963299a77696b8c98bd21e
+  workflow:
+    passed: 74
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43667230720
+    test_xml_sha256: 39a4e45931a64bd652da10b778721350ac4d0d4787e08b7a3f88cc72e077247a
+  verification:
+    passed: 116
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43666882560
+    test_xml_sha256: b39ef964065a4251e5d7d2cf66a50c46991f8b65b08dc076b256d4240cf37af2
+  worker:
+    passed: 28
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43666366464
+    test_xml_sha256: f140a95ea02ac8bd35473dd8e708d27bc7fcf58f3b88ed73ece51539cef44a44
+  provider:
+    passed: 210
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43666137088
+    test_xml_sha256: 1347d24d4b9f7eed8913ead6a4d2c7a98e644731f5334687eb291fdca6ea073c
+  staged:
+    passed: 171
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43665477632
+    test_xml_sha256: 99f91cebf4b8e420bc0c034919a3df5b48b4dc3f25b1e2dd26aefb736aa96677
+ui_checks:
+  ui-tests:
+    status: terminal_pass
+    minimum_free_bytes: 43665317888
+    node_version: v24.22.0
+    node_sha256: 67ca5783febb8bf85736c79fcdd92c8d6d465a0eb2a082672bcdfa76a506751c
+    passed: 60
+    test_xml_sha256: 452115dd80a6385ec89c2101ef92fad1b42efc88548b8ed30732e6378bacfc33
+  ui-types:
+    status: terminal_pass
+    minimum_free_bytes: 43665235968
+    node_version: v24.22.0
+    node_sha256: 67ca5783febb8bf85736c79fcdd92c8d6d465a0eb2a082672bcdfa76a506751c
+  ui-lint:
+    status: terminal_pass
+    minimum_free_bytes: 43665195008
+    node_version: v24.22.0
+    node_sha256: 67ca5783febb8bf85736c79fcdd92c8d6d465a0eb2a082672bcdfa76a506751c
+counts_overlap: true
+retirement_gates:
+  met: 0
+  unmet: 3
+upload_completion_gates:
+  met: 0
+  unmet: 6
+parent_inference_gates:
+  met: 0
+  unmet: 8
+phase_1_requirements:
+  verified: 2
+  open: 34
+original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+strict_schema:
+  status: terminal_pass
+  read_only: true
+  tables: 44
+  revision: 0018_attempt_predecessor_lineage
+lint: repository ruff, thirteen-file format and git diff --check passed
+driver_sha256: 97480fba88152e5a17dfa7e09a0e5e83cc7971f32afddb2b8e1544a5c5126f9d
+ui_driver_sha256: 5571c45b31c0beaedbc45ead1b4d825c05d29c094f983b9117450ad76ec0d99b
+shared_native_fixture_uids:
+  namespace: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service: 365dd74f-551c-4fb3-8d9b-fe4026273558
+behavior:
+- The actual abort route commits its authentication session and delegates to a factory-owned retirement service.
+  The cleanup worker passes its session factory directly. Old native-in-transaction abort/expiry helpers are removed,
+  and all repository callers/tests use the replacement.
+- Separate short transactions retain original intent, native start/attempt/target, independently known outcome and
+  typed publication. Project-before-upload locking, fresh actor/token/membership/project and source/retention/hold/dataset-reference
+  checks fence native start and publication. SDK construction, original-session observation, abort and exact-version
+  deletion hold zero SQL connections in the actual route/worker cases.
+- Original targets and receipts are anchored to WorkflowCommand request/response digests with independent native-start
+  markers. A five-minute attempt lease fences concurrent requests; old-attempt failure cannot overwrite newer success.
+  Known outcomes survive actor/source/hold/project revocation or publication rollback without claiming success or
+  repeating native work on observed-result recovery.
+- New upload records retain their server-created original store URI, preventing changed bucket configuration from
+  becoming a false absent-session result. Unqualified older staged histories stay held. Retiring uploads continue
+  reserving quota and block transfer/completion work; project deletion waits for them. Legacy already-aborted histories
+  support read-only replay without fabricating retirement proof.
+- S3 staged and original-version deletion use their existing independently qualified provider operations. GCS cancellation
+  inspects only the original session; browser-completed data receives a retained original session completion receipt
+  before exact generation deletion. Unknown cancellation can refine its staged target only to that same original-session
+  version; recorded versions cannot be rebound to latest. Original-session status observation can run after application
+  expiry without issuing new transfer authority.
+- 'A review exposed a completion race: admitted completion was checking native progress while cancellation retired
+  the staged input. Fresh retirement checks now precede completion native start, including original-command anchors
+  if retirement markers are missing. Unissued completion can be cancelled; issued/unknown completion stays held.
+  Pending original verification deliveries are retired with a failure reason once physical upload retirement is
+  confirmed.'
+- Cleanup preserves expired/completed/quarantine counts, excludes held and unknown histories from destructive selection,
+  honors native backoff and does not let waiting records consume every batch. New browser cancellation uses a stable
+  per-session idempotency key, shares concurrent requests, retries failed cancellation while retaining persistence,
+  and cancels admission that finishes after the user stopped.
+evidence_detail:
+- The33 retirement workflow cases use real owned PostgreSQL, including the actual abort HTTP route and cleanup worker,
+  original staged/completed/quarantine positives, GCS original-session completion/recovery, admitted completion
+  race, concurrent keys, stale attempt, publication rollback, eight custody-corruption controls and revocation during
+  native I/O.
+- One real subprocess commits original native-start custody, writes a controlled original-identity acceptance witness
+  and is killed with SIGKILL. The parent observes the committed issued lease, advances the test clock beyond it
+  and recovers original absence without another controlled native write. This proves the SQL/process boundary with
+  controlled provider state; it is not a deployed cloud process-loss journey.
+- The previous actual-route baseline failed because provider work held SQL. First13 and21-case pilots and current33-case
+  evidence are retained. The first browser pilot passed59 and failed1 because the test expected null for an API
+  that returns undefined; corrected defined/undefined assertions now also prove resume state survives a failed abort
+  and is removed after success.
+- 'The connected profile now has212 rather than216 cases: four mock-only cleanup cases moved to the real SQL retirement/retention
+  matrix. The old three embedded/unknown project-cleanup cases are replaced by three original-version batch-retention
+  cases; unknown histories remain explicitly held. The55 retained SQL retention cases still cover hold/future, none/past/equal,
+  eligible staging, unknown completed histories, batch limits, legacy aborted replay and stale ORM cache. No retention
+  or schema constraint was relaxed.'
+- All seven backend profiles,60 browser/API/hash tests, Node24 TypeScript and targeted browser lint pass on the
+  same source snapshot. Native SDK/local HTTP provider tests remain separate from the SQL/workflow process-loss
+  test.
+limitations:
+- All3 retirement,6 upload and8 parent gates remain formally unmet pending their executable audits and complete
+  parent integration; no Phase1 requirement is promoted. Dataset-version readiness/reference/retention checks are
+  implemented but need additional direct positive/negative retirement coverage during the next acceptance audit.
+- New/unknown staged histories without original store identity, unresolved native completion, retained native versions,
+  changed sources and revoked original requests remain controlled holds. Pending user requests require the original
+  request identity; the current browser retains its stable retry key. Prior-binary/mixed-version compatibility and
+  broader recovery/operator journeys remain unqualified.
+- Upload begin, transfer-instruction/progress and other broader Phase1 native-I/O paths still require assessment/conversion;
+  factory-owned cancellation does not qualify the whole upload lifecycle. Whole identity/release/branch>=90.01%,
+  maintained images, deployed cloud IAM/admission/network policy and complete native journeys were not qualified
+  here.
+- The45,000,000,000 physical-byte migration and deferred15-by-10-GiB campaign remain unqualified; largest-table
+  row counts remain unspecified. Original deletion:G7 still requires seven missing historical objects. None were
+  reconstructed or re-signed. Phase1 remains2 Verified/34 Open.

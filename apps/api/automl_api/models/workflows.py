@@ -899,12 +899,18 @@ class DeletionStage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ),
         UniqueConstraint("tombstone_id", "resource_class", name="uq_deletion_stage_class"),
         Index("ix_deletion_stage_claim", "status", "lease_expires_at"),
+        CheckConstraint(
+            "jsonb_typeof(custody) = 'object'::text", name="deletion_stage_custody_object"
+        ),
     )
 
     # Historical tenant identity must survive deletion of the live project.
     project_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
     tombstone_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
     resource_class: Mapped[str] = mapped_column(String(80), nullable=False)
+    custody: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=JSON_DEFAULT
+    )
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
     lease_owner: Mapped[str | None] = mapped_column(String(255))
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

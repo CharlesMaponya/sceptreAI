@@ -1,0 +1,109 @@
+status: in_progress
+phase_complete: false
+scope: Atomic cancellation of active training trial attempts
+source_inputs: 675
+source_manifest_sha256: b92509077e48136a941f8c0e7071e2df468487eb5918d73bf4765a5ff7cb5285
+reproduced_failure: Parent cancellation committed while an active child remained pending;
+  baseline exits1 at the supersession assertion.
+changes:
+- Cancellation reuses supersede_trial_attempts inside its existing transaction before
+  returning; all four active states lose execution authority and child leases.
+- Locked child rows refresh current state in consistent ID order. Empty supersession
+  does not force an unrelated flush.
+- Successful/failed child attempts, logical result rows/events and another run remain
+  unchanged; repeated cancellation retains one cleanup command and one terminal transition.
+- Session doubles implement the real scalars/iterable contract without weakening existing
+  assertions.
+checks:
+  focused:
+    passed: 9
+    returncode: 0
+    xml_sha256: 1f761676b653fb9d90802c21bad626ad3b2306daa7dc9b1771c5d28c22d2099f
+    state_sha256: 84e925e4e436330828310ac3d501b85ffc4b040497d2b157f6d0e67534d23664
+  connected:
+    passed: 329
+    returncode: 0
+    xml_sha256: 9e23287cfbbcf37be2fca5f996925105a127e9457749366c59a9bc2434816240
+    state_sha256: f19531b51f434af25b182f2ab8eb8850897bb4ff2ae93e81498128487cd03dc1
+total_distinct_cases: 338
+real_postgres_blocking_races: 4
+race_matrix:
+- cancel-before-enrollment
+- enrollment-before-cancel
+- cancel-before-publication
+- publication-before-cancel
+rollback_preserves_parent_run_children_queue: true
+native_grant_deadlines_modified: false
+native_ray_workload_probe_run: false
+scoped_raw_oracles_passed:
+- atomic
+- races
+- integration
+auditor_control:
+  positive_cases: 9
+  injected_failure_rejected: true
+  auditor_sha256: 9104465fe1d569f16b039290048a220edfa0c94f7c7221afdfc900924c59ffaa
+preflight:
+  read_only: true
+  schema_differences: []
+  revision: 0019_deletion_stage_custody
+  tables: 44
+  namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+  coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+  free_bytes: 43578761216
+  reserve_bytes: 43500000000
+retained_regression_failure: Two runtime tests used a non-iterable ScalarResult double;
+  corrected the double and reran both profiles on current frozen inputs.
+acceptance:
+  scoped_gates_met: 0
+  scoped_gates_unmet: 3
+  phase_verified: 2
+  phase_open: 34
+  note: Scoped raw checks pass; automatic gate certification and full Phase1 acceptance
+    are not claimed.
+remaining:
+- P1-W27 still needs full native Ray kill/replacement, predecessor-checkpoint and
+  native grant-expiry qualification.
+- Ray submission still constructs native clients, ensures ServiceAccounts and creates
+  RayJobs under SQL; factory-owned durable original intent/outcome/publication is
+  the next implementation priority.
+- Other all-stage worker/broker, native producer/caller, maintained image, mixed-version
+  and full release/branch coverage requirements remain open.
+- 45,000,000,000-byte migration and deferred15users x10GiB load remain unqualified;
+  largest-table row counts are unspecified.
+- Original deletion G7 requires seven missing historical objects (two models,five
+  signed results); none were reconstructed/re-signed.
+evidence_hashes:
+  GATES.md: ab964facb05936ea96ea9aa1a5f4f89b53ea828c9b1c2faa0ace0f49bef0aeb7
+  PLAN.md: 9c5b3e8c2af69ad8ac07ce693cec7b1344bccfc11d4bbdfa1061b7a09a532783
+  audit.py: 9104465fe1d569f16b039290048a220edfa0c94f7c7221afdfc900924c59ffaa
+  auditor-control.json: 6cbb3782f2fbeaa07a92888364325cf56081cee048547103fefb0e1f20610999
+  baseline-source-sha256.json: ea11d4fbd2843765da8b9a535f33d6d7bfe9768ae2b88b84040d71dde4419437
+  baseline-state.json: 74ba4ab5e4df2599c8be152db73e39ad9993ec53c635dd5c4471f1a57631dcc5
+  baseline-test.py: dc1b55df8fbdc24a7b7e5083e37ef127171f7ce806017ca1865e820f63b840bb
+  baseline.log: b515b636a644796169dcfe4b24c58c93dbb6cf23eef508a3cb8d800cbc253be7
+  baseline.xml: 9b4a0c45896be27aae2577bcbe44efdaf15d847dae9d90d81bce45e3da5dd3fd
+  before-source-sha256.json: 68d2baef6d5a24c16741f48771e96798ec43c8ad9108b2e54b55382c1c5d0718
+  before-training-service-runtime.py: cf96c2fc78e4cbebf1e243203d93cdd105921b033cbc77e53665b49bd3a2c9e7
+  before-training.py: 6401202965733c1146e5db7956b158a9edae882d033b6950bef6f36a83d0691d
+  before-workflow-state.py: 0784f0b585a6fe73dff2752a454110b9c498e4b2d3d1799c01c8fbcd9c3d5996
+  connected-state.json: f19531b51f434af25b182f2ab8eb8850897bb4ff2ae93e81498128487cd03dc1
+  connected.log: 36a81f9425a5800a8bee5ddc3ccad978106ac52504fb02891c40e61786907500
+  connected.xml: 9e23287cfbbcf37be2fca5f996925105a127e9457749366c59a9bc2434816240
+  focused-prior-state.json: 3913c361ddc605ccf7956836a92549a86b095449181021cad0e505914fd08551
+  focused-prior.log: 69f918a45868f669576e88a22942719f70b6ee1465994631a11c1e94ddd5dd66
+  focused-prior.xml: 31a838c421c895b60514d3ce7c46c5061756b795025a45842b34ca6f4d42918b
+  focused-state.json: 84e925e4e436330828310ac3d501b85ffc4b040497d2b157f6d0e67534d23664
+  focused.log: 3ab6876f867fe74d9ebfa8edd530a434df08f6f7bf73b44e9f7fff43487f9f8b
+  focused.xml: 1f761676b653fb9d90802c21bad626ad3b2306daa7dc9b1771c5d28c22d2099f
+  preflight.json: 95b9232078cf99aa9369ecb6336f8d3fa87933dc7feaed494d6dc09704255139
+  preflight.py: c39c02beabf71144c626844b77c80cbea44d22478e39b83840559164033995a0
+  run.py: ad3de716a5a00acc65d5fedd7a2268b19f52ebbc103ee8ee4519c620e6470499
+  runtime-double-pilot-source.json: c2596b1c7021bb2bf0ddeb94f6abf0ab0b8ab24e7122e77899493ae17f85398c
+  runtime-double-pilot-state.json: f956ce1666d97b110515a311e8af6f5fba9b1de0b75ea5053b674d892eec6cb9
+  runtime-double-pilot.log: 745db6dd09edceed69512f55209fdb677ed08ce91347751c77e7bb4aa53e6349
+  runtime-double-pilot.xml: c501e82222cbcc4afc93a2dad21bb0a57cb6ca01e96d58e36cd5abf37136449d
+  source-sha256.json: b92509077e48136a941f8c0e7071e2df468487eb5918d73bf4765a5ff7cb5285
+  training.py.diff: ea7bb643e9c53ca18bd4638aaa979a8b1413d300dece35517bc61b23174547ba
+  workflow-state.py.diff: 745635603209bda032daffc8c5d42f3208086fac8e7d21d78532deafc8d91a34

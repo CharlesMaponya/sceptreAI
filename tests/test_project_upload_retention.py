@@ -10,9 +10,10 @@ from automl_api.models.enums import OutboxStatus
 from automl_api.models.projects import Project
 from automl_api.models.workflows import DeletionStage, DeletionTombstone, OutboxEntry
 from automl_api.services import deletion
-from automl_api.services.reconciler import reconcile_entry
+from automl_api.services.deletion_workflow import reconcile_deletion as reconcile_factory
 from automl_api.storage.contracts import DeletionPending
 from fastapi import HTTPException
+from kubernetes.client import ApiException
 from sqlalchemy import select
 from test_project_management_integration import finish_deletion
 from test_project_management_integration import workspace as workspace
@@ -133,7 +134,7 @@ def test_eligible_project_deletion_still_completes(retained_project, status, pol
     project_id, upload_id = project.id, row.id
     entry, tombstone, _ = queued(db, user, project, "runtime")
     k8s = MagicMock()
-    k8s.ray_job.side_effect = deletion.ApiException(status=404)
+    k8s.ray_job.side_effect = ApiException(status=404)
     finish_deletion(db, entry, k8s)
     db.expire_all()
     assert db.get(Project, project_id) is None
@@ -150,7 +151,7 @@ def test_run_deletion_preserves_retained_project_input(retained_project, policy)
     deletion.request_deletion(db, user, project.id, run.id)
     entry = db.scalar(select(OutboxEntry).where(OutboxEntry.project_id == project.id))
     k8s = MagicMock()
-    k8s.ray_job.side_effect = deletion.ApiException(status=404)
+    k8s.ray_job.side_effect = ApiException(status=404)
     finish_deletion(db, entry, k8s)
     assert db.get(Project, project.id) is project
     assert db.get(DatasetUploadSession, row.id) is row
@@ -160,7 +161,7 @@ def test_run_deletion_preserves_retained_project_input(retained_project, policy)
 @pytest.mark.parametrize("policy", ["hold", "future"])
 def test_deletion_resumes_after_policy_releases(retained_project, policy):
     (db, user, project, _, store, uri, _), now, row = retained_project
-    entry, tombstone, _ = queued(db, user, project, "object_store")
+    entry, tombstone, _ = queued(db, user, project, "runtime")
     set_policy(row, policy, now)
     db.commit()
     with pytest.raises(DeletionPending):
@@ -175,7 +176,7 @@ def test_deletion_resumes_after_policy_releases(retained_project, policy):
 
 def test_policy_wait_does_not_consume_outbox_retry_budget(retained_project):
     (db, user, project, _, store, uri, _), now, row = retained_project
-    entry, tombstone, _ = queued(db, user, project, "object_store")
+    entry, tombstone, _ = queued(db, user, project, "runtime")
     set_policy(row, "future", now)
     db.commit()
     for _ in range(32):
@@ -184,8 +185,14 @@ def test_policy_wait_does_not_consume_outbox_retry_budget(retained_project):
         entry.lease_expires_at = datetime.now(UTC) + timedelta(seconds=60)
         entry.delivery_attempts += 1
         db.commit()
-        reconcile_entry(db, entry, worker_id="project-retention", k8s=MagicMock())
+        from sqlalchemy.orm import Session
+
+        entry_id = entry.id
         db.commit()
+        reconcile_factory(
+            lambda: Session(db.get_bind()), entry_id, "project-retention", k8s=MagicMock()
+        )
+        db.expire_all()
         assert entry.status == OutboxStatus.PENDING
         assert entry.delivery_attempts == 0
         assert "retention" in entry.last_error

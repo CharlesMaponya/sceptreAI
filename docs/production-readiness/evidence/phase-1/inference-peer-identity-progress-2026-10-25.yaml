@@ -1,0 +1,78 @@
+date: '2026-10-25'
+phase: 1
+scope: inference-peer-identity
+status: in_progress
+phase_complete: false
+scope_integration_complete: false
+source_inputs: 637
+source_manifest_sha256: 888dc2f7b995b2addb3c44eaf904a8d46045de19cc92640a90fdd21b0324adc6
+private_evidence_directory: .unlazy/phase1-inference-peer-identity
+checks:
+  issuer:
+    passed: 69
+    failures: 0
+    errors: 0
+    skips: 0
+    crypto_runtime: 49.0.0 2.1.1 3.0
+    minimum_free_bytes: 43768836096
+    test_xml_sha256: 1b1a99ed6a8013c870d246e249721a307ca94c22a169751efb2e90cc69cc4244
+  runtime:
+    passed: 86
+    failures: 0
+    errors: 0
+    skips: 0
+    crypto_runtime: 49.0.0 2.1.1 3.0
+    minimum_free_bytes: 43767873536
+    test_xml_sha256: f573eb5c89ff90ce856fa487a052d2b95d1b2f925aa2a3b009b63eba9584cbca
+  worker50:
+    passed: 45
+    failures: 0
+    errors: 0
+    skips: 0
+    crypto_runtime: 50.0.2 2.1.1 3.0
+    minimum_free_bytes: 43776307200
+    test_xml_sha256: 924439490a104c51f78d591bf22f0839ffaabd27eeb3c9d091c0ca6107f85b69
+  baseline:
+    passed: 0
+    failures: 2
+    errors: 0
+    skips: 0
+    crypto_runtime: 49.0.0 2.1.1 3.0
+    minimum_free_bytes: 43776237568
+    test_xml_sha256: c8733c5049ff7490b67f88fda0d489480428921776ae2139f9a13ec6acf061bb
+scoped_gates:
+  met: 0
+  unmet: 8
+phase_1_requirements:
+  verified: 2
+  open: 34
+original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+components_implemented:
+- P-256 server certificates bind project/run/namespace/Deployment/Pod identity with a separate client-auth
+  EKU. Real loopback TLS rejects foreign peers before prediction headers/body.
+- A bounded identity endpoint checks pod-bound TokenReview, original native ownership/template/control,
+  current SQL source and a permanent per-Pod public-key binding. Native issuer tests use controlled SDK
+  fixtures and real PostgreSQL.
+- TLS model download requires native pod verification and the original key binding, releases SQL before
+  native/object reads, verifies immutable model bytes and rechecks source/binding before disclosure. Legacy
+  HMAC cannot authorize a TLS-tagged model.
+- Worker credential code persists its own key, rereads projected tokens, verifies scope/certificates and
+  model bytes, and withdraws readiness after failed renewal. The runtime serves mTLS data and separate
+  nonsensitive health probes; real local listeners are exercised.
+- Worker HTTPX is declared and its hashed dependency lock includes cryptography 50.0.2. TLS components
+  are tested in isolated locked API-49 and worker-50 runtimes; the complete worker image/lock is not qualified.
+limitations:
+- Normal deployment production still uses v3/legacy manifests and static HMAC. The worker entrypoint is
+  not yet connected to Dockerfile/deployment admission.
+- The ordinary/docs/offline gateway still uses its old name-only plaintext target and SQL/body/object-read
+  paths. Both unchanged original security tests still fail on current inputs.
+- The producer protocol upgrade, predecessor refusal and legacy retirement compatibility, CA provisioning/Helm/network
+  wiring, and gateway/native admission integration remain unfinished.
+- No new k3d campaign or inference image execution was performed. Issuer declaration selection is isolated
+  in unit fixtures; the full new producer-to-native-to-gateway journey remains unqualified.
+- Counts overlap across suites and cryptography versions. The earlier 85/93/86-case development pilots
+  are historical evidence, not additional current passing cases.
+- All eight scope gates remain unmet. Full release/branch >=90.01%, maintained images, provider/IAM/admission
+  journeys, the 45,000,000,000-byte migration and deferred 15-by-10-GiB qualification remain open.
+- Original phase1-deletion:G7 still requires seven missing historical objects; none was reconstructed.
+superseded_by: inference-serving-producer-progress-2026-10-25.yaml

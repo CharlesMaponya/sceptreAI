@@ -289,18 +289,22 @@ function DeploymentRow({ projectId, deployment, refresh }: {
     mutationFn: () => api(`/projects/${projectId}/operations/deployments/${deployment.run.id}/cleanup`, json("POST")),
     onSuccess: () => { setConfirmCleanup(false); refresh(); },
   });
+  const cleanupRequested = deployment.run.tags?.desired_state === "deployment_cleanup_pending";
+  const retryStop = deployment.runtime_state === "unavailable" && deployment.run.tags?.desired_state === "deployment_stop_pending";
+  const retryStart = deployment.runtime_state === "unavailable" && deployment.run.tags?.desired_state === "deployment_start_pending";
   return <tr><td><b>{deployment.run.run_name || deployment.run.id.slice(0, 8)}</b>
     <small className="cell-sub">{formatDate(deployment.run.created_at)}</small></td>
     <td>{titleCase(deployment.runtime_state)}</td><td><Badge status={deployment.status} /></td>
     <td><DeploymentAccess deployment={deployment} openApiAccess={() => setApiAccessOpen(true)} /></td>
-    <td>{deployment.status !== "cancelled" &&
-      <Button variant="ghost" onClick={() => setConfirmStop(true)}><Square size={14} />Shutdown</Button>}
+    <td>{(deployment.status !== "cancelled" || retryStop) &&
+      <Button variant="ghost" onClick={() => setConfirmStop(true)}><Square size={14} />{retryStop ? "Retry shutdown" : "Shutdown"}</Button>}
       {confirmStop && <ConfirmModal danger title="Shut down this deployment?"
         description="Stop serving predictions and release serving CPU and memory. The deployment configuration and saved model remain available. Use Cleanup afterwards to remove runtime resources."
         confirmLabel="Shutdown" close={() => setConfirmStop(false)}
         action={() => stop.mutateAsync()} />}
+      {retryStart && <Button variant="secondary" onClick={() => setConfirmStart(true)}>Retry start</Button>}
       {deployment.status === "cancelled" && deployment.runtime_state !== "cleaned" &&
-        <><Button variant="secondary" onClick={() => setConfirmStart(true)}>Start</Button><Button variant="ghost" onClick={() => setConfirmCleanup(true)}>Cleanup</Button></>}
+        <>{!cleanupRequested && <Button variant="secondary" onClick={() => setConfirmStart(true)}>Start</Button>}<Button variant="ghost" disabled={deployment.runtime_state === "cleaning"} onClick={() => setConfirmCleanup(true)}>Cleanup</Button></>}
       {confirmStart && <ConfirmModal title="Start this deployment?" description="Resume serving predictions using the saved deployment configuration. Serving CPU and memory will be allocated again." confirmLabel="Start" close={() => setConfirmStart(false)} action={() => start.mutateAsync()} />}
       {confirmCleanup && <ConfirmModal danger title="Clean up this deployment?"
         description="Remove the stopped deployment, service, and ingress from the cluster. The saved model, registry entry, and run history remain available."

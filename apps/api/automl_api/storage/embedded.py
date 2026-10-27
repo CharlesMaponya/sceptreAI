@@ -82,7 +82,11 @@ class EmbeddedObjectStoreDriver:
     def uri_for_key(self, object_key: str) -> str:
         return self._uri(object_key)
 
-    def stat(self, uri: str) -> ObjectMetadata:
+    def stat(self, uri: str, *, version: str | None = None) -> ObjectMetadata:
+        if version is not None:
+            raise UploadCapabilityUnavailable(
+                "Embedded storage has no immutable provider versions."
+            )
         path = self._path_from_uri(uri)
         return ObjectMetadata(
             uri=self._canonical_uri(path), byte_size=path.stat().st_size, storage_path=path
@@ -152,6 +156,13 @@ class EmbeddedObjectStoreDriver:
         (self.root / self.bucket).mkdir(parents=True, exist_ok=True)
         return HealthcheckResult(healthy=True, driver=self.driver_name)
 
+    def prefix_absent(self, prefix: str) -> bool:
+        path = self._path(self._key(prefix)).resolve()
+        root = (self.root / self.bucket).resolve()
+        if path == root or not path.is_relative_to(root):
+            raise ValueError("Cleanup inspection must stay within a resource prefix.")
+        return not path.exists()
+
     def delete_prefix(self, prefix: str) -> None:
         import shutil
 
@@ -162,7 +173,11 @@ class EmbeddedObjectStoreDriver:
         if path.is_dir():
             shutil.rmtree(path)
 
-    def delete(self, uri: str) -> None:
+    def delete(self, uri: str, *, version: str | None = None) -> None:
+        if version is not None:
+            raise UploadCapabilityUnavailable(
+                "Embedded storage has no immutable provider versions."
+            )
         self._path_from_uri(uri).unlink(missing_ok=True)
 
     def _key(self, value: str) -> str:

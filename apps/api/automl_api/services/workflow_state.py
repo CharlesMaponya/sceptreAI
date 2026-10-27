@@ -424,7 +424,9 @@ def supersede_trial_attempts(
                 WorkflowAttempt.model_run_id == model_run_id,
                 WorkflowAttempt.status.in_(active),
             )
+            .order_by(WorkflowAttempt.id)
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
     )
     for row in rows:
@@ -433,7 +435,8 @@ def supersede_trial_attempts(
         row.terminal_cas_version += 1
         row.lease_owner = None
         row.lease_expires_at = None
-    db.flush()
+    if rows:
+        db.flush()
     return len(rows)
 
 

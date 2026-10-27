@@ -10,6 +10,7 @@ from automl_api.services.kubernetes_training import KubernetesTrainingClient
 from automl_api.services.workflow_state import StaleFence
 from digest_fixtures import verified_raw_version
 from kubernetes.client import ApiException
+from ray_submission_helpers import submit_training_ray_job
 from test_phase1_reconciler import _attempt, _entry, _run
 
 
@@ -23,7 +24,7 @@ def submission():
     db.scalar.side_effect = lambda statement: (
         None
         if statement.column_descriptions[0]["entity"].__name__
-        in {"DatasetProviderImport", "PromotionalScopeMember"}
+        in {"DatasetProviderImport", "PromotionalScopeMember", "WorkflowEvent"}
         else next(values)
     )
     db.get.return_value = verified_raw_version(id=run.dataset_version_id, project_id=run.project_id)
@@ -58,20 +59,20 @@ def test_training_submission_rejects_mismatched_outbox_before_native_work(
     else:
         entry.topic = "ray.dataset.split.submit"
     with pytest.raises(StaleFence, match="scope"):
-        reconciler.submit_training_ray_job(db, entry, k8s)
+        submit_training_ray_job(db, entry, k8s)
     k8s.ensure_service_account.assert_not_called()
     k8s.create_ray_job.assert_not_called()
 
 
 def test_valid_training_scope_preserves_existing_job_name_and_terminal_replay(submission):
     db, run, attempt, entry, k8s = submission
-    reconciler.submit_training_ray_job(db, entry, k8s)
+    submit_training_ray_job(db, entry, k8s)
     expected = f"sceptre-run-{str(run.id)[:8]}-g{attempt.generation}"
     assert attempt.ray_job_name == expected
     assert k8s.create_ray_job.call_args.args[0]["metadata"]["name"] == expected
     db.scalar.side_effect = None
     db.scalar.return_value = attempt
-    assert reconciler.submit_training_ray_job(db, entry, k8s) is attempt
+    assert submit_training_ray_job(db, entry, k8s) is attempt
     assert k8s.create_ray_job.call_count == 1
 
 
@@ -91,7 +92,6 @@ def native_submission():
     return k8s, manifest, created
 
 
-@pytest.mark.parametrize("conflict", [False, True])
 @pytest.mark.parametrize(
     "invalid",
     [
@@ -114,10 +114,8 @@ def native_submission():
         "container_command",
     ],
 )
-def test_native_ray_response_must_match_complete_submission(native_submission, conflict, invalid):
+def test_native_ray_response_must_match_complete_submission(native_submission, invalid):
     k8s, manifest, created = native_submission
-    if conflict:
-        k8s.custom.create_namespaced_custom_object.side_effect = ApiException(status=409)
     if invalid in {"project", "attempt", "generation", "run"}:
         key = {
             "project": "project-id",
@@ -157,22 +155,14 @@ def test_native_ray_response_must_match_complete_submission(native_submission, c
         k8s.create_ray_job(manifest)
 
 
-@pytest.mark.parametrize("conflict", [False, True])
-def test_native_ray_replay_accepts_only_submitted_fields_plus_server_defaults(
-    native_submission, conflict
-):
+def test_native_ray_creation_accepts_submitted_fields_plus_server_defaults(native_submission):
     k8s, manifest, created = native_submission
-    if conflict:
-        k8s.custom.create_namespaced_custom_object.side_effect = ApiException(status=409)
     created["metadata"].update(resourceVersion="23", creationTimestamp="2026-10-22T00:00:00Z")
     created["metadata"]["labels"]["operator-added"] = "true"
     created["status"] = {"jobDeploymentStatus": "Suspended"}
     assert k8s.create_ray_job(manifest) is created
     k8s.custom.create_namespaced_custom_object.assert_called_once()
-    if conflict:
-        get = k8s.custom.get_namespaced_custom_object.call_args.kwargs
-        assert get["name"] == manifest["metadata"]["name"]
-        assert get["namespace"] == manifest["metadata"]["namespace"]
+    k8s.custom.get_namespaced_custom_object.assert_not_called()
 
 
 @pytest.mark.parametrize("status", [403, 500])
@@ -185,18 +175,20 @@ def test_native_create_errors_do_not_trigger_conflict_adoption(native_submission
     k8s.custom.get_namespaced_custom_object.assert_not_called()
 
 
-def test_lost_creation_reply_replays_same_name_and_verifies_existing_native_job(native_submission):
-    k8s, manifest, created = native_submission
+def test_lost_creation_reply_cannot_adopt_an_unproven_existing_job(native_submission):
+    k8s, manifest, _ = native_submission
     k8s.custom.create_namespaced_custom_object.side_effect = [
         ConnectionError("lost ACK"),
         ApiException(status=409),
     ]
     with pytest.raises(ConnectionError):
         k8s.create_ray_job(manifest)
-    assert k8s.create_ray_job(manifest) is created
+    with pytest.raises(ApiException) as held:
+        k8s.create_ray_job(manifest)
+    assert held.value.status == 409
     calls = k8s.custom.create_namespaced_custom_object.call_args_list
     assert calls[0] == calls[1]
-    k8s.custom.get_namespaced_custom_object.assert_called_once()
+    k8s.custom.get_namespaced_custom_object.assert_not_called()
 
 
 @pytest.mark.parametrize("stage", ["training_run", "splitter", "preparation"])
@@ -214,3 +206,13 @@ def test_manifest_pins_existing_native_worker_host_default(stage):
         )
     groups = manifest["spec"]["rayClusterSpec"]["workerGroupSpecs"]
     assert len(groups) == 1 and groups[0]["numOfHosts"] == 1
+
+
+def test_unknown_conflict_cannot_adopt_a_replacement_uid(native_submission):
+    k8s, manifest, created = native_submission
+    created["metadata"]["uid"] = "replacement-with-identical-command-fields"
+    k8s.custom.create_namespaced_custom_object.side_effect = ApiException(status=409)
+    with pytest.raises(ApiException) as caught:
+        k8s.create_ray_job(manifest)
+    assert caught.value.status == 409
+    k8s.custom.get_namespaced_custom_object.assert_not_called()

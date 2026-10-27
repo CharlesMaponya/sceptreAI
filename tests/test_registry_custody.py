@@ -229,3 +229,37 @@ def test_native_verification_deadline_fails_closed(custody_registration, monkeyp
     with pytest.raises(HTTPException) as raised:
         inspect_model_registration(selection)
     assert raised.value.status_code == 409
+
+
+def test_numeric_receipt_rewrite_cannot_keep_existing_native_ack(custody_registration):
+    from copy import deepcopy
+
+    from automl_api.models.runs import RunArtifact
+    from sqlalchemy import select, update
+
+    c = custody_registration
+    assert c.send().status_code == 201
+    c.native_counts.clear()
+    with c.factory() as db, db.begin():
+        registry = db.scalars(
+            select(ModelRegistryEntry).where(ModelRegistryEntry.project_id == c.project_id)
+        ).one()
+        artifact = db.get(RunArtifact, registry.model_artifact_id)
+        metadata = deepcopy(artifact.artifact_metadata)
+        metadata["model_custody"]["completion"]["byte_size"] = float(len(c.payload))
+        db.execute(
+            update(RunArtifact)
+            .where(RunArtifact.id == artifact.id)
+            .values(artifact_metadata=metadata)
+        )
+        artifact_id = artifact.id
+    with c.factory() as db:
+        assert (
+            type(
+                db.get(RunArtifact, artifact_id).artifact_metadata["model_custody"]["completion"][
+                    "byte_size"
+                ]
+            )
+            is float
+        )
+    assert c.send().status_code == 409 and c.native_counts == []

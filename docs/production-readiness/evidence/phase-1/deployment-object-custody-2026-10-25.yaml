@@ -1,0 +1,136 @@
+date: '2026-10-25'
+scope: deployment-object-custody
+phase: 1
+phase_complete: false
+source_inputs: 584
+source_manifest_sha256: 7efa8c5dd87e1405dd921bb0236bce4336dc9f41717ab7beffae76be52e910c3
+checks:
+  passed: 426
+  focused: 32
+  failures: 0
+  errors: 0
+  skips: 0
+  original_negative_control_failures: 2
+  strict_schema: 0018_attempt_predecessor_lineage
+  repository_ruff: pass
+  changed_hunk_format: pass
+  ci_preflights: 3
+  native_tls_s3_cases: 1
+  actual_postgresql_backend_termination: true
+  captured_predecessor_dispatch_rejects_new_topic: true
+  scoped_gates_reverified: 5
+behavior:
+- New admissions save deployment-dockerfile-v1 on the run and generated artifact and enqueue deployment.reconcile.v2.
+  The captured pre-conversion dispatcher rejects this new topic without native effects; old or mismatched
+  history cannot use the new publisher. This is not prior-image qualification.
+- The factory-owned dispatcher validates the original actor/command/resource and request hash, current
+  model custody, complete source, target key and delivery. It commits a one-shot native intent and releases
+  SQL before conditional creation and immutable-version full hash/size verification.
+- A lost reply or later delivery reads matching native grant metadata and then verifies the exact native
+  version and complete bytes. An absent, mismatched or unavailable native result never authorizes another
+  PUT; unknown waits preserve the failure budget and block retirement.
+- Original native completion is persisted independently of later cancellation or lease loss, while fresh
+  source/delivery checks still gate Kubernetes effects and acknowledgement. Completed receipts cannot
+  be rebound to another native version. The original Dockerfile content remains stored for the immutable
+  source check.
+- Project/run deletion, direct artifact cleanup and previously queued artifact cleanup respect unresolved
+  or malformed write history. Known unstarted modern writes, completed original receipts and unrelated
+  scopes retain their distinct behavior.
+- Actual PostgreSQL backend termination after native acceptance recovers the same object without uploading
+  again. Native acknowledgement loss, later Kubernetes failure, changed source, same-owner and different-owner
+  successor delivery, cancellation and malformed history are covered.
+- The existing Kubernetes handoff uses the verified artifact and performs no object upload. Kubernetes
+  creation itself still runs under SQL and needs UID/spec custody and failure qualification; restart/stop
+  effects remain required.
+- S3, GCS and Azure stat adapters expose original write metadata when present. Their injected-SDK tests
+  pass; the actual local TLS probe covers S3-compatible storage only. No migration, dependency or Ray
+  worker credential protocol changed.
+native_storage:
+  provider: owned local SeaweedFS S3-compatible fixture on k3d
+  tls_verified: true
+  conditional_dockerfile_writes: 1
+  lost_ack_injected_after_real_native_acceptance: true
+  readonly_native_ack_recovered: true
+  dockerfile_get_and_head_sql_connections: 0
+  owned_versions_created: 2
+  owned_versions_retired: 2
+  preserved_versions_checked_before_and_after: 5
+  shared_kubernetes_mutated: false
+  real_pod_token_review: false
+  cloud_iam_qualified: false
+  maintained_image_tested: false
+  actual_inference_deployment_started: false
+retained_failures:
+- Two unchanged original control bodies observed a checked-out connection at upload and a second upload
+  after a later Kubernetes error. Both pass after the conversion.
+- The first implementation run reached the new storage path but failed both delivery-completion checks
+  because ArtifactKind was missing from the Kubernetes handoff import. The failure and its inputs remain;
+  the import was fixed and the original two controls then passed.
+- An expanded run passed 20 cases and failed two Azure metadata cases because its test double omitted
+  the SDK blob_name attribute. The test double was corrected; assertions were retained and the final 32
+  focused cases pass.
+- A drafting lint check reported an unused hashlib import before the expanded hash assertions were added.
+  Current repository lint passes.
+limits:
+  requirements:
+    total: 36
+    verified: 2
+    open: 34
+  kubernetes_mutations_qualified: false
+  user_database_ceiling_bytes: 45000000000
+  largest_table_rows: not supplied
+  free_disk_reserve_bytes: 43500000000
+  minimum_free_bytes_during_regression: 43838521344
+  scale_qualified: false
+  required_handoff: Original phase1-deletion:G7 remains abandoned for seven missing original historical
+    QA objects (2 models, 5 signed results); do not reconstruct or re-sign.
+  remaining:
+  - Kubernetes Deployment/Service/Ingress UID and spec custody, partial creation and retry recovery, native
+    creation outside SQL, and restart/stop/cleanup lifecycle effects
+  - Controlled resolution of unknown pre-write outcomes and unqualified legacy deployment/object history;
+    native physical retirement remains required
+  - Training data readers, Ray Tune checkpoints, native MLflow lifecycle/artifacts/registry and complete
+    IAM/network restrictions before broad worker credential withdrawal
+  - Current full backend/release and independent branch coverage >=90.01 percent; maintained images, previous
+    binaries, mixed versions, cloud native providers and complete-pipeline process loss
+  - 45 GB migration rehearsal and 15 users each uploading 10 GiB on suitable infrastructure
+evidence_hashes:
+  source-sha256.json: 7efa8c5dd87e1405dd921bb0236bce4336dc9f41717ab7beffae76be52e910c3
+  before-source-sha256.json: e9f3986f120541d116dd5d575b5300ee77ea6306283112df3424479677cc970b
+  baseline-source-sha256.json: 63d21fe054987c4ec62f542803cdc4898e90f85976c5cce70d91a99424f72ed3
+  baseline-test.py: 86cb91a43335b5d8882f597f5a8e81ff04c4f89f91d2bf477401f815cbcc7f97
+  first-source-sha256.json: db845774032b9b9c01e19b1a4e8dff85bd517abedbcad46f916ff8475a3b5d90
+  first-passing-source-sha256.json: d525965705a7e7506fd6d44ba1ebf8153ccaf6f7e20bc0ba008cd41532c94208
+  expanded-draft-source-sha256.json: 94109ab031c2d95327ffe26cb00f9ad8f23cc4b99054f4e981e9a663f35a3ffa
+  run.py: 78d1467aa2a820864ac733b23b861a0e2d601189379fe4fd656a1a8c5010d20f
+  audit.py: 58475d12b1fcfe48178eac0e6e382f8ce1145bad4147084f037d0a694e7264a8
+  verify_predecessor.py: dc39f752eb5ef93fa245e9c52368e63c29bd4fe8f1611df78a7661fe736a85cb
+  predecessor.log: bf97ef6b6a67e969579ca3dc973dbd0d1ed992918882e63ded98c623e97656ae
+  test_native_deployment.py: 343aecf82d0790a05dc6d4f056bde0cf1bcc1a1ac716bee805029dad6bcbd437
+  native-probe-state.json: edbecf5a3ec34077c1794e1d7abff31ea07ad8e19cb1aecb1acecd5a710bd247
+  lint.log: 82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18
+  lint-draft.log: 7cc227d9ff8d797e7070822ab30a4c05d17ee699caac8ca7ad2b306bbfe10745
+  preflight-0.log: 00c8dcf3b37f2eac6114a4c21f9f742c56e354ada6672f1b15189664820d92a5
+  preflight-1.log: a414947a0f058a04ee8ca14e4023b0661f0892a6cb81c082ba87469dd71ed9e9
+  preflight-2.log: dffd5dbca119ddf99cc5a088942e02d1127f7108463f4627161d74775ec7e554
+  baseline.log: 11a5a993bed3676a8d7bba2dfee96bcb6bdbdb7462855e72112cf2414e3af0a6
+  baseline.xml: 0bef8a34a0d7e30aa1814d5ab1066f6f6b242805223dc3ff9937c81ba8832362
+  baseline-state.json: e452ad88712b39192633f464a29b6e85ea49a4152e192cbc8bd5b20a748305df
+  first-focused.log: 97dd00c92ec337c305797e2c6f50df18cc254b398afda1254f1236289f8802f1
+  first-focused.xml: fe5522701c6c8688d8c8257d40da6be65a71f1caaec025a20fb8467890c81100
+  first-focused-state.json: d1f51882951d7a2e9075c055bc10ba5cdd6f934c907789a2b76596c5e27b9e62
+  first-passing-focused.log: 0c1a8037c5569e97c24e726c7c1b6d80b330941ff8c9add5c960969e98eaf4a7
+  first-passing-focused.xml: f8660400e5b028725134f0d7ff733fd5760ca285c5c2aa26ce65964e21480a46
+  first-passing-focused-state.json: c190f1e5e14787ff3143e001adb536c9200ffa689f0b09628bdd2d5ec06bf51d
+  expanded-draft-focused.log: fcddbb92af4170abe2013df258ded0133b7404ef89847b75dca103810486cf32
+  expanded-draft-focused.xml: 27c8ff24dc91a375b579016dedce41e9b3c162d07d3558fa9a4212559f7022e3
+  expanded-draft-focused-state.json: 4f2a9b2ccefa7d9d76ec136b08d833ed9fd54a4c8c385b829873ccfd56149be1
+  focused.log: f47177001353117a27e7034f2fdf340967a633b64a43c0413c487a3b320e3fb4
+  focused.xml: 9414691f7d9a76ff08f41abfb23789d2602957c8ad788282c3c896738d4a4898
+  focused-state.json: 9eb488d5f40b7811631f311892c322918a06fb75093ddc387110384245021e3e
+  regression.log: 31be543a112e3bc3d2bef84390998ecc406db8711296fd57d8505ce02a688870
+  regression.xml: 0685bd960d98d6dcf997e2233a1c8548b82c86b65c5e778fa1ae4d4089b2414a
+  regression-state.json: 42ac224822bd27d84b41913c0449210d748293537cfff17752b73f07480f0f4f
+  native.log: 6dea9ead99df6ff48cb8951ce5cba57e3c3b31dfc74fa756438f48746922ed17
+  native.xml: 49ca009a4361db22fa05f7fa2d318a461ce5bc94cccca5521d0525a694d8aed5
+  native-state.json: 9719714c252bfc6659056c3f927e6893a3b2c17bc3a513c98b1f122fd84712b3

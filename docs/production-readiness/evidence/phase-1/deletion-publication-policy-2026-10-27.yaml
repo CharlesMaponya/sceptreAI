@@ -1,0 +1,130 @@
+status: in_progress
+phase_complete: false
+scope: Current provider policy on deletion replay and prior-stage qualification
+source_inputs: 674
+source_manifest_sha256: 68d2baef6d5a24c16741f48771e96798ec43c8ad9108b2e54b55382c1c5d0718
+reproduced_failure: Known native fact replay bypassed current provider protection
+  and erased the project; baseline exits1 at the Project-preservation assertion.
+changes:
+- Shared authority checks the committed storage binding against current provider policy
+  before known-fact publication and before accepting prior-stage proof.
+- Malformed storage bindings fail closed. Native facts remain durable and successful
+  replay does not repeat the original deletion.
+- Committed mutation controls cover actor activity, source payload, configured store,
+  target binding, malformed binding and outcome integrity; existing delivery/process/backend-loss
+  controls pass.
+checks:
+  focused:
+    passed: 9
+    returncode: 0
+    xml_sha256: dda60807e8967c4cc6729b582a5383fb685b8493d98148e6b31ed26fb8327c1a
+    state_sha256: 85eeb2c40ca9b22482e3aceea9df74a512005c2e03d73154a954a5c34b6c72c7
+  factory:
+    passed: 30
+    returncode: 0
+    xml_sha256: 21878492c9383d242b80ca3b3ccf881c511c6be52d7bae2c21736045db92f76e
+    state_sha256: e1dc19842760191fdae356d467098dbda3153d9a8325d60c87da7e6989d7004e
+  deletion:
+    passed: 225
+    returncode: 0
+    xml_sha256: b56a747b10602bdc5a0374a4d98d782a1c957f5b6fd2206924c883ca7e028d6e
+    state_sha256: 22f3d3b71ec59e7ec91016910ee01fdf28d13277a9aff74e4e39a70d44b6f7ad
+  connected:
+    passed: 217
+    returncode: 0
+    xml_sha256: 68a1191e137653e65dc215e3c29be6d9bcc2c55a5cfe41107d95f859bd9c43c3
+    state_sha256: c7a5acdfee64222dea9a4e8919267895b1147eafd49dad0a0f4ae33e419b12d8
+  legacy:
+    passed: 96
+    returncode: 0
+    xml_sha256: 71c260b67ff706313a684ed1bcae5fc8f3abe574789bfe005efa5c5ea7d7ec2b
+    state_sha256: b2959929c3128ca876963ba0da921d43f78377c7ada46d51a133cc6617c454cf
+total_distinct_cases: 577
+scoped_raw_oracles_passed:
+- policy
+- mutations
+- integration
+auditor_control:
+  positive_cases: 9
+  injected_failure_rejected: true
+  auditor_sha256: 845679b7f71d1dbf04183c05672170170dab0959962ccea4982c8fe7eec93740
+preflight:
+  read_only: true
+  schema_differences: []
+  revision: 0019_deletion_stage_custody
+  tables: 44
+  namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+  coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+  free_bytes: 43582095360
+  reserve_bytes: 43500000000
+native_workload_probe_rerun: false
+prior_native_evidence: deletion-factory-2026-10-27.yaml; historical qualification
+  only, not rerun for this change
+retained_pilots:
+- Frozen settings cannot be modified in place; the test now supplies a replaced immutable
+  settings value.
+- Stale claims remain leased; the owned recovery test now explicitly expires its own
+  claim before retrying.
+acceptance:
+  publication_gates_met: 0
+  publication_gates_unmet: 3
+  factory_gates_met: 0
+  factory_gates_unmet: 5
+  phase_verified: 2
+  phase_open: 34
+  note: Raw checks pass; automatic gate certification and complete parent/Phase1 acceptance
+    are not claimed.
+remaining:
+- Complete broader provider/runtime and independent full acceptance, plus other Phase1
+  native producers and credential/transaction requirements.
+- 45,000,000,000-byte migration ceiling recorded; largest-table row counts unspecified
+  and that physical database does not fit alongside the43.5GB reserve.
+- Deferred15users x10GiB load, maintained images, deployed cloud/IAM/full journeys,
+  mixed-version and full release/branch coverage remain unqualified.
+- Original deletion G7 still requires seven missing historical objects (two models
+  and five signed results).
+evidence_hashes:
+  GATES.md: 195993edd37072dd45ab2e232d0b2a7d8b36c7a78e0647cb6b101226781770f3
+  PLAN.md: 1bebce15dc7527dccc9e36b83cb9ffd23b909d7bc63d5b9f86d90c1e1d8bc3ae
+  audit.py: 845679b7f71d1dbf04183c05672170170dab0959962ccea4982c8fe7eec93740
+  auditor-control.json: aa21575dd2094572f39822ab1dddb0343d78e151b9962c8fe5a3a3671d51890e
+  baseline-source-sha256.json: 5d9adc1f7817a57001b3ee41e943e18bcab21722f47a517c87d04c4f4d7c4880
+  baseline-state.json: 8465ed657fe9b0df174af7a9af1c3201858ef39b441416c2f083cbeb20f22b9c
+  baseline-test.py: 4da9443f04c83edd088b592837abb1a1a9aca770fa72c63abc84f2d5eb466162
+  baseline.log: 990a302bc11e462d05613fc48fb8daa39a1719f8520fab82405417ef5efaadb4
+  baseline.xml: f0e5a2bf9f8ad6503b1fff7c97e1a387a92cf873bbec04976c666eb58dc0e221
+  before-deletion-workflow.py: 33a62006675e9929a50a0e3ea91cd47d41680fd3b7ddca89ce272217fea3abd4
+  before-source-sha256.json: ce240981ad4177e7e2e65a5d72e142496e06409170dfc5f680b4b99dc74fc4bc
+  connected-state.json: c7a5acdfee64222dea9a4e8919267895b1147eafd49dad0a0f4ae33e419b12d8
+  connected.log: 9d0ea4aad970a94063746745f3153d3e5ba558a575a86e750c13a7b010be12f0
+  connected.xml: 68a1191e137653e65dc215e3c29be6d9bcc2c55a5cfe41107d95f859bd9c43c3
+  deletion-state.json: 22f3d3b71ec59e7ec91016910ee01fdf28d13277a9aff74e4e39a70d44b6f7ad
+  deletion-workflow.diff: b03dc13cb8fbeae57dcc8c11bf071ff0b1669f07e30b111afe40236065099cbd
+  deletion.log: ffedd413f4a8e7a9bf1ea8c932aef793dcf710c3d93dae82b63a889c9d7ebdc6
+  deletion.xml: b56a747b10602bdc5a0374a4d98d782a1c957f5b6fd2206924c883ca7e028d6e
+  factory-state.json: e1dc19842760191fdae356d467098dbda3153d9a8325d60c87da7e6989d7004e
+  factory.log: 03ae833685e94216cae18620e091f82fabac92e7a909c0fc290b98d286df0a5c
+  factory.xml: 21878492c9383d242b80ca3b3ccf881c511c6be52d7bae2c21736045db92f76e
+  focused-eight-passed-source.json: fe0ff85ec9f7bf88c9f9c8b0660ee9420b43373ddf53d9b0257d5a8d25abc381
+  focused-eight-passed-state.json: 48155f24534a84cfe2a51a8583f713c9b84e0e5199fea8aa8f0f8cb452ddeed4
+  focused-eight-passed.log: 1bcececa9d4cb0cf480441e953c26ff947bcba9a82562d30c4089b66fddb2c09
+  focused-eight-passed.xml: d56826f979a5f33662bb902a44fcbb030eb7c63200f4a3a680d440e4117179a2
+  focused-state.json: 85eeb2c40ca9b22482e3aceea9df74a512005c2e03d73154a954a5c34b6c72c7
+  focused.log: 4100b1a82d56645ad531d9de5d3f221d0be243b5bbb0dc477d34039d0598ffee
+  focused.xml: dda60807e8967c4cc6729b582a5383fb685b8493d98148e6b31ed26fb8327c1a
+  frozen-settings-pilot-source.json: 7001b92aadbf9c1a7df9c1b8cfa07b7523465bcd33e30a7666fd6ef6d39b38cf
+  frozen-settings-pilot-state.json: 95445f98e26bc355ea304ef95458c2f20b2be7f2ee1d7197258d13be1d34bebb
+  frozen-settings-pilot.log: 3ef6ccb703d9ba4fa85ae73974ab22a7185905ed521cb296cc8cb966d09d63d3
+  frozen-settings-pilot.xml: d31ecb543cc950b649a81be1fb94d72ee336ad505cc3a87a9a6d8b2834c22f35
+  lease-recovery-pilot-source.json: e96bfbd1ce448a5a3f3062f4914c1af07331c8d9c213cd8b19cdd6922eb983fd
+  lease-recovery-pilot-state.json: 337c743b1cf949abd22fda8fc1932a516a43c6e8c5e41047cc42d339ca7ac1e3
+  lease-recovery-pilot.log: cfdec8387d116e2eb2e76c9c759a79ed9bdf82bfb7eb90216c93bf00a008a990
+  lease-recovery-pilot.xml: cbc25d83dc084e5d5e1d6036286f766ee9328d885474774ba20049e63e28b404
+  legacy-state.json: b2959929c3128ca876963ba0da921d43f78377c7ada46d51a133cc6617c454cf
+  legacy.log: 6bf6e79ad147e458b1d0dddd8b21f010df583ba4ed1b6176deed79d4c079a993
+  legacy.xml: 71c260b67ff706313a684ed1bcae5fc8f3abe574789bfe005efa5c5ea7d7ec2b
+  preflight.json: b9caa6e9fde9b0d0927a80f70e170ddfbe5b5dab00115e650d662303d1a83ca8
+  preflight.py: 7f77af2e368aa243fafd936eabbd2c971eaa637e8b4fd460bda0117dadb21bbf
+  run.py: a299bb5e9c6af62809401c1ed4ddcfb59252b72e841b01f706088922a455f78b
+  source-sha256.json: 68d2baef6d5a24c16741f48771e96798ec43c8ad9108b2e54b55382c1c5d0718

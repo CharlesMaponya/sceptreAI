@@ -25,5 +25,5 @@ ENV SCEPTRE_VERSION=${SCEPTRE_VERSION}
 RUN useradd --create-home --uid 10001 sceptre
 USER 10001
 
-EXPOSE 8080
-CMD ["uvicorn", "automl_api.inference.app:app", "--host", "0.0.0.0", "--port", "8080"]
+EXPOSE 8080 8443
+CMD ["python", "-m", "automl_api.inference.runtime"]

@@ -1,8 +1,9 @@
-"""Run only against a dedicated PostgreSQL test database; every test rolls back."""
+"""Committed owned tenant fixtures; teardown removes only each test's rows."""
 
 import hashlib
 import os
 import uuid
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -33,9 +34,9 @@ from automl_api.services import deletion, projects
 from automl_api.storage.embedded import EmbeddedObjectStoreDriver
 from digest_fixtures import verified_digest_metadata
 from fastapi import HTTPException
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, delete, event, inspect, select, update
 from sqlalchemy.engine import make_url
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, attributes
 
 
 @pytest.fixture
@@ -46,9 +47,14 @@ def workspace(tmp_path, monkeypatch):
     assert make_url(url).database.endswith("_tests")
     engine = create_engine(url)
     Base.metadata.create_all(engine)
-    with engine.connect() as connection:
-        transaction = connection.begin()
-        db = Session(bind=connection, join_transaction_mode="create_savepoint")
+    db = Session(engine, expire_on_commit=False)
+    created_users = set()
+
+    @event.listens_for(db, "after_flush")
+    def own_users(session, _):
+        created_users.update(row.id for row in session.new if isinstance(row, User))
+
+    try:
         user = User(
             email=f"management-{uuid.uuid4()}@example.test",
             password_hash="test",
@@ -116,7 +122,7 @@ def workspace(tmp_path, monkeypatch):
                 project_id=project.id,
                 model_run_id=run.id,
                 stage=WorkflowStage.TRAINING_RUN,
-                logical_key=str(run.id),
+                logical_key=f"training-run:{run.id}",
                 workload_identity="test",
                 generation=generation,
                 fencing_token=str(uuid.uuid4()),
@@ -126,18 +132,141 @@ def workspace(tmp_path, monkeypatch):
             db.add(attempt)
             db.flush()
             previous = attempt.id
-        monkeypatch.setattr(deletion, "get_object_store", lambda: store)
+        monkeypatch.setattr(deletion, "get_object_store", lambda *_: store)
+        db.commit()
         yield db, user, project, run, store, uri, artifact_uri
+    finally:
+        db.rollback()
         db.close()
-        transaction.rollback()
-    engine.dispose()
+        with Session(engine) as cleanup, cleanup.begin():
+            project_ids = list(
+                cleanup.scalars(
+                    select(Project.id).where(
+                        Project.created_by_id.in_(created_users)
+                        | Project.owner_id.in_(created_users)
+                    )
+                )
+            )
+            history = select(DeletionTombstone.id).where(
+                DeletionTombstone.requested_by_id.in_(created_users)
+            )
+            cleanup.execute(delete(DeletionStage).where(DeletionStage.tombstone_id.in_(history)))
+            cleanup.execute(
+                delete(DeletionTombstone).where(
+                    DeletionTombstone.requested_by_id.in_(created_users)
+                )
+            )
+            for table in reversed(Base.metadata.sorted_tables):
+                if "project_id" in table.c and table not in {
+                    DeletionStage.__table__,
+                    DeletionTombstone.__table__,
+                }:
+                    cleanup.execute(delete(table).where(table.c.project_id.in_(project_ids)))
+            cleanup.execute(delete(Project).where(Project.id.in_(project_ids)))
+            cleanup.execute(delete(User).where(User.id.in_(created_users)))
+        engine.dispose()
+
+
+def record_known_ray_job(db, actor_id, run, attempt, *, namespace, name):
+    from automl_api.models.enums import CommandStatus, OutboxStatus
+    from automl_api.models.workflows import WorkflowCommand
+    from automl_api.services import reconciler
+    from automl_api.services.workflow_state import canonical_request_hash
+
+    run.k8s_namespace, run.k8s_job_name = namespace, name
+    run.tags = {**run.tags, "orchestrator": "kuberay"}
+    attempt.ray_job_name = name
+    attempt.logical_key = f"training-run:{run.id}"
+    command = WorkflowCommand(
+        project_id=run.project_id,
+        actor_id=actor_id,
+        operation="training.launch",
+        idempotency_key=uuid.uuid4().hex,
+        request_hash=canonical_request_hash({"run_id": str(run.id)}),
+        request_payload={"run_id": str(run.id)},
+        status=CommandStatus.SUCCEEDED,
+    )
+    db.add(command)
+    db.flush()
+    entry = OutboxEntry(
+        project_id=run.project_id,
+        command_id=command.id,
+        event_key=uuid.uuid4().hex,
+        topic="ray.training.submit",
+        aggregate_type="model_run",
+        aggregate_id=run.id,
+        status=OutboxStatus.DELIVERED,
+        payload={"attempt_id": str(attempt.id), "fencing_token": attempt.fencing_token},
+    )
+    db.add(entry)
+    db.flush()
+    manifest = reconciler.build_ray_job_manifest(run, attempt, name=name)
+    uid = str(uuid.uuid4())
+    reconciler._record_ray_submission(
+        db,
+        attempt,
+        entry,
+        manifest,
+        {"metadata": {**manifest["metadata"], "uid": uid}},
+        reconciler._ray_submission_sequence(db, attempt),
+        {
+            "request_sha256": canonical_request_hash(entry.payload),
+            "manifest_sha256": canonical_request_hash(manifest),
+        },
+    )
+    db.flush()
+    return uid
+
+
+def reconcile_deletion_stage(db, entry, k8s):
+    from automl_api.models.enums import OutboxStatus
+    from automl_api.services.deletion_workflow import reconcile_deletion as reconcile_factory
+
+    tombstone_id = uuid.UUID(entry.payload["tombstone_id"])
+    entry_id = getattr(entry, "id", None)
+    db.commit()
+
+    def factory():
+        return Session(db.get_bind(), expire_on_commit=False)
+
+    with factory() as claim, claim.begin():
+        if entry_id is None:
+            current = claim.scalar(
+                select(OutboxEntry).where(
+                    OutboxEntry.project_id == entry.project_id,
+                    OutboxEntry.topic == entry.topic,
+                    OutboxEntry.aggregate_id == entry.aggregate_id,
+                )
+            )
+        else:
+            current = claim.get(OutboxEntry, entry_id)
+        if current is not None and current.status != OutboxStatus.DELIVERED:
+            current.status = OutboxStatus.CLAIMED
+            current.lease_owner = "deletion-test"
+            current.lease_expires_at = datetime.now(UTC) + timedelta(seconds=60)
+            current.delivery_attempts += 1
+            entry_id = current.id
+        else:
+            entry_id = None
+    if entry_id is not None:
+        reconcile_factory(factory, entry_id, "deletion-test", k8s=k8s)
+    identities = [(row, inspect(row).identity[0]) for row in db.identity_map.values()]
+    with factory() as view:
+        for row, identity in identities:
+            current = view.get(type(row), identity)
+            if current is None:
+                db.expunge(row)
+            else:
+                for column in row.__table__.columns:
+                    attributes.set_committed_value(row, column.key, getattr(current, column.key))
+    with factory() as check:
+        tombstone = check.get(DeletionTombstone, tombstone_id)
+        return tombstone is not None and tombstone.status == "complete"
 
 
 def finish_deletion(db, entry, k8s):
-    for _ in range(6):
-        finished = deletion.reconcile_deletion(db, entry, k8s)
-        db.commit()
-        if finished:
+    for _ in range(12):
+        if reconcile_deletion_stage(db, entry, k8s):
             return
     pytest.fail("Deletion stages did not converge")
 
@@ -252,9 +381,15 @@ def test_deletion_waits_for_runtime_removal_then_is_idempotent(workspace, whole_
     from kubernetes.client import ApiException
 
     db, user, project, run, store, _, artifact_uri = workspace
-    run.k8s_job_name = "terminal-training"
-    run.tags = {"orchestrator": "kuberay"}
-    db.flush()
+    attempt = db.scalar(
+        select(WorkflowAttempt)
+        .where(WorkflowAttempt.model_run_id == run.id)
+        .order_by(WorkflowAttempt.generation.desc())
+        .limit(1)
+    )
+    original_uid = record_known_ray_job(
+        db, user.id, run, attempt, namespace="management-test", name="terminal-training"
+    )
     first = deletion.request_deletion(db, user, project.id, None if whole_project else run.id)
     repeated = deletion.request_deletion(db, user, project.id, None if whole_project else run.id)
     assert repeated == first
@@ -266,16 +401,45 @@ def test_deletion_waits_for_runtime_removal_then_is_idempotent(workspace, whole_
         )
         == 1
     )
-    entry = db.scalar(select(OutboxEntry).where(OutboxEntry.project_id == project.id))
+    entry = db.scalar(
+        select(OutboxEntry).where(
+            OutboxEntry.project_id == project.id,
+            OutboxEntry.topic.in_(["project.delete", "run.delete"]),
+        )
+    )
     k8s = MagicMock()
-    with pytest.raises(RuntimeError, match="finish shutting down"):
-        deletion.reconcile_deletion(db, entry, k8s)
+    k8s.ray_job.return_value = {
+        "metadata": {
+            "uid": original_uid,
+            "name": run.k8s_job_name,
+            "namespace": run.k8s_namespace,
+            "labels": {
+                "automl.platform/project-id": str(project.id),
+                "automl.platform/run-id": str(run.id),
+                "automl.platform/attempt-id": str(attempt.id),
+                "automl.platform/generation": str(attempt.generation),
+            },
+        }
+    }
+    k8s.core.list_namespaced_pod.return_value = SimpleNamespace(items=[], metadata=None)
+    k8s.batch.list_namespaced_job.return_value = SimpleNamespace(items=[], metadata=None)
+    k8s.custom.list_namespaced_custom_object.return_value = {"items": [], "metadata": {}}
+    assert not reconcile_deletion_stage(db, entry, k8s)
+    k8s.delete_ray_job.assert_called_once_with(
+        "terminal-training", namespace="management-test", uid=original_uid
+    )
     assert store.exists(artifact_uri)
     k8s.ray_job.side_effect = ApiException(status=403)
     with pytest.raises(ApiException) as exc:
-        deletion.reconcile_deletion(db, entry, k8s)
+        reconcile_deletion_stage(db, entry, k8s)
     assert exc.value.status == 403
     assert store.exists(artifact_uri)
+    db.execute(
+        update(DeletionStage)
+        .where(DeletionStage.tombstone_id == uuid.UUID(first["id"]))
+        .values(lease_expires_at=datetime.now(UTC) - timedelta(seconds=1))
+    )
+    db.commit()
     k8s.ray_job.side_effect = ApiException(status=404)
     finish_deletion(db, entry, k8s)
     assert not store.exists(artifact_uri)
@@ -305,10 +469,13 @@ def test_registered_model_deletion_requires_explicit_deployment_cleanup(workspac
     assert "clean up" in exc.value.detail
     assert store.exists(artifact_uri)
     deployment.tags = {**deployment.tags, "runtime_cleaned_at": "2026-09-21T00:00:00Z"}
+    with pytest.raises(HTTPException, match="controlled qualification"):
+        deletion.request_deletion(db, user, project.id, None if whole_project else run.id)
     assert (
-        deletion.request_deletion(db, user, project.id, None if whole_project else run.id)["status"]
-        == "pending"
+        db.scalar(select(DeletionTombstone.id).where(DeletionTombstone.project_id == project.id))
+        is None
     )
+    assert store.exists(artifact_uri)
 
 
 @pytest.mark.parametrize(
@@ -410,7 +577,6 @@ def test_deletion_stages_survive_retry_without_repeating_completed_effects(works
     from datetime import UTC, datetime, timedelta
 
     from automl_api.models.enums import OutboxStatus
-    from automl_api.services.reconciler import reconcile_entry
 
     db, user, project, _, store, *_ = workspace
     project_id = project.id
@@ -438,15 +604,7 @@ def test_deletion_stages_survive_retry_without_repeating_completed_effects(works
     monkeypatch.setattr(store, "delete_prefix", delete_prefix)
 
     def deliver():
-        entry.status = OutboxStatus.CLAIMED
-        entry.lease_owner = "deletion-test"
-        entry.lease_expires_at = datetime.now(UTC) + timedelta(seconds=60)
-        entry.delivery_attempts += 1
-        db.commit()
-        try:
-            reconcile_entry(db, entry, worker_id="deletion-test", k8s=MagicMock())
-        finally:
-            db.commit()
+        return reconcile_deletion_stage(db, entry, MagicMock())
 
     for _ in range(2):
         deliver()
@@ -466,9 +624,19 @@ def test_deletion_stages_survive_retry_without_repeating_completed_effects(works
         )
         == "completed"
     )
+    deliver()  # An uncertain native call retains its lease and is not reissued.
+    db.execute(
+        update(DeletionStage)
+        .where(
+            DeletionStage.tombstone_id == tombstone_id,
+            DeletionStage.resource_class == "prepared_store",
+        )
+        .values(lease_expires_at=datetime.now(UTC) - timedelta(seconds=1))
+    )
+    db.commit()
+    deliver()  # Reconcile absence without repeating the native delete.
     deliver()
-    deliver()
-    assert calls == [f"projects/{project_id}", *[f"automl/projects/{project_id}"] * 2]
+    assert calls == [f"projects/{project_id}", f"automl/projects/{project_id}"]
     assert db.get(Project, project_id) is None
     assert db.get(DeletionTombstone, tombstone_id).status == "complete"
     assert set(
@@ -564,7 +732,6 @@ def test_retention_waits_preserve_metadata_and_retry_budget(workspace, monkeypat
     from datetime import UTC, datetime, timedelta
 
     from automl_api.models.enums import OutboxStatus
-    from automl_api.services.reconciler import reconcile_entry
     from automl_api.storage.contracts import DeletionPending
 
     db, user, project, run, store, *_ = workspace
@@ -584,13 +751,7 @@ def test_retention_waits_preserve_metadata_and_retry_budget(workspace, monkeypat
     monkeypatch.setattr(store, "delete_prefix", cleanup)
 
     def deliver():
-        entry.status = OutboxStatus.CLAIMED
-        entry.lease_owner = "retention-test"
-        entry.lease_expires_at = datetime.now(UTC) + timedelta(seconds=60)
-        entry.delivery_attempts += 1
-        db.commit()
-        reconcile_entry(db, entry, worker_id="retention-test", k8s=MagicMock())
-        db.commit()
+        return reconcile_deletion_stage(db, entry, MagicMock())
 
     deliver()  # Runtime stage.
     for _ in range(32):  # Retention exceeds the ordinary 30-delivery failure budget.
@@ -609,66 +770,3 @@ def test_retention_waits_preserve_metadata_and_retry_budget(workspace, monkeypat
     assert db.get(ModelRun, run_id) is None
     assert (db.get(Project, project_id) is None) == whole_project
     assert db.get(DeletionTombstone, tombstone_id).status == "complete"
-
-
-@pytest.mark.parametrize("status", ["quarantined", "object_completed", "verifying"])
-def test_upload_retention_wait_releases_cleanup_batch_slot(workspace, monkeypatch, status):
-    from datetime import UTC, datetime, timedelta
-
-    from automl_api.models.datasets import DatasetUploadSession
-    from automl_api.services import uploads
-    from automl_api.storage.contracts import DeletionPending
-
-    db, user, project, _, store, *_ = workspace
-    now = datetime.now(UTC)
-    rows = []
-    for name, expires in [
-        ("retained", now - timedelta(days=2)),
-        ("other", now - timedelta(days=1)),
-    ]:
-        uri = store.put_bytes(f"projects/{project.id}/{name}", b"data").uri
-        row = DatasetUploadSession(
-            project_id=project.id,
-            created_by_id=user.id,
-            dataset_name=name,
-            original_filename="input.csv",
-            byte_size=4,
-            part_size=4,
-            total_parts=1,
-            object_key=f"projects/{project.id}/{name}",
-            multipart_upload_id=name,
-            resume_key=name,
-            status=status,
-            expires_at=expires,
-            quarantine_delete_after=expires,
-            completed_object_uri=uri,
-            provider_driver=store.driver_name,
-        )
-        db.add(row)
-        rows.append(row)
-    db.commit()
-    retained = True
-    original = store.delete
-    calls = []
-
-    def delete(uri):
-        calls.append(uri)
-        if uri == rows[0].completed_object_uri and retained:
-            raise DeletionPending("Provider retains deleted generations")
-        original(uri)
-
-    monkeypatch.setattr(uploads, "get_object_store", lambda *_: store)
-    monkeypatch.setattr(store, "delete", delete)
-    uploads.cleanup_abandoned_uploads(db, now=now, limit=1)
-    db.commit()
-    assert rows[0].status == status
-    assert rows[0].lease_expires_at == now + timedelta(hours=1)
-    uploads.cleanup_abandoned_uploads(db, now=now + timedelta(minutes=1), limit=1)
-    db.commit()
-    assert rows[1].status == "failed"
-    assert calls == [row.completed_object_uri for row in rows]
-    retained = False
-    uploads.cleanup_abandoned_uploads(db, now=now + timedelta(hours=1), limit=1)
-    db.commit()
-    assert rows[0].status == "failed"
-    assert rows[0].lease_expires_at is None

@@ -1,0 +1,214 @@
+date: '2026-10-26'
+phase: 1
+scope: upload-cleanup-process-loss-progress
+status: in_progress
+phase_complete: false
+full_upload_admission_complete: false
+source_inputs: 657
+source_manifest_sha256: d767b37701619887b44b3403657fd89b6a592b5e50923d7cea929f21b2a16a75
+private_evidence_directory: .unlazy/phase1-upload-cleanup-process-loss
+checks:
+  focused:
+    passed: 165
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43631063040
+    xml_sha256: f7a039fea9d32fdfe5504c3834ea968af18eaab9cd1b75385cb008f233746008
+  deletion:
+    passed: 200
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43630604288
+    xml_sha256: 8b6a2aaa8fa8ca1efdbf431f70f5822673c516912213fa99f46f388e7e927160
+  connected:
+    passed: 560
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43627208704
+    xml_sha256: e63602d959f792542e7a14d921d99dd4e0e90afdbef815e4b950f619d1ef1719
+  worker:
+    passed: 28
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43626749952
+    xml_sha256: 63298bab22068446c2aac2736ef575bf883c6788ebe3957dae3430fa12baac51
+  cancellation:
+    passed: 69
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43626602496
+    xml_sha256: 95af7f072e04a36df3ce37854d0995e326e7f8357e340dd6e0a7a45afb09bd54
+  process:
+    passed: 6
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43632836608
+    xml_sha256: 6a2976f7a4745acfb8bbad6749b571b6fbea6fcf7453d43cdb896c36dcac8998
+counts_overlap: true
+admission_gates:
+  met: 0
+  unmet: 4
+upload_completion_gates:
+  met: 0
+  unmet: 6
+parent_inference_gates:
+  met: 0
+  unmet: 8
+phase_1_requirements:
+  verified: 2
+  open: 34
+failure_windows:
+  sigkill: 4
+  own_backend_termination: 2
+  witnesses:
+    intent_commit_loss:
+      mode: intent_commit_loss
+      pid: 3970161
+      native_done: false
+      backend_killed: true
+      backend_pid: 35470
+      phase: issued_before_commit
+      error_type: OperationalError
+    receipt_commit_loss:
+      mode: receipt_commit_loss
+      pid: 3970216
+      native_done: true
+      backend_killed: true
+      backend_pid: 35473
+      phase: recorded_before_commit
+      error_type: OperationalError
+    after_record:
+      mode: after_record
+      pid: 3969993
+      native_done: true
+      backend_killed: false
+      phase: recorded
+    before_native:
+      mode: before_native
+      pid: 3969829
+      native_done: false
+      backend_killed: false
+      phase: issued
+    after_publish:
+      mode: after_publish
+      pid: 3970084
+      native_done: true
+      backend_killed: false
+      phase: published
+    after_native:
+      mode: after_native
+      pid: 3969921
+      native_done: true
+      backend_killed: false
+      phase: native_accepted
+original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+integration_readonly:
+  status: terminal_pass
+  read_only: true
+  source_manifest_sha256: d767b37701619887b44b3403657fd89b6a592b5e50923d7cea929f21b2a16a75
+  observed_at: '2026-10-26T20:21:30.289283+00:00'
+  revision: 0018_attempt_predecessor_lineage
+  tables: 44
+  schema_differences: []
+  namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+  original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+  reserve_bytes: 43500000000
+  free_bytes: 43627548672
+behavior:
+- Two baseline failures reproduced missing native attempt reporting. Both admission
+  and cleanup now mirror the claimed native attempt number and existing five-attempt
+  budget into WorkflowCommand.retry_count/max_retries before native work. The independently
+  anchored attempt remains authority; mutable reporting fields cannot extend the budget.
+- A real subprocess is SIGKILLed after committed cleanup intent/before SDK construction,
+  after native acceptance/before recording, after the known receipt commits/before
+  publication, and after publication/before acknowledgement. The actual owned PostgreSQL
+  backend is separately terminated after intent flush/before commit and after native
+  reply/receipt flush/before commit.
+- All six windows use the installed S3 SDK through the actual S3-compatible factory
+  against a local HTTP server and the owned PostgreSQL database. Child PID/signal
+  exits, backend termination exits, committed SQL phases and native writes are independently
+  asserted. Six current-source witnesses are retained under the private evidence directory.
+- Recovery preserves one native creation and one native abort per window, exact original
+  key/session and unchanged logical retirement. Live leases prevent premature replay;
+  an uncommitted intent leaves no cleanup command. Known receipts replay without constructing
+  another native client, published results replay without another effect, and lost
+  native acknowledgements recover the same session after lease expiry.
+- Original admission remains failed/unpublished after cleanup recovery; no original
+  upload capability/result is published. Reporting-only mutations cannot permit a
+  sixth native attempt. Older known terminal reporting layouts remain read-only instead
+  of rewriting their history.
+- The first165-case run had four fixture credential-selection failures before reaching
+  the intended windows. The fixture now declares the local S3-compatible backend consistently
+  with its endpoint and static test credentials; production AWS identity handling
+  is unchanged. All final profiles pass.
+- The six process cases were repeated on the same frozen source with an explicit private
+  basetemp to retain inspectable witnesses after normal pytest retention removed the
+  earlier temporary directory. This is evidence retention, not a new source/runtime
+  qualification or a disjoint test count.
+limits:
+  user_database_ceiling_bytes: 45000000000
+  largest_table_rows: null
+  missing_historical_objects: 7
+  native_admission_cleanup: unqualified
+  production_sized_migration: unqualified
+  large_upload_load: unqualified
+  maintained_images: unqualified
+  deployed_cloud_iam: unqualified
+  mixed_version: unqualified
+  full_release_coverage: unqualified
+  whole_phase_1: unqualified
+remaining:
+- The four original admission acceptance gates remain unmet; their audit.py commands
+  remain unimplemented. Progress tests do not become automatic parent acceptance.
+- A dedicated operator recovery/replay path remains required; no existing generic
+  public replay route was found to reuse. Fixing reporting does not implement replay
+  or authorize extension of the native budget.
+- Full provider-specific unknown/superseded creation cleanup, missing opaque GCS URI
+  handling, Azure/embedded semantics, other-provider/process/runtime qualification
+  and background original admission publication/recovery remain required.
+- Complete instruction/progress factory/current-actor/source/command conversion and
+  project deletion native I/O separation from SQL; complete completion/inference/full-release
+  and independent branch acceptance.
+- 45GB migration cannot fit alongside43.5GB reserve; largest-table row counts remain
+  unspecified.15-by-10GiB load, maintained images, mixed-version and deployed cloud/native
+  journeys remain unqualified. UI/offline/TLS were not repeated.
+- Original deletion:G7 requires seven missing historical objects (two models, five
+  signed results). None were reconstructed or re-signed.
+evidence_hashes:
+  source-sha256.json: d767b37701619887b44b3403657fd89b6a592b5e50923d7cea929f21b2a16a75
+  before-source-sha256.json: 12e4c7f851196ea964d441c2ae05a3d7ed94ab1ee1f20e35a9978cd14aaf0bb3
+  baseline-source-sha256.json: 6ae378cb560f0733682fe99c8e88d61fdfee9474252a6c571af0cf89bfb3f67e
+  baseline-test.py: 682db9094a5b1dfb82746eaa1dd51e9f6a1d816e3420d128dd6ea566f3021f12
+  baseline.xml: 8ac994a56de928cac55765a76af47a5f5703bf837dee67027005a7c4b25c1451
+  baseline-state.json: be753742c124545945e6e06f714a3b90c8be774e3d02989638f7cfa491854c1d
+  before-admission.py: 751e635c53340a4379873e365c5d30b28a786e24e8c05cdd7554fe8bad159b39
+  before-cleanup.py: e8810ac96fbeec917323750a82d22ac0f3f13bb988ad950420a9dd937947a42c
+  run.py: 5755d075d43b090539beb720ea76c6e06e04c2509905cd67cdf9895d621858df
+  audit.py: 2a005b5ab471584ea66cd70224e75cedda9ce6a7af4a7746631b892899914699
+  integration-readonly.json: 6ffa942819de2bcc4c8dafd62f6ab71948dcc111ac2dde16242425bb5a70151c
+  PLAN.md: cb24c1a9317ebf9521bb6856b46812ae9d00c08f0b3c996c499776e395365555
+  focused-state.json: c3923e4bd880752c5d562109c4508efa8f776ac588254e95557330d731063fd7
+  focused.xml: f7a039fea9d32fdfe5504c3834ea968af18eaab9cd1b75385cb008f233746008
+  deletion-state.json: 3e2bb6ed50e20ae0c07d7c3e1b5c36cfe0c8cc62259a41318b5e350102fcf9ab
+  deletion.xml: 8b6a2aaa8fa8ca1efdbf431f70f5822673c516912213fa99f46f388e7e927160
+  connected-state.json: b33a79764dcf227816c35bcb4bd69caf9c4bb89115fdc0426852951c58696095
+  connected.xml: e63602d959f792542e7a14d921d99dd4e0e90afdbef815e4b950f619d1ef1719
+  worker-state.json: e6bb6e222697108976eafdbf5bd1042c1410aa2f7e738b5d7acaaa0f41997159
+  worker.xml: 63298bab22068446c2aac2736ef575bf883c6788ebe3957dae3430fa12baac51
+  cancellation-state.json: 6e9844bb73a3f64c8df1a3df694a12905bdc68f0be30985696301e45432601a9
+  cancellation.xml: 95af7f072e04a36df3ce37854d0995e326e7f8357e340dd6e0a7a45afb09bd54
+  process-state.json: cda5e5b26dd84205e062d929b31487a279d2498437ca80424ea0b2d7b12b638c
+  process.xml: 6a2976f7a4745acfb8bbad6749b571b6fbea6fcf7453d43cdb896c36dcac8998
+  crash-witnesses/after_native.json: cad2f03d981f8ebae3544e371f6ba331419334b08ca5b7f4b5d6db75019b9627
+  crash-witnesses/after_publish.json: e0638d3f4b6a2962e7a792ae8ca4d47c1b0ff4a57c6123f0976751e77d244470
+  crash-witnesses/after_record.json: 96e356d2a2a3c6cc9c10a8d6fd5b26ac4cf29717bc3718f1f80eb0a75b1e389a
+  crash-witnesses/before_native.json: f1d9ccf6b22bfd639d73d9d6e267a821f963428a1cb10648a9d8edb657359019
+  crash-witnesses/intent_commit_loss.json: c1c2707e915074d01cc3c27bd720985a8c7d348a3aecd05ecd668596ba800e5f
+  crash-witnesses/receipt_commit_loss.json: fdb5c59028b2a92410b1ac4c465ba14575300012e9de70430def42f0962beb1a

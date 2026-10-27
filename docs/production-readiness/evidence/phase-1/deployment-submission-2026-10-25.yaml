@@ -1,0 +1,187 @@
+date: '2026-10-25'
+scope: deployment-submission
+phase: 1
+phase_complete: false
+source_inputs: 587
+source_manifest_sha256: 873bf093a00e1b0c5349a174d1b22dfd3e921b91bc9aed8dc89a493970292391
+checks:
+  passed: 328
+  focused: 31
+  failures: 0
+  errors: 0
+  skips: 0
+  original_negative_control_failures: 2
+  additional_publication_negative_control_failures: 1
+  additional_caller_negative_control_failures: 4
+  strict_schema: 0018_attempt_predecessor_lineage
+  repository_ruff: pass
+  changed_hunk_format: pass
+  ci_preflights: 3
+  native_k3d_cases: 1
+  scoped_gates_reverified: 4
+behavior:
+- New HTTP admissions use the shared deployment.reconcile.v3 topic. The captured v2
+  selector rejects v3 without native effects; v2/legacy deliveries cannot use the
+  new creator. This is not prior-binary qualification.
+- After original Dockerfile custody, the factory commits namespace UID, source/manifest/object-receipt
+  digests and a new creation identity. Every resource has a separate committed one-shot
+  start and original request digest before POST.
+- Kubernetes namespace reads, POSTs and acknowledgement reads run outside SQL. A successful
+  native response is recorded before a later read can observe a replacement. Lost
+  acknowledgements only read the original intent-annotated resource; missing or foreign
+  outcomes never authorize another POST.
+- Each native receipt pins UID, full observed spec digest, original request and creation
+  intent. Actual request labels/spec/annotations are checked before saving. Existing
+  receipts cannot be rebound; changed namespace lifetime, UID, spec or intent cannot
+  publish.
+- Pending deployment listings remain progressing and cannot promote a partial launch.
+  Final publication requires the original queued/pending phase and unchanged Dockerfile
+  receipt. Completion facts persist independently of cancellation or delivery takeover.
+  Fresh current authority gates every new resource start and final publication. The
+  final transaction compares exactly the observed receipt set and requires every planned
+  resource before marking an active deployment RUNNING.
+- Unknown/malformed starts and active native resources block project/run and direct/queued
+  artifact retirement. Cancelled storage-only deliveries with no Kubernetes starts
+  retain their original clear retirement path. UID-bound native lifecycle retirement
+  is still required.
+- The unused SQL-bound deployment helper and its stub tests were removed; committed
+  PostgreSQL publication, twice-replayed delivery and missing run/artifact/content
+  controls replace those business checks. Kubernetes SDK clients share an explicitly
+  zero-retry transport; no dependency or schema was added.
+native_kubernetes:
+  provider: owned local k3d-sceptre
+  tls_verified: true
+  zero_replica_resources: true
+  pods_started: 0
+  initial_protocol_posts: 2
+  lost_real_create_ack_recovered: true
+  matching_recovery_without_another_post: true
+  replacement_uid_rejected: true
+  native_sql_connections:
+  - 0
+  explicit_deployment_service_creates: 3
+  owned_resource_uids_retired: 3
+  owned_namespace_retired: true
+  shared_fixture_namespace_uid_preserved: true
+  maintained_image_tested: false
+  cloud_iam_qualified: false
+retained_failures:
+- Two initial control bodies reproduced SQL held during Kubernetes creation and absent
+  creation receipts. Both pass unchanged after conversion. The first draft of the
+  SQL control mistakenly asserted inside a callback whose exception the worker handles;
+  the corrected oracle captures the observation and asserts after delivery, and genuinely
+  fails on the old implementation.
+- A drafting topic-map syntax error prevented focused collection and was corrected
+  before behavioral qualification. The two original controls then passed; the expanded
+  13-case checkpoint passed.
+- 'The first connected run passed 315 cases and failed 3: two cancellation fixture
+  expectations had incorrectly been changed to expect active native resources, and
+  the real HTTP route still used v2. Original cancellation assertions were restored
+  and the route now imports the shared topic.'
+- An exact live regression was interrupted with SIGINT after source review found missing
+  final receipt comparison. The interrupted result is not qualification. A separate
+  retained control then reproduced RUNNING publication after journal removal; that
+  unchanged control and UID/spec receipt-tampering controls pass after the fix.
+- A 324-case checkpoint passed before caller review identified four uncovered races.
+  Four retained controls then reproduced changed Dockerfile receipt, premature observer
+  promotion, and overwrite of changed status/desired state. Those unchanged controls
+  pass on the final source.
+- 'A later regression was interrupted after an independently verified fixture mismatch:
+  the installed SDK stores Retry(total=0), not integer 0. The assertion now measures
+  total==0. Neither interrupted run is counted as a passing regression; the final
+  frozen full connected selection is measured separately.'
+limits:
+  requirements:
+    total: 36
+    verified: 2
+    open: 34
+  whole_native_lifecycle_qualified: false
+  user_database_ceiling_bytes: 45000000000
+  largest_table_rows: not supplied
+  free_disk_reserve_bytes: 43500000000
+  minimum_free_bytes_during_regression: 43861495808
+  scale_qualified: false
+  required_handoff: Original phase1-deletion:G7 remains abandoned for seven missing
+    original historical QA objects (2 models,5 signed results); do not reconstruct
+    or re-sign.
+  remaining:
+  - Namespace UID reads fence publication but Kubernetes POST has no namespace-UID
+    precondition. Admission enforcement is required to prevent effects if a namespace
+    is replaced between read and POST.
+  - Initial requested-field comparison permits additional server-default dictionary
+    fields; full admission/security policy qualification remains required. Saved complete
+    observed specs are pinned on later recovery.
+  - An uncertain or known-started create with no matching native result remains blocked
+    without another POST. Controlled resolution and actual SDK process-death qualification
+    across the whole native creation path remain required.
+  - UID-bound restart/stop/cleanup, native physical retirement and observers remain
+    required. Active creation history deliberately blocks deletion until exact native
+    retirement is proven.
+  - Unqualified legacy histories, broad worker credential withdrawal and complete
+    IAM/network restrictions remain required.
+  - Current full backend/release and independent branch coverage >=90.01 percent,
+    maintained images, actual prior binaries/mixed versions/cloud providers and complete
+    native process-loss journeys remain required.
+  - 45 GB production-sized migration rehearsal and 15 users each uploading 10 GiB
+    require suitable infrastructure; neither was run locally.
+evidence_hashes:
+  source-sha256.json: 873bf093a00e1b0c5349a174d1b22dfd3e921b91bc9aed8dc89a493970292391
+  before-source-sha256.json: 56d4e8f52ddfe030f93414ec7e3520f9e55b696a0eda19fbeacddeba78a54d98
+  baseline-source-sha256.json: 5aff1bce1776da7069a7e343e84e5fdbae09890dffd06db9961c00e4cfff0d10
+  baseline-test.py: 43ec10b55e8fd081ca9607eb6c32f86e8805b80ebb686330cb95b0680f87b560
+  draft-baseline-test.py: 52db1c9949c07f2cd64d03a726141f0c74dfc137065f3218a24d18713ed4999b
+  publication-baseline-test.py: 2d32a4c18525b71f23e7615e127a2b5723661bd1a9731ae2874309d7ef2bf154
+  publication-baseline-source-sha256.json: a62d7a08ceb11752903e79eb37b58d43a603b82f71a59920263477d66446b3c7
+  first-regression-source-sha256.json: ba29f98a844de3e814b1fcbc1c4d5247cc3dec5841e9eb73d7ad16445e2ca737
+  interrupted-source-sha256.json: 7088f93159812362e622ed60fcd7c05b6b41a615fbc2a916d7e50f0caef89a0e
+  transport-interrupted-source-sha256.json: 956061b5c7aeba6afe8fe0705aab6217b2213f5016052debf9771dda30f37d1c
+  pre-caller-source-sha256.json: 8a1aa70029010413d41fde5916f1c66abe35719cd94e5aca740bd4dc0bae82fd
+  caller-baseline-source-sha256.json: 4edbe89aae8be562b01efb12868efd40e1e63eb937a5455eaad9211950d9530a
+  caller-baseline-test.py: 3f4c5e5ce174aade0e13b64623fb0e532c75181519479453943c7a7c087e58a4
+  run.py: 91a8ada84835e7f96eb25b1fc4542457c8af20161af09cf5108be636b78d8909
+  audit.py: fd169998146c431e83d7210d07e5d44c208eebc1b258c8221bc1b737dc53c535
+  verify_predecessor.py: 5af4a2938e2f633b24438f58e92cae2db23895025b0959ea34fdc8944c67baeb
+  test_native_submission.py: 4a817aee28d5b62a92ac128f7e851b097c54a2f64863ea93acf7b11a2a4ca23d
+  native-probe-state.json: e8f062de067e53996d70d273c1e2cad7742408fc52e275f4b3e5d89bfa76a01c
+  lint.log: 82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18
+  preflight-0.log: 00c8dcf3b37f2eac6114a4c21f9f742c56e354ada6672f1b15189664820d92a5
+  preflight-1.log: a414947a0f058a04ee8ca14e4023b0661f0892a6cb81c082ba87469dd71ed9e9
+  preflight-2.log: dffd5dbca119ddf99cc5a088942e02d1127f7108463f4627161d74775ec7e554
+  baseline.log: 540386925e8e0692b307b6af5c646d46dc06ee75baef1fe0cd83ff1d1900c69d
+  baseline.xml: 2b3c5daf2f5a45f026a8e7d7990087a7006b2194d15c324f0dc33acad906dca6
+  baseline-state.json: 525cdc96a40f5a6f40336db66fb10e7b0d6ef9249eb46986100193d3c4ed9807
+  publication-baseline.log: 9767e234a480f022ebd22455078c5022090878b1ce14c358010eb6281d93ea38
+  publication-baseline.xml: 05357b32cf169a6313c4c0ad7799808373babf7da0eabaf63984e8ac5ef36c2f
+  publication-baseline-state.json: fbe37893855d622b18fbf75134af142ca7464e3d2848d9d20560d753004ba9d9
+  caller-baseline.log: d747a2acb1661b61d64fb53df1f0f1974b8f4b3a626a83ba1312b294a7adc949
+  caller-baseline.xml: cd4b6114f003f691b1ee8226be8b2f31ab714e318fa5b61e658b5d3cffbae4e7
+  caller-baseline-state.json: 1cc9e81b71776d253870608a33b0cae0528a35d01154520c8b16f760a1110ff7
+  pre-caller-regression.log: d77d27205274302d8b6cede45491d9b56457d86e97713de958c43a1276d5d7e6
+  pre-caller-regression.xml: 08db078724c2b6d3eb69ff39f295b2d41ba0d4ac4c6b025df2cef8a1f652d73b
+  pre-caller-regression-state.json: 780348b5ea7918370b91ff8501568b5f7ecf58a87d4daa12df4a6b56ed0974d3
+  draft-focused.log: cffcb5048934b4c9cba7eb92d3dd86c650c74f63ec5311485114df24b663fcb3
+  draft-focused.xml: a4720028cc54ea102d7603b8e3da4f866d174e4ad611572e189a679de67077b7
+  draft-focused-state.json: 65661bdd314852e44565cd01b2ea839cbf827d0760102ef8118e9ee88ea95dea
+  first-passing-focused.log: 09bebb5bb6e7f4d5dbd9b9002c3299b52117d404f31a75ad65875b1653209a5c
+  first-passing-focused.xml: ad8b47d7879bc1ce45540868e34ae46bc2055365f0033e9ed4d03436c6ddfd30
+  first-passing-focused-state.json: 596b3a16454d53ebd81b2fab1cbb4374c96ed007a428ab275ab0a1a85b044eae
+  expanded-passing-focused.log: 3da6d90aa751c05fa64cdf6f56596e8da03add899e9315f2429976f02b678ccc
+  expanded-passing-focused.xml: f7e8e4eb545b427a7e8c9dfc63e6ffa7a9133b618a2384955b78e4de4dae195d
+  expanded-passing-focused-state.json: b8bd9e29b169a5f1be5f4fe9bf66e54eb357b17a7404157408adca2dbe68e235
+  first-regression.log: 8dc7dcd6206e89e5bdaf66aa25a6827bd6535846030b845140687bc1910f8aef
+  first-regression.xml: 37c4772955828d47aba2ef722f1070d938dde2aecd3a57b2090e0b87a6b1f4c7
+  first-regression-state.json: 48eb86d274290d938b97641226e29e665183ca0eaf922ffb17ac02dd1a49491f
+  interrupted-regression.log: b8b4cd0cc24dc45e99236de67f636cf5cc626e2b58e0382b88c70eb39f660fef
+  interrupted-regression.xml: e13423521852b41b31d02874d4174d57084e92ddfd349fe3c9452a88ac98ed97
+  interrupted-regression-state.json: aff1995fedb1c00d21e51c4182d666f1fa55e3f426d951b0d8591c15feb2c336
+  transport-interrupted-regression.log: f4d3b6f3cfbd28168e38271633b0fa69572787ff3ef0a9d396a2d1574e476084
+  transport-interrupted-regression.xml: 01a31fbbeeed076df1abcd167b85e26f770d5e6e8938402882dc1209290c8dfc
+  transport-interrupted-regression-state.json: c94eaff625432c4d7aee19c47d59c41e672a823f87a4856847fa315ec09361f8
+  regression.log: abe161b80a9caf6d005d6b46db800a7ef246b089a904e3dbdda3b1e1ff0ba519
+  regression.xml: 62c542d5c99c1ed520d7ab6c10c141165bea7aefaa9ed85f166cc001e0e1160c
+  regression-state.json: ffc96875547494d55cf0f14c65649c5c65be9806ff9f942fb7b9ac93c9a11778
+  native.log: 5aa89de675440ce53fe12479e3152ba4e5a422fb9be9a558b1c06202da1f51f5
+  native.xml: d735cd930d7b9b18cbc169391092b0b50dc85af2424cf9620acc979506de39b6
+  native-state.json: 0496b9c7bae7df19eeec248a6a03300b8561a23c2fdbc50e3df161a1a4b03b7f
+  regression-interruption-reason.txt: 7c57d9a3efbfc53f08dc9b6ccad701cf0bcc0b076d43c0dde9f634aac809762f
+  transport-interruption-reason.txt: cf6fbf90212cfb68663fd2c49e5ca87c60148d61b1929715113b1a083136a756

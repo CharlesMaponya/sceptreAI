@@ -1,0 +1,112 @@
+status: in_progress
+phase_complete: false
+deletion_factory_complete: false
+original_uid_cleanup_consumer_complete: false
+unknown_create_recovery_qualified: false
+scope: Known Ray submission identity prerequisite for original-resource cleanup
+source_inputs: 669
+source_manifest_sha256: 42a91c73ed56b2649a52c19792d6e881b1ccaf7fb9c733a92bc06030f99b0b41
+changes:
+- Training, splitter and preparation save successful native create UID/name/namespace
+  in ray.submitted WorkflowEvent, with original outbox/request and manifest fingerprints.
+- Known receipt and logical submission share one SQL commit; no token bytes or manifest
+  bodies are retained.
+- Claimable attempts with an existing receipt cannot reissue or overwrite native identity.
+- Create conflicts propagate without GET/adoption; unknown creation outcomes require
+  qualification rather than adopting a replacement.
+- The receipt reader refreshes cached evidence and checks original source scope/request/fence.
+checks:
+  focused:
+    passed: 60
+    returncode: 0
+    xml_sha256: 0b550e2787b7607d4ea74dd71644811dcc391876cfe77be2b5dc76fa63d1bc83
+    state_sha256: 0a9ad4eb400994598106e32fcbd0f1a8ea47dd5ca0a50df63a6cc64b07cfa90d
+  connected:
+    passed: 460
+    returncode: 0
+    xml_sha256: 243bc7f73dde7b5ff4481e0c49d210a7f103e08ddb6bc1ffe7d3e68ba94c286c
+    state_sha256: 19689a4676172965e7083c6ee5861a7ade2f1f50ddc19e891cb0e72aab045513
+negative_controls:
+  missing_receipts_reproduced_for_all_three_stages: true
+  identical_manifest_replacement_adoption_reproduced: true
+  stale_cached_receipt_reproduced_for_all_three_stages: true
+native_probe:
+  kind: Owned suspended RayJob; imagePullPolicy Never
+  original_uid: 72071556-c899-4124-a485-8d9e109cd3d5
+  replacement_uid: 291e8f32-8a18-45be-a653-ad2f5091ac04
+  unknown_conflict_held: true
+  old_uid_rejected_replacement: true
+  original_receipt_preserved: true
+  pod_inventory_snapshots:
+  - 0
+  - 0
+  - 0
+  raycluster_inventory_snapshots_empty: true
+  owned_namespace_removed: true
+  full_runtime_qualified: false
+read_only_preflight:
+  read_only: true
+  schema_differences: []
+  revision: 0019_deletion_stage_custody
+  tables: 44
+  namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+  coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+  free_bytes: 43665080320
+  reserve_bytes: 43500000000
+phase_ledger:
+  verified: 2
+  open: 34
+acceptance:
+  receipt_gates_met: 0
+  receipt_gates_unmet: 3
+  deletion_factory_gates_met: 0
+  deletion_factory_gates_unmet: 5
+  note: Raw evidence only; no automatic gate acceptance or full-phase promotion.
+remaining:
+- Factory-owned SQL-free native creation/deletion, committed original stage custody,
+  native outcome recovery and fresh publication.
+- Actual cleanup must consume original UID receipts and retain them after project/command/outbox
+  erasure; legacy attempts remain unqualified.
+- Unknown-create/conflict recovery, full runtime/provider/process-loss and original
+  admission/completion/inference acceptance.
+- 45 GB migrations, deferred 15 users x10 GiB load, maintained images, mixed-version
+  and full release/branch coverage.
+- 'Original deletion G7: seven missing historical objects (two models, five signed
+  results), never reconstructed or re-signed.'
+evidence_hashes:
+  source-sha256.json: 42a91c73ed56b2649a52c19792d6e881b1ccaf7fb9c733a92bc06030f99b0b41
+  before-source-sha256.json: eca1e438f77b982051957aa886200127c1cad73f4e8b8c70d1686b0cc74f0a00
+  baseline-source-sha256.json: d842eeea79fc1a6a492077fb51aa8472aa838a74db9aae6068b1f7a6a557cb09
+  baseline-test.py: aaee330a1a70740c5d9994a866b5c8ff30005e76101d8316752ac84b9849cfcf
+  baseline.xml: b12ab057a25a09f73276c503df2a860e4683cbe6b180b827f953602bafa9c945
+  baseline.log: 52890bb101a8076bbac9381e7d6304f27dd1829c4889685f2e49dbc9fff7d487
+  baseline-state.json: 56a1741d29680120accd31087f18bb00c0af32a8f46337641b857bc3b64d23f0
+  conflict-baseline.xml: b9a95fb946f2d7da01271a91f5a8741f64a437259b6b62117c6263598bfd962b
+  conflict-baseline.log: e0f401e96352e7e983cd81d45757d8fa848ec1dae22efc4554c1393cb3714d9e
+  conflict-baseline-state.json: fe103ec290848908f0917e7c1efb19be766f95988635000eaac0e6b8838ec2ac
+  conflict-baseline-source-sha256.json: c0b8b55bb5c8ac7695d32ad9c69c42c26660d0f29ceb3b0f37acc0f83427bed9
+  cached-receipt-failure.xml: c41f6a4ebcb437c87e8b93044ca34f885aa88beb077b504906df1f1c5ba2c3a1
+  cached-receipt-failure-state.json: c792e03e68821b3a9246262daeac1578cc556e0fd2e87efaf741395f61e4be42
+  cached-receipt-failure-source-sha256.json: d5826915dc99f0ba43d1fec8534b357801c5fa93aa542d323c43732705aee692
+  connected-compatibility-failure.xml: b74d6941434e96ba54fdf07fd25e92cff18043b333ec49d053129373cc88524d
+  connected-compatibility-failure-state.json: 7eddb16310da6fdeaa3a7fa22f248979399531f9a8f6077777fbb45d510170a7
+  connected-compatibility-failure-source-sha256.json: 3d7f486d3b8722374965b4af6773118cde9c74afada5f99344213412879cc3c9
+  native-state.json: 22f376f2b9f8d30d91774954011fd1e2cad6116bac143cd482cd843182817ff7
+  native-witness.json: 37628b66efee3941139113aefb33ca38288e0ab5f445409119dba0a2fa9aa98a
+  native.log: b841585ca38ef87695eaa6e9633926df67c49b7e139c4812f4c7ae28aa976a9a
+  native_probe.py: 519820e6715701171e40937a00462456beebc4ead3e1bddbdfd0790dfa15c7ce
+  run_native.py: dd84b51d61da2fd4afe3bedf60e4cd49c387b4ce6447bd8e4340af3c6d7671a9
+  run.py: 9fe5d031199f519e69ba1f58bca857690033103b00d21443071c9dd3e3e7e7d0
+  audit.py: 94d4f1a2f87426c51e6659862028ba31683c157d9ea6eb77809a933061e637ba
+  preflight.py: 82abe11c651a3cc1a0018c265f41b2b77210641fff1bdc1cd832d9f68eec2c4c
+  preflight.json: a4c5aa019b20ebc55398e9a0e7e4f2be24e9c6dd7834b8025f0a0e800ff56f00
+  report.py: e641c7c24d63618caef3c24dec205dd0dbf8b0fc5077d8e367b634125e1a1e8b
+  PLAN.md: 5d6a529d1f1c05f7d25c3906eb8088b17753bb6d84a8059177537cb001c89fa7
+  GATES.md: 9ef115729fa4d3c80a89d034878448eedc79dfbec54231ffca309310f181893f
+  focused.xml: 0b550e2787b7607d4ea74dd71644811dcc391876cfe77be2b5dc76fa63d1bc83
+  focused.log: 5006e45153e4f0b8ab7ad7f432b403a41027a637f592c2226e0a1b9d202fd90b
+  focused-state.json: 0a9ad4eb400994598106e32fcbd0f1a8ea47dd5ca0a50df63a6cc64b07cfa90d
+  connected.xml: 243bc7f73dde7b5ff4481e0c49d210a7f103e08ddb6bc1ffe7d3e68ba94c286c
+  connected.log: 4540506ab604b2a9ee42c6c4b80b3d1859cc57867559b44e097ccdee4c8776de
+  connected-state.json: 19689a4676172965e7083c6ee5861a7ade2f1f50ddc19e891cb0e72aab045513

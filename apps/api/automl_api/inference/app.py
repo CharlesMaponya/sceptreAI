@@ -52,6 +52,8 @@ class ModelMetadata(BaseModel):
 
 @lru_cache
 def _load_model() -> Any:
+    if os.getenv("INFERENCE_IDENTITY_PROTOCOL"):
+        raise RuntimeError("Pod TLS serving requires the authenticated runtime loader.")
     model_uri = os.getenv("MODEL_URI")
     if not model_uri:
         raise RuntimeError("MODEL_URI is required.")
@@ -181,10 +183,19 @@ def create_offline_prediction_file(
     return output_path, row_count
 
 
-def create_app() -> FastAPI:
+def create_app(*, credentials=None, model=None) -> FastAPI:
     model_name = os.getenv("MODEL_NAME", "model")
     project_name = os.getenv("PROJECT_NAME", "Model project")
     environment = os.getenv("DEPLOYMENT_ENVIRONMENT", "local")
+    tls_required = bool(os.getenv("INFERENCE_IDENTITY_PROTOCOL"))
+
+    def load_model():
+        if tls_required or credentials is not None:
+            if credentials is None or not credentials.active or model is None:
+                raise RuntimeError("Serving identity or model is unavailable.")
+            return model
+        return _load_model()
+
     app = FastAPI(
         title=f"{project_name} model API ({environment})",
         description=(
@@ -197,9 +208,13 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def authenticate_gateway(request: Request, call_next):
         if request.url.path not in {"/health/live", "/health/ready"}:
+            if tls_required or credentials is not None:
+                if credentials is None or not credentials.active or model is None:
+                    return JSONResponse(status_code=503, content={"detail": "Serving unavailable."})
+                return await call_next(request)
             expected = os.getenv("INFERENCE_GATEWAY_TOKEN", "")
             actual = request.headers.get("X-Sceptre-Deployment-Token", "")
-            if not expected or not hmac.compare_digest(expected, actual):
+            if not expected or not hmac.compare_digest(expected.encode(), actual.encode()):
                 return JSONResponse(status_code=401, content={"detail": "Authentication required."})
         return await call_next(request)
 
@@ -214,11 +229,11 @@ def create_app() -> FastAPI:
     @app.get("/health/ready")
     def ready() -> dict[str, str]:
         try:
-            _load_model()
+            load_model()
         except Exception as exc:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=f"Model is unavailable: {exc}",
+                detail="Model is unavailable.",
             ) from exc
         return {"status": "ok"}
 
@@ -241,7 +256,7 @@ def create_app() -> FastAPI:
     ) -> PointPredictionResponse:
         try:
             predictions, probabilities = predict_records(
-                _load_model(),
+                load_model(),
                 [payload.record],
                 include_probabilities=payload.include_probabilities,
             )
@@ -265,7 +280,7 @@ def create_app() -> FastAPI:
     def predict(payload: PredictionRequest) -> PredictionResponse:
         try:
             predictions, probabilities = predict_records(
-                _load_model(),
+                load_model(),
                 payload.records,
                 include_probabilities=payload.include_probabilities,
             )
@@ -299,7 +314,7 @@ def create_app() -> FastAPI:
     ) -> FileResponse:
         try:
             output_path, row_count = create_offline_prediction_file(
-                _load_model(),
+                load_model(),
                 file,
                 include_probabilities=include_probabilities,
             )

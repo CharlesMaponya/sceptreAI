@@ -38,12 +38,13 @@ from automl_api.services.operations import (
     _internal_model_deployment_urls,
     _platform_model_deployment_urls,
     cleanup_project_resources,
-    list_model_deployments,
     update_registry_stage,
 )
 from automl_api.services.training import BATCH_RUN_KINDS
 from automl_api.storage.object_store import EmbeddedObjectStore
 from automl_api.training.analysis import _drift_summary
+from deployment_observer_helpers import deployment_state, deployment_urls
+from deployment_observer_helpers import unit_deployments as list_model_deployments
 from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.routing import APIRoute
 from sklearn.linear_model import LinearRegression
@@ -367,6 +368,9 @@ def test_model_deployment_manifest_is_isolated_and_probe_enabled() -> None:
     deployment_id = uuid.uuid4()
 
     manifests = client.build_model_deployment_manifest(
+        model_digest="a" * 64,
+        identity_ca_digest="c" * 64,
+        identity_control_base_url="https://control.invalid/api/v1/internal/deployments",
         deployment_id=deployment_id,
         project_id=uuid.uuid4(),
         project_name="Credit Risk",
@@ -455,7 +459,7 @@ def test_model_deployment_state_reports_container_failures(
     client.apps = _FakeDeploymentApps()
     client.core = _FakeDeploymentCore(waiting_reason)
 
-    assert client.model_deployment_state("model") == expected_state
+    assert deployment_state(client, "model") == expected_state
 
 
 def test_model_deployment_state_reports_previous_oom_kill() -> None:
@@ -464,7 +468,7 @@ def test_model_deployment_state_reports_previous_oom_kill() -> None:
     client.apps = _FakeDeploymentApps()
     client.core = _FakeDeploymentCore(previous_reason="OOMKilled")
 
-    assert client.model_deployment_state("model") == "out_of_memory"
+    assert deployment_state(client, "model") == "out_of_memory"
 
 
 def test_inference_memory_adapts_to_serialized_model_size() -> None:
@@ -494,7 +498,7 @@ def test_model_deployment_urls_use_node_port() -> None:
         ),
     )
 
-    assert client.model_deployment_urls("model") == {
+    assert deployment_urls(client, "model") == {
         "base_url": "http://models.local:31234",
         "endpoint": "http://models.local:31234/v1/predict",
         "docs_url": "http://models.local:31234/docs",
@@ -514,7 +518,7 @@ def test_cluster_ip_model_deployment_does_not_report_an_external_url() -> None:
         )
     )
 
-    assert client.model_deployment_urls("model") is None
+    assert deployment_urls(client, "model") is None
 
 
 def test_internal_model_deployment_urls_use_portable_service_dns() -> None:
@@ -551,6 +555,9 @@ def test_model_ingress_url_is_reported_only_after_admission() -> None:
         inference_ingress_host_template="{name}.models.local",
     )
     manifests = client.build_model_deployment_manifest(
+        model_digest="a" * 64,
+        identity_ca_digest="c" * 64,
+        identity_control_base_url="https://control.invalid/api/v1/internal/deployments",
         deployment_id=uuid.UUID("11111111-1111-1111-1111-111111111111"),
         project_id=uuid.uuid4(),
         project_name="Credit Risk",
@@ -578,9 +585,9 @@ def test_model_ingress_url_is_reported_only_after_admission() -> None:
     )
     client.networking = SimpleNamespace(read_namespaced_ingress_status=lambda **_: ingress)
 
-    assert client.model_deployment_urls("automl-model-11111111") is None
+    assert deployment_urls(client, "automl-model-11111111") is None
     ingress.status.load_balancer.ingress = [SimpleNamespace(ip="127.0.0.1")]
-    assert client.model_deployment_urls("automl-model-11111111") == {
+    assert deployment_urls(client, "automl-model-11111111") == {
         "base_url": "http://automl-model-11111111.models.local",
         "endpoint": "http://automl-model-11111111.models.local/v1/predict",
         "docs_url": "http://automl-model-11111111.models.local/docs",
@@ -655,7 +662,7 @@ class _ScalarResult:
 
 
 class _SequenceSession:
-    def get(self, _model, _id):
+    def get(self, _model, _id, **_kwargs):
         return SimpleNamespace(settings={})
 
     bind = None
@@ -1071,11 +1078,38 @@ def test_operation_lookup_helpers_and_candidate_extension() -> None:
     )
 
 
-def test_stop_deployment_is_idempotent_for_kubernetes_404(monkeypatch) -> None:
-    run = _deployment_run()
-    db = SimpleNamespace(scalar=lambda _: run, flush=lambda: None)
+def _stub_lifecycle_custody(monkeypatch):
+    custody = {"unit_business_only": True, "retired": False}
+    monkeypatch.setattr(operations_service, "lifecycle_custody", lambda *_, **_kwargs: custody)
 
-    def missing(_):
+    def admitted(db, user, run, action, source):
+        current = run.tags.get("deployment_control") or {}
+        if current.get("action") == action and current.get("state") == "pending":
+            return
+        run.status = RunStatus.QUEUED if action == "start" else RunStatus.CANCELLED
+        run.finished_at = None if action == "start" else datetime.now(UTC)
+        run.tags = {
+            **run.tags,
+            "desired_state": f"deployment_{action}_pending",
+            "deployment_control": {
+                "generation": current.get("generation", 0) + 1,
+                "action": action,
+                "state": "pending",
+            },
+        }
+
+    monkeypatch.setattr(operations_service, "queue_control", admitted)
+    return custody
+
+
+def test_stop_deployment_is_idempotent_for_kubernetes_404(monkeypatch) -> None:
+    _stub_lifecycle_custody(monkeypatch)
+    run = _deployment_run()
+    db = SimpleNamespace(
+        scalar=lambda _: run, flush=lambda: None, get=lambda *a, **kw: SimpleNamespace(settings={})
+    )
+
+    def missing(_, **_kwargs):
         raise operations_service.ApiException(status=404)
 
     monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
@@ -1348,9 +1382,24 @@ class _DeploymentClient:
 
 
 def test_deploy_registered_model_persists_manifest_and_dockerfile(monkeypatch) -> None:
+    from automl_api.services import inference_identity
+
+    monkeypatch.setattr(
+        inference_identity, "authority", lambda *_: SimpleNamespace(digest="c" * 64)
+    )
+    monkeypatch.setattr(
+        inference_identity,
+        "control_base_url",
+        lambda *_: "https://control.invalid/api/v1/internal/deployments",
+    )
     project_id = uuid.uuid4()
     project = SimpleNamespace(id=project_id, name="Risk")
     entry = _deployable_entry(project_id)
+    custody = {"unit_persistence_only": True}
+    entry.registry_metadata = {
+        "native_custody_digest": operations_service.canonical_request_hash(custody)
+    }
+    monkeypatch.setattr(operations_service, "registered_model_custody", lambda *_: custody)
     db = _DeploymentDB(project)
     client = _DeploymentClient()
     monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
@@ -1530,10 +1579,13 @@ def test_drift_listing_syncs_active_runs_and_stops_after_api_failure(monkeypatch
 
 
 def test_shutdown_preserves_runtime_and_cleanup_requires_shutdown(monkeypatch):
+    _stub_lifecycle_custody(monkeypatch)
     from unittest.mock import MagicMock
 
     run = _deployment_run()
-    db = SimpleNamespace(scalar=lambda _: run, flush=lambda: None)
+    db = SimpleNamespace(
+        scalar=lambda _: run, flush=lambda: None, get=lambda *a, **kw: SimpleNamespace(settings={})
+    )
     client = MagicMock()
     monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
     with pytest.raises(HTTPException) as failure:
@@ -1543,36 +1595,40 @@ def test_shutdown_preserves_runtime_and_cleanup_requires_shutdown(monkeypatch):
     assert failure.value.status_code == 409
     client.delete_model_deployment.assert_not_called()
     operations_service.stop_model_deployment(db, SimpleNamespace(), run.project_id, run.id, client)
-    client.shutdown_model_deployment.assert_called_once_with(run.k8s_job_name)
+    client.shutdown_model_deployment.assert_not_called()
     client.delete_model_deployment.assert_not_called()
-    assert run.tags["desired_state"] == "deployment_stopped"
+    assert run.tags["desired_state"] == "deployment_stop_pending"
     operations_service.cleanup_model_deployment(
         db, SimpleNamespace(), run.project_id, run.id, client
     )
     operations_service.cleanup_model_deployment(
         db, SimpleNamespace(), run.project_id, run.id, client
     )
-    client.delete_model_deployment.assert_called_once_with(run.k8s_job_name)
-    assert run.tags["runtime_cleaned_at"]
-    assert run.tags["desired_state"] == "deployment_cleaned"
+    client.delete_model_deployment.assert_not_called()
+    assert "runtime_cleaned_at" not in run.tags
+    assert run.tags["desired_state"] == "deployment_cleanup_pending"
 
 
 def test_stopped_deployment_can_resume_until_runtime_is_cleaned(monkeypatch):
+    _stub_lifecycle_custody(monkeypatch)
     from unittest.mock import MagicMock
 
     run = _deployment_run()
     run.status = RunStatus.CANCELLED
     run.tags = {"desired_state": "deployment_stopped"}
     run.params = {"replicas": 2}
-    db = SimpleNamespace(scalar=lambda _: run, flush=lambda: None)
+    db = SimpleNamespace(
+        scalar=lambda _: run, flush=lambda: None, get=lambda *a, **kw: SimpleNamespace(settings={})
+    )
     client = MagicMock()
     monkeypatch.setattr(operations_service, "require_project_role", lambda *_: None)
+    monkeypatch.setattr(operations_service, "deployment_model_custody", lambda *_: None)
     operations_service.start_model_deployment(db, SimpleNamespace(), run.project_id, run.id, client)
-    client.start_model_deployment.assert_called_once_with(run.k8s_job_name, 2)
-    assert run.status == RunStatus.RUNNING
+    client.start_model_deployment.assert_not_called()
+    assert run.status == RunStatus.QUEUED
     assert run.finished_at is None
     operations_service.start_model_deployment(db, SimpleNamespace(), run.project_id, run.id, client)
-    client.start_model_deployment.assert_called_once()
+    client.start_model_deployment.assert_not_called()
     operations_service.stop_model_deployment(db, SimpleNamespace(), run.project_id, run.id, client)
     operations_service.cleanup_model_deployment(
         db, SimpleNamespace(), run.project_id, run.id, client
@@ -1636,6 +1692,7 @@ def test_deployment_lifecycle_handles_missing_runtime_without_hiding_provider_fa
 
     from kubernetes.client import ApiException
 
+    _stub_lifecycle_custody(monkeypatch)
     run = SimpleNamespace(
         id=uuid.uuid4(),
         project_id=uuid.uuid4(),
@@ -1649,6 +1706,7 @@ def test_deployment_lifecycle_handles_missing_runtime_without_hiding_provider_fa
     )
     db, client = MagicMock(), MagicMock()
     monkeypatch.setattr(operations_service, "_locked_deployment", lambda *a: run)
+    monkeypatch.setattr(operations_service, "deployment_model_custody", lambda *_: None)
     method = {
         "stop": "shutdown_model_deployment",
         "start": "start_model_deployment",
@@ -1656,22 +1714,11 @@ def test_deployment_lifecycle_handles_missing_runtime_without_hiding_provider_fa
     }[operation]
     getattr(client, method).side_effect = ApiException(status=kubernetes_status)
     action = getattr(operations_service, f"{operation}_model_deployment")
-    if kubernetes_status == 404 and operation != "start":
-        action(db, SimpleNamespace(), run.project_id, run.id, client)
-        assert run.status == RunStatus.CANCELLED
-        if operation == "cleanup":
-            assert run.tags["runtime_cleaned_at"]
-    else:
-        expected = HTTPException if kubernetes_status == 404 else ApiException
-        with pytest.raises(expected) as error:
-            action(db, SimpleNamespace(), run.project_id, run.id, client)
-        assert (
-            error.value.status_code
-            if isinstance(error.value, HTTPException)
-            else error.value.status
-        ) == (409 if kubernetes_status == 404 else kubernetes_status)
-        assert "runtime_cleaned_at" not in run.tags
-        db.flush.assert_not_called()
+    action(db, SimpleNamespace(), run.project_id, run.id, client)
+    assert run.status == (RunStatus.QUEUED if operation == "start" else RunStatus.CANCELLED)
+    assert run.tags["desired_state"] == f"deployment_{operation}_pending"
+    assert "runtime_cleaned_at" not in run.tags
+    assert not client.mock_calls
 
 
 @pytest.mark.parametrize("operation", ["stop", "cleanup"])
@@ -1680,6 +1727,11 @@ def test_deployment_cleanup_does_not_require_a_runtime_that_was_never_created(
 ):
     from unittest.mock import MagicMock
 
+    monkeypatch.setattr(
+        operations_service,
+        "lifecycle_custody",
+        lambda *_, **_kwargs: {"unstarted": True, "retired": True},
+    )
     run = SimpleNamespace(
         id=uuid.uuid4(),
         project_id=uuid.uuid4(),

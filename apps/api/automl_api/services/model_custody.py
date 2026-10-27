@@ -6,9 +6,10 @@ from types import SimpleNamespace
 
 from sqlalchemy import select
 
-from automl_api.models.enums import WorkflowStage
-from automl_api.models.runs import ModelRun
-from automl_api.models.workflows import WorkflowAttempt
+from automl_api.models.enums import ArtifactKind, ProjectStatus, RunKind, WorkflowStage
+from automl_api.models.projects import Project
+from automl_api.models.runs import ModelRegistryEntry, ModelRun, RunArtifact
+from automl_api.models.workflows import DeletionTombstone, WorkflowAttempt
 from automl_api.services.attempt_object_grants import output_completion
 from automl_api.services.training_model_output import (
     _authorized_model_reference,
@@ -87,7 +88,9 @@ def registered_model_custody(db, registry, artifact):
         )
     except (ValueError, KeyError, TypeError):
         raise StaleFence("Registry custody history is malformed") from None
-    if stored != current or artifact.byte_size not in (None, current["completion"]["byte_size"]):
+    if canonical_request_hash(stored) != canonical_request_hash(
+        current
+    ) or artifact.byte_size not in (None, current["completion"]["byte_size"]):
         raise StaleFence("Registry custody differs from its original model completion")
     verified = registry.registry_metadata.get("native_custody_digest")
     if (
@@ -100,7 +103,62 @@ def registered_model_custody(db, registry, artifact):
     return current
 
 
-def verify_model_custody(store, custody):
+def deployment_model_custody(db, run):
+    try:
+        registry_id = uuid.UUID(run.tags["registry_entry_id"])
+        artifact_id = uuid.UUID(run.tags["model_artifact_id"])
+    except (ValueError, KeyError, TypeError, AttributeError):
+        raise StaleFence("Deployment model binding requires controlled qualification") from None
+    project = db.get(
+        Project, run.project_id, with_for_update={"read": True}, populate_existing=True
+    )
+    registry = db.get(
+        ModelRegistryEntry, registry_id, with_for_update={"read": True}, populate_existing=True
+    )
+    artifact = db.get(
+        RunArtifact, artifact_id, with_for_update={"read": True}, populate_existing=True
+    )
+    if (
+        run.run_kind != RunKind.DEPLOYMENT
+        or project is None
+        or project.status != ProjectStatus.ACTIVE
+        or registry is None
+        or registry.project_id != run.project_id
+        or registry.model_artifact_id != artifact_id
+        or artifact is None
+        or artifact.project_id != run.project_id
+        or artifact.kind != ArtifactKind.MODEL_OBJECT
+    ):
+        raise StaleFence("Deployment model authority changed")
+    deleting = db.scalar(
+        select(DeletionTombstone.id)
+        .where(
+            DeletionTombstone.project_id == run.project_id,
+            (DeletionTombstone.resource_type == "project")
+            | (
+                (DeletionTombstone.resource_type == "run")
+                & DeletionTombstone.resource_id.in_([run.id, registry.model_run_id])
+            )
+            | (
+                (DeletionTombstone.resource_type == "run_artifact")
+                & (DeletionTombstone.resource_id == artifact_id)
+            ),
+        )
+        .limit(1)
+    )
+    if deleting is not None:
+        raise StaleFence("Deployment model is being deleted")
+    custody = registered_model_custody(db, registry, artifact)
+    digest = canonical_request_hash(custody)
+    if (
+        run.tags.get("model_custody_digest") != digest
+        or registry.registry_metadata.get("native_custody_digest") != digest
+    ):
+        raise StaleFence("Deployment original model custody changed or is unqualified")
+    return custody
+
+
+def verify_model_custody(store, custody, *, sink=None):
     completion = custody["completion"]
     version = immutable_object_version(completion["object_version"])
     deadline = time.monotonic() + 60
@@ -112,6 +170,8 @@ def verify_model_custody(store, custody):
             value = source.read(size)
             if time.monotonic() >= deadline:
                 raise TimeoutError("Registry model verification deadline elapsed")
+            if sink is not None:
+                sink.write(value)
             return value
 
         _verify_bytes(SimpleNamespace(read=read), completion["byte_size"], completion["sha256"])

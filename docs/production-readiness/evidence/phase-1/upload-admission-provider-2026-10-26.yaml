@@ -1,0 +1,181 @@
+date: '2026-10-26'
+phase: 1
+scope: upload-admission-provider
+status: scoped_acceptance_verified
+phase_complete: false
+full_upload_admission_complete: false
+source_inputs: 649
+source_manifest_sha256: ecd0a940168695913930343332e824036eb7d6252cb1c59e50fcda33f6751795
+private_evidence_directory: .unlazy/phase1-upload-admission-provider
+checks:
+  focused:
+    passed: 78
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43652595712
+    xml_sha256: b18b4f75e3a7af8492d0e4ab6b276701415a6581e662844d332e86c2ad701e60
+  sdk:
+    passed: 63
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43652382720
+    xml_sha256: 7232a4c6566e2b178df8e65745e25538e082be218f68ce422f1b6aade7a1e227
+  services:
+    passed: 178
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43651710976
+    xml_sha256: 259e6324da79c28d0ace58ad29e94669ca7bfa9b8636eb11c282351b5b4144a3
+  connected:
+    passed: 212
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43646287872
+    xml_sha256: 31dab4433a3b48a401f1b0ab567a3d5db11696a88c9e4b93ba6a884a7113496b
+  workflow:
+    passed: 74
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43651252224
+    xml_sha256: bafbe72bd28431d1a166d43e39c2ac236e5aa926b313410bf8a87a3508d9c58d
+  verification:
+    passed: 116
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43651051520
+    xml_sha256: 2e36b7dd3e6a3d7d7550b900f7c31ddef3d41ffc69dd5d42639b2007672c8de3
+  worker:
+    passed: 28
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43650703360
+    xml_sha256: c4a2645f9b0c91b3c6e28a2f91baf2ffe7c9d93df42b2c0e645be8198ea3baab
+  provider:
+    passed: 210
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43650490368
+    xml_sha256: 3d326fd1971bfcef7884eb022de6064fd8271f7fdeeb2a773e47aedce691463a
+  staged:
+    passed: 171
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43650232320
+    xml_sha256: a7732fa4b5b00e3feafe40bb1fc4b1ed2284ab64670b915f7b03c6a668a54151
+counts_overlap: true
+evidence_hashes:
+  source-sha256.json: ecd0a940168695913930343332e824036eb7d6252cb1c59e50fcda33f6751795
+  before-source-sha256.json: 23ae3cae17d45087b1e5fe3dabbd315f845db04f1f23b3488847654c11cfe2c2
+  run.py: e0d4f4c0ea00ab2c768eb32d6e182eed00998247e829126c3b16532a41deebe6
+  baseline-run.py: 1f854630c63504bc632301122c0aa5e3d9cf2d11a1fba2ee14f4728d7519674c
+  audit.py: 25c98c88bb0d67fd4bc8d0df6026808def3ef45f40a6ec98f49752ba889e4675
+  before-s3.py: 7f9db7d15db2c42423d2de36ff03997b56515e6ede61ca7cb252f5d22a9f1b12
+  before-drivers.py: 9c3d0f3fce03d7224b167b394030c293575300a9bf5ed8d1640f2fc64079c3e1
+  before-custody.py: 28c5c07ca188c0e5fc03c64e7204bdc862c453300249529a85819e8381d3ccaa
+  baseline-source-sha256.json: 3466de952fc585696cb50e212b509ce161a16f137e33ca9518d062bdd8dba702
+  baseline-state.json: 1e00df30ed1c78ce2098a73cb682e5e1cb5186264cf352e7ef569cbbe23a2600
+  baseline.xml: 3f495f02ba62d7fa18e74c886ddab0146ff668f739d3bca465f82131941da9fa
+  sdk-first-sdk.xml: f0abec35893d9f113f5c535583cdf89a0f5a6bf328e89ff726ab86fc2cf9ffa1
+  sdk-first-sdk-state.json: d840430df31e2ab96954da41f3dc3e8b0c09a9b5cf9e425d8704fcb7e7bdf96b
+  sdk-first-source-sha256.json: af0886aff5e98b641539cb092e40cafc416994507536d027a8a52b0cc9a165d1
+  focused-state.json: c9fd0d0ff4a3832966efdd3fe853775854bf079958730a178ad76fe1a9b913ab
+  focused.xml: b18b4f75e3a7af8492d0e4ab6b276701415a6581e662844d332e86c2ad701e60
+  sdk-state.json: a8d2e811a44e72df0f1fc4611ad9b1551221532c267791693c104259899409b1
+  sdk.xml: 7232a4c6566e2b178df8e65745e25538e082be218f68ce422f1b6aade7a1e227
+  services-state.json: 33d4fbb9321f94d61b425f6b188c1cb3b942324d7e9b5e08486021e1b5a7589e
+  services.xml: 259e6324da79c28d0ace58ad29e94669ca7bfa9b8636eb11c282351b5b4144a3
+  connected-state.json: f81870e86980576ded17b356f909d35bb345e4d01c21f2a73fbf521bf4d7c6e1
+  connected.xml: 31dab4433a3b48a401f1b0ab567a3d5db11696a88c9e4b93ba6a884a7113496b
+  workflow-state.json: 1db4fd1c6ba6a30d8b3e4eb4f503698eb49d55f7d1b8982905939ec80c7c03ce
+  workflow.xml: bafbe72bd28431d1a166d43e39c2ac236e5aa926b313410bf8a87a3508d9c58d
+  verification-state.json: f91b4ad1b807e26c657a3c5c6df7e9e219fe3cc99bcad1ae6dda7ed37b6d2568
+  verification.xml: 2e36b7dd3e6a3d7d7550b900f7c31ddef3d41ffc69dd5d42639b2007672c8de3
+  worker-state.json: 8537f1b086bb7cda3d524ab00d6fc4cd0077242306a2d8a438eb2f3b27bc85a4
+  worker.xml: c4a2645f9b0c91b3c6e28a2f91baf2ffe7c9d93df42b2c0e645be8198ea3baab
+  provider-state.json: b7d5ec9ceac2384d2560d7f93ef952356a800e4921126e3818afe0f90a0b7a65
+  provider.xml: 3d326fd1971bfcef7884eb022de6064fd8271f7fdeeb2a773e47aedce691463a
+  staged-state.json: 80bad3f862342d289213f9163f983b9f7536abb834332afde6ee3ee62d2ed6ad
+  staged.xml: a7732fa4b5b00e3feafe40bb1fc4b1ed2284ab64670b915f7b03c6a668a54151
+provider_inventory_gates:
+  met: 3
+  unmet: 0
+upload_completion_gates:
+  met: 0
+  unmet: 6
+parent_inference_gates:
+  met: 0
+  unmet: 8
+phase_1_requirements:
+  verified: 2
+  open: 34
+original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+baseline:
+  tests: 60
+  failed: 58
+  passed: 2
+  errors: 0
+  skips: 0
+behavior:
+- S3 begin retry lookup now requests at most 100 pages of 1,000 multipart entries and follows both native
+  markers. A complete inventory with one exact-key identity can replay it without creating another upload.
+  Prefix neighbors are never adopted.
+- Multiple exact-key identities are an explicit ambiguous history; no oldest/newest upload is silently
+  chosen. Foreign/malformed inventory, missing truncation state, invalid IDs, repeated/regressing markers,
+  changed marker echoes, page errors or budget exhaustion cannot become absence or authorize creation.
+- Native creation response IDs are no longer string-coerced from null/bool/empty values. IDs are bounded
+  and control-free, and returned bucket/key must match if present. SDK total_max_attempts must be 1 before
+  listing or creation.
+- The 78 focused cases include eight installed-SDK/local-HTTP pagination, accepted-creation-response-loss
+  and ambiguous-later-page controls across AWS and compatible modes. These are library/HTTP boundary tests,
+  not deployed cloud provider qualification.
+- The negative baseline genuinely failed 58 of 60 cases before the production fix. All failed baseline
+  cases now pass. Eighteen later cases add SDK and page-transition permission/transport/scope controls;
+  the neighbor positive verifies retained provider state and no abort.
+- The first connected SDK pilot passed 62 and failed 1 because an existing completion test configured
+  retries before its positive begin setup. Configuration now changes only after successful begin, so the
+  independent completion retry refusal remains tested. Its failure artifacts are retained.
+- All nine profiles pass on the same 649-input snapshot. Existing real-PostgreSQL completion/retirement,
+  concurrency, retention and process-loss tests remain in connected profiles. Suites overlap; counts must
+  not be added.
+- The oracle checks current source and terminal evidence, every selected test function, known failing
+  baselines, lint/format, strict read-only schema0018/44tables, the original coverage file and the 43.5
+  GB reserve. Its self-check rejects stale/running/failed/under-reserve/wrong-runtime evidence. Shared
+  k3d namespace/service identity checks are read-only.
+reference: https://docs.aws.amazon.com/cli/v1/reference/s3api/list-multipart-uploads.html
+limits:
+  user_database_ceiling_bytes: 45000000000
+  largest_table_rows: null
+  production_sized_migration: unqualified
+  large_upload_load: unqualified
+  maintained_images: unqualified
+  deployed_cloud_iam: unqualified
+  whole_phase_1: unqualified
+  missing_historical_objects: 7
+  whole_branch_coverage: unqualified
+  prior_binary_mixed_version: unqualified
+  full_deployed_native_journeys: unqualified
+remaining:
+- 'Factory-owned begin admission is still required: current provider creation runs under durable_mutation
+  and SQL. Native lookup alone does not prove the request payload/digest, reserve quota before I/O, persist
+  a known reply through actor revocation or solve all API process-loss windows.'
+- Transfer-instruction/progress native I/O also remains in SQL. Unpublished future admission records must
+  not reach these callers or completion/retirement using empty native IDs. Full upload-completion and
+  parent inference scopes remain 0/6 and 0/8.
+- The earlier retirement 3/3 is a historical 648-input checkpoint. Current connected profiles re-exercise
+  its 46 workflow cases on 649 inputs; this report does not relabel its old source binding as current
+  or promote a whole Phase1 requirement.
+- UI source is unchanged from the previous 60-test/Node24 checkpoint; no browser tests were re-run for
+  this Python-only increment. No maintained image, cloud IAM, actual deployed provider or new native mutation
+  is claimed.
+- The 45 GB physical-byte migration target and deferred 15-by-10-GiB campaign remain unqualified. Largest-table
+  row counts remain unspecified. Original deletion:G7 requires seven missing historical objects; none
+  were reconstructed or re-signed.

@@ -9,6 +9,7 @@ from automl_api.core.config import Settings
 from automl_api.models.enums import TaskType
 from automl_api.schemas.training import ClusterCapacityRead
 from automl_api.services import kubernetes_training as kube
+from deployment_observer_helpers import deployment_state, deployment_urls
 from kubernetes.client import ApiException
 
 
@@ -18,6 +19,24 @@ def _client(settings: Settings | None = None) -> kube.KubernetesTrainingClient:
     value._configured = True
     value._configuration_error = None
     return value
+
+
+def _deployment_manifests(client):
+    return client.build_model_deployment_manifest(
+        identity_ca_digest="c" * 64,
+        identity_control_base_url="https://control.invalid/api/v1/internal/deployments",
+        deployment_id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        project_name="Owned",
+        environment="test",
+        model_name="Ridge",
+        model_uri="s3://owned/model",
+        model_digest="a" * 64,
+        image="registry.invalid/fixture:never",
+        replicas=0,
+        cpu_request="250m",
+        memory_request="256Mi",
+    )
 
 
 def _capacity(**overrides: object) -> ClusterCapacityRead:
@@ -207,7 +226,7 @@ def test_create_job_delegates_exact_manifest() -> None:
     assert calls[0]["body"] is manifest
 
 
-def test_model_deployment_creation_rolls_back_on_service_or_ingress_failure() -> None:
+def test_model_deployment_creation_preserves_resources_on_later_failure() -> None:
     client = _client()
     deleted: list[str] = []
     client.apps = SimpleNamespace(
@@ -218,13 +237,10 @@ def test_model_deployment_creation_rolls_back_on_service_or_ingress_failure() ->
         create_namespaced_service=lambda **_kw: _raise(500),
         delete_namespaced_service=lambda **_kw: _raise(404),
     )
-    manifests = {
-        "deployment": {"metadata": {"name": "dep"}},
-        "service": {"metadata": {"name": "svc"}},
-    }
+    manifests = _deployment_manifests(client)
     with pytest.raises(ApiException):
         client.create_model_deployment(manifests)
-    assert deleted == ["dep"]
+    assert deleted == []
 
 
 @pytest.mark.parametrize(
@@ -261,7 +277,7 @@ def test_model_deployment_state_matrix(
     )
     client.apps = SimpleNamespace(read_namespaced_deployment_status=lambda **_kw: deployment)
     client.core = SimpleNamespace(list_namespaced_pod=lambda **_kw: SimpleNamespace(items=[pod]))
-    assert client.model_deployment_state("model") == expected
+    assert deployment_state(client, "model") == expected
 
 
 def test_model_deployment_state_ready_missing_and_api_error() -> None:
@@ -271,12 +287,12 @@ def test_model_deployment_state_ready_missing_and_api_error() -> None:
             spec=SimpleNamespace(replicas=1), status=SimpleNamespace(available_replicas=1)
         )
     )
-    assert client.model_deployment_state("model") == "ready"
+    assert deployment_state(client, "model") == "ready"
     client.apps = SimpleNamespace(read_namespaced_deployment_status=lambda **_kw: _raise(404))
-    assert client.model_deployment_state("model") == "missing"
+    assert deployment_state(client, "model") == "missing"
     client.apps = SimpleNamespace(read_namespaced_deployment_status=lambda **_kw: _raise(500))
     with pytest.raises(ApiException):
-        client.model_deployment_state("model")
+        deployment_state(client, "model")
 
 
 def _service(service_type: str, *, host: str | None = None, node_port: int | None = None):
@@ -293,7 +309,7 @@ def test_model_deployment_url_modes() -> None:
     client.core = SimpleNamespace(
         read_namespaced_service=lambda **_kw: _service("LoadBalancer", host="model.test")
     )
-    assert client.model_deployment_urls("model")["base_url"].endswith(":8080")
+    assert deployment_urls(client, "model")["base_url"].endswith(":8080")
 
     client.settings = Settings(
         inference_service_type="NodePort", inference_external_host="127.0.0.1"
@@ -301,26 +317,25 @@ def test_model_deployment_url_modes() -> None:
     client.core = SimpleNamespace(
         read_namespaced_service=lambda **_kw: _service("NodePort", node_port=30123)
     )
-    assert "30123" in client.model_deployment_urls("model")["base_url"]
+    assert "30123" in deployment_urls(client, "model")["base_url"]
 
     client.core = SimpleNamespace(
         read_namespaced_service=lambda **_kw: SimpleNamespace(
             spec=SimpleNamespace(ports=[], type="ClusterIP")
         )
     )
-    assert client.model_deployment_urls("model") is None
+    assert deployment_urls(client, "model") is None
 
 
 def test_delete_deployment_ignores_404_and_cleanup_finished_jobs() -> None:
-    client = _client(Settings(inference_ingress_enabled=True))
-    calls: list[str] = []
-    client.networking = SimpleNamespace(delete_namespaced_ingress=lambda **_kw: _raise(404))
-    client.core = SimpleNamespace(delete_namespaced_service=lambda **_kw: _raise(404))
-    client.apps = SimpleNamespace(
-        delete_namespaced_deployment=lambda **kw: calls.append(kw["name"])
-    )
-    client.delete_model_deployment("model")
-    assert calls == ["model"]
+    from test_deployment_lifecycle_identity import identity_client
+
+    custody = identity_client(ingress=True, name="model")
+    client = custody.k8s
+    custody.stored.pop("ingress")
+    custody.stored.pop("service")
+    client.delete_model_deployment("model", custody=custody.target)
+    assert [kw["name"] for _, _, kw in custody.mutations] == ["model"]
 
     jobs = [
         SimpleNamespace(
@@ -334,6 +349,7 @@ def test_delete_deployment_ignores_404_and_cleanup_finished_jobs() -> None:
         ),
     ]
     client.batch = SimpleNamespace(list_namespaced_job=lambda **_kw: SimpleNamespace(items=jobs))
+    calls = []
     client.delete_job = lambda name: _raise(404) if name == "gone" else calls.append(name)
     assert client.cleanup_finished_jobs(uuid.uuid4()) == ["done", "gone"]
 
@@ -662,6 +678,9 @@ def test_model_manifest_and_creation_include_ingress_tls() -> None:
         )
     )
     manifests = client.build_model_deployment_manifest(
+        model_digest="a" * 64,
+        identity_ca_digest="c" * 64,
+        identity_control_base_url="https://control.invalid/api/v1/internal/deployments",
         deployment_id=uuid.uuid4(),
         project_id=uuid.uuid4(),
         project_name="Project",
@@ -697,22 +716,27 @@ def test_model_deployment_urls_ingress_and_error_paths() -> None:
     client.core = SimpleNamespace(read_namespaced_service=lambda **_kw: _service("ClusterIP"))
     ingress = SimpleNamespace(
         status=SimpleNamespace(load_balancer=SimpleNamespace(ingress=[object()])),
-        spec=SimpleNamespace(rules=[SimpleNamespace(host="model.example.test")]),
+        spec=SimpleNamespace(
+            rules=[SimpleNamespace(host="model.example.test")], tls=[{"secretName": "tls"}]
+        ),
     )
     client.networking = SimpleNamespace(read_namespaced_ingress_status=lambda **_kw: ingress)
-    assert client.model_deployment_urls("model")["base_url"] == "https://model.example.test"
+    assert deployment_urls(client, "model")["base_url"] == "https://model.example.test"
     client.networking.read_namespaced_ingress_status = lambda **_kw: _raise(404)
-    assert client.model_deployment_urls("model") is None
+    assert deployment_urls(client, "model") is None
     client.networking.read_namespaced_ingress_status = lambda **_kw: _raise(500)
     with pytest.raises(ApiException):
-        client.model_deployment_urls("model")
+        deployment_urls(client, "model")
 
 
 def test_delete_and_cleanup_propagate_non_not_found_errors() -> None:
-    client = _client(Settings(inference_ingress_enabled=True))
-    client.networking = SimpleNamespace(delete_namespaced_ingress=lambda **_kw: _raise(500))
+    from test_deployment_lifecycle_identity import identity_client
+
+    custody = identity_client(ingress=True, name="model")
+    client = custody.k8s
+    client.networking.delete_namespaced_ingress = lambda **_kw: _raise(500)
     with pytest.raises(ApiException):
-        client.delete_model_deployment("model")
+        client.delete_model_deployment("model", custody=custody.target)
 
     client = _client()
     job = SimpleNamespace(
@@ -815,18 +839,18 @@ def test_job_logs_decode_bytes_and_resource_usage_terminated_reason() -> None:
 
 
 def test_non_not_found_api_errors_propagate_and_ingress_delete_is_optional() -> None:
-    client = _client(Settings(inference_ingress_enabled=False))
-    deleted: list[str] = []
-    client.core = SimpleNamespace(delete_namespaced_service=lambda **_kw: deleted.append("service"))
-    client.apps = SimpleNamespace(
-        delete_namespaced_deployment=lambda **_kw: deleted.append("deployment")
-    )
-    client.delete_model_deployment("model")
-    assert deleted == ["service", "deployment"]
+    from test_deployment_lifecycle_identity import identity_client
 
-    client.core = SimpleNamespace(delete_namespaced_service=lambda **_kw: _raise(500))
+    custody = identity_client(name="model")
+    client = custody.k8s
+    client.delete_model_deployment("model", custody=custody.target)
+    assert [kind for kind, _, _ in custody.mutations] == ["service", "deployment"]
+
+    custody = identity_client(name="model")
+    client = custody.k8s
+    client.core.delete_namespaced_service = lambda **_kw: _raise(500)
     with pytest.raises(ApiException):
-        client.delete_model_deployment("model")
+        client.delete_model_deployment("model", custody=custody.target)
 
     client.batch = SimpleNamespace(read_namespaced_job_status=lambda **_kw: _raise(500))
     with pytest.raises(ApiException):
@@ -912,12 +936,7 @@ def test_manifest_creation_without_ingress_and_tls_without_class() -> None:
         create_namespaced_deployment=lambda **_kw: calls.append("deployment")
     )
     client.core = SimpleNamespace(create_namespaced_service=lambda **_kw: calls.append("service"))
-    client.create_model_deployment(
-        {
-            "deployment": {"metadata": {"name": "model"}},
-            "service": {"metadata": {"name": "model"}},
-        }
-    )
+    client.create_model_deployment(_deployment_manifests(client))
     assert calls == ["deployment", "service"]
 
     client = _client(
@@ -929,6 +948,9 @@ def test_manifest_creation_without_ingress_and_tls_without_class() -> None:
         )
     )
     manifests = client.build_model_deployment_manifest(
+        model_digest="a" * 64,
+        identity_ca_digest="c" * 64,
+        identity_control_base_url="https://control.invalid/api/v1/internal/deployments",
         deployment_id=uuid.uuid4(),
         project_id=uuid.uuid4(),
         project_name="Project",
@@ -947,12 +969,12 @@ def test_manifest_creation_without_ingress_and_tls_without_class() -> None:
 def test_external_url_requires_admitted_host() -> None:
     client = _client(Settings(inference_service_type="LoadBalancer"))
     client.core = SimpleNamespace(read_namespaced_service=lambda **_kw: _service("LoadBalancer"))
-    assert client.model_deployment_urls("model") is None
+    assert deployment_urls(client, "model") is None
     service = _service("LoadBalancer", host="ignored")
     service.status.load_balancer.ingress[0].hostname = None
     service.status.load_balancer.ingress[0].ip = None
     client.core.read_namespaced_service = lambda **_kw: service
-    assert client.model_deployment_urls("model") is None
+    assert deployment_urls(client, "model") is None
 
 
 def test_failure_detail_and_log_branch_fallthroughs(monkeypatch) -> None:

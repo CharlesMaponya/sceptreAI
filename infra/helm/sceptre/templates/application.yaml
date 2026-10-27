@@ -39,6 +39,9 @@ spec:
       terminationGracePeriodSeconds: 45
       securityContext:
         seccompProfile: {type: RuntimeDefault}
+        {{- if .Values.inference.identity.caSecret }}
+        fsGroup: 10001
+        {{- end }}
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- range . }}
@@ -81,6 +84,10 @@ spec:
             - configMapRef:
                 name: {{ include "sceptre.fullname" . }}-config
           env:
+            {{- if .Values.inference.identity.caSecret }}
+            - {name: INFERENCE_IDENTITY_CA_CERTIFICATE_FILE, value: /inference-authority/ca.crt}
+            - {name: INFERENCE_IDENTITY_CA_PRIVATE_KEY_FILE, value: /inference-authority/ca.key}
+            {{- end }}
             {{- if .Values.providerImports.policiesConfigMap }}
             - {name: PROVIDER_IMPORT_POLICIES_FILE, value: /provider-import/policies.json}
             {{- end }}
@@ -181,7 +188,17 @@ spec:
             - {name: evaluation-authority, mountPath: /evaluation-authority, readOnly: true}
             {{- end }}
             - {name: tmp, mountPath: /tmp}
+            {{- if .Values.inference.identity.caSecret }}
+            - {name: inference-authority, mountPath: /inference-authority, readOnly: true}
+            {{- end }}
       volumes:
+        {{- if .Values.inference.identity.caSecret }}
+        - name: inference-authority
+          secret:
+            secretName: {{ .Values.inference.identity.caSecret | quote }}
+            defaultMode: 0440
+            items: [{key: ca.crt, path: ca.crt}, {key: ca.key, path: ca.key}]
+        {{- end }}
         {{- if .Values.providerImports.policiesConfigMap }}
         - name: provider-import
           configMap:

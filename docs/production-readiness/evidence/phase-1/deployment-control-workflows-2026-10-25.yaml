@@ -1,0 +1,178 @@
+date: '2026-10-25'
+scope: deployment-control-workflows
+phase: 1
+phase_complete: false
+source_inputs: 590
+source_manifest_sha256: c8236a6a4effc7711dcd2f39c7d7805a948983b0ec1e04a0a4973f09ea82e235
+checks:
+  passed: 273
+  focused: 22
+  failures: 0
+  errors: 0
+  skips: 0
+  original_negative_control_failures: 3
+  strict_schema: 0018_attempt_predecessor_lineage
+  repository_ruff: pass
+  changed_hunk_format: pass
+  ci_preflights: 3
+  native_k3d_cases: 1
+  ui_cases: 23
+  ui_types: pass
+  ui_lint: pass
+  actual_postgresql_backend_termination: true
+  captured_predecessor_refusal: true
+  scoped_gates_reverified: 4
+behavior:
+- Stop/start/cleanup admission is SQL-only. The existing HTTP response shape carries
+  logical cancellation or queued restart and an explicit pending state. One immutable
+  original control command and outbox entry per locked generation handle concurrent
+  duplicate admission.
+- The factory-owned deployment.control.v1 dispatcher commits original custody, delivery
+  and patch intent before native I/O. It releases SQL before every Kubernetes call
+  and saves original native observations independently of lease loss; only the current
+  original command/delivery/generation can publish completion.
+- Every control patch tests original UID and observed resourceVersion and changes
+  generation/command annotations even when replicas already match. A delayed older
+  no-op scale cannot bypass the newer native generation. Recovery observes an accepted
+  original generation before issuing another write.
+- Cleanup admission rejects future restart. Cleanup verifies the original native generation
+  and all targets, uses UID plus resourceVersion delete preconditions, waits for original
+  resources and labeled workloads to disappear, and commits original retirement before
+  releasing the submission deletion barrier.
+- Start rechecks active actor, project permission and original model custody. Pending
+  controls cannot be promoted by the deployment listing. UI displays starting/stopping/cleaning
+  and allows a new control generation after an observed control failure.
+- Pending garbage collection, native CAS conflicts and lost transport/database acknowledgements
+  defer without consuming the failure budget. Source/custody/lease conflicts fail
+  closed. Provider failures retain normal bounded retries and visible failed controls.
+- Qualified complete original v3 creation receipts must already be delivered. Known
+  unstarted modern cancellation stays SQL-only. Legacy/partial/unknown producer histories
+  require controlled qualification and are not silently adopted.
+native_kubernetes:
+  provider: owned local k3d-sceptre
+  tls_verified: true
+  zero_replica_resources: true
+  pods_started: 0
+  sql_connections_during_native_calls: 0
+  accepted_control_patch_generations:
+  - 1
+  - 2
+  patch_attempts: 2
+  lost_ack_recovered_without_second_patch: true
+  stale_patch_status: 422
+  stale_delete_status: 409
+  explicit_resource_uids_retired: 2
+  owned_namespace_retired: true
+  shared_fixture_namespace_uid_preserved: true
+  maintained_image_tested: false
+  positive_replica_restart_qualified: false
+  cloud_iam_qualified: false
+retained_failures:
+- The three unchanged baseline control bodies reproduced synchronous native writes
+  during admission; all now pass.
+- The first expanded run passed ten cases and failed the SQL fault injector because
+  str(Jsonb) truncates its payload. The injector now examines the typed original Jsonb.obj
+  and verifies actual pg_terminate_backend; the retained eleven-case checkpoint passes.
+- A later draft attempted to inspect an expired ORM command outside its session. Capturing
+  its ID inside the session repaired the fixture; the retained seventeen-case checkpoint
+  passes.
+- The retained twenty-one-case checkpoint verifies actor revocation, pending listing
+  and terminating deployment recovery. A subsequent evidence preparation assertion
+  stopped before changing its test/driver; the existing driver completed normally
+  and its terminal artifacts remain retained.
+- Final SDK review found direct urllib3 HTTPError timeouts outside the lost-ack wait
+  path. The owned regression process group was interrupted deliberately, its partial/terminal
+  evidence retained, and OS-error plus real SDK ReadTimeoutError cases now prove zero
+  retry-budget use and recovery without another patch. The native probe is repeated
+  on the final frozen inputs.
+limits:
+  requirements:
+    total: 36
+    verified: 2
+    open: 34
+  user_database_ceiling_bytes: 45000000000
+  largest_table_rows: not supplied
+  free_disk_reserve_bytes: 43500000000
+  minimum_observed_free_bytes_during_regression: 43840380928
+  scale_qualified: false
+  required_handoff: Original phase1-deletion:G7 remains abandoned for seven missing
+    original historical QA objects (2 models,5 signed results); do not reconstruct
+    or re-sign.
+  remaining:
+  - Native active deployment observers still require SQL separation and complete lifecycle
+    custody; pending controls alone are protected here.
+  - Namespace admission fencing for creation, legacy/partial/unknown creation recovery
+    and complete worker credential withdrawal/IAM/network restrictions remain required.
+  - The native probe never starts an inference Pod or tests positive-replica restart,
+    a maintained image, cloud IAM or complete native process/finalizer failure campaigns.
+  - Current full backend/release and independent branch coverage >=90.01 percent,
+    maintained images, actual prior binaries/mixed versions/cloud providers and complete
+    native workflow journeys remain required.
+  - 45 GB migration qualification and 15 users each uploading 10 GiB require suitable
+    infrastructure; neither was run locally.
+evidence_hashes:
+  sdk-timeout-review-regression.log: dda1e49bf7c2c2a5542818b7016d008ed906c2d2a8bbff20c669e29e0a7faeef
+  sdk-timeout-review-regression-state.json: cd8247c7b6efa3e262443c12118c3570f9e0ad742ef4f4dd779284e701429792
+  sdk-timeout-review-source-sha256.json: 18ddf25763ce4963f6e0aea05f2192bc2cc226be3b27a5b48f3a7e39a2400fd5
+  regression-interruption-reason.txt: 5c1bc7c40c3a261baa2c71b29c1c95ca221596ad5c0b1d183716a67d672b197c
+  first-passing-native.log: 7a30015cb09743f3e04abea1e85b0859ad1488f5dd9a0429d4a6de234f045053
+  first-passing-native.xml: f5eada5ee17af4f3a6b7a74632e1104223b8350595bc75b5bb64565ec78f0702
+  first-passing-native-state.json: 76df15111c5c9c4d7219917fb2ecbb2374ee74ae7dca60b11c20bd84315584e9
+  first-passing-native-probe-state.json: f423de5b438340afbc0b83db6b720ecf1a88d7ce81e67e844ae5b1537aae353e
+  source-sha256.json: c8236a6a4effc7711dcd2f39c7d7805a948983b0ec1e04a0a4973f09ea82e235
+  before-source-sha256.json: 3389fd41a2f9a5b3c7a5f72057ab427594a244a36a51db1992f374ae82a2f36f
+  baseline-source-sha256.json: 6b9b6168bc95d4f78b6fba7537d2c4c1a8b0cf0390fc2d2527684a851cf122be
+  baseline-test.py: b89004b056cb0073180dd690f68e7d1d780da06cda16717407fbd268c9e62e92
+  run.py: d758a29d0bb6d35bc3c9d6d2d6adda7044555495599039e2a4e73fe80480c92c
+  run_ui.py: 8d6738b2840f00321485b2594fb74789c85472c4aeb926c6c9532eb712e6ef19
+  audit.py: 1895129c6ff641b19bceace7bb136d69fddca11532bce67a62a242bd321aba69
+  verify_predecessor.py: 078ff7e0fc0653992443abffd76039f4c6286e15d3b08659766b45852c5f8800
+  test_native_control.py: cb215cd1d759252f09b83762a8cc6d088e56e54e6ad2bd0aecbc41ea792560ad
+  native-probe-state.json: 1157c12f7dfe7697f22347633c4791c87d8de5926a6945dc317d7331d6f91811
+  lint.log: 82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18
+  preflight-0.log: 00c8dcf3b37f2eac6114a4c21f9f742c56e354ada6672f1b15189664820d92a5
+  preflight-1.log: a414947a0f058a04ee8ca14e4023b0661f0892a6cb81c082ba87469dd71ed9e9
+  preflight-2.log: dffd5dbca119ddf99cc5a088942e02d1127f7108463f4627161d74775ec7e554
+  ack.log: 92f10b6e8fd53d26bc336be0fbbda711852e0c0c7bec419db8dad2c73b97db91
+  ack.xml: 6fec34890c0988a820f1b9e8582d675a1b219d3a7b3bed14b6ba7f9aafc11563
+  ack-state.json: cff921acce70f9eb11396c537f834e9ec3dd2eb4bb21ad24eb00c49d9fcb9b5e
+  baseline.log: facd1b2645255fc436e985e84ae57da34de817d838f36a9b023575691a97dcc3
+  baseline.xml: fb6b9731d4c698e301ee91b7b9d5bb25f7285fef648b87e8719828d3d3c643dd
+  baseline-state.json: 4742cb4c74abe366b1e6d096051c358489e64661ec020fa667b1dbecc98a5b73
+  expanded-draft-focused.log: d9d48cda5827ee34ecfb16c3cb3d8fe64d37e59264fb4488594d6772b48bbf41
+  expanded-draft-focused.xml: 7fe9f6bae41b06a444873850561ddbc4d34ddbc5cbcffa7886a2856b324f71a4
+  expanded-draft-focused-state.json: 9d5fdff0650d8818ae158d715313d39d821767f88c057041c0ba1e8c46ece05d
+  eleven-passing-focused.log: 64000c35bd95fe32d60853c8afa5aa97b43ac8dbbbc4fd55b725d3ff68284337
+  eleven-passing-focused.xml: 70a750eba20ee962a7315924d368e556e9400057b0e2bcf916a7f6a9f82c9637
+  eleven-passing-focused-state.json: d09018a27d02d87fd950b76928ab3dedd381c5b038a10023e2d21cd448f31b21
+  seventeen-passing-focused.log: 1357f20c94e3cf6d3aa87d31778ff8bba56a564980a3395d8824f725c996358a
+  seventeen-passing-focused.xml: 010557b2bac4c652cd91143f9332eee681a9c1fe0fed318cb6a30ce3bc3b7ee9
+  seventeen-passing-focused-state.json: e51bb901f5ed0ec32bfaf07e7a9ffa41aef4b6c1b2ca594bac252f571bf87900
+  twenty-one-passing-focused.log: a3e00a890fc55cf9e4cb68b1711941bec00b315b1aec6422c51a8d402390babe
+  twenty-one-passing-focused.xml: 56e321ed07dce7a0dec8b659a1645c919f13a691b6faef7ee1d8b08f5f9f97d1
+  twenty-one-passing-focused-state.json: 714029480a425fee7a652447bfe3ca26699660fb17e6ddb360d634e43d82b9fe
+  focused.log: a7fb6054f0ffbbfdea6e6e60c0c95bf942769c626d888b2868d722954c29d027
+  focused.xml: 79e19176b755bb997cc90dad716b8ab5bfc6ffff8abd838d88a778ac0435c5fd
+  focused-state.json: 2bb3a552c7aad1ee4337101434b5c541ad1d44af7a2f81db2012318b1943ffa6
+  callers.log: 2435b119af82251d08593c51a8b9364a5c261c8ee4b0ffdd31c99598c750a1d2
+  callers.xml: 74a6ff1b868ffe16690ff22afc00d2f2a4a53d8147f1518ced9104efa041f27f
+  callers-state.json: e3cc23a3228c433cd12abde615b1d3a0749e93186e3b26a920f7b3392ab9207d
+  regression.log: fd73ea53c6133888ed08b024e8298ea84b439a7de2cb0ae40b778a81d15d877b
+  regression.xml: 024089ef0b9a55d5ec7bbdbf9f8f8769e6129064104fd520b722e66208704ec1
+  regression-state.json: 0ebcc8c881a6f49e1faa46805d922d8767448b30760d097a7d3247a55e916a8e
+  native.log: b37759e61a0eb83a752cb2e1e8f1f2b709cfc6a7300f149d783dd4c212623a4c
+  native.xml: 1914324e858e35c8ea41fb1be74e1cf55de881dd473e2e7d76172c2df7956395
+  native-state.json: 87eadc5b8a715d4b23b39c007688be413f39ddac489256eca2f8dfddb0449973
+  ui-tests.log: 9c11a4d105a03bad9f9ad22c812a4202e1f72be5d463b565a23feda2e3a994ba
+  ui-tests.xml: 458dc6be2f3f41762806760feebf366146e788b92fd7bfabf006387da849e8dc
+  ui-tests-state.json: 9ca05bf3375df815a5317d5f41ef86f854ccf991a1ccf1999a6c2a15a49a3529
+  ui-types.log: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  ui-types-state.json: 535164661618e5db763d1ebe0110ae90b0aaf16938702ae7a93acf24101cdfc2
+  ui-lint.log: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  ui-lint-state.json: d19d2c5b03bc782d2847647958045a82c8dfa58ba5f727d877853c6c89528ba2
+  repository-lint.log: 82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18
+  finalize_evidence.py: e2133f2037de1c0899feeb6d51cdd9fd8ec9a02cb643adf37843f9fb6575e205
+  format_hunks.py: 3cafc6c5331545bd12f570f96ba152ea6a0cc4a14bc633ce2369ca6e39436f20
+  eleven-passing-source-sha256.json: 61399c02acd632999acb0c17d722fba8233cc8d9b7b296ec49d3b13f27283713
+  seventeen-passing-source-sha256.json: 83a042754e6ece090c18984b03a5c0ff9c7e68eb1843c575e50de63b13132363
+  twenty-one-passing-source-sha256.json: 228c3aaad4573ba58448c0cb4b5bc57f6cfe404b97e28246601c2acce446d242

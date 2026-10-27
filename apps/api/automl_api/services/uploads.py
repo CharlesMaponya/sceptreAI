@@ -7,16 +7,23 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, status
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from automl_api.core.config import Settings, get_settings
 from automl_api.models.datasets import Dataset, DatasetUploadSession, DatasetVersion
-from automl_api.models.enums import DatasetFormat, DatasetStatus, ObjectStoreType, ProjectRole
+from automl_api.models.enums import (
+    CommandStatus,
+    DatasetFormat,
+    DatasetStatus,
+    ObjectStoreType,
+    ProjectRole,
+)
 from automl_api.models.iam import User
 from automl_api.models.projects import Project
+from automl_api.models.workflows import WorkflowCommand
 from automl_api.schemas.datasets import (
-    AbortUploadRead,
     DatasetRead,
     DatasetVersionRead,
     ResumableUploadBeginRequest,
@@ -31,22 +38,30 @@ from automl_api.schemas.datasets import (
 from automl_api.services.projects import require_project_role
 from automl_api.services.upload_policy import validate_upload_data_region, validate_upload_manifest
 from automl_api.storage.contracts import (
-    BeginUpload,
     CompletedObject,
-    DeletionPending,
     ProviderUpload,
     TransferCursor,
     TransferReceipt,
     UploadContractError,
+    UploadProgress,
 )
 from automl_api.storage.object_store import get_object_store
 
-ACTIVE_UPLOAD_STATES = {"initiated", "uploading", "object_completed", "verifying"}
+ACTIVE_UPLOAD_STATES = {"initiated", "uploading", "object_completed", "verifying", "retiring"}
 TERMINAL_UPLOAD_STATES = {"ready", "aborted", "expired", "quarantined", "failed"}
 SAFE_FILENAME = re.compile(r"[^A-Za-z0-9._-]+")
+UPLOAD_ADMISSION_RECORD = "admission_custody"
+UPLOAD_ADMISSION_STARTED = "native_admission_started"
+UPLOAD_COMPLETION_PROTOCOL = "dataset.upload.complete.v2"
+UPLOAD_COMPLETION_RECORD = "completion_custody"
+UPLOAD_COMPLETION_STARTED = "native_completion_started"
+UPLOAD_VERIFICATION_RECORD = "verification_custody"
+UPLOAD_RETIREMENT_PROTOCOL = "dataset.upload.retire.v1"
+UPLOAD_RETIREMENT_RECORD = "retirement_custody"
+UPLOAD_RETIREMENT_STARTED = "native_retirement_started"
 
 
-def begin_upload_session(
+def _admit_upload_session(
     db: Session,
     user: User,
     project_id: uuid.UUID,
@@ -54,8 +69,12 @@ def begin_upload_session(
     *,
     origin: str,
     settings: Settings | None = None,
-    session_id: uuid.UUID | None = None,
-) -> ResumableUploadRead:
+    session_id: uuid.UUID,
+    driver_name: str,
+    protocol: str,
+    object_uri: str,
+    object_key: str,
+) -> DatasetUploadSession:
     settings = settings or get_settings()
     require_project_role(db, user, project_id, ProjectRole.EDITOR)
     require_allowed_origin(origin, settings)
@@ -87,26 +106,10 @@ def begin_upload_session(
     if used_bytes + reserved_bytes + payload.byte_size > settings.project_storage_quota_bytes:
         raise ValueError("The upload would exceed the project's storage quota.")
 
-    driver = get_object_store(settings)
-    capabilities = driver.capabilities()
-    if capabilities.protocol == "single_put":
+    if protocol == "single_put":
         raise ValueError("The selected embedded driver cannot issue browser upload instructions.")
-    session_id = session_id or uuid.uuid4()
-    filename = _safe_filename(payload.filename)
-    object_key = f"projects/{project_id}/raw/{session_id}/{filename}"
     expires_at = datetime.now(UTC) + timedelta(seconds=settings.upload_session_ttl_seconds)
     part_size = settings.upload_part_size_bytes
-    provider_upload = driver.begin_upload(
-        BeginUpload(
-            object_key=object_key,
-            byte_size=payload.byte_size,
-            content_type=payload.content_type,
-            checksum_sha256=payload.sha256,
-            transfer_unit_size=part_size,
-            expires_at=expires_at,
-            origin=origin,
-        )
-    )
     retention_until = (
         datetime.now(UTC) + timedelta(days=payload.retention_days)
         if payload.retention_days
@@ -125,15 +128,15 @@ def begin_upload_session(
         part_size=part_size,
         total_parts=math.ceil(payload.byte_size / part_size),
         object_key=object_key,
-        multipart_upload_id=provider_upload.provider_id,
-        provider_driver=driver.driver_name,
-        protocol=capabilities.protocol,
-        provider_state=dict(provider_upload.state),
+        multipart_upload_id="",
+        provider_driver=driver_name,
+        protocol=protocol,
+        provider_state={"upload_object_uri": object_uri},
         transfer_receipts=[],
         instruction_state={},
         confirmed_bytes=0,
         resume_key=secrets.token_urlsafe(48),
-        status="uploading",
+        status="initiated",
         expires_at=expires_at,
         digest_algorithm="sha256",
         digest_scope="byte_stream",
@@ -152,7 +155,7 @@ def begin_upload_session(
     )
     db.add(upload)
     db.flush()
-    return upload_read(upload, driver=driver)
+    return upload
 
 
 def get_upload_session(
@@ -173,6 +176,11 @@ def get_upload_session(
     upload = db.scalar(statement)
     if upload is None:
         raise HTTPException(status_code=404, detail="Upload session not found.")
+    if for_update:
+        try:
+            _require_admitted(upload)
+        except UploadContractError as exc:
+            raise HTTPException(409, str(exc)) from exc
     return upload
 
 
@@ -186,12 +194,9 @@ def issue_transfer_instruction(
     settings = settings or get_settings()
     require_allowed_origin(origin, settings)
     _require_active(upload)
-    expected_offset = (cursor.unit_number - 1) * upload.part_size
-    expected_length = min(upload.part_size, upload.byte_size - expected_offset)
-    if expected_offset < 0 or cursor.offset != expected_offset or cursor.length != expected_length:
-        raise UploadContractError("Transfer cursor does not match the session transfer unit.")
+    _validate_transfer_cursor(upload, cursor)
     driver = get_object_store(settings)
-    _require_session_driver(upload, driver.driver_name)
+    _require_session_driver(upload, driver.driver_name, settings)
     instruction = driver.create_transfer_instruction(
         provider_upload(upload),
         TransferCursor(
@@ -211,6 +216,24 @@ def issue_transfer_instruction(
         },
     }
     upload.last_progress_at = datetime.now(UTC)
+    return instruction_read(instruction)
+
+
+def _validate_transfer_cursor(upload, cursor):
+    offset = (cursor.unit_number - 1) * upload.part_size
+    if upload.protocol == "resumable_offset":
+        offset = upload.confirmed_bytes
+        if cursor.unit_number != offset // upload.part_size + 1:
+            raise UploadContractError("Transfer cursor does not match the confirmed offset.")
+    if (
+        not 0 <= offset < upload.byte_size
+        or cursor.offset != offset
+        or cursor.length != min(upload.part_size, upload.byte_size - offset)
+    ):
+        raise UploadContractError("Transfer cursor does not match the session transfer unit.")
+
+
+def instruction_read(instruction):
     return TransferInstructionRead(
         instruction_id=instruction.instruction_id,
         method=instruction.method,
@@ -230,9 +253,11 @@ def query_upload_progress(
     settings = settings or get_settings()
     if upload.status in {"aborted", "expired", "quarantined", "failed"}:
         return progress_read(upload, complete=False)
+    _require_admitted(upload)
     driver = get_object_store(settings)
-    _require_session_driver(upload, driver.driver_name)
+    _require_session_driver(upload, driver.driver_name, settings)
     progress = driver.query_progress(provider_upload(upload))
+    _validate_progress(upload, progress)
     upload.confirmed_bytes = progress.confirmed_bytes
     upload.transfer_receipts = [receipt_to_dict(value) for value in progress.receipts]
     upload.last_progress_at = datetime.now(UTC)
@@ -241,46 +266,144 @@ def query_upload_progress(
     return progress_read(upload, complete=progress.complete)
 
 
-def complete_upload_session(
+def _validate_progress(upload, progress):
+    if not isinstance(progress, UploadProgress) or not isinstance(progress.receipts, (list, tuple)):
+        raise UploadContractError("Provider returned malformed upload progress.")
+    if (
+        type(progress.confirmed_bytes) is not int
+        or type(progress.total_bytes) is not int
+        or type(progress.complete) is not bool
+        or progress.total_bytes != upload.byte_size
+        or not upload.confirmed_bytes <= progress.confirmed_bytes <= upload.byte_size
+        or progress.complete
+        and progress.confirmed_bytes != upload.byte_size
+    ):
+        raise UploadContractError("Provider progress differs from the admitted byte bounds.")
+    units = set()
+    for receipt in progress.receipts:
+        if (
+            not isinstance(receipt, TransferReceipt)
+            or any(
+                type(value) is not int
+                for value in (receipt.unit_number, receipt.offset, receipt.length)
+            )
+            or receipt.unit_number in units
+            or not 1 <= receipt.unit_number <= upload.total_parts
+            or receipt.offset != (receipt.unit_number - 1) * upload.part_size
+            or receipt.length != min(upload.part_size, upload.byte_size - receipt.offset)
+        ):
+            raise UploadContractError("Provider progress has an invalid transfer receipt.")
+        units.add(receipt.unit_number)
+    if upload.protocol == "resumable_offset":
+        if progress.receipts:
+            raise UploadContractError("Offset progress cannot adopt synthetic part receipts.")
+    elif sum(receipt.length for receipt in progress.receipts) != progress.confirmed_bytes:
+        raise UploadContractError("Provider receipts differ from the confirmed byte count.")
+
+
+def _progress_row(db, actor_id, token_version, project_id, session_id, settings):
+    from automl_api.services import upload_admission as admission
+
+    admission._authorize(db, project_id, actor_id, token_version)
+    upload = db.get(DatasetUploadSession, session_id, with_for_update=True, populate_existing=True)
+    if upload is None or upload.project_id != project_id:
+        raise HTTPException(404, "Upload session not found.")
+    admission.require_published(db, upload)
+    _require_admitted(upload)
+    admission.require_store(settings, upload.provider_state, upload.provider_driver)
+    if upload.status not in TERMINAL_UPLOAD_STATES:
+        _require_active(upload)
+        if (
+            upload.status not in {"uploading", "object_completed"}
+            or UPLOAD_COMPLETION_RECORD in upload.provider_state
+            or UPLOAD_COMPLETION_STARTED in upload.provider_state
+            or upload.completed_object_uri is not None
+            or db.scalar(
+                select(WorkflowCommand.id)
+                .where(
+                    WorkflowCommand.project_id == project_id,
+                    WorkflowCommand.resource_id == session_id,
+                    WorkflowCommand.operation.in_(
+                        {UPLOAD_COMPLETION_PROTOCOL, UPLOAD_RETIREMENT_PROTOCOL}
+                    ),
+                    WorkflowCommand.status != CommandStatus.PENDING,
+                )
+                .limit(1)
+            )
+            is not None
+        ):
+            raise UploadContractError("Original completion prevents new progress observations.")
+    return upload
+
+
+def _progress_stamp(upload):
+    from automl_api.services.upload_completion import SOURCE_FIELDS
+
+    return jsonable_encoder(
+        {
+            name: getattr(upload, name)
+            for name in (
+                *SOURCE_FIELDS,
+                "provider_state",
+                "status",
+                "confirmed_bytes",
+                "transfer_receipts",
+                "instruction_state",
+                "completed_object_uri",
+                "dataset_id",
+                "dataset_version_id",
+            )
+        }
+    )
+
+
+def observe_upload_progress(
+    factory, actor_id, token_version, project_id, session_id, *, settings=None
+):
+    settings = settings or get_settings()
+    with factory() as db, db.begin():
+        upload = _progress_row(db, actor_id, token_version, project_id, session_id, settings)
+        if upload.status in TERMINAL_UPLOAD_STATES:
+            return progress_read(
+                upload,
+                complete=upload.status == "ready" and upload.confirmed_bytes == upload.byte_size,
+            )
+        original = _progress_stamp(upload)
+        db.expunge(upload)
+    # SDK construction can refresh credentials over the network.
+    driver = get_object_store(settings)
+    _require_session_driver(upload, driver.driver_name, settings)
+    expected_uri = upload.provider_state.get("upload_object_uri")
+    if expected_uri is not None and driver.uri_for_key(upload.object_key) != expected_uri:
+        raise UploadContractError("Provider target differs from the admitted upload URI.")
+    with factory() as db, db.begin():
+        current = _progress_row(db, actor_id, token_version, project_id, session_id, settings)
+        if _progress_stamp(current) != original:
+            raise UploadContractError("Upload changed before provider progress inspection.")
+    progress = driver.query_progress(provider_upload(upload))
+    _validate_progress(upload, progress)
+    with factory() as db, db.begin():
+        current = _progress_row(db, actor_id, token_version, project_id, session_id, settings)
+        if _progress_stamp(current) != original:
+            raise UploadContractError("Upload changed during provider progress inspection.")
+        current.confirmed_bytes = progress.confirmed_bytes
+        current.transfer_receipts = [receipt_to_dict(value) for value in progress.receipts]
+        current.last_progress_at = datetime.now(UTC)
+        if progress.complete and current.status == "uploading":
+            current.status = "object_completed"
+        return progress_read(current, complete=progress.complete)
+
+
+def record_completed_upload(
     db: Session,
     upload: DatasetUploadSession,
+    completed: CompletedObject,
+    provider_receipts: list[TransferReceipt],
     *,
-    sha256: str,
-    receipts: list[TransferReceiptRead],
-    settings: Settings | None = None,
+    driver,
 ) -> UploadCompletionRead:
-    settings = settings or get_settings()
+    """Materialize an already recorded native completion; no provider I/O."""
     require_upload_byte_digest(upload)
-    if upload.status in {"object_completed", "verifying", "ready"} and upload.completed_object_uri:
-        return completion_read(db, upload)
-    _require_active(upload)
-    normalized_digest = sha256.lower()
-    if normalized_digest != upload.expected_object_digest:
-        raise UploadContractError("Final client SHA-256 differs from the upload manifest.")
-    driver = get_object_store(settings)
-    _require_session_driver(upload, driver.driver_name)
-    object_uri = driver.uri_for_key(upload.object_key)
-    if driver.exists(object_uri):
-        metadata = driver.stat(object_uri)
-        if metadata.byte_size != upload.byte_size:
-            raise UploadContractError("The recovered provider object has an unexpected size.")
-        completed = CompletedObject(
-            uri=metadata.uri,
-            byte_size=metadata.byte_size,
-            provider_checksum=metadata.checksum,
-            provider_headers=metadata.provider_headers,
-        )
-        provider_receipts = [TransferReceipt(**value) for value in upload.transfer_receipts]
-        if receipts and provider_receipts:
-            _validate_client_receipts(receipts, provider_receipts)
-    else:
-        progress = driver.query_progress(provider_upload(upload))
-        if not progress.complete:
-            raise UploadContractError("The provider has not confirmed every object byte.")
-        provider_receipts = list(progress.receipts)
-        if receipts:
-            _validate_client_receipts(receipts, provider_receipts)
-        completed = driver.complete_upload(provider_upload(upload), provider_receipts)
     upload.confirmed_bytes = completed.byte_size
     upload.transfer_receipts = [receipt_to_dict(value) for value in provider_receipts]
     upload.completed_object_uri = completed.uri
@@ -297,7 +420,7 @@ def complete_upload_session(
         upload.dataset_id = dataset.id
         upload.dataset_version_id = version.id
     db.flush()
-    return completion_read(db, upload)
+    return completion_read(db, upload, driver=driver)
 
 
 def _upload_retained(upload: DatasetUploadSession, now: datetime) -> bool:
@@ -306,118 +429,10 @@ def _upload_retained(upload: DatasetUploadSession, now: datetime) -> bool:
     )
 
 
-def abort_upload_session(
-    upload: DatasetUploadSession, *, settings: Settings | None = None
-) -> AbortUploadRead:
-    settings = settings or get_settings()
-    if upload.status == "aborted":
-        return AbortUploadRead(id=upload.id, status="aborted", aborted_at=upload.aborted_at)
-    if upload.status == "ready":
-        raise UploadContractError("A ready immutable upload cannot be aborted.")
-    if _upload_retained(upload, datetime.now(UTC)):
-        raise UploadContractError("Upload retention or legal hold prevents abort.")
-    driver = get_object_store(settings)
-    _require_session_driver(upload, driver.driver_name)
-    driver.abort_upload(provider_upload(upload))
-    upload.status = "aborted"
-    upload.aborted_at = datetime.now(UTC)
-    upload.terminal_reason = "aborted by user"
-    upload.lease_owner = None
-    upload.lease_expires_at = None
-    return AbortUploadRead(id=upload.id, status="aborted", aborted_at=upload.aborted_at)
-
-
-def cleanup_abandoned_uploads(
-    db: Session,
-    *,
-    settings: Settings | None = None,
-    now: datetime | None = None,
-    limit: int = 100,
-) -> dict[str, int]:
-    settings = settings or get_settings()
-    observed_at = now or datetime.now(UTC)
-    rows = list(
-        db.scalars(
-            select(DatasetUploadSession)
-            .where(
-                (
-                    DatasetUploadSession.status.in_({"initiated", "uploading"})
-                    & (DatasetUploadSession.expires_at <= observed_at)
-                )
-                | (
-                    DatasetUploadSession.status.in_({"object_completed", "verifying"})
-                    & (DatasetUploadSession.expires_at <= observed_at)
-                    & (
-                        DatasetUploadSession.lease_expires_at.is_(None)
-                        | (DatasetUploadSession.lease_expires_at <= observed_at)
-                    )
-                )
-                | (
-                    (DatasetUploadSession.status == "quarantined")
-                    & (DatasetUploadSession.quarantine_delete_after <= observed_at)
-                    & (
-                        DatasetUploadSession.lease_expires_at.is_(None)
-                        | (DatasetUploadSession.lease_expires_at <= observed_at)
-                    )
-                )
-            )
-            .where(
-                DatasetUploadSession.legal_hold.is_(False),
-                DatasetUploadSession.retention_until.is_(None)
-                | (DatasetUploadSession.retention_until <= observed_at),
-            )
-            .execution_options(populate_existing=True)
-            .order_by(DatasetUploadSession.expires_at, DatasetUploadSession.id)
-            .limit(limit)
-            .with_for_update(skip_locked=True)
-        )
-    )
-    result = {"expired": 0, "completed_deleted": 0, "quarantine_deleted": 0}
-    driver = get_object_store(settings)
-    for upload in rows:
-        if _upload_retained(upload, observed_at):
-            continue
-        if upload.provider_driver != driver.driver_name:
-            raise RuntimeError(
-                "Cleanup driver does not match the persisted upload provider identity."
-            )
-        if upload.status in {"quarantined", "object_completed", "verifying"}:
-            previous_status = upload.status
-            uri = upload.completed_object_uri
-            if uri:
-                try:
-                    driver.delete(uri)
-                except DeletionPending as exc:
-                    upload.lease_owner = None
-                    upload.lease_expires_at = observed_at + timedelta(
-                        seconds=exc.retry_after_seconds
-                    )
-                    upload.terminal_reason = str(exc)
-                    continue
-            upload.status = "failed"
-            if upload.dataset_version_id:
-                version = db.get(DatasetVersion, upload.dataset_version_id)
-                if version is not None:
-                    version.status = DatasetStatus.FAILED
-            if previous_status == "quarantined":
-                upload.terminal_reason = "quarantined object deleted after retention period"
-                result["quarantine_deleted"] += 1
-            else:
-                upload.terminal_reason = "stale completed object deleted after session expiry"
-                result["completed_deleted"] += 1
-        else:
-            driver.abort_upload(provider_upload(upload))
-            upload.status = "expired"
-            upload.terminal_reason = "abandoned upload expired and was aborted"
-            result["expired"] += 1
-        upload.lease_owner = None
-        upload.lease_expires_at = None
-    db.flush()
-    return result
-
-
-def upload_read(upload: DatasetUploadSession, *, driver=None) -> ResumableUploadRead:
-    driver = driver or get_object_store()
+def upload_read(
+    upload: DatasetUploadSession, *, driver=None, capabilities=None
+) -> ResumableUploadRead:
+    capabilities = capabilities or (driver or get_object_store()).capabilities()
     return ResumableUploadRead(
         id=upload.id,
         project_id=upload.project_id,
@@ -436,9 +451,7 @@ def upload_read(upload: DatasetUploadSession, *, driver=None) -> ResumableUpload
         sensitivity=upload.sensitivity,
         data_region=upload.data_region,
         legal_hold=upload.legal_hold,
-        capabilities=UploadCapabilitiesRead.model_validate(
-            driver.capabilities(), from_attributes=True
-        ),
+        capabilities=UploadCapabilitiesRead.model_validate(capabilities, from_attributes=True),
         next_cursor=next_cursor(upload),
     )
 
@@ -561,13 +574,15 @@ def _register_dataset_version(
     return dataset, version
 
 
-def completion_read(db: Session, upload: DatasetUploadSession) -> UploadCompletionRead:
+def completion_read(
+    db: Session, upload: DatasetUploadSession, *, driver=None
+) -> UploadCompletionRead:
     dataset = db.get(Dataset, upload.dataset_id) if upload.dataset_id else None
     version = (
         db.get(DatasetVersion, upload.dataset_version_id) if upload.dataset_version_id else None
     )
     return UploadCompletionRead(
-        session=upload_read(upload),
+        session=upload_read(upload, driver=driver),
         dataset=DatasetRead.model_validate(dataset) if dataset else None,
         version=DatasetVersionRead.model_validate(version) if version else None,
     )
@@ -619,14 +634,42 @@ def require_verified_upload_digest(upload: DatasetUploadSession) -> str:
     return digest
 
 
+def _require_admitted(upload: DatasetUploadSession) -> None:
+    state = getattr(upload, "provider_state", None) or {}
+    if (
+        not upload.multipart_upload_id
+        or (UPLOAD_ADMISSION_RECORD in state or UPLOAD_ADMISSION_STARTED in state)
+        and (
+            not isinstance(state.get(UPLOAD_ADMISSION_RECORD), dict)
+            or state[UPLOAD_ADMISSION_RECORD].get("phase") != "published"
+        )
+    ):
+        raise UploadContractError("Original upload admission must publish before transfer work.")
+
+
 def _require_active(upload: DatasetUploadSession) -> None:
+    _require_admitted(upload)
+    state = getattr(upload, "provider_state", None) or {}
+    if (
+        upload.status == "retiring"
+        or UPLOAD_RETIREMENT_RECORD in state
+        or UPLOAD_RETIREMENT_STARTED in state
+    ):
+        raise UploadContractError(
+            "Original upload retirement must resolve before more upload work."
+        )
     if upload.status in TERMINAL_UPLOAD_STATES:
         raise UploadContractError(f"Upload session is terminal with status '{upload.status}'.")
     if upload.expires_at <= datetime.now(UTC):
         raise UploadContractError("Upload session has expired.")
 
 
-def _require_session_driver(upload: DatasetUploadSession, driver_name: str) -> None:
+def _require_session_driver(
+    upload: DatasetUploadSession, driver_name: str, settings: Settings
+) -> None:
+    from automl_api.services.upload_admission import require_store
+
+    require_store(settings, upload.provider_state, driver_name)
     if upload.provider_driver != driver_name:
         raise RuntimeError(
             f"Persisted upload driver '{upload.provider_driver}' does not match "

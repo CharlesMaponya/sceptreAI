@@ -1,0 +1,213 @@
+status: in_progress
+phase_complete: false
+deletion_factory_complete: false
+scope: Durable deletion-stage custody schema prerequisite
+source_inputs: 668
+source_manifest_sha256: eca1e438f77b982051957aa886200127c1cad73f4e8b8c70d1686b0cc74f0a00
+changes:
+- 0019 adds non-null JSONB object custody to surviving deletion-stage history.
+- Legacy stages receive empty objects; completion flags never become invented receipts.
+- Rollback takes an exclusive lock and refuses to erase any nonempty custody.
+- Historical rehearsal fixture uses its reflected schema rather than the current ORM.
+- Rehearsal catalog includes all 18 prior revisions; this increment does not claim
+  a full 18-path campaign.
+checks:
+  schema:
+    passed: 14
+    returncode: 0
+    xml_sha256: a59e05a984084b41289c54c8e20cc58714366d4b33bca485f69b5f247ed44b54
+    state_sha256: 2fc773b42ebf442f6ea2d5b4a07a2cdb416e7ab99cfe2cd9eca3a7b7bc4c5f04
+    source_manifest_sha256: eca1e438f77b982051957aa886200127c1cad73f4e8b8c70d1686b0cc74f0a00
+  migration:
+    passed: 93
+    returncode: 0
+    xml_sha256: 454dce56a526067e071f3d50ae04496022db741bc9fc0f1a896876272a09d804
+    state_sha256: c56a98a806216876b15a9c2e541158b8e8732a79740da637c124bc375ef5bf28
+    source_manifest_sha256: eca1e438f77b982051957aa886200127c1cad73f4e8b8c70d1686b0cc74f0a00
+  deletion:
+    passed: 200
+    returncode: 0
+    xml_sha256: 4717d2051129f584768afc45417fb5e0f9f50ec0e1466f91d3bdf883fcea1f0b
+    state_sha256: 77f30f4552baeffdecd30ba46d27d9d92b43f63b9e3ffe1022e01ac02dd8d38c
+    source_manifest_sha256: eca1e438f77b982051957aa886200127c1cad73f4e8b8c70d1686b0cc74f0a00
+  worker:
+    passed: 28
+    returncode: 0
+    xml_sha256: 453dfba437a19456708c79a778344a93640be05155bdba57313fe6a22ea3dfdf
+    state_sha256: ba15c89beb5b23be1c574b3636c0230baa6e79712dd5a33b63fecf19844bfdd3
+    source_manifest_sha256: eca1e438f77b982051957aa886200127c1cad73f4e8b8c70d1686b0cc74f0a00
+negative_controls:
+  constructor_rejected_custody_before_expansion: true
+  historical_fixture_failed_before_compatibility_fix: true
+  malformed_json_rejected: true
+  concurrent_rollback_preserves_committed_history: true
+owned_migration:
+  before:
+    revision: 0018_attempt_predecessor_lineage
+    table_counts:
+      alembic_version: 1
+      password_reset_tokens: 0
+      projects: 1
+      refresh_tokens: 0
+      datasets: 0
+      project_memberships: 1
+      project_share_links: 0
+      model_runs: 0
+      profiling_jobs: 0
+      metrics: 0
+      model_registry_entries: 0
+      users: 1
+      audit_events: 0
+      rate_limit_buckets: 0
+      final_test_authority_receipts: 0
+      deletion_tombstones: 0
+      digest_verifications: 0
+      estimator_catalog_revisions: 0
+      feature_contract_revisions: 0
+      feature_registry_revisions: 0
+      feature_search_space_revisions: 0
+      provider_conformance_campaigns: 0
+      workflow_commands: 0
+      capacity_reservations: 0
+      deletion_stages: 0
+      feature_recipe_revisions: 0
+      outbox_entries: 0
+      dataset_split_revisions: 0
+      prepared_artifacts: 0
+      training_candidates: 0
+      promotional_scope_members: 0
+      training_trials: 0
+      workflow_checkpoints: 0
+      workflow_events: 0
+      run_artifacts: 0
+      search_objective_revisions: 0
+      experiment_spec_revisions: 0
+      promotional_scopes: 0
+      workflow_attempts: 0
+      dataset_upload_sessions: 0
+      final_test_allocations: 0
+      dataset_versions: 0
+      dataset_provider_imports: 0
+      workflow_attempt_credential_grants: 0
+    history_sha256: 0347198b125bfd0dd2e465a9f10a58ea5c30fd4046efa6db6cbc9d044dea63fd
+  after:
+    revision: 0019_deletion_stage_custody
+    table_counts:
+      alembic_version: 1
+      password_reset_tokens: 0
+      projects: 1
+      refresh_tokens: 0
+      datasets: 0
+      project_memberships: 1
+      project_share_links: 0
+      model_runs: 0
+      profiling_jobs: 0
+      metrics: 0
+      model_registry_entries: 0
+      users: 1
+      audit_events: 0
+      rate_limit_buckets: 0
+      final_test_authority_receipts: 0
+      deletion_tombstones: 0
+      digest_verifications: 0
+      estimator_catalog_revisions: 0
+      feature_contract_revisions: 0
+      feature_registry_revisions: 0
+      feature_search_space_revisions: 0
+      provider_conformance_campaigns: 0
+      deletion_stages: 0
+      workflow_commands: 0
+      capacity_reservations: 0
+      feature_recipe_revisions: 0
+      outbox_entries: 0
+      dataset_split_revisions: 0
+      prepared_artifacts: 0
+      training_candidates: 0
+      promotional_scope_members: 0
+      training_trials: 0
+      workflow_checkpoints: 0
+      workflow_events: 0
+      run_artifacts: 0
+      search_objective_revisions: 0
+      experiment_spec_revisions: 0
+      promotional_scopes: 0
+      workflow_attempts: 0
+      dataset_upload_sessions: 0
+      final_test_allocations: 0
+      dataset_versions: 0
+      dataset_provider_imports: 0
+      workflow_attempt_credential_grants: 0
+    history_sha256: 0347198b125bfd0dd2e465a9f10a58ea5c30fd4046efa6db6cbc9d044dea63fd
+  strict_schema_differences: []
+  original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+  free_bytes: 43665317888
+  scale_qualified: false
+read_only_preflight:
+  read_only: true
+  schema_differences: []
+  revision: 0019_deletion_stage_custody
+  tables: 44
+  namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+  coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+  free_bytes: 43664404480
+  reserve_bytes: 43500000000
+phase_ledger:
+  verified: 2
+  open: 34
+  verified_ids:
+  - P1-W01
+  - P1-W12
+deletion_factory_gates:
+  met: 0
+  unmet: 5
+  abandoned: 0
+  note: Raw schema checks pass; no factory pipeline acceptance is claimed.
+qualification:
+  database_ceiling_bytes: 45000000000
+  largest_table_rows: null
+  production_scale_tested: false
+  fifteen_users_ten_gib_each_tested: false
+remaining:
+- Factory ownership and SQL-free native runtime/storage cleanup, immutable original
+  identity, known-outcome recording and fresh publication.
+- Legacy completed-stage qualification, metadata proof enforcement, dispatcher/caller
+  migration and process/DB-loss native tests.
+- 45 GB migration and mixed-version qualification, deferred load, maintained images,
+  cloud/native journeys and full release/branch coverage.
+- 'Original deletion G7: seven missing historical objects (two models, five signed
+  results); never reconstructed or re-signed.'
+evidence_hashes:
+  source-sha256.json: eca1e438f77b982051957aa886200127c1cad73f4e8b8c70d1686b0cc74f0a00
+  before-source-sha256.json: 54c21b994a5970784ec1eaf992c621c7c04193f273ad128e90ebc7be1d81c528
+  baseline-source-sha256.json: d403b70126a9adb5ea58f9ddba36771617a84828d1eebfbe44f1e6672c290902
+  baseline-state.json: 14327f9e042d138ad09fbac09683ca11dfecf41befd3e2ed76141967d5bc8de0
+  baseline.xml: a0a3add23764a547ac77066f10712fc087c2dd3ba50da74ce0b7db1904e94734
+  baseline.log: d06f29de1acc872e5cdb722e1b9f87a9da65a4bd81ba2dda41fdc117b6e8c835
+  baseline-test.py: fad573cdd15f986df71ef248df000f22572cc8349d31708d4bf3733180b2c52b
+  before-compatibility-source-sha256.json: 4bb296be11abc6d55956b508953fcb6fc30a4c5dbd8a446c8df32b1a1e8905a9
+  before-migration-rehearsal-test.py: 9e87b6fc215ead362fd7b911be7b19601c2621efe865010888570c0d6b0bf518
+  migration-compatibility-failure.xml: b5cb77c9d67ded6210178a3dec1598f70c401e61fcc9b7c0c826889aa74383a3
+  migration-compatibility-failure-state.json: 7a67f2c352cadd58f6a4b52b71f82b8fd96df8b9b832b2c343660fd162205394
+  owned-migration.json: 0ab1db0db9cb00f1f3ffc1256d15c7788f9d1673a3f79bc7be72f67b439f77f7
+  owned-migration.log: 77131a59df28bc8d0e330db28d1374e831735a8d8fbb899cf2fe2428f1a617b8
+  preflight.json: ea4afe76f05f0aa64fdeaabd0c8a10e4472311327e74d4b813798625a30af860
+  run.py: c8f996bfa0e6f461bf690730f1f4fa21fd33bd0c0198d18910828482db7e2de2
+  audit.py: e081030b4834ce200e8510b50884ff710837569f071f3c52f263eb290186196f
+  migrate_owned.py: 9d0ba2b7e37f57728339b4389ed639add43ec23e2533fdcf94cb15f9a50f1cc2
+  preflight.py: a81a5c527f045df1d328623e2bf5548fc6371d6821c30dcbe73a01893e091077
+  report.py: 4209854293b121bb0e5394e55bdf9d7b10b3b5507ad0a3635ce7e9c32c770801
+  GATES.md: 36ced623549a17840bc38cd4d6c1cb347d9b5d4f0bf8b9a1173e3003d4738777
+  PLAN.md: 33582cba44ebe8fa77ca59542b6fe6dd3858af20dcd13a520f179af8bbfe2a7e
+  schema.xml: a59e05a984084b41289c54c8e20cc58714366d4b33bca485f69b5f247ed44b54
+  schema.log: b248d6f61622a5e779b65ce4eaa96b639d1c0fda4603953b94c44ee6a3d1abe9
+  schema-state.json: 2fc773b42ebf442f6ea2d5b4a07a2cdb416e7ab99cfe2cd9eca3a7b7bc4c5f04
+  migration.xml: 454dce56a526067e071f3d50ae04496022db741bc9fc0f1a896876272a09d804
+  migration.log: 3480bdcbcd9a6c78589bb36f35a53db859e7fc97d1e075712de515c370bab8f6
+  migration-state.json: c56a98a806216876b15a9c2e541158b8e8732a79740da637c124bc375ef5bf28
+  deletion.xml: 4717d2051129f584768afc45417fb5e0f9f50ec0e1466f91d3bdf883fcea1f0b
+  deletion.log: 314f9148654759543b1bab1617d9880a00d258a992fc04697a3112d9377db2d3
+  deletion-state.json: 77f30f4552baeffdecd30ba46d27d9d92b43f63b9e3ffe1022e01ac02dd8d38c
+  worker.xml: 453dfba437a19456708c79a778344a93640be05155bdba57313fe6a22ea3dfdf
+  worker.log: 74a93f51824d3de1f91dad201d1c6def6421731ab57cb2309d39a2cb018ce348
+  worker-state.json: ba15c89beb5b23be1c574b3636c0230baa6e79712dd5a33b63fecf19844bfdd3

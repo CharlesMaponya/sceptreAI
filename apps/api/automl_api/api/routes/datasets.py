@@ -6,11 +6,11 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from automl_api.api.deps import get_current_user
 from automl_api.core.config import get_settings
-from automl_api.db.session import get_db
+from automl_api.db.session import get_db, get_session_factory
 from automl_api.models.iam import User
 from automl_api.schemas.datasets import (
     AbortUploadRead,
@@ -23,6 +23,8 @@ from automl_api.schemas.datasets import (
     ResumableUploadRead,
     TransferInstructionRead,
     TransferInstructionRequest,
+    UploadCleanupReplayRead,
+    UploadCleanupReplayRequest,
     UploadCompletionRead,
     UploadProgressRead,
 )
@@ -33,16 +35,18 @@ from automl_api.services.datasets import (
     upload_dataset_version,
 )
 from automl_api.services.idempotency import durable_mutation
+from automl_api.services.upload_admission import begin_upload_session
+from automl_api.services.upload_admission_cleanup import replay_cleanup
+from automl_api.services.upload_completion import complete_upload_session
+from automl_api.services.upload_instructions import issue_upload_instruction
+from automl_api.services.upload_retirement import abort_upload_session
 from automl_api.services.uploads import (
-    abort_upload_session,
-    begin_upload_session,
-    complete_upload_session,
     completion_read,
     get_upload_session,
-    issue_transfer_instruction,
-    query_upload_progress,
+    observe_upload_progress,
     upload_read,
 )
+from automl_api.storage.contracts import DeletionPending, UploadContractError
 
 router = APIRouter(prefix="/projects/{project_id}/datasets", tags=["datasets"])
 
@@ -58,31 +62,16 @@ def begin_resumable_upload(
         Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S"),
     ],
     origin: Annotated[str, Header(alias="Origin", min_length=1)],
+    factory: Annotated[sessionmaker[Session], Depends(get_session_factory)],
 ) -> ResumableUploadRead:
-    response = durable_mutation(
-        db,
-        current_user,
-        project_id,
-        operation="dataset.upload.begin",
-        idempotency_key=idempotency_key,
-        payload={**payload.model_dump(mode="json"), "origin": origin},
-        execute=lambda: begin_upload_session(
-            db,
-            current_user,
-            project_id,
-            payload,
-            origin=origin,
-            session_id=uuid.uuid5(
-                project_id,
-                f"dataset.upload.begin:{current_user.id}:{idempotency_key}",
-            ),
-        ),
-        response_model=ResumableUploadRead,
-        response_status=status.HTTP_201_CREATED,
-        serialize_project=True,
-    )
+    actor_id, token_version = current_user.id, current_user.token_version
     db.commit()
-    return response
+    try:
+        return begin_upload_session(
+            factory, actor_id, token_version, project_id, payload, idempotency_key, origin=origin
+        )
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 @router.get("/uploads/{session_id}", response_model=ResumableUploadRead)
@@ -106,9 +95,7 @@ def upload_result(
     return completion_read(db, upload)
 
 
-@router.post(
-    "/uploads/{session_id}/instructions", response_model=TransferInstructionRead
-)
+@router.post("/uploads/{session_id}/instructions", response_model=TransferInstructionRead)
 def create_upload_instruction(
     project_id: uuid.UUID,
     session_id: uuid.UUID,
@@ -120,28 +107,23 @@ def create_upload_instruction(
         Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S"),
     ],
     origin: Annotated[str, Header(alias="Origin", min_length=1)],
+    factory: Annotated[sessionmaker[Session], Depends(get_session_factory)],
 ) -> TransferInstructionRead:
-    upload = get_upload_session(
-        db, current_user, project_id, session_id, for_update=True
-    )
-    response = durable_mutation(
-        db,
-        current_user,
-        project_id,
-        operation="dataset.upload.instruction",
-        idempotency_key=idempotency_key,
-        payload={
-            "session_id": str(session_id),
-            "origin": origin,
-            "cursor": payload.cursor.model_dump(mode="json"),
-        },
-        execute=lambda: issue_transfer_instruction(upload, payload.cursor, origin=origin),
-        response_model=TransferInstructionRead,
-        response_status=status.HTTP_200_OK,
-        resource_id=session_id,
-    )
+    actor_id, token_version = current_user.id, current_user.token_version
     db.commit()
-    return response
+    try:
+        return issue_upload_instruction(
+            factory,
+            actor_id,
+            token_version,
+            project_id,
+            session_id,
+            payload.cursor,
+            idempotency_key,
+            origin=origin,
+        )
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 @router.get("/uploads/{session_id}/progress", response_model=UploadProgressRead)
@@ -150,13 +132,14 @@ def upload_progress(
     session_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    factory: Annotated[sessionmaker[Session], Depends(get_session_factory)],
 ) -> UploadProgressRead:
-    upload = get_upload_session(
-        db, current_user, project_id, session_id, for_update=True
-    )
-    response = query_upload_progress(upload)
+    actor_id, token_version = current_user.id, current_user.token_version
     db.commit()
-    return response
+    try:
+        return observe_upload_progress(factory, actor_id, token_version, project_id, session_id)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 @router.post("/uploads/{session_id}/complete", response_model=UploadCompletionRead)
@@ -170,32 +153,16 @@ def complete_resumable_upload(
         str,
         Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S"),
     ],
+    factory: Annotated[sessionmaker[Session], Depends(get_session_factory)],
 ) -> UploadCompletionRead:
-    upload = get_upload_session(
-        db, current_user, project_id, session_id, for_update=True
-    )
-    response = durable_mutation(
-        db,
-        current_user,
-        project_id,
-        operation="dataset.upload.complete.direct",
-        idempotency_key=idempotency_key,
-        payload={"session_id": str(session_id), **payload.model_dump(mode="json")},
-        execute=lambda: complete_upload_session(
-            db,
-            upload,
-            sha256=payload.sha256,
-            receipts=payload.receipts,
-        ),
-        response_model=UploadCompletionRead,
-        response_status=status.HTTP_200_OK,
-        outbox_topic="upload.reconcile",
-        outbox_payload=lambda _: {"session_id": str(session_id)},
-        aggregate_type="dataset_upload_session",
-        resource_id=session_id,
-    )
+    actor_id, token_version = current_user.id, current_user.token_version
     db.commit()
-    return response
+    try:
+        return complete_upload_session(
+            factory, actor_id, token_version, project_id, session_id, payload, idempotency_key
+        )
+    except UploadContractError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 @router.post("/uploads/{session_id}/abort", response_model=AbortUploadRead)
@@ -205,27 +172,50 @@ def abort_resumable_upload(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
     idempotency_key: Annotated[
-        str,
-        Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S"),
+        str, Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S")
     ],
+    factory: Annotated[sessionmaker[Session], Depends(get_session_factory)],
 ) -> AbortUploadRead:
-    upload = get_upload_session(
-        db, current_user, project_id, session_id, for_update=True
-    )
-    response = durable_mutation(
-        db,
-        current_user,
-        project_id,
-        operation="dataset.upload.abort",
-        idempotency_key=idempotency_key,
-        payload={"session_id": str(session_id)},
-        execute=lambda: abort_upload_session(upload),
-        response_model=AbortUploadRead,
-        response_status=status.HTTP_200_OK,
-        resource_id=session_id,
-    )
+    actor_id, token_version = current_user.id, current_user.token_version
     db.commit()
-    return response
+    try:
+        return abort_upload_session(
+            factory, actor_id, token_version, project_id, session_id, idempotency_key
+        )
+    except (DeletionPending, ValueError) as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@router.post(
+    "/uploads/{session_id}/cleanup/replay",
+    response_model=UploadCleanupReplayRead,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def replay_upload_cleanup(
+    project_id: uuid.UUID,
+    session_id: uuid.UUID,
+    payload: UploadCleanupReplayRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    idempotency_key: Annotated[
+        str, Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S")
+    ],
+    factory: Annotated[sessionmaker[Session], Depends(get_session_factory)],
+) -> UploadCleanupReplayRead:
+    actor_id, token_version = current_user.id, current_user.token_version
+    db.commit()
+    try:
+        return replay_cleanup(
+            factory,
+            actor_id,
+            token_version,
+            project_id,
+            session_id,
+            idempotency_key,
+            payload.reason,
+        )
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 @router.get("", response_model=list[DatasetRead])
@@ -269,10 +259,7 @@ def upload_dataset(
         content = file.file.read(
             settings.buffered_upload_max_bytes + 1 if governed_environment else -1
         )
-        if (
-            governed_environment
-            and len(content) > settings.buffered_upload_max_bytes
-        ):
+        if governed_environment and len(content) > settings.buffered_upload_max_bytes:
             raise ValueError(
                 "API-buffered uploads above 100 MiB are disabled; use the resumable "
                 "direct-to-object-storage upload protocol."
@@ -299,16 +286,12 @@ def upload_dataset(
                 "content_sha256": hashlib.sha256(content).hexdigest(),
                 "byte_size": len(content),
             },
-            execute=lambda: _upload_response(
-                db, current_user, project_id, payload, content
-            ),
+            execute=lambda: _upload_response(db, current_user, project_id, payload, content),
             response_model=DatasetUploadResponse,
             response_status=status.HTTP_201_CREATED,
         )
     except ValueError as exc:
-        raise HTTPException(
-            status_code=422, detail=str(exc)
-        ) from exc
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     finally:
         file.file.close()
 

@@ -17,12 +17,19 @@ from automl_api.db.session import get_session_factory
 from automl_api.models.enums import AttemptStatus, ScopeStatus, WorkflowStage
 from automl_api.models.workflows import OutboxEntry, PromotionalScope, WorkflowAttempt
 from automl_api.services.champion_planning import RefitInspection, plan_scope_refit
+from automl_api.services.deletion_workflow import reconcile_deletion
+from automl_api.services.deployment_controls import TOPIC as DEPLOYMENT_CONTROL_TOPIC
+from automl_api.services.deployment_controls import reconcile_control
+from automl_api.services.deployment_objects import TOPIC as DEPLOYMENT_TOPIC
+from automl_api.services.deployment_objects import reconcile_deployment_object
 from automl_api.services.evaluation_reconciler import reconcile_evaluation_jobs_once
 from automl_api.services.kubernetes_training import KubernetesTrainingClient
 from automl_api.services.legacy_analysis import TOPIC as LEGACY_CLEANUP_TOPIC
 from automl_api.services.legacy_analysis import observe_legacy_once, reconcile_legacy_cleanup
 from automl_api.services.profiling_jobs import resume_incomplete_profiling_jobs
 from automl_api.services.provider_import_jobs import reconcile_provider_imports_once
+from automl_api.services.ray_submission import TOPICS as RAY_SUBMISSION_TOPICS
+from automl_api.services.ray_submission import reconcile_ray_submission
 from automl_api.services.reconciler import (
     inspect_analysis_observation,
     inspect_ray_observation,
@@ -37,7 +44,12 @@ from automl_api.services.registry_inspection import reconcile_registry_artifact
 from automl_api.services.retention import purge_expired_audit_events
 from automl_api.services.tracking_reconciliation import reconcile_tracking_once
 from automl_api.services.training_metadata import reconcile_tracking_metadata_once
-from automl_api.services.uploads import cleanup_abandoned_uploads
+from automl_api.services.upload_admission_cleanup import cleanup_pending_admissions
+from automl_api.services.upload_admission_expiry import expire_pending_admissions
+from automl_api.services.upload_admission_recovery import recover_pending_admissions
+from automl_api.services.upload_retirement import cleanup_abandoned_uploads
+from automl_api.services.upload_verification import TOPIC as UPLOAD_VERIFICATION_TOPIC
+from automl_api.services.upload_verification import reconcile_upload_verification
 from automl_api.services.workflow_state import claim_outbox
 from automl_api.storage.object_store import get_object_store
 
@@ -72,10 +84,27 @@ def run_once(
                 entry = db.get(OutboxEntry, entry_id)
                 if entry is None:
                     continue
-                if getattr(entry, "topic", None) == LEGACY_CLEANUP_TOPIC:
+                if getattr(entry, "topic", None) in RAY_SUBMISSION_TOPICS:
+                    factory_dispatch = partial(
+                        reconcile_ray_submission, k8s_factory=KubernetesTrainingClient
+                    )
+                elif getattr(entry, "topic", None) in {"project.delete", "run.delete"}:
+                    factory_dispatch = reconcile_deletion
+                elif getattr(entry, "topic", None) == LEGACY_CLEANUP_TOPIC:
                     factory_dispatch = reconcile_legacy_cleanup
+                elif getattr(entry, "topic", None) == UPLOAD_VERIFICATION_TOPIC:
+                    factory_dispatch = reconcile_upload_verification
                 elif getattr(entry, "topic", None) == REGISTRY_TOPIC:
                     factory_dispatch = reconcile_registry_artifact
+                elif getattr(entry, "topic", None) == DEPLOYMENT_CONTROL_TOPIC:
+                    factory_dispatch = reconcile_control
+                elif getattr(entry, "topic", None) in {
+                    DEPLOYMENT_TOPIC,
+                    "deployment.reconcile.v3",
+                    "deployment.reconcile",
+                    "deployment.reconcile.v2",
+                }:
+                    factory_dispatch = reconcile_deployment_object
                 else:
                     try:
                         reconcile_entry(db, entry, worker_id=worker_id)
@@ -168,15 +197,25 @@ def observe_once(
 
 
 def cleanup_uploads_once(session_factory: Callable[[], Session]) -> int:
-    with session_factory() as db:
-        try:
-            result = cleanup_abandoned_uploads(db)
-        except Exception as exc:
-            db.rollback()
-            LOGGER.error("upload cleanup failed", extra={"error_type": type(exc).__name__})
-            return 0
-        db.commit()
-        return sum(result.values())
+    expired = 0
+    try:
+        expired += recover_pending_admissions(session_factory, now=datetime.now(UTC))
+    except Exception as exc:
+        LOGGER.error("upload admission recovery failed", extra={"error_type": type(exc).__name__})
+    try:
+        expired += expire_pending_admissions(session_factory, now=datetime.now(UTC))
+    except Exception as exc:
+        LOGGER.error("upload admission expiry failed", extra={"error_type": type(exc).__name__})
+    try:
+        expired += cleanup_pending_admissions(session_factory, now=datetime.now(UTC))
+    except Exception as exc:
+        LOGGER.error("native admission cleanup failed", extra={"error_type": type(exc).__name__})
+    try:
+        result = cleanup_abandoned_uploads(session_factory)
+    except Exception as exc:
+        LOGGER.error("upload cleanup failed", extra={"error_type": type(exc).__name__})
+        return expired
+    return expired + sum(result.values())
 
 
 def plan_champions_once(session_factory: Callable[[], Session], *, store=None, limit=25) -> int:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import io
+import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlencode
@@ -19,6 +20,7 @@ from automl_api.storage.contracts import (
     TransferCursor,
     TransferReceipt,
     UploadCapabilities,
+    UploadCapabilityUnavailable,
     UploadContractError,
     UploadExpired,
     UploadInstruction,
@@ -94,6 +96,7 @@ class AzureBlobObjectStoreDriver:
             supports_unit_checksum=False,
             supports_final_checksum=True,
             supports_provider_lifecycle=True,
+            supports_abort=False,
         )
 
     def begin_upload(self, request: BeginUpload) -> ProviderUpload:
@@ -151,10 +154,8 @@ class AzureBlobObjectStoreDriver:
     def query_progress(self, upload: ProviderUpload) -> UploadProgress:
         self._ensure_active(upload)
         blob = self.container.get_blob_client(upload.object_key)
-        blocks = blob.get_block_list(block_list_type="all")
-        values = list(getattr(blocks, "committed_blocks", []) or []) + list(
-            getattr(blocks, "uncommitted_blocks", []) or []
-        )
+        committed, uncommitted = blob.get_block_list(block_list_type="all")
+        values = list(committed) + list(uncommitted)
         receipts: list[TransferReceipt] = []
         unit_size = int(upload.state.get("transfer_unit_size") or 1)
         for block in values:
@@ -190,34 +191,47 @@ class AzureBlobObjectStoreDriver:
         if sum(item.length for item in ordered) != upload.byte_size:
             raise UploadContractError("Azure block receipts do not match the object size.")
         block_ids = [
-            item.provider_headers.get("block_id") or self._block_id(item.unit_number)
+            item.provider_headers.get("block_id") or f"sceptre-{item.unit_number:08d}"
             for item in ordered
         ]
-        self.container.get_blob_client(upload.object_key).commit_block_list(block_ids)
-        metadata = self.stat(self._uri(upload.object_key))
-        if metadata.byte_size != upload.byte_size:
-            raise UploadContractError("The committed Azure blob has an unexpected size.")
+        if any(
+            self._unit_number(block) != item.unit_number
+            for block, item in zip(block_ids, ordered, strict=True)
+        ):
+            raise UploadContractError("Azure block receipt does not match its transfer unit.")
+        from azure.core import MatchConditions
+
+        response = self.container.get_blob_client(upload.object_key).commit_block_list(
+            block_ids, match_condition=MatchConditions.IfMissing, retry_total=0
+        )
+        if not isinstance(response, dict):
+            raise UploadContractError("Completion has no original immutable receipt.")
+        version = immutable_object_version(response.get("version_id"))
+        if len(version) > 256:
+            raise UploadContractError("The completion version exceeds its receipt budget.")
         return CompletedObject(
-            metadata.uri,
-            metadata.byte_size,
-            metadata.checksum,
-            metadata.provider_headers,
+            self._uri(upload.object_key),
+            upload.byte_size,
+            base64.b64encode(response["content_md5"]).decode("ascii")
+            if response.get("content_md5")
+            else None,
+            {"version_id": version},
         )
 
     def abort_upload(self, upload: ProviderUpload) -> None:
-        blob = self.container.get_blob_client(upload.object_key)
-        try:
-            blob.delete_blob(delete_snapshots="include")
-        except Exception as exc:
-            if getattr(exc, "status_code", None) != 404:
-                raise
+        raise UploadCapabilityUnavailable(
+            "Azure staged blocks require expiry or qualified original-version retirement."
+        )
 
     def uri_for_key(self, object_key: str) -> str:
         return self._uri(object_key)
 
-    def stat(self, uri: str) -> ObjectMetadata:
-        blob = self.container.get_blob_client(self._key_from_uri(uri))
+    def stat(self, uri: str, *, version: str | None = None) -> ObjectMetadata:
+        kwargs = {"version_id": immutable_object_version(version)} if version is not None else {}
+        blob = self.container.get_blob_client(self._key_from_uri(uri), **kwargs)
         properties = blob.get_blob_properties()
+        if version is not None and getattr(properties, "version_id", None) != version:
+            raise UploadContractError("Object metadata returned a different or missing version.")
         content_settings = getattr(properties, "content_settings", None)
         checksum = None
         if content_settings is not None and getattr(content_settings, "content_md5", None):
@@ -232,6 +246,15 @@ class AzureBlobObjectStoreDriver:
                 "version_id": str(properties.version_id)
                 if getattr(properties, "version_id", None)
                 else "",
+                **(
+                    {
+                        "sceptre_grant": str(
+                            (getattr(properties, "metadata", None) or {})["sceptre_grant"]
+                        )
+                    }
+                    if (getattr(properties, "metadata", None) or {}).get("sceptre_grant")
+                    else {}
+                ),
             },
         )
 
@@ -294,11 +317,52 @@ class AzureBlobObjectStoreDriver:
             return HealthcheckResult(False, self.driver_name, type(exc).__name__)
         return HealthcheckResult(True, self.driver_name)
 
+    def prefix_absent(self, prefix: str) -> bool:
+        prefix = self._key(prefix).rstrip("/") + "/"
+        for blob in self.container.list_blobs(
+            name_starts_with=prefix,
+            include=["versions", "snapshots", "deleted", "uncommittedblobs"],
+            results_per_page=1,
+        ):
+            if not isinstance(blob.name, str) or not blob.name.startswith(prefix):
+                raise UploadContractError("Azure prefix inventory escaped its original root.")
+            return False
+        return True
+
     def delete_prefix(self, prefix: str) -> None:
         self._delete_matching(self._key(prefix).rstrip("/") + "/", exact=False)
 
-    def delete(self, uri: str) -> None:
-        self._delete_matching(self._key_from_uri(uri), exact=True)
+    def delete(self, uri: str, *, version: str | None = None) -> None:
+        key = self._key_from_uri(uri)
+        if version is None:
+            self._delete_matching(key, exact=True)
+            return
+        version = immutable_object_version(version)
+        if not self._version_present(key, version):
+            return
+        self.container.get_blob_client(key, version_id=version).delete_blob(retry_total=0)
+        if self._version_present(key, version):
+            raise DeletionPending("The original Azure version is still stored.")
+
+    def _version_present(self, key, version):
+        found = False
+        # shortcut: hold scans beyond 10,000 entries; add resumable scans for larger histories.
+        for index, blob in enumerate(
+            self.container.list_blobs(
+                name_starts_with=key, include=["versions", "deleted"], results_per_page=1000
+            )
+        ):
+            if index >= 10_000:
+                raise DeletionPending(
+                    "Azure version inventory exceeds the bounded qualification scan."
+                )
+            if not isinstance(blob.name, str) or not blob.name.startswith(key):
+                raise UploadContractError("Azure version inventory escaped its prefix.")
+            if blob.name == key and blob.version_id == version:
+                if blob.deleted:
+                    raise DeletionPending("Azure retains the original soft-deleted version.")
+                found = True
+        return found
 
     def _delete_matching(self, prefix: str, *, exact: bool) -> None:
         from azure.core.exceptions import ResourceNotFoundError
@@ -367,11 +431,10 @@ class AzureBlobObjectStoreDriver:
 
     @staticmethod
     def _unit_number(block_id: str) -> int:
-        try:
-            decoded = base64.b64decode(block_id).decode("ascii")
-            return int(decoded.removeprefix("sceptre-"))
-        except (ValueError, UnicodeError) as exc:
-            raise UploadContractError("Azure returned an unrecognized block ID.") from exc
+        match = re.fullmatch(r"sceptre-([0-9]{8})", block_id)
+        if match is None or not 1 <= int(match[1]) <= 50_000:
+            raise UploadContractError("Azure returned an unrecognized block ID.")
+        return int(match[1])
 
     @staticmethod
     def _instruction_id(

@@ -93,7 +93,7 @@ class Driver:
         return ProviderUpload(
             "provider-1",
             request.object_key,
-            "multipart",
+            self.capabilities().protocol,
             request.byte_size,
             request.expires_at,
             {"transfer_unit_size": request.transfer_unit_size},
@@ -217,67 +217,33 @@ def _upload(**kwargs: object) -> DatasetUploadSession:
     return DatasetUploadSession(**values)
 
 
-def test_begin_route_uses_a_deterministic_provider_identity(monkeypatch) -> None:
+def test_begin_route_delegates_factory_after_committing_authentication(monkeypatch) -> None:
     project_id = uuid.uuid4()
-    user = SimpleNamespace(id=uuid.uuid4())
-    db = MagicMock()
-    observed: dict[str, object] = {}
-    expected = SimpleNamespace(id="result")
+    user = SimpleNamespace(id=uuid.uuid4(), token_version=3)
+    db, factory = MagicMock(), object()
+    expected, payload = object(), _payload()
 
-    def begin(*_args, **kwargs):
-        observed.update(kwargs)
+    def begin(*args, **kwargs):
+        db.commit.assert_called_once()
+        assert args == (factory, user.id, 3, project_id, payload, "stable-key")
+        assert kwargs == {"origin": "https://app.test"}
         return expected
 
     monkeypatch.setattr(dataset_routes, "begin_upload_session", begin)
-    monkeypatch.setattr(
-        dataset_routes,
-        "durable_mutation",
-        lambda *_args, **kwargs: (
-            observed.update({"serialize_project": kwargs["serialize_project"]})
-            or kwargs["execute"]()
-        ),
-    )
-    result = dataset_routes.begin_resumable_upload(
-        project_id,
-        _payload(),
-        db,
-        user,
-        "stable-key",
-        "https://app.test",
+    assert (
+        dataset_routes.begin_resumable_upload(
+            project_id, payload, db, user, "stable-key", "https://app.test", factory
+        )
+        is expected
     )
 
-    assert result is expected
-    assert observed["session_id"] == uuid.uuid5(
-        project_id,
-        f"dataset.upload.begin:{user.id}:stable-key",
-    )
-    assert observed["serialize_project"] is True
-    db.commit.assert_called_once()
 
-
-def test_begin_instruction_progress_complete_and_abort(monkeypatch) -> None:
+def test_begin_instruction_progress_and_registration(monkeypatch) -> None:
     driver = Driver()
     monkeypatch.setattr(uploads, "require_project_role", lambda *_args: None)
     monkeypatch.setattr(uploads, "get_object_store", lambda *_args: driver)
-    user = SimpleNamespace(id=uuid.uuid4())
-    project_id = uuid.uuid4()
-    db = Session([project_id, 20, 5])
-    session_id = uuid.uuid4()
-
-    result = uploads.begin_upload_session(
-        db,
-        user,
-        project_id,
-        _payload(),
-        origin="https://app.test",
-        settings=_settings(),
-        session_id=session_id,
-    )
-    upload = db.added[0]
-    assert upload.id == session_id
-    assert result.total_parts == 2 and result.next_cursor.offset == 0
-    assert upload.data_region == "eu-west-1"
-    assert driver.begin_request.origin == "https://app.test"
+    db = Session()
+    upload = _upload()
 
     instruction = uploads.issue_transfer_instruction(
         upload,
@@ -302,28 +268,20 @@ def test_begin_instruction_progress_complete_and_abort(monkeypatch) -> None:
     driver.progress = UploadProgress(10, 10, receipts, True)
     progress = uploads.query_upload_progress(upload, settings=_settings())
     assert progress.complete and upload.status == "object_completed"
-    complete = uploads.complete_upload_session(
+    complete = uploads.record_completed_upload(
         db,
         upload,
-        sha256="a" * 64,
-        receipts=[
-            TransferReceiptRead.model_validate(uploads.receipt_to_dict(value)) for value in receipts
-        ],
-        settings=_settings(),
+        CompletedObject(
+            driver.uri_for_key(upload.object_key),
+            10,
+            "provider-checksum",
+            {"version_id": "original-v1"},
+        ),
+        list(receipts),
+        driver=driver,
     )
     assert complete.session.status == "object_completed"
     assert upload.completed_object_uri.startswith("s3c://")
-    assert (
-        uploads.complete_upload_session(
-            db, upload, sha256="a" * 64, receipts=[], settings=_settings()
-        ).session.id
-        == upload.id
-    )
-
-    other = _upload(retention_until=None)
-    aborted = uploads.abort_upload_session(other, settings=_settings())
-    assert aborted.status == "aborted" and driver.aborted == 1
-    assert uploads.abort_upload_session(other, settings=_settings()).id == other.id
 
 
 def test_upload_policy_origin_quota_terminal_and_receipt_failures(monkeypatch) -> None:
@@ -335,48 +293,6 @@ def test_upload_policy_origin_quota_terminal_and_receipt_failures(monkeypatch) -
         uploads.require_allowed_origin("https://evil.test", settings)
     assert denied.value.status_code == 403
 
-    with pytest.raises(ValueError, match="quota"):
-        uploads.begin_upload_session(
-            Session([uuid.uuid4(), 80, 20]),
-            SimpleNamespace(id=uuid.uuid4()),
-            uuid.uuid4(),
-            _payload(),
-            origin="https://app.test",
-            settings=settings,
-        )
-    with pytest.raises(ValueError, match="does not match"):
-        uploads.begin_upload_session(
-            Session([0, 0]),
-            SimpleNamespace(id=uuid.uuid4()),
-            uuid.uuid4(),
-            _payload(data_region="eu-west-1"),
-            origin="https://app.test",
-            settings=_settings(object_store_region="af-south-1"),
-        )
-    embedded = Driver()
-    embedded.capabilities = lambda: UploadCapabilities("single_put", 1, False, False, False, False)
-    monkeypatch.setattr(uploads, "get_object_store", lambda *_args: embedded)
-    with pytest.raises(ValueError, match="cannot issue"):
-        project_id = uuid.uuid4()
-        uploads.begin_upload_session(
-            Session([project_id, 0, 0]),
-            SimpleNamespace(id=uuid.uuid4()),
-            project_id,
-            _payload(),
-            origin="https://app.test",
-            settings=settings,
-        )
-    with pytest.raises(HTTPException, match="Project not found"):
-        uploads.begin_upload_session(
-            Session([None]),
-            SimpleNamespace(id=uuid.uuid4()),
-            uuid.uuid4(),
-            _payload(),
-            origin="https://app.test",
-            settings=settings,
-        )
-
-    monkeypatch.setattr(uploads, "get_object_store", lambda *_args: driver)
     terminal = _upload(status="failed")
     with pytest.raises(UploadContractError, match="terminal"):
         uploads.issue_transfer_instruction(
@@ -393,12 +309,6 @@ def test_upload_policy_origin_quota_terminal_and_receipt_failures(monkeypatch) -
             origin="https://app.test",
             settings=settings,
         )
-    mismatch = _upload()
-    with pytest.raises(UploadContractError, match="Final client"):
-        uploads.complete_upload_session(
-            Session(), mismatch, sha256="b" * 64, receipts=[], settings=settings
-        )
-
     provider = [TransferReceipt(1, 0, 6, "provider")]
     with pytest.raises(UploadContractError, match="absent"):
         uploads._validate_client_receipts(
@@ -414,7 +324,7 @@ def test_upload_policy_origin_quota_terminal_and_receipt_failures(monkeypatch) -
         )
 
 
-def test_cursor_registration_cleanup_and_lookup(monkeypatch) -> None:
+def test_cursor_registration_and_lookup(monkeypatch) -> None:
     assert uploads.next_cursor(_upload(confirmed_bytes=10)) is None
     offset = uploads.next_cursor(_upload(protocol="resumable_offset", confirmed_bytes=6))
     assert (offset.unit_number, offset.offset, offset.length) == (2, 6, 4)
@@ -451,25 +361,6 @@ def test_cursor_registration_cleanup_and_lookup(monkeypatch) -> None:
     assert version.object_store_type == ObjectStoreType.S3_COMPATIBLE
     assert version.status == DatasetStatus.UPLOADED
 
-    driver = Driver()
-    monkeypatch.setattr(uploads, "get_object_store", lambda *_args: driver)
-    expired = _upload(expires_at=datetime.now(UTC) - timedelta(seconds=1), retention_until=None)
-    quarantined = _upload(
-        retention_until=None,
-        status="quarantined",
-        completed_object_uri="s3c://bucket/bad.csv",
-        quarantine_delete_after=datetime.now(UTC) - timedelta(seconds=1),
-    )
-    driver.present.add(quarantined.completed_object_uri)
-    cleanup_db = Session()
-    cleanup_db.row_values = [[expired, quarantined]]
-    result = uploads.cleanup_abandoned_uploads(cleanup_db, settings=_settings())
-    assert result == {"expired": 1, "completed_deleted": 0, "quarantine_deleted": 1}
-    assert driver.aborted == 1 and driver.deleted == ["s3c://bucket/bad.csv"]
-
-    ready = _upload(status="ready")
-    with pytest.raises(UploadContractError, match="cannot be aborted"):
-        uploads.abort_upload_session(ready, settings=_settings())
     foreign = _upload(provider_driver="gcs")
     with pytest.raises(RuntimeError, match="does not match"):
         uploads.query_upload_progress(foreign, settings=_settings())
@@ -495,7 +386,7 @@ def test_cursor_registration_cleanup_and_lookup(monkeypatch) -> None:
     assert "FOR UPDATE" in str(lookup_db.scalar_statements[-1])
 
 
-def test_progress_completion_and_cleanup_failure_branches(monkeypatch) -> None:
+def test_progress_and_completion_failure_branches(monkeypatch) -> None:
     driver = Driver()
     monkeypatch.setattr(uploads, "get_object_store", lambda *_args: driver)
     settings = _settings()
@@ -508,114 +399,11 @@ def test_progress_completion_and_cleanup_failure_branches(monkeypatch) -> None:
     driver.progress = UploadProgress(6, 10, (TransferReceipt(1, 0, 6, "e1"),), False)
     result = uploads.query_upload_progress(active, settings=settings)
     assert result.confirmed_bytes == 6 and active.status == "initiated"
-    with pytest.raises(UploadContractError, match="not confirmed"):
-        uploads.complete_upload_session(
-            Session(), active, sha256="a" * 64, receipts=[], settings=settings
-        )
-
-    driver.progress = UploadProgress(
-        10,
-        10,
-        (TransferReceipt(1, 0, 6, "e1"), TransferReceipt(2, 6, 4, "e2")),
-        True,
-    )
-    complete = uploads.complete_upload_session(
-        Session(), active, sha256="a" * 64, receipts=[], settings=settings
-    )
-    assert complete.session.status == "object_completed"
-
-    recovered = _upload(
-        transfer_receipts=[
-            uploads.receipt_to_dict(TransferReceipt(1, 0, 6, "e1")),
-            uploads.receipt_to_dict(TransferReceipt(2, 6, 4, "e2")),
-        ]
-    )
-    recovered_uri = driver.uri_for_key(recovered.object_key)
-    driver.present.add(recovered_uri)
-    completed_before_recovery = driver.completed
-    result = uploads.complete_upload_session(
-        Session(), recovered, sha256="a" * 64, receipts=[], settings=settings
-    )
-    assert result.session.status == "object_completed"
-    assert recovered.completed_object_uri == recovered_uri
-    assert driver.completed == completed_before_recovery
-
-    wrong_size = _upload()
-    driver.present.add(driver.uri_for_key(wrong_size.object_key))
-    monkeypatch.setattr(
-        driver,
-        "stat",
-        lambda uri: ObjectMetadata(uri=uri, byte_size=9),
-    )
-    with pytest.raises(UploadContractError, match="recovered provider object"):
-        uploads.complete_upload_session(
-            Session(), wrong_size, sha256="a" * 64, receipts=[], settings=settings
-        )
-
     all_parts = _upload(
         confirmed_bytes=9,
         transfer_receipts=[{"unit_number": 1}, {"unit_number": 2}],
     )
     assert uploads.next_cursor(all_parts) is None
-
-    missing_object = _upload(
-        retention_until=None,
-        status="quarantined",
-        completed_object_uri="s3c://bucket/already-gone.csv",
-        quarantine_delete_after=datetime.now(UTC) - timedelta(seconds=1),
-    )
-    cleanup_db = Session()
-    cleanup_db.row_values = [[missing_object]]
-    assert uploads.cleanup_abandoned_uploads(cleanup_db, settings=settings) == {
-        "expired": 0,
-        "completed_deleted": 0,
-        "quarantine_deleted": 1,
-    }
-    assert driver.deleted == [missing_object.completed_object_uri]
-
-    cleanup_db.row_values = [[_upload(provider_driver="gcs", retention_until=None)]]
-    with pytest.raises(RuntimeError, match="Cleanup driver"):
-        uploads.cleanup_abandoned_uploads(cleanup_db, settings=settings)
-
-
-def test_cleanup_deletes_stale_completed_objects_but_preserves_legal_holds(
-    monkeypatch,
-) -> None:
-    driver = Driver()
-    monkeypatch.setattr(uploads, "get_object_store", lambda *_args: driver)
-    version_id = uuid.uuid4()
-    version = SimpleNamespace(status=DatasetStatus.UPLOADED)
-    expired_at = datetime.now(UTC) - timedelta(seconds=1)
-    stale = _upload(
-        retention_until=None,
-        status="verifying",
-        expires_at=expired_at,
-        lease_expires_at=expired_at,
-        completed_object_uri="s3c://bucket/stale.csv",
-        dataset_version_id=version_id,
-    )
-    held = _upload(
-        status="object_completed",
-        expires_at=expired_at,
-        lease_expires_at=None,
-        legal_hold=True,
-        completed_object_uri="s3c://bucket/held.csv",
-    )
-    driver.present.update({stale.completed_object_uri, held.completed_object_uri})
-    db = Session()
-    db.row_values = [[stale, held]]
-    db.objects[(uploads.DatasetVersion, version_id)] = version
-
-    assert uploads.cleanup_abandoned_uploads(db, settings=_settings()) == {
-        "expired": 0,
-        "completed_deleted": 1,
-        "quarantine_deleted": 0,
-    }
-    assert stale.status == "failed"
-    assert version.status == DatasetStatus.FAILED
-    assert stale.completed_object_uri not in driver.present
-    assert held.status == "object_completed"
-    assert held.completed_object_uri in driver.present
 
 
 def test_upload_result_route_returns_fresh_authorized_completion(monkeypatch) -> None:
@@ -697,66 +485,7 @@ def test_contract_value_guards() -> None:
     assert tuple(RayDataSourceDescriptor("path", {"a": 1}, "gcs")) == ("path", {"a": 1})
 
 
-@pytest.mark.parametrize("status", ["quarantined", "object_completed", "verifying"])
-def test_retention_wait_does_not_starve_other_upload_cleanup(monkeypatch, status):
-    from automl_api.storage.contracts import DeletionPending
-
-    driver = Driver()
-    monkeypatch.setattr(uploads, "get_object_store", lambda *_: driver)
-    pending = _upload(
-        status=status, completed_object_uri="s3c://bucket/retained", retention_until=None
-    )
-    other = _upload(
-        status="quarantined", completed_object_uri="s3c://bucket/other", retention_until=None
-    )
-    now = datetime.now(UTC)
-    original = driver.delete
-
-    def delete(uri):
-        if uri == pending.completed_object_uri:
-            raise DeletionPending("Provider retains deleted generations")
-        original(uri)
-
-    monkeypatch.setattr(driver, "delete", delete)
-    db = Session()
-    db.row_values = [[pending, other]]
-    result = uploads.cleanup_abandoned_uploads(db, settings=_settings(), now=now)
-    assert pending.status == status
-    assert pending.lease_expires_at == now + timedelta(hours=1)
-    assert pending.lease_owner is None
-    assert "retains" in pending.terminal_reason
-    assert other.status == "failed"
-    assert result == {"expired": 0, "completed_deleted": 0, "quarantine_deleted": 1}
-
-
-@pytest.mark.parametrize("upload_status", ["uploading", "object_completed", "verifying", "ready"])
-@pytest.mark.parametrize(
-    "metadata",
-    [
-        {"digest_scope": "multipart_manifest"},
-        {"digest_scope": "future-v2"},
-        {"digest_scope": None},
-        {"digest_algorithm": "md5"},
-        {"digest_algorithm": None},
-        {"expected_object_digest": None},
-        {"expected_object_digest": "a" * 63},
-        {"expected_object_digest": "z" * 64},
-        {"expected_object_digest": "A" * 64},
-        {"expected_object_digest": 1},
-    ],
-)
-def test_completion_rejects_unqualified_digest_before_provider_or_replay(
-    monkeypatch, upload_status, metadata
-) -> None:
-    upload = _upload(status=upload_status, completed_object_uri="s3c://bucket/original", **metadata)
-    original = dict(vars(upload))
-    store = MagicMock()
-    monkeypatch.setattr(uploads, "get_object_store", store)
-    db = MagicMock()
+@pytest.mark.parametrize("metadata", [{"digest_scope": None}, {"digest_algorithm": None}])
+def test_unpersisted_null_digest_metadata_is_rejected_by_manifest_guard(metadata):
     with pytest.raises(UploadContractError, match="byte-stream SHA-256"):
-        uploads.complete_upload_session(
-            db, upload, sha256="a" * 64, receipts=[], settings=_settings()
-        )
-    store.assert_not_called()
-    db.flush.assert_not_called()
-    assert vars(upload) == original
+        uploads.require_upload_byte_digest(_upload(**metadata))

@@ -1,0 +1,129 @@
+date: '2026-10-25'
+phase: 1
+scope: inference-serving-producer
+status: in_progress
+phase_complete: false
+scope_integration_complete: false
+source_inputs: 638
+source_manifest_sha256: 26455ac48d30ccec53c152d3276fb72dd6f120085589abca4e36ec40f5cd2bbb
+private_evidence_directory: .unlazy/phase1-inference-peer-identity
+checks:
+  producer-unit:
+    passed: 197
+    failures: 0
+    errors: 0
+    skips: 0
+    crypto_runtime: 49.0.0 2.1.1 3.0
+    minimum_free_bytes: 43763920896
+    test_xml_sha256: 67489f1c5546677957ef5fc87b07d1cae104bf718cc9c79ed0dca977ac553690
+  producer-admission:
+    passed: 90
+    failures: 0
+    errors: 0
+    skips: 0
+    crypto_runtime: 49.0.0 2.1.1 3.0
+    minimum_free_bytes: 43762946048
+    test_xml_sha256: e97c5e24a3ffbc11073b4acdf2b65705d4c34da5c195707575a9c3c73f79786f
+  helm-identity:
+    passed: 45
+    failures: 0
+    errors: 0
+    skips: 0
+    crypto_runtime: 49.0.0 2.1.1 3.0
+    minimum_free_bytes: 43763523584
+    test_xml_sha256: 4a048905ecd80e57565d8bd51ab152afec6d0a3be095b4ea82775a95bff19700
+  worker50:
+    passed: 45
+    failures: 0
+    errors: 0
+    skips: 0
+    crypto_runtime: 50.0.2 2.1.1 3.0
+    minimum_free_bytes: 43763408896
+    test_xml_sha256: b2f27868bbb99cdff6c14e3a216fc22e092069e951862815eccf362b1479527c
+  predecessor:
+    passed: 2
+    failures: 0
+    errors: 0
+    skips: 0
+    crypto_runtime: 49.0.0 2.1.1 3.0
+    minimum_free_bytes: 43762483200
+    test_xml_sha256: efac32f29d861128e5e96b913dd88f0defdaf1c89bc927eed421f5e4f6744a14
+  baseline:
+    passed: 0
+    failures: 2
+    errors: 0
+    skips: 0
+    crypto_runtime: 49.0.0 2.1.1 3.0
+    minimum_free_bytes: 43762835456
+    test_xml_sha256: 93028477dcadc04911b9f76c3b51804d5ccfe94b7ca394759edc25a15a7c7945
+counts_overlap: true
+scoped_gates:
+  met: 0
+  unmet: 8
+phase_1_requirements:
+  verified: 2
+  open: 34
+original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+strict_schema:
+  status: terminal_pass
+  read_only: true
+  revision: 0018_attempt_predecessor_lineage
+behavior:
+- Normal admission now selects deployment.reconcile.v4 and generates the pod TLS runtime command, exact
+  projected-token audience, memory-backed key volume, UID/fsGroup10001, HTTPS data port8443 and separate
+  health port8080. The maintained and generated Dockerfiles select the same runtime.
+- A shared serving declaration check protects producer output, every v4 native-write source and certificate
+  selection. Static HMAC/database credentials, legacy commands, API-token automount, host networking,
+  unexpected execution fields and mismatched ports/probes are refused before native writes.
+- Certificate and model-download tests now select real original SQL custody from the new producer. The
+  prior key-binding selection stub has been removed; Kubernetes/object calls remain controlled fixtures
+  with zero SQL connections during I/O.
+- Native execution is compared with the submitted template, allowing only explicit Kubernetes defaults
+  and equivalent resource quantities. Unrequested init/lifecycle/host fields cannot gain admission by
+  appearing in the first native receipt. Existing checks already reject extra containers.
+- Helm references an externally provisioned ca.crt/ca.key Secret and mounts it read-only only into the
+  API container. Production requires this authority; configured authorities require the HTTPS /internal/attempts
+  control root. Migration/reconciler containers do not receive the mount or path settings.
+- TLS deployments withhold raw Service DNS URLs, whose names do not match individual pod certificates.
+  Current stop/start/cleanup, status publication and pagination are covered with the new producer.
+captured_source_compatibility:
+  status: terminal_pass
+  source_replay: true
+  actual_prior_binary: false
+  controlled_native_sdk: true
+  kubernetes_campaign: false
+  legacy_tls_admission_refused: true
+  original_journal_preserved: true
+  uid_retirements:
+  - kind: service
+    uid: 135a8ec1-bd0a-40a0-a723-ae427de15c50
+  - kind: deployment
+    uid: 445df804-e088-4698-90ba-4ac5175baefa
+  probe_sha256: d17530b3130571ff8ce086b1971bd610c03b57581c946f22bf42e3a52c66867d
+ca_provision_commands:
+  status: terminal_pass
+  public_authority_digest: a53faf805a175f5cca79dc5a4694479114c14cb22e24c602a6bc217f45d16135
+  private_files_retired: true
+  kubernetes_secret_created: false
+k3d_shared_fixture_preflight:
+  status: terminal_pass
+  context: k3d-sceptre
+  tls_verified: true
+  read_only: true
+  shared_namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  shared_service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+limitations:
+- The ordinary/docs/offline gateway still uses its old name-only plaintext target. The two unchanged proxy
+  security tests still fail. New v4 deployments are not yet qualified for serving through that gateway.
+- Upload completion currently discards the provider completion version and verification reads latest object
+  bytes. Offline inference needs original native completion receipts, pinned verification/reads and controlled
+  treatment of missing or ambiguous histories; reading latest is not an acceptable replacement.
+- Captured source replay uses fresh owned fixture data, real PostgreSQL and controlled native SDK responses.
+  It is not an actual prior binary, a mixed-version rollout or a real Kubernetes retirement campaign.
+  No missing historical object was reconstructed.
+- Only a read-only k3d UID preflight ran. The pending-pod native identity campaign, image execution, network-policy/provider/IAM/admission
+  and full native journeys remain unqualified. Existing broad controller Secret privileges remain a separate
+  trust-boundary obligation.
+- All eight scope gates remain unmet. Full release/branch >=90.01%, maintained images, the 45,000,000,000-byte
+  migration and deferred 15-by-10-GiB qualification remain open. Original phase1-deletion:G7 still requires
+  seven missing historical objects.

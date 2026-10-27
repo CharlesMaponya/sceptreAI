@@ -1,0 +1,155 @@
+date: '2026-10-26'
+phase: 1
+scope: upload-admission-deletion-progress
+status: in_progress
+phase_complete: false
+full_upload_admission_complete: false
+source_inputs: 656
+source_manifest_sha256: 12e4c7f851196ea964d441c2ae05a3d7ed94ab1ee1f20e35a9978cd14aaf0bb3
+private_evidence_directory: .unlazy/phase1-upload-admission-deletion
+checks:
+  focused:
+    passed: 155
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43619241984
+    xml_sha256: e8e5961547c599fad5fc734ec4fedde160e02f9243e3e29481359a3c2d0d3ace
+  deletion:
+    passed: 200
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43618488320
+    xml_sha256: 38fd05ca0defc6e52656458393b15a105637088ad1cc9d779964ffb10b63de60
+  connected:
+    passed: 560
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43615768576
+    xml_sha256: 9b78dbb311e5d19fdd2d101016f8fdaa4fefa715d3d7b66ea2916da125e5bebc
+  worker:
+    passed: 28
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43615543296
+    xml_sha256: 79bcd0476b7a3ae81b2a9bf1d539b9e3d2a73ce995a4001cec5ae82b9099875f
+  cancellation:
+    passed: 69
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43615457280
+    xml_sha256: 33fe744b86084b07876ff292ce8caeacbad21f756c6b3e1fa6870abf4e8ad6e8
+counts_overlap: true
+admission_gates:
+  met: 0
+  unmet: 4
+upload_completion_gates:
+  met: 0
+  unmet: 6
+parent_inference_gates:
+  met: 0
+  unmet: 8
+phase_1_requirements:
+  verified: 2
+  open: 34
+original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+integration_readonly:
+  status: terminal_pass
+  read_only: true
+  source_manifest_sha256: 12e4c7f851196ea964d441c2ae05a3d7ed94ab1ee1f20e35a9978cd14aaf0bb3
+  observed_at: '2026-10-26T19:50:29.465878+00:00'
+  revision: 0018_attempt_predecessor_lineage
+  tables: 44
+  schema_differences: []
+  namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+  original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+  reserve_bytes: 43500000000
+  free_bytes: 43618582528
+behavior:
+- The actual pre-fix request returned409 despite a succeeded native cleanup command.
+  Project deletion now authenticates the original admission/retirement/source/single
+  native target and independently anchored cleanup command/intent/attempt/outcome/result
+  before allowing deletion.
+- 'The same authentication runs before every queued project stage: runtime, object
+  store, prepared store and metadata. Missing or corrupted history raises DeletionPending
+  before SDK construction or native effects, preserving the pending tombstone and
+  available source metadata.'
+- Independent original and cleanup commands keep the barrier if upload JSON is erased,
+  a retired row is relabeled aborted, or the upload row disappears. A published phase
+  or native_absence_confirmed boolean cannot itself release deletion.
+- Fresh hold/retention checks remain independent of original byte/native identity.
+  Changed storage context also blocks deletion. A native cancellation reply that is
+  recorded but not published remains held.
+- A complete SQL-backed deletion journey requests and replays the intent, commits
+  each of the four stages separately and removes metadata only after all stages pass.
+  Local controlled prefix calls retain their expected project/prepared targets. Run
+  deletion retains its existing behavior for unrelated project uploads.
+- Authentication reads original custody without provider I/O or SDK construction.
+  It does not require deletion_in_progress=false after intent creation. Original logical
+  retirement remains unchanged with native_absence_confirmed=false until the authorized
+  metadata stage removes the row.
+- The first113-case attempt passed functional assertions but exposed a retained-tombstone
+  foreign-key teardown error. The fixture now explicitly removes only its own stages/tombstone
+  before upstream tenant teardown. The exact failed owned fixture was repaired with
+  verified actor/project/tombstone scope; production retention/schema rules were not
+  weakened.
+limits:
+  user_database_ceiling_bytes: 45000000000
+  largest_table_rows: null
+  missing_historical_objects: 7
+  native_admission_cleanup: unqualified
+  production_sized_migration: unqualified
+  large_upload_load: unqualified
+  maintained_images: unqualified
+  deployed_cloud_iam: unqualified
+  mixed_version: unqualified
+  full_release_coverage: unqualified
+  whole_phase_1: unqualified
+remaining:
+- All four original admission acceptance gates remain unmet; their audit.py commands
+  remain unimplemented. This progress cohort does not promote normal test output into
+  automatic parent acceptance.
+- Complete provider-specific unknown/superseded creation cleanup, missing opaque GCS
+  URI handling, Azure/embedded semantics, cleanup process-kill/connection-loss and
+  operator recovery/replay, and full background admission publication/recovery.
+- Complete factory/current-actor/source/command conversion of instruction/progress
+  I/O, full completion/inference acceptance and current-source full release/independent
+  branch coverage.
+- This increment qualifies local SQL/control-plane deletion release for authenticated
+  known cleanup. Full native/cloud deletion, IAM/network/admission, maintained images
+  and mixed/prior-binary qualification remain open; existing project deletion provider
+  I/O still spans SQL.
+- 45GB migration cannot fit alongside43.5GB reserve; largest-table row counts remain
+  unspecified. The15-by-10GiB campaign remains deferred. UI/offline/TLS were not repeated
+  for this backend increment.
+- Original deletion:G7 requires seven missing historical objects (two models, five
+  signed results). None were reconstructed or re-signed.
+evidence_hashes:
+  source-sha256.json: 12e4c7f851196ea964d441c2ae05a3d7ed94ab1ee1f20e35a9978cd14aaf0bb3
+  before-source-sha256.json: 39bb421feb125d882f4afbb033b2d22465f1317111d512c78679f2c7db001d18
+  baseline-source-sha256.json: 811a0db8a9c1356562cac9e4d86075e682996d2bc66e9960db8740711b1f2ee2
+  baseline-test.py: 0e646e02e64844924d335347da9c2609e618d36582fe42705c0d6621a92dfcfe
+  baseline.xml: 02c8264539aa1ac25da0c89573ea1e4c1d7f943e8f2697064feece78c07c9479
+  baseline-state.json: 12ac8e34233b821e292c2c63155dc09d995b964e4e3be9fa84846037059d294f
+  before-deletion.py: e09fda87ed704b71d7818aae7ffa4cd868bdf3ffa10565bf3e4a5d72314a39e6
+  before-cleanup.py: 62bde2aaa1499844da29fed7e396ca64f8c8d3efc262d4b8093ee590a19b1f37
+  owned-fixture-repair.json: 962ed3ccfd487ea1ce236decf00a29a38719f7ab9efac36b464057d611b79266
+  run.py: fc55c3a4f33d89aef83d9547f79e4ce6cd6c742c881f6f526d32e934151c6144
+  audit.py: 594e246fc32a3bd606d02b1e86ecea04980c83f8ff21c756e5e44b59749d6754
+  integration-readonly.json: 6569d24f7d9a42f9fdbe0d1b4753473a714eccba2467a7c66b79e1dd9579530f
+  PLAN.md: 7a37f250372c75b5e5e408114f403254d9134b81d46483efaecf01e353435f38
+  focused-state.json: 46452f8ec5ac1c386c59ba15662bb3bd3382778e282325b2fb66977f09421c2c
+  focused.xml: e8e5961547c599fad5fc734ec4fedde160e02f9243e3e29481359a3c2d0d3ace
+  deletion-state.json: 10b720086d5dda2942faea7c91aeb53e90bfa581fea40444e9995cf63682ba82
+  deletion.xml: 38fd05ca0defc6e52656458393b15a105637088ad1cc9d779964ffb10b63de60
+  connected-state.json: 357b2b132e7eb316144f06c072992341f748676e499f735c56933e7d314068ce
+  connected.xml: 9b78dbb311e5d19fdd2d101016f8fdaa4fefa715d3d7b66ea2916da125e5bebc
+  worker-state.json: 7282994db66d5e5af320e3ff4c73ded5b6b88f03746cc093f8a81d9df65d943f
+  worker.xml: 79bcd0476b7a3ae81b2a9bf1d539b9e3d2a73ce995a4001cec5ae82b9099875f
+  cancellation-state.json: b736b07a96f91289837a088842fab717a8c69fcd1240547a3674cdf4466417a8
+  cancellation.xml: 33fe744b86084b07876ff292ce8caeacbad21f756c6b3e1fa6870abf4e8ad6e8

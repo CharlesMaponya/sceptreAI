@@ -144,21 +144,31 @@ def test_observe_once_commits_success_and_rolls_back_failure(monkeypatch) -> Non
     session.rollback.assert_called_once()
 
 
-def test_cleanup_uploads_once_counts_every_cleanup_class_and_rolls_back(monkeypatch) -> None:
-    session = MagicMock()
+def test_cleanup_uploads_once_delegates_factory_and_counts_known_results(monkeypatch):
+    factory = MagicMock()
+    recovery = MagicMock(return_value=0)
+    monkeypatch.setattr(workflow_reconciler, "recover_pending_admissions", recovery)
+    expiry = MagicMock(return_value=4)
+    monkeypatch.setattr(workflow_reconciler, "expire_pending_admissions", expiry)
+    admission_cleanup = MagicMock(return_value=3)
+    monkeypatch.setattr(workflow_reconciler, "cleanup_pending_admissions", admission_cleanup)
     cleanup = MagicMock(
         return_value={"expired": 1, "completed_deleted": 2, "quarantine_deleted": 3}
     )
     monkeypatch.setattr(workflow_reconciler, "cleanup_abandoned_uploads", cleanup)
-
-    assert workflow_reconciler.cleanup_uploads_once(lambda: _Context(session)) == 6
-    cleanup.assert_called_once_with(session)
-    session.commit.assert_called_once()
-
-    session.reset_mock()
+    assert workflow_reconciler.cleanup_uploads_once(factory) == 13
+    cleanup.assert_called_once_with(factory)
+    factory.assert_not_called()
     cleanup.side_effect = RuntimeError("storage unavailable")
-    assert workflow_reconciler.cleanup_uploads_once(lambda: _Context(session)) == 0
-    session.rollback.assert_called_once()
+    assert workflow_reconciler.cleanup_uploads_once(factory) == 7
+    expiry.side_effect = RuntimeError("expiry unavailable")
+    cleanup.side_effect = None
+    assert workflow_reconciler.cleanup_uploads_once(factory) == 9
+    admission_cleanup.side_effect = RuntimeError("native admission cleanup unavailable")
+    assert workflow_reconciler.cleanup_uploads_once(factory) == 6
+    recovery.side_effect = RuntimeError("admission recovery unavailable")
+    assert workflow_reconciler.cleanup_uploads_once(factory) == 6
+    factory.assert_not_called()
 
 
 def test_cleanup_retention_once_commits_and_rolls_back(monkeypatch) -> None:

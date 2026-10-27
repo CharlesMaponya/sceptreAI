@@ -173,6 +173,10 @@ class FakeSession(AbstractContextManager):
     def add(self, item: object) -> None:
         self.added.append(item)
 
+    def scalars(self, statement):
+        assert statement.column_descriptions[0]["entity"] is WorkflowAttempt
+        return []
+
     def commit(self) -> None:
         self.commits += 1
 

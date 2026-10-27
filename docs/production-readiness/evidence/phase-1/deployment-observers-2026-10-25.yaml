@@ -1,0 +1,189 @@
+date: '2026-10-25'
+scope: deployment-observers
+phase: 1
+phase_complete: false
+source_inputs: 626
+source_manifest_sha256: e892c2e7c649d9ad359be4a5a7495e934b2f6110540387ea8b8161ba1b3251a4
+checks:
+  passed: 211
+  focused: 37
+  focused_source: regression.xml
+  native_unit_cases: 22
+  helm_contract_cases: 35
+  failures: 0
+  errors: 0
+  skips: 0
+  original_negative_control_failures: 2
+  rbac_negative_control_failures: 2
+  strict_schema: 0018_attempt_predecessor_lineage
+  repository_ruff: pass
+  changed_hunk_format: pass
+  ci_preflights: 3
+  native_k3d_cases: 1
+  scoped_gates_reverified: 4
+behavior:
+- The deployment listing selects original SQL custody and immutable request snapshots,
+  commits, performs bounded Kubernetes reads outside SQL, and rechecks current reader/token/project
+  membership plus unchanged original source/control before publication. The HTTP response
+  shape and pagination stay unchanged; no background service or schema was added.
+- Every accepted observation advances a SQL revision, including unavailable observations
+  that preserve the logical run status. A newer read, stop/start/cleanup, source mutation,
+  project deletion or reader revocation fences an older ready result. Pending launches
+  and controls cannot be promoted by listing.
+- Native observations pin original namespace lifetime, Deployment/Service/Ingress
+  UIDs and specs, completed control generation and replica count. ReplicaSets must
+  belong to the original Deployment and template; Pods must belong to those ReplicaSets
+  and match the approved Pod spec. Duplicate UIDs, continued lists, changed resourceVersions
+  and incomplete readiness fail closed.
+- Readiness requires observed generation and enough owned Ready Pods. Container failure
+  classification includes stale availability counters; unavailable reads never publish
+  terminal success/failure. Unverified access URLs are withheld, and URL schemes/Ingress
+  inventory follow original verified resources.
+- Name-only native state/URL helpers have been removed from production. Legacy formatter
+  tests now call pure formatters through test-only adapters; committed PostgreSQL
+  and the real route exercise original selection, inspection and publication.
+- Helm grants API/reconciler read access to ReplicaSets and to metadata of their release
+  namespace only. API model-resource write permissions, including the old scale patch
+  and Ingress create/delete, are withdrawn; the reconciler has the full Deployment
+  patch required by the durable protocol. Original Ingress reads/retirement remain
+  allowed after the feature is disabled.
+native_kubernetes:
+  provider: owned local k3d-sceptre
+  tls_verified: true
+  zero_replica_resources: true
+  pods_started: 0
+  sql_connections_during_native_calls: 0
+  original_observation_state: pending
+  same_name_replacement_refused: true
+  original_creation_journal_unchanged: true
+  temporary_service_account_tokens: true
+  requested_token_lifetime_seconds: 600
+  api_model_write_denials: 16
+  other_namespace_read_denied: true
+  api_full_deployment_patch_denied: true
+  reconciler_owned_uid_resource_version_patch_allowed: true
+  explicit_model_resource_uids_retired: 3
+  rbac_object_uids_retired: 8
+  owned_namespace_retired: true
+  shared_fixture_namespace_uid_preserved: true
+  maintained_image_tested: false
+  positive_replica_inference_qualified: false
+  cloud_iam_qualified: false
+retained_failures:
+- Two unchanged baseline test bodies reproduced SQL held during native listing and
+  ready promotion of a foreign same-name Deployment. Both pass after conversion.
+- 'The first caller pilot passed 135 and failed the missing-deployment case: its failure
+  mapping was omitted while extracting the publisher. The original assertion was retained
+  and the mapping restored; the repaired 136-case caller pilot passes.'
+- The first expanded observer run passed 35 and failed the completed-restart case
+  because its new ReplicaSet fixture returned dictionaries where the existing control
+  dispatcher expects SDK objects. Public SDK deserialization now supplies real-shaped
+  fixture objects and the retained 36-case checkpoint passes.
+- 'Expert review added a stale-availability regression: verified failing Pods must
+  not be hidden by a lagging available-replica count. The current native unit and
+  connected runs include that case.'
+- The first admin-context zero-replica probe passed and retired three UIDs. Config
+  review then found missing Helm namespace/ReplicaSet reads and reconciler Deployment
+  patch rights; both new Helm negative controls fail on the old template. Chart/dependency
+  inputs were added to the frozen manifest before repair.
+- 'The first limited-token probe failed with HTTP401: the installed SDK legacy token-key
+  alias did not apply its Bearer prefix. The private harness now uses the canonical
+  BearerToken key and removes admin client credentials. The failed namespace, both
+  model resources and all eight RBAC UIDs were retired. The repeated token-based probe
+  passes.'
+limits:
+  requirements:
+    total: 36
+    verified: 2
+    open: 34
+  user_database_ceiling_bytes: 45000000000
+  largest_table_rows: not supplied
+  free_disk_reserve_bytes: 43500000000
+  minimum_observed_free_bytes_during_regression: 43832078336
+  scale_qualified: false
+  required_handoff: Original phase1-deletion:G7 remains abandoned for seven missing
+    original historical QA objects (2 models,5 signed results); do not reconstruct
+    or re-sign.
+  remaining:
+  - Namespace admission fencing for creation and controlled recovery/qualification
+    of legacy, partial and unknown creation histories remain required.
+  - The inference gateway still resolves its native target by deterministic Service
+    name. Native proxy target admission/identity enforcement remains required; observer
+    UID checks do not close that separate path.
+  - Other native observers/admission handlers and the complete SQL/native I/O inventory
+    remain required. This increment covers deployment status listing, not every workload
+    family.
+  - Complete worker credential withdrawal, project/stage admission and cloud IAM/network
+    restrictions remain required; local service-account model permissions alone do
+    not prove these broader gates.
+  - Current full backend/release and independent branch coverage >=90.01 percent,
+    maintained images, actual prior binaries/mixed versions/cloud providers, positive-replica
+    inference and complete native workflow/failure journeys remain required.
+  - 45 GB migration qualification and 15 users each uploading 10 GiB require suitable
+    infrastructure; neither was run locally.
+evidence_hashes:
+  source-sha256.json: e892c2e7c649d9ad359be4a5a7495e934b2f6110540387ea8b8161ba1b3251a4
+  before-source-sha256.json: 7dff57bcdcbef66668dd5cd8e32fa5bb81e153f54ef2b12551c3d83ab489fd30
+  initial-before-source-sha256.json: c8236a6a4effc7711dcd2f39c7d7805a948983b0ec1e04a0a4973f09ea82e235
+  baseline-source-sha256.json: 1db08ebc1cd5adeb84c0646fd61e6df049e2d2df66467778c14df2ac7d08c845
+  baseline-test.py: db53364580534359cbde1c764491309f9f8764a8850f5628afa25a27d9d7ccdc
+  rbac-baseline-source-sha256.json: 17e9219e6dd2d09d722a7c4a2bc50d283295a75fc78cb8797c2e50c2729e65ce
+  run.py: 8ec7e76db7cb1e2450823fbc62e05cf7780702f50852c0e1d8f4f105e9b240d1
+  audit.py: e685a4079ca198ef7278dead62ba3110ece7d76c41bb7971dff8afd98297bd2c
+  format_hunks.py: 23db7c61e3fdb51585a7c2cc4d4243b7bc54808d3834f2a407a9a05bdecbb4c7
+  test_native_observer.py: 70b2bc3932b138d60f6e7ca8025b447d40e9c4a2d1832a21963bc09335a36148
+  native-probe-state.json: 551c9d0d480eea2cc706a97596f5a8c49dbda6c574b121b8bd7619082044671e
+  lint.log: 82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18
+  preflight-0.log: 00c8dcf3b37f2eac6114a4c21f9f742c56e354ada6672f1b15189664820d92a5
+  preflight-1.log: a414947a0f058a04ee8ca14e4023b0661f0892a6cb81c082ba87469dd71ed9e9
+  preflight-2.log: dffd5dbca119ddf99cc5a088942e02d1127f7108463f4627161d74775ec7e554
+  baseline.log: f2210d5e5f519b81028bd763aea4e5e328e8c90fffca720aa407c2758bef2707
+  baseline.xml: 5b22a48ea9ea2408f43cfbb3d778db671ae36ad59f816f655c28b92fceeb76e6
+  baseline-state.json: 4388b9d9a8b27a17b7a0fec932ef5ae198214a5d795613dbb24c78ab2d935de6
+  first-passing-focused.log: ca25622956fe7124b7219f86ecf6c369e1800303ceb4c3b1d58e903a10653ceb
+  first-passing-focused.xml: 209aff05fcbe6f4cfc0a498ba965102e907c488067426c1b705a158519c39fad
+  first-passing-focused-state.json: 0ba70175937d72c1fea9bface5fabaa68a516a244f35611b1c47a27a616ad33c
+  first-callers-callers.log: b9dce0d95ab8af61696178f63c119405156c1b39ce3bcd5ecd326365ec4faba1
+  first-callers-callers.xml: 8a752816f18a1325c5daed80030e1a52b793b473854b0d1cf5b32a1ecb9d8e64
+  first-callers-callers-state.json: edace761a5e12b79026e18c38e49e4f7f4c5f3ca5c040b7deb33a234edde558c
+  callers.log: e99cb69acda527bf3ad8076f43156b63879205c764451c3da48b754a84b5405f
+  callers.xml: a81e30b5e09bc7f5ce2060e4a7f41a2dedc4434226ff963026d5b7a81eaa5de2
+  callers-state.json: 1c73d4bf4e60f339a4f54e553fc9e6962db9e131dac4b0c16ae7472f621349de
+  expanded-draft-focused.log: e9b9fce7ed6ba817080a0bfae24e2e5b3991f01ee1bb8420688a087053cc9617
+  expanded-draft-focused.xml: 243aea28b21b289f78f0b129b2cc2b8d25cbe396da69ba841451a4458643121f
+  expanded-draft-focused-state.json: daddfda779774ff707340cc4fa7744b7cf3910cb62f44fe696c4592a7c0ea75f
+  thirty-six-passing-focused.log: 51ac3aa25c3dee79781abd0dfce0637fc6055b316776c41f84a8e51f3dc347ad
+  thirty-six-passing-focused.xml: c327fc98e6285b09d899a967771ce725f7338c65eb85815a26076562160bf1af
+  thirty-six-passing-focused-state.json: 019fb2c7493f3bd60090b621259529a61eedc2d526ee5848a9702bdf9e8fdb89
+  rbac-baseline.log: 9fe07c69151fcf81cda48989c57db66b302dad56cdc473b8e74f437c274b4e79
+  rbac-baseline.xml: f08f6d096a04a0ed19b1436b9c4c558bec07cb1d128456b99731d0435ec4780b
+  rbac-baseline-state.json: 2021a7691420a199a595ad10d99fb7b08f2d12576f6cc743b6680751e16f3c11
+  unit.log: 9081060a68a0b42f32a97cd300d31be3fd5d6fb872d8a960ee71d3187d49fba7
+  unit.xml: e69c7031b139f8b05d9a28dbfa54b6218537227fe5c15a5234a5e1b4f3183639
+  unit-state.json: 0a9b36f360b4c74aa45250d79b71987447294a3bfcd02a2b3f88e00c9e3becf6
+  contracts.log: eeacc7180b8232de08ed76b3676071a9eca66081f397d2bac7e727e41f3292af
+  contracts.xml: 89c53c3c918a0828d268b0c4ac14450bca1f5f95c7b5add95cb056794eaa4d7f
+  contracts-state.json: 03cf0fd9d3e1cb0cbf93c19c1f2182704f5b0cf09c7697aa0bdc2277721637de
+  regression.log: b04a277f7e3204b56977c66903f13389ca2148b58dcafcd03a6f7d61e3e192f7
+  regression.xml: 10a718eab56600911ce44d405b6ac3c96aa9fb8c6e142345d42bf729cc1fae29
+  regression-state.json: aba8ee7b5b3db862a51d75f837357389546d30ece1b52f44333d3d4ad9c493bb
+  native.log: f28a5366cfa03042792026ade0cd70e69c1b4c3158aec27c23b7d4ba3d0b13c8
+  native.xml: a32c39f74b7da3d5b35bf717f2103b516f452ed21ef63214dd65435a59b67229
+  native-state.json: 4538bc0d7c289d628bfed5c74edde5578d25d24931196dcbafb0bf5561c91cae
+  admin-probe-native.log: 9f2afac0c9f5a2c230e2bb3aab46f1a59b3cd5e881aea0d0e590fd3b2470da44
+  admin-probe-native.xml: 660f7fa9c6b4412ed8a5c1282a1f8145b4af9e25eba1ebc8fc76cf3593b33d47
+  admin-probe-native-state.json: 32c76c6bc90dce597150d5e1ae3572991b120c6f5f6f3d95f4c5b54b5901a650
+  limited-auth-draft-native.log: 541c159e643381c4782deaefd4ff56cb0e140e44c00b5e02b16af0a242755ce0
+  limited-auth-draft-native.xml: 131c5f04310cd1cef79d90bc50a59325bdb2f5b7ada534f836da6bce013dcede
+  limited-auth-draft-native-state.json: 6fe1c39673e4a00fb54a275306908215d25b6fb391bb96e099b4c1444de17c0d
+  admin-probe-native-probe-state.json: 4cbde457f623388328bd51cd57b1f9d85840d04d7a7013ed5e0e6f3ba6884705
+  admin-probe-test_native_observer.py: e16efcc239a5ef5bc71c6c90e1f1a859fbbee51e079132cab7c658f8e7a04a13
+  admin-probe-source-sha256.json: f6e45ade7f9ce8b3d360a4d9bd6e4db7abad1bdcee2cfae406b2ce47350da51e
+  limited-auth-draft-native-probe-state.json: 82b681b41e247269c39777c3d7dda0d37141d2601690c8ac174370998a408182
+  limited-auth-draft-test_native_observer.py: a4b6130b3701abde56495c6776072d4b0e4ca9627c4b291767a24a2973ee15d2
+  limited-auth-draft-source-sha256.json: e892c2e7c649d9ad359be4a5a7495e934b2f6110540387ea8b8161ba1b3251a4
+  expanded-draft-source-sha256.json: 6c379f19f64fa73997d500cfc9046ee5db76528404bd0d4a7e913082587e720c
+  thirty-six-passing-source-sha256.json: 6a675d742d53fe2f2a9c03de55c86a6cb79121c735127ef0792eaf772eec1fd7
+  first-callers-source-sha256.json: 02c0a8d5dea49279520e69bc17881ca2d2c25bb135421ef44b9143df8d20a166
+  first-passing-source-sha256.json: 28247b8a99fe8e31cf4756c89b11f6b243632cfe41df54977e9b6fd72a662bf2
+  finalize_evidence.py: 755e83ab9df8661249772063a937754209090db45c575316e1286c67ae4abd6d

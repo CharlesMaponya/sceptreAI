@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import math
+import time
 import uuid
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
@@ -18,6 +19,7 @@ from automl_api.core.config import get_settings
 from automl_api.models.datasets import DatasetVersion
 from automl_api.models.enums import (
     ArtifactKind,
+    CommandStatus,
     ModelStage,
     ProjectRole,
     ProjectStatus,
@@ -27,7 +29,7 @@ from automl_api.models.enums import (
 from automl_api.models.iam import User
 from automl_api.models.projects import Project, ProjectMembership
 from automl_api.models.runs import ModelRegistryEntry, ModelRun, RunArtifact
-from automl_api.models.workflows import DeletionStage, DeletionTombstone
+from automl_api.models.workflows import DeletionStage, DeletionTombstone, WorkflowCommand
 from automl_api.schemas.operations import (
     ArtifactCleanupRead,
     ArtifactCleanupRequest,
@@ -41,11 +43,17 @@ from automl_api.schemas.operations import (
     RegistryEntryRead,
 )
 from automl_api.schemas.training import ModelRunRead, TrainingEstimateRequest
-from automl_api.services.kubernetes_training import KubernetesTrainingClient
+from automl_api.services.deployment_controls import CONTROL, queue_control
+from automl_api.services.deployment_submission import lifecycle_custody
+from automl_api.services.inference_tls import PROTOCOL as INFERENCE_PROTOCOL
+from automl_api.services.kubernetes_training import (
+    KubernetesTrainingClient,
+)
 from automl_api.services.model_custody import (
     PROTOCOL as MODEL_CUSTODY_PROTOCOL,
 )
 from automl_api.services.model_custody import (
+    deployment_model_custody,
     registered_model_custody,
     registration_model_custody,
     verify_model_custody,
@@ -646,6 +654,9 @@ def deploy_registered_model(
     request: ModelDeploymentRequest,
     client: KubernetesTrainingClient | None = None,
 ) -> ModelDeploymentLaunchRead:
+    from automl_api.services import inference_identity
+    from automl_api.services.deployment_objects import PROTOCOL as WRITE_PROTOCOL
+
     require_project_role(db, user, project_id, ProjectRole.ADMIN)
     _lock_training_admission(db)
     entry = _registry_entry(db, project_id, entry_id)
@@ -688,6 +699,16 @@ def deploy_registered_model(
             detail="Project not found.",
         )
     source = entry.model_run
+    try:
+        custody_digest = canonical_request_hash(
+            registered_model_custody(db, entry, entry.model_artifact)
+        )
+        if entry.registry_metadata.get("native_custody_digest") != custody_digest:
+            raise StaleFence("Deployment requires verified original model custody")
+    except (StaleFence, ValueError, KeyError, TypeError, LookupError):
+        raise HTTPException(
+            409, "The registered model requires controlled custody qualification."
+        ) from None
     memory_request = _adaptive_inference_memory(
         entry.model_artifact.byte_size,
         request.memory_request,
@@ -710,7 +731,12 @@ def deploy_registered_model(
             "cpu_request": request.cpu_request,
             "memory_request": memory_request,
         },
-        tags={"registry_entry_id": str(entry.id)},
+        tags={
+            "registry_entry_id": str(entry.id),
+            "model_custody_digest": custody_digest,
+            "deployment_write_protocol": WRITE_PROTOCOL,
+            "inference_identity_protocol": INFERENCE_PROTOCOL,
+        },
         queued_at=datetime.now(UTC),
     )
     db.add(deployment_run)
@@ -722,6 +748,13 @@ def deploy_registered_model(
         )
     if not entry.model_artifact.content_hash:
         raise HTTPException(status_code=409, detail="The registered model has no integrity digest.")
+    try:
+        identity_ca = inference_identity.authority()
+        identity_control = inference_identity.control_base_url(k8s.settings)
+    except (StaleFence, ValueError, OSError):
+        raise HTTPException(
+            409, "Inference requires its configured TLS authority and HTTPS control endpoint."
+        ) from None
     manifests = k8s.build_model_deployment_manifest(
         deployment_id=deployment_run.id,
         project_id=project_id,
@@ -730,6 +763,8 @@ def deploy_registered_model(
         model_name=entry.model_name,
         model_uri=entry.model_artifact.object_uri,
         model_digest=entry.model_artifact.content_hash,
+        identity_ca_digest=identity_ca.digest,
+        identity_control_base_url=identity_control,
         image=image,
         replicas=request.replicas,
         cpu_request=request.cpu_request,
@@ -761,6 +796,7 @@ def deploy_registered_model(
                 "base_image": image,
                 "artifact_type": "dockerfile",
                 "desired_state": "object_write_pending",
+                "write_protocol": WRITE_PROTOCOL,
                 "content": dockerfile,
             },
         )
@@ -816,6 +852,221 @@ def _platform_model_deployment_urls(
     }
 
 
+@dataclass(frozen=True)
+class DeploymentRead:
+    request: dict
+    request_digest: str
+    runtime_state: str | None = None
+    urls: dict | None = None
+
+
+@dataclass(frozen=True)
+class DeploymentInspection:
+    project_id: uuid.UUID
+    actor_id: uuid.UUID
+    token_version: int
+    reads: tuple[DeploymentRead, ...]
+
+
+def _deployment_reader(db, user, project_id, inspection):
+    expected_version = user.token_version if inspection is None else inspection.token_version
+    if inspection is not None and (
+        inspection.project_id != project_id or inspection.actor_id != user.id
+    ):
+        raise HTTPException(409, "Deployment observation belongs to another request")
+    project = db.get(Project, project_id, with_for_update={"read": True}, populate_existing=True)
+    current = db.get(User, user.id, with_for_update={"read": True}, populate_existing=True)
+    if (
+        current is None
+        or current.is_active is not True
+        or current.token_version != expected_version
+    ):
+        raise HTTPException(401, "Deployment observation authentication changed")
+    db.scalar(
+        select(ProjectMembership)
+        .where(ProjectMembership.project_id == project_id, ProjectMembership.user_id == current.id)
+        .with_for_update(read=True)
+        .execution_options(populate_existing=True)
+    )
+    require_project_role(db, current, project_id, ProjectRole.VIEWER)
+    if project is None:
+        raise HTTPException(404, "Project not found")
+    return current
+
+
+def _deployment_observation_request(db, user, run):
+    from automl_api.services.deployment_controls import OPERATION, _digest
+
+    project = db.get(Project, run.project_id, populate_existing=True)
+    if (
+        project.status != ProjectStatus.ACTIVE
+        or project.settings.get("deletion_in_progress")
+        or run.tags.get("desired_state") != "deployment_active"
+        or run.status not in {RunStatus.RUNNING, RunStatus.SUCCEEDED, RunStatus.FAILED}
+    ):
+        raise StaleFence("Deployment is not available for active observation")
+    custody = lifecycle_custody(db, run)
+    if custody.get("retired"):
+        raise StaleFence("Deployment was physically retired")
+    deployment_model_custody(db, run)
+    pointer = run.tags.get(CONTROL) or {}
+    control = dict(
+        generation=0,
+        command_id=None,
+        replicas=custody["manifests"]["deployment"]["spec"]["replicas"],
+    )
+    if pointer:
+        command = db.get(
+            WorkflowCommand,
+            uuid.UUID(pointer["command_id"]),
+            with_for_update={"read": True},
+            populate_existing=True,
+        )
+        request = command.request_payload if command is not None else {}
+        if (
+            pointer.get("state") != "complete"
+            or pointer.get("action") != "start"
+            or type(pointer.get("generation")) is not int
+            or pointer["generation"] < 1
+            or command is None
+            or command.project_id != run.project_id
+            or command.operation != OPERATION
+            or command.resource_type != OPERATION
+            or command.resource_id != run.id
+            or command.status != CommandStatus.SUCCEEDED
+            or command.request_hash != canonical_request_hash(request)
+            or request.get("protocol") != OPERATION
+            or request.get("actor_id") != str(command.actor_id)
+            or request.get("run_id") != str(run.id)
+            or request.get("generation") != pointer["generation"]
+            or request.get("action") != "start"
+            or request.get("custody_digest") != _digest(custody)
+            or type(request.get("replicas")) is not int
+            or request["replicas"] != max(1, int(run.params.get("replicas", 1)))
+        ):
+            raise StaleFence("Deployment observation lost its original completed control")
+        control = dict(
+            generation=pointer["generation"],
+            command_id=str(command.id),
+            replicas=request["replicas"],
+        )
+    snapshot = {
+        key: getattr(run, key)
+        for key in (
+            "project_id",
+            "created_by_id",
+            "run_kind",
+            "status",
+            "params",
+            "tags",
+            "k8s_job_name",
+            "k8s_namespace",
+            "failure_code",
+            "failure_message",
+            "finished_at",
+        )
+    }
+    # Freeze JSON now; SQLAlchemy JSON values can otherwise share mutable references.
+    request = dict(
+        run_id=str(run.id),
+        actor_id=str(user.id),
+        token_version=user.token_version,
+        snapshot=snapshot,
+        custody=custody,
+        control=control,
+    )
+    from copy import deepcopy
+
+    return deepcopy(request)
+
+
+def inspect_model_deployments(inspection, client=None):
+    deadline = time.monotonic() + 30
+    reads = []
+    try:
+        k8s = client or KubernetesTrainingClient()
+    except Exception:
+        return replace(
+            inspection,
+            reads=tuple(
+                replace(read, runtime_state="unavailable", urls={}) for read in inspection.reads
+            ),
+        )
+    for read in inspection.reads:
+        try:
+            if canonical_request_hash(read.request) != read.request_digest:
+                raise StaleFence("Deployment observation request changed")
+            state, urls = k8s.observe_model_deployment(
+                read.request["snapshot"]["k8s_job_name"],
+                custody=read.request["custody"],
+                control=read.request["control"],
+                deadline=deadline,
+            )
+            if state not in {
+                "missing",
+                "ready",
+                "pending",
+                "progressing",
+                "image_pull_error",
+                "crash_loop",
+                "configuration_error",
+                "out_of_memory",
+            }:
+                raise ValueError("Unknown deployment runtime state")
+            reads.append(replace(read, runtime_state=state, urls=urls))
+        except Exception as exc:
+            logger.debug("Deployment observation unavailable: %s", type(exc).__name__)
+            reads.append(replace(read, runtime_state="unavailable", urls={}))
+    return replace(inspection, reads=tuple(reads))
+
+
+def _publish_deployment_observation(run, state, urls):
+    failure_details = {
+        "missing": ("KUBERNETES_DEPLOYMENT_MISSING", "The Kubernetes deployment no longer exists."),
+        "image_pull_error": (
+            "INFERENCE_IMAGE_PULL_FAILED",
+            "Kubernetes could not pull the inference image. Publish it to "
+            "an accessible registry or import it into the local cluster.",
+        ),
+        "crash_loop": (
+            "INFERENCE_CONTAINER_CRASH_LOOP",
+            "The inference container repeatedly exits. Inspect the "
+            "pod events and previous container logs.",
+        ),
+        "configuration_error": (
+            "INFERENCE_CONTAINER_CONFIGURATION_FAILED",
+            "Kubernetes could not create the inference container. "
+            "Inspect its environment, secrets, and image name.",
+        ),
+        "out_of_memory": (
+            "INFERENCE_CONTAINER_OUT_OF_MEMORY",
+            "The model exceeded its serving memory limit. Redeploy "
+            "it to apply the adaptive model-size memory estimate.",
+        ),
+    }
+    revision = (run.tags.get("deployment_observation") or {}).get("version", 0)
+    if type(revision) is not int or revision < 0:
+        raise StaleFence("Deployment observation revision changed")
+    tags = {
+        key: value
+        for key, value in run.tags.items()
+        if key not in {"endpoint", "base_url", "docs_url", "openapi_url"}
+    }
+    tags["deployment_observation"] = dict(
+        version=revision + 1, runtime_state=state, observed_at=datetime.now(UTC).isoformat()
+    )
+    if state == "ready":
+        run.status = RunStatus.SUCCEEDED
+        run.failure_code = run.failure_message = None
+        run.finished_at = None
+        tags.update(urls)
+    elif state in failure_details:
+        run.status = RunStatus.FAILED
+        run.failure_code, run.failure_message = failure_details[state]
+        run.finished_at = datetime.now(UTC)
+    run.tags = tags
+
+
 def list_model_deployments(
     db: Session,
     user: User,
@@ -824,113 +1075,94 @@ def list_model_deployments(
     *,
     offset: int = 0,
     limit: int = 100,
-) -> list[DeploymentStatusRead]:
-    require_project_role(db, user, project_id, ProjectRole.VIEWER)
-    k8s = client or KubernetesTrainingClient()
+    inspection: DeploymentInspection | None = None,
+) -> list[DeploymentStatusRead] | DeploymentInspection:
+    current_user = _deployment_reader(db, user, project_id, inspection)
     runs = db.scalars(
         select(ModelRun)
-        .where(
-            ModelRun.project_id == project_id,
-            ModelRun.run_kind == RunKind.DEPLOYMENT,
-        )
+        .where(ModelRun.project_id == project_id, ModelRun.run_kind == RunKind.DEPLOYMENT)
         .order_by(ModelRun.created_at.desc(), ModelRun.id.desc())
         .offset(offset)
         .limit(limit)
         .with_for_update()
+        .execution_options(populate_existing=True)
     ).all()
-    result = []
+    captured = {read.request["run_id"]: read for read in inspection.reads} if inspection else {}
+    if inspection and len(captured) != len(inspection.reads):
+        raise HTTPException(409, "Deployment observation repeats a selected run")
+    reads, result = [], []
     for run in runs:
-        runtime_state = (
-            ("cleaned" if run.tags.get("runtime_cleaned_at") else "stopped")
-            if run.status == RunStatus.CANCELLED
-            else "unknown"
+        pending = {
+            "deployment_start_pending": "starting",
+            "deployment_stop_pending": "stopping",
+            "deployment_cleanup_pending": "cleaning",
+        }.get(run.tags.get("desired_state"))
+        if pending and (run.tags.get(CONTROL) or {}).get("state") == "failed":
+            pending = "unavailable"
+        submission = (
+            run.status in {RunStatus.PRECHECK_RUNNING, RunStatus.QUEUED}
+            and run.tags.get("desired_state") == "deployment_pending"
         )
-        service_name = run.tags.get("service_name") or run.k8s_job_name
-        namespace = run.k8s_namespace or k8s.settings.training_namespace
-        internal_urls: dict[str, str] = {}
-        platform_urls: dict[str, str] = {}
-        if run.k8s_job_name and run.status != RunStatus.CANCELLED:
+        state = pending or (
+            "progressing"
+            if submission
+            else ("cleaned" if run.tags.get("runtime_cleaned_at") else "stopped")
+            if run.status == RunStatus.CANCELLED
+            else "unavailable"
+        )
+        if (
+            run.k8s_job_name
+            and run.status != RunStatus.CANCELLED
+            and not pending
+            and not submission
+        ):
             try:
-                runtime_state = k8s.model_deployment_state(run.k8s_job_name)
-            except Exception:
-                runtime_state = "unavailable"
-            if runtime_state == "ready":
-                run.status = RunStatus.SUCCEEDED
-                run.failure_code = None
-                run.failure_message = None
-                try:
-                    urls = k8s.model_deployment_urls(run.k8s_job_name) or {}
-                    tags = dict(run.tags)
-                    for key in ("endpoint", "base_url", "docs_url", "openapi_url"):
-                        tags.pop(key, None)
-                    run.tags = {**tags, **urls}
-                except Exception as tag_error:  # noqa: BLE001 - best-effort tagging
-                    logger.debug("Deployment URL tagging skipped: %s", tag_error)
-                if service_name and namespace:
-                    internal_urls = _internal_model_deployment_urls(
-                        service_name,
-                        namespace,
-                    )
-                    platform_urls = _platform_model_deployment_urls(
-                        project_id,
-                        run.id,
-                    )
-            elif (
-                runtime_state == "missing"
-                and run.status in {RunStatus.QUEUED, RunStatus.PRECHECK_RUNNING}
-                and run.tags.get("desired_state") == "deployment_pending"
-            ):
-                # The durable launch command has not created Kubernetes resources yet.
-                runtime_state = "progressing"
-            elif runtime_state == "missing":
-                run.status = RunStatus.FAILED
-                run.failure_code = "KUBERNETES_DEPLOYMENT_MISSING"
-                run.failure_message = "The Kubernetes deployment no longer exists."
-                run.finished_at = datetime.now(UTC)
-            elif runtime_state in {
-                "image_pull_error",
-                "crash_loop",
-                "configuration_error",
-                "out_of_memory",
-            }:
-                failure_details = {
-                    "image_pull_error": (
-                        "INFERENCE_IMAGE_PULL_FAILED",
-                        "Kubernetes could not pull the inference image. Publish it to "
-                        "an accessible registry or import it into the local cluster.",
-                    ),
-                    "crash_loop": (
-                        "INFERENCE_CONTAINER_CRASH_LOOP",
-                        "The inference container repeatedly exits. Inspect the "
-                        "pod events and previous container logs.",
-                    ),
-                    "configuration_error": (
-                        "INFERENCE_CONTAINER_CONFIGURATION_FAILED",
-                        "Kubernetes could not create the inference container. "
-                        "Inspect its environment, secrets, and image name.",
-                    ),
-                    "out_of_memory": (
-                        "INFERENCE_CONTAINER_OUT_OF_MEMORY",
-                        "The model exceeded its serving memory limit. Redeploy "
-                        "it to apply the adaptive model-size memory estimate.",
-                    ),
-                }
-                run.status = RunStatus.FAILED
-                run.failure_code, run.failure_message = failure_details[runtime_state]
+                request = _deployment_observation_request(db, current_user, run)
+                digest = canonical_request_hash(request)
+                if inspection is None:
+                    reads.append(DeploymentRead(request=request, request_digest=digest))
+                else:
+                    observed = captured.get(str(run.id))
+                    if (
+                        observed is not None
+                        and observed.request_digest
+                        == digest
+                        == canonical_request_hash(observed.request)
+                        and observed.runtime_state is not None
+                    ):
+                        state = observed.runtime_state
+                        _publish_deployment_observation(run, state, observed.urls or {})
+            except (StaleFence, ValueError, KeyError, TypeError, LookupError):
+                state = "unavailable"
+        service_name = run.tags.get("service_name") or run.k8s_job_name
+        namespace = run.k8s_namespace
+        internal_urls = (
+            _internal_model_deployment_urls(service_name, namespace)
+            if state == "ready" and service_name and namespace
+            and run.tags.get("inference_identity_protocol") != INFERENCE_PROTOCOL
+            else {}
+        )
+        platform_urls = (
+            _platform_model_deployment_urls(project_id, run.id) if state == "ready" else {}
+        )
         result.append(
             DeploymentStatusRead(
                 run=ModelRunRead.model_validate(run),
-                runtime_state=runtime_state,
+                runtime_state=state,
                 service_name=service_name,
                 namespace=namespace,
-                endpoint=run.tags.get("endpoint"),
-                base_url=run.tags.get("base_url"),
-                docs_url=run.tags.get("docs_url"),
-                openapi_url=run.tags.get("openapi_url"),
+                **{
+                    key: run.tags.get(key) if state == "ready" else None
+                    for key in ("endpoint", "base_url", "docs_url", "openapi_url")
+                },
                 **internal_urls,
                 **platform_urls,
                 status=run.status,
             )
+        )
+    if reads:
+        return DeploymentInspection(
+            project_id, current_user.id, current_user.token_version, tuple(reads)
         )
     db.flush()
     return result
@@ -976,6 +1208,11 @@ def _locked_deployment(
     db: Session, user: User, project_id: uuid.UUID, run_id: uuid.UUID
 ) -> ModelRun:
     require_project_role(db, user, project_id, ProjectRole.ADMIN)
+    project = db.get(Project, project_id, with_for_update={"read": True}, populate_existing=True)
+    if project is None:
+        raise HTTPException(404, "Project not found.")
+    if isinstance(project.settings, dict) and project.settings.get("deletion_in_progress"):
+        raise HTTPException(409, "Deletion is in progress.")
     run = db.scalar(
         select(ModelRun)
         .where(
@@ -984,6 +1221,7 @@ def _locked_deployment(
             ModelRun.run_kind == RunKind.DEPLOYMENT,
         )
         .with_for_update()
+        .execution_options(populate_existing=True)
     )
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deployment not found.")
@@ -998,14 +1236,20 @@ def stop_model_deployment(
     client: KubernetesTrainingClient | None = None,
 ) -> ModelRun:
     run = _locked_deployment(db, user, project_id, run_id)
-    if run.status == RunStatus.CANCELLED:
+    pointer = run.tags.get(CONTROL) or {}
+    retry_failed = pointer.get("action") == "stop" and pointer.get("state") == "failed"
+    if run.status == RunStatus.CANCELLED and not retry_failed:
         return run
     if run.k8s_job_name:
         try:
-            (client or KubernetesTrainingClient()).shutdown_model_deployment(run.k8s_job_name)
-        except ApiException as exc:
-            if exc.status != 404:
-                raise
+            custody = lifecycle_custody(db, run, allow_unstarted=True)
+            if not custody.get("unstarted"):
+                queue_control(db, user, run, "stop", custody)
+                return run
+        except (ValueError, KeyError, TypeError, LookupError):
+            raise HTTPException(
+                409, "The deployment requires controlled native custody qualification."
+            ) from None
     run.status = RunStatus.CANCELLED
     run.finished_at = datetime.now(UTC)
     run.tags = {**run.tags, "desired_state": "deployment_stopped"}
@@ -1021,9 +1265,16 @@ def start_model_deployment(
     client: KubernetesTrainingClient | None = None,
 ) -> ModelRun:
     run = _locked_deployment(db, user, project_id, run_id)
-    if run.status in {RunStatus.RUNNING, RunStatus.SUCCEEDED, RunStatus.QUEUED}:
+    if (run.tags.get(CONTROL) or {}).get("action") == "cleanup":
+        raise HTTPException(409, "Cleanup was admitted; deploy the saved model again.")
+    pointer = run.tags.get(CONTROL) or {}
+    retry_failed = pointer.get("action") == "start" and pointer.get("state") == "failed"
+    if (
+        run.status in {RunStatus.RUNNING, RunStatus.SUCCEEDED, RunStatus.QUEUED}
+        and not retry_failed
+    ):
         return run
-    if run.status != RunStatus.CANCELLED:
+    if run.status != RunStatus.CANCELLED and not retry_failed:
         raise HTTPException(
             status_code=409, detail="Shut down this deployment before starting it again."
         )
@@ -1064,30 +1315,17 @@ def start_model_deployment(
                 ),
             )
     try:
-        (client or KubernetesTrainingClient()).start_model_deployment(
-            run.k8s_job_name,
-            max(1, int(run.params.get("replicas", 1))),
-        )
-    except ApiException as exc:
-        if exc.status == 404:
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    "Deployment resources no longer exist. "
-                    "Deploy the saved model again from the registry."
-                ),
-            ) from exc
-        raise
-    run.status = RunStatus.RUNNING
-    run.finished_at = None
-    run.failure_code = None
-    run.failure_message = None
-    run.tags = {
-        **run.tags,
-        "desired_state": "deployment_active",
-        "resumed_at": datetime.now(UTC).isoformat(),
-    }
-    db.flush()
+        deployment_model_custody(db, run)
+    except (StaleFence, ValueError, KeyError, TypeError, LookupError):
+        raise HTTPException(
+            409, "The deployment requires controlled model custody qualification."
+        ) from None
+    try:
+        queue_control(db, user, run, "start", lifecycle_custody(db, run))
+    except (ValueError, KeyError, TypeError, LookupError):
+        raise HTTPException(
+            409, "The deployment requires controlled native custody qualification."
+        ) from None
     return run
 
 
@@ -1101,14 +1339,17 @@ def cleanup_model_deployment(
     run = _locked_deployment(db, user, project_id, run_id)
     if run.status != RunStatus.CANCELLED:
         raise HTTPException(status_code=409, detail="Shut down this deployment before cleanup.")
-    if run.tags.get("runtime_cleaned_at"):
-        return run
-    if run.k8s_job_name:
-        try:
-            (client or KubernetesTrainingClient()).delete_model_deployment(run.k8s_job_name)
-        except ApiException as exc:
-            if exc.status != 404:
-                raise
+    try:
+        custody = lifecycle_custody(db, run, allow_unstarted=True)
+        if run.tags.get("runtime_cleaned_at") and custody.get("retired") is True:
+            return run
+        if not custody.get("unstarted"):
+            queue_control(db, user, run, "cleanup", custody)
+            return run
+    except (ValueError, KeyError, TypeError, LookupError):
+        raise HTTPException(
+            409, "The deployment requires controlled native custody qualification."
+        ) from None
     run.tags = {
         **run.tags,
         "desired_state": "deployment_cleaned",
@@ -1166,7 +1407,10 @@ def cleanup_project_resources(
     *,
     execute_side_effects: bool = True,
 ) -> ArtifactCleanupRead:
+    from automl_api.services.deployment_objects import unretired_deployment_write
+
     require_project_role(db, user, project_id, ProjectRole.ADMIN)
+    db.get(Project, project_id, with_for_update=True, populate_existing=True)
     cutoff = datetime.now(UTC) - timedelta(days=request.older_than_days)
     active_artifact_ids: set[uuid.UUID] = set()
     active_deployment_run_ids: set[uuid.UUID] = set()
@@ -1196,6 +1440,7 @@ def cleanup_project_resources(
         ).all()
         if (
             not artifact.registry_entries
+            and not unretired_deployment_write(artifact)
             and artifact.id not in active_artifact_ids
             and artifact.model_run_id not in active_deployment_run_ids
         )
@@ -1292,6 +1537,7 @@ def _registry_entry(
             ModelRegistryEntry.project_id == project_id,
             ModelRegistryEntry.id == entry_id,
         )
+        .execution_options(populate_existing=True)
     )
     if entry is None:
         raise HTTPException(
@@ -1421,7 +1667,6 @@ def _generated_model_dockerfile(
         f"ENV MODEL_NAME={json.dumps(model_name)}\n"
         f"ENV PROJECT_NAME={json.dumps(project_name)}\n"
         f"ENV DEPLOYMENT_ENVIRONMENT={json.dumps(environment)}\n"
-        "EXPOSE 8080\n"
-        'CMD ["uvicorn", "automl_api.inference.app:app", '
-        '"--host", "0.0.0.0", "--port", "8080"]\n'
+        "EXPOSE 8080 8443\n"
+        'CMD ["python", "-m", "automl_api.inference.runtime"]\n'
     )

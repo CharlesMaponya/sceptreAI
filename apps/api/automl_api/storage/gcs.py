@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 from datetime import UTC, datetime, timedelta
 from itertools import islice
 from typing import Any
@@ -67,6 +68,8 @@ class GCSObjectStoreDriver:
             content_type=request.content_type,
             size=request.byte_size,
             origin=request.origin,
+            if_generation_match=0,
+            retry=None,
         )
         return ProviderUpload(
             provider_id=session_uri,
@@ -103,63 +106,100 @@ class GCSObjectStoreDriver:
         )
 
     def query_progress(self, upload: ProviderUpload) -> UploadProgress:
-        self._ensure_active(upload)
-        response = self.http.put(
+        return self._query_progress(upload)[0]
+
+    def _query_progress(self, upload: ProviderUpload, *, allow_expired=False):
+        if not allow_expired:
+            self._ensure_active(upload)
+        with self.http.stream(
+            "PUT",
             upload.provider_id,
             headers={"Content-Length": "0", "Content-Range": f"bytes */{upload.byte_size}"},
             content=b"",
-        )
-        if response.status_code in {404, 410}:
-            raise UploadExpired("The GCS resumable session is no longer usable.")
-        if response.status_code == 429:
-            raise UploadThrottled(
-                "GCS throttled the progress query.",
-                retry_after_seconds=self._retry_after(response.headers),
-            )
-        if response.status_code not in {200, 201, 308}:
-            raise UploadContractError(
-                f"GCS returned unexpected progress status {response.status_code}."
-            )
-        confirmed = self._confirmed_offset(response.headers.get("Range"), upload.byte_size)
-        if response.status_code in {200, 201}:
-            confirmed = upload.byte_size
+            timeout=30,
+        ) as response:
+            if response.status_code in {404, 410}:
+                raise UploadExpired("The GCS resumable session is no longer usable.")
+            if response.status_code == 429:
+                raise UploadThrottled(
+                    "GCS throttled the progress query.",
+                    retry_after_seconds=self._retry_after(response.headers),
+                )
+            if response.status_code not in {200, 201, 308}:
+                raise UploadContractError(
+                    f"GCS returned unexpected progress status {response.status_code}."
+                )
+            confirmed = self._confirmed_offset(response.headers.get("Range"), upload.byte_size)
+            completed = None
+            if response.status_code in {200, 201}:
+                body = bytearray()
+                for block in response.iter_bytes(chunk_size=8192):
+                    body.extend(block)
+                    if len(body) > 65536:
+                        raise UploadContractError("GCS completion exceeds its receipt budget.")
+                try:
+                    receipt = json.loads(body)
+                    generation = receipt["generation"]
+                    size = receipt["size"]
+                    if (
+                        receipt["bucket"] != self.bucket_name
+                        or receipt["name"] != upload.object_key
+                        or not isinstance(generation, str)
+                        or not generation.isascii()
+                        or not generation.isdecimal()
+                        or len(generation) > 20
+                        or not 0 < int(generation) < 2**64
+                        or not isinstance(size, str)
+                        or not size.isascii()
+                        or not size.isdecimal()
+                        or len(size) > 20
+                        or int(size) != upload.byte_size
+                    ):
+                        raise ValueError("GCS completion has another resource, generation or size")
+                    completed = CompletedObject(
+                        self._uri(upload.object_key),
+                        upload.byte_size,
+                        receipt.get("crc32c") or receipt.get("md5Hash"),
+                        {"generation": generation},
+                    )
+                except (ValueError, KeyError, TypeError) as exc:
+                    raise UploadContractError(
+                        "GCS completion has no original immutable receipt."
+                    ) from exc
+                confirmed = upload.byte_size
         return UploadProgress(
             confirmed_bytes=confirmed,
             total_bytes=upload.byte_size,
             receipts=(),
-            complete=confirmed == upload.byte_size,
-        )
+            complete=completed is not None,
+        ), completed
 
     def complete_upload(
         self, upload: ProviderUpload, receipts: list[TransferReceipt]
     ) -> CompletedObject:
         if receipts:
             raise UploadContractError("GCS offset uploads do not accept synthetic part receipts.")
-        progress = self.query_progress(upload)
-        if not progress.complete:
+        progress, completed = self._query_progress(upload)
+        if not progress.complete or completed is None:
             raise UploadContractError("GCS has not confirmed the entire object.")
-        metadata = self.stat(self._uri(upload.object_key))
-        if metadata.byte_size != upload.byte_size:
-            raise UploadContractError("The completed GCS object has an unexpected size.")
-        return CompletedObject(
-            metadata.uri,
-            metadata.byte_size,
-            metadata.checksum,
-            metadata.provider_headers,
-        )
+        return completed
 
     def abort_upload(self, upload: ProviderUpload) -> None:
         response = self.http.delete(upload.provider_id)
-        if response.status_code not in {200, 204, 404, 410, 499}:
+        # A missing session cannot prove that a browser-completed object was cancelled.
+        if response.status_code != 499:
             raise UploadContractError(f"GCS session cancellation returned {response.status_code}.")
 
     def uri_for_key(self, object_key: str) -> str:
         return self._uri(object_key)
 
-    def stat(self, uri: str) -> ObjectMetadata:
-        blob = self.bucket.get_blob(self._key_from_uri(uri))
+    def stat(self, uri: str, *, version: str | None = None) -> ObjectMetadata:
+        kwargs = {"generation": self._generation(version)} if version is not None else {}
+        blob = self.bucket.get_blob(self._key_from_uri(uri), **kwargs)
         if blob is None:
             raise FileNotFoundError(uri)
+        if version is not None and str(blob.generation) != version:
+            raise UploadContractError("Object metadata returned a different or missing version.")
         checksum = blob.crc32c or blob.md5_hash
         return ObjectMetadata(
             uri=self._uri(blob.name),
@@ -170,6 +210,11 @@ class GCSObjectStoreDriver:
             provider_headers={
                 "generation": str(blob.generation),
                 "metageneration": str(blob.metageneration),
+                **(
+                    {"sceptre_grant": str((getattr(blob, "metadata", None) or {})["sceptre_grant"])}
+                    if (getattr(blob, "metadata", None) or {}).get("sceptre_grant")
+                    else {}
+                ),
             },
         )
 
@@ -178,15 +223,7 @@ class GCSObjectStoreDriver:
     ):
         kwargs = {}
         if version is not None:
-            immutable_object_version(version)
-            if (
-                not version.isascii()
-                or not version.isdecimal()
-                or int(version) <= 0
-                or str(int(version)) != version
-            ):
-                raise UploadContractError("GCS reads require a positive immutable generation.")
-            kwargs["generation"] = int(version)
+            kwargs["generation"] = self._generation(version)
         blob = self.bucket.blob(self._key_from_uri(uri), **kwargs)
         if byte_range is None:
             return blob.open("rb")
@@ -194,6 +231,19 @@ class GCSObjectStoreDriver:
             start=byte_range.start, end=byte_range.end_inclusive, checksum=None
         )
         return io.BytesIO(value)
+
+    @staticmethod
+    def _generation(version):
+        immutable_object_version(version)
+        if (
+            not version.isascii()
+            or not version.isdecimal()
+            or len(version) > 20
+            or not 0 < int(version) < 2**64
+            or str(int(version)) != version
+        ):
+            raise UploadContractError("GCS reads require a positive immutable generation.")
+        return int(version)
 
     def put_stream(self, uri: str, source) -> ObjectMetadata:
         blob = self.bucket.blob(self._key_from_uri(uri))
@@ -235,11 +285,43 @@ class GCSObjectStoreDriver:
             return HealthcheckResult(False, self.driver_name, type(exc).__name__)
         return HealthcheckResult(True, self.driver_name)
 
+    def prefix_absent(self, prefix: str) -> bool:
+        prefix = self._key(prefix).rstrip("/") + "/"
+        for options in ({"versions": True}, {"soft_deleted": True}):
+            for blob in self.client.list_blobs(
+                self.bucket_name, prefix=prefix, page_size=1, **options
+            ):
+                if not isinstance(blob.name, str) or not blob.name.startswith(prefix):
+                    raise UploadContractError("GCS prefix inventory escaped its original root.")
+                return False
+        return True
+
     def delete_prefix(self, prefix: str) -> None:
         self._delete_matching(self._key(prefix).rstrip("/") + "/", exact=False)
 
-    def delete(self, uri: str) -> None:
-        self._delete_matching(self._key_from_uri(uri), exact=True)
+    def delete(self, uri: str, *, version: str | None = None) -> None:
+        key = self._key_from_uri(uri)
+        if version is None:
+            self._delete_matching(key, exact=True)
+            return
+        generation = self._generation(version)
+        blob = self.bucket.get_blob(key, generation=generation, retry=None)
+        if blob is not None:
+            self._require_generation(blob, key, generation)
+            blob.delete(if_generation_match=generation, retry=None)
+            remaining = self.bucket.get_blob(key, generation=generation, retry=None)
+            if remaining is not None:
+                self._require_generation(remaining, key, generation)
+                raise DeletionPending("The original GCS generation is still stored.")
+        retained = self.bucket.get_blob(key, generation=generation, soft_deleted=True, retry=None)
+        if retained is not None:
+            self._require_generation(retained, key, generation)
+            raise DeletionPending("GCS retains the original soft-deleted generation.")
+
+    @staticmethod
+    def _require_generation(blob, key, generation):
+        if blob.name != key or str(blob.generation) != str(generation):
+            raise UploadContractError("GCS returned another deletion generation.")
 
     def _delete_matching(self, prefix: str, *, exact: bool) -> None:
         from google.api_core.exceptions import NotFound
@@ -285,9 +367,11 @@ class GCSObjectStoreDriver:
         unit_size = int(upload.state.get("transfer_unit_size") or cursor.length)
         if cursor.unit_number < 1:
             raise UploadContractError("Transfer unit numbers are one-based.")
-        expected_offset = (cursor.unit_number - 1) * unit_size
-        expected_length = min(unit_size, upload.byte_size - expected_offset)
-        if cursor.offset != expected_offset or cursor.length != expected_length:
+        if (
+            not 0 <= cursor.offset < upload.byte_size
+            or cursor.unit_number != cursor.offset // unit_size + 1
+            or cursor.length != min(unit_size, upload.byte_size - cursor.offset)
+        ):
             raise UploadContractError("GCS requires the next sequential confirmed byte offset.")
 
     @staticmethod

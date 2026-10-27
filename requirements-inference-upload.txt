@@ -1,2 +1,4 @@
 pyarrow>=23.0.1,<24
 python-multipart>=0.0.9,<1
+httpx==0.28.1
+cryptography==50.0.2

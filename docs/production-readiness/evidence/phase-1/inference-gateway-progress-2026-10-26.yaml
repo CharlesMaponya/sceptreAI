@@ -1,0 +1,125 @@
+date: '2026-10-26'
+phase: 1
+scope: inference-gateway-and-native-peer
+status: in_progress
+phase_complete: false
+scope_integration_complete: false
+source_inputs: 638
+source_manifest_sha256: 5bcb3cfaa9045666ac482d3e369ca5d955d428b638879a8a6587d7615fc1d11b
+private_evidence_directory: .unlazy/phase1-inference-peer-identity
+checks:
+  gateway-admission:
+    passed: 130
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43737088000
+    test_xml_sha256: b42b8266c4b89831dbe8637d86c52a5a1fc45dc201946b831c8e7f367e0ffc31
+  producer-unit:
+    passed: 197
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43736875008
+    test_xml_sha256: 1dee0e2b3b4ec13f7c54631d5982997050446d99d8e0bd981270518fb4d7de8c
+  worker50:
+    passed: 45
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43736850432
+    test_xml_sha256: b262fd69c9a12c543f25b6190a88e841b4140eecabad8161f9fc837be334ea18
+  gateway-connected-fix:
+    passed: 1
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43737051136
+    test_xml_sha256: 389af6d5028dbacdc0a9b7981d091da2bc500dd9bf1071ecb57a5fb57f7d8e68
+  native-peer:
+    passed: 1
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43738075136
+    test_xml_sha256: 1f4cc0174e8691a8e272bc2beb389672cc6fb6cbb34bdebfb7d305537451f44e
+counts_overlap: true
+original_proxy_baseline_unchanged: true
+scoped_gates:
+  met: 0
+  unmet: 8
+phase_1_requirements:
+  verified: 2
+  open: 34
+migration_target:
+  physical_bytes: 45000000000
+  qualified: false
+  largest_table_row_counts: unspecified
+strict_schema:
+  status: terminal_pass
+  read_only: true
+  revision: 0018_attempt_predecessor_lineage
+original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+behavior:
+- Ordinary, docs and browser-multipart proxy requests now select the original SQL source, commit before native
+  inspection, then revalidate current reader/token/membership/model/control and immutable Pod key binding before
+  committing and streaming.
+- The gateway connects to a validated numeric Pod IP over HTTPS on port8443, using the original Pod UID hostname
+  as TLS SNI and requiring the configured CA, hostname validation and a client certificate. There is no HMAC
+  or plaintext fallback; browser authorization/cookies are not forwarded.
+- Actual local TLS tests reject a same-CA foreign Pod identity before upstream headers or browser body consumption.
+  Original name-only/plaintext negative test bodies remain unchanged and pass.
+- SQL selection now locks the model before artifact custody. A PostgreSQL concurrency test reproduced the old
+  lock inversion and passes with the shared selection order.
+- Response lifecycle cleanup closes the upstream response and client even when a browser disconnects before
+  response headers. Both ASGI2.3 and2.4 reproductions pass.
+- Native submission revealed that Kubernetes omits the writable mount default readOnly:false. The producer
+  now omits this redundant field; projected token mounts remain explicitly read-only and strict ownership/spec
+  checks remain intact.
+native_campaign:
+  status: terminal_pass
+  context: k3d-sceptre
+  tls_verified: true
+  maximum_concurrent_pods_observed: 1
+  pod_phase: Pending
+  impossible_nonce_node_selector: true
+  image_pull_policy: Never
+  runtime_started: false
+  maintained_image_tested: false
+  chart_api_service_account_used: true
+  original_identity_admitted: true
+  same_key_renewed: true
+  replacement_key_refused: true
+  withdrawal: Issuance refused after exact-UID/RV scale to zero and disappearance of the original Pod; this
+    does not isolate TokenReview revocation latency.
+  native_sql_connections_max: 0
+  created_and_retired_resource_uids: 10
+  namespace_retired: true
+  pod_and_replicaset_absence_verified: true
+  shared_fixture_preserved: true
+  probe_sha256: 7150d574fd3af08b9372da3260cce4dca0215ce74f44fe34db0c517b07dc4df2
+  probe_state_sha256: 27f75171f75af13a83120fef4f938900fcfc0cf2bb7dd5161f4441df11225e60
+retained_failures:
+- The first connected suite passed93 and failed one stale test expecting a legacy credential to download a
+  newly TLS-qualified model. The test now requires401 and zero model reads; its current rerun passes. The full94-case
+  suite has not been rerun on these final inputs.
+- Native preparation failures and the real writable-mount rejection are retained separately. Each owned namespace
+  was retired normally. A default-service-account ownership guard interrupted one cleanup; the seven created
+  RBAC UIDs were already retired and exact-UID/RV namespace cleanup completed separately. The existing default
+  account was never individually adopted or deleted.
+- Several serial native pilot namespaces preceded the passing campaign. The one-Pending-Pod bound applies per
+  campaign; no aggregate single-Pod creation claim is made. No inference image executed or was pulled.
+limitations:
+- JSON object-backed offline inference still reads the latest object and can hold SQL during object I/O. Upload
+  completion, original immutable version custody, pinned verification and delayed authenticated streaming remain
+  unfinished. Failing or refusing every upload would not satisfy this requirement.
+- The passing native campaign directly exercises the issuer service with real Kubernetes APIs and SQL, while
+  model/object fixtures remain controlled. It is not an end-to-end deployed HTTP issuer, running inference
+  image or provider/IAM/network-policy qualification.
+- No whole-scope gate is promoted by these component results. Scope audit/integration, full release and branch
+  coverage>=90.01%, maintained images, actual prior binaries/mixed rollouts and complete native/provider/IAM/admission
+  journeys remain unqualified.
+- The45,000,000,000-byte migration and deferred15-by-10-GiB load campaign were not run. Largest-table row counts
+  remain unspecified; the43.5GB disk reserve is preserved.
+- Original phase1-deletion:G7 remains a required handoff for seven missing historical objects. No missing object
+  was reconstructed or re-signed.

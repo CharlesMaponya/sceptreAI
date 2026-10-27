@@ -1,0 +1,250 @@
+date: '2026-10-27'
+phase: 1
+scope: upload-instruction-original-authority-and-sql-boundary
+status: in_progress
+phase_complete: false
+full_upload_admission_complete: false
+full_transfer_workflow_complete: false
+source_inputs: 664
+source_manifest_sha256: f3856ac69eae88f48b22c29685f187b2f3eead92378db64bceab382eeb1e418f
+private_evidence_directory: .unlazy/phase1-upload-instructions
+observed_at: '2026-10-27T04:53:42.811606+00:00'
+checks:
+  focused:
+    passed: 346
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43681628160
+    xml_sha256: 7f2b19c1ad5715c1f2e8c064071fb411bb6a41a47bca0ffea77edfeff1770738
+  deletion:
+    passed: 200
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43678965760
+    xml_sha256: 3aa5d342a490d03d88db2224f9e171429802df4143f2b7722b99cad7c5a729ca
+  connected:
+    passed: 560
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43678998528
+    xml_sha256: 09f6cc11624badabdd17528e3aad0c092df1e7c4caa028deb2bb62d17c199d32
+  worker:
+    passed: 28
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43679875072
+    xml_sha256: d9fe736e07dc38683c4286ef1d57982145ff3c1603a5350f4a8b3c88472d3479
+  cancellation:
+    passed: 69
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43679723520
+    xml_sha256: 09a5de9f41e9d345d1ccf30a4f7c1b0599009f3e39d491a8919783625a139fc9
+  process:
+    passed: 6
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43679309824
+    xml_sha256: 07d67fc725378efa85e7f07c4a2406042a42938a9b06e8cb26d3499850fb03a8
+counts_overlap: true
+new_cases: 52
+admission_gates:
+  met: 0
+  unmet: 4
+upload_completion_gates:
+  met: 0
+  unmet: 6
+parent_inference_gates:
+  met: 0
+  unmet: 8
+phase_1_requirements:
+  verified: 2
+  open: 34
+baselines:
+- name: HTTP instruction SQL boundary
+  expected_failures: 1
+  reason: Actual route constructed the instruction provider with SQL checked out.
+  xml_sha256: 1b0ce1339351766135b7c29670039afd221b1998f89c978a576572f5c8a42e96
+intermediate_runs:
+- snapshot: first
+  cases: 34
+  failed: 25
+- snapshot: second
+  cases: 34
+  failed: 0
+- snapshot: third
+  cases: 46
+  failed: 0
+- snapshot: fourth
+  cases: 50
+  failed: 0
+failure_windows:
+  scope: Existing original native cleanup crash windows rerun on current source
+  sigkill: 4
+  own_backend_termination: 2
+  witnesses:
+    after_record:
+      mode: after_record
+      pid: 726534
+      native_done: true
+      backend_killed: false
+      phase: recorded
+    after_publish:
+      mode: after_publish
+      pid: 726648
+      native_done: true
+      backend_killed: false
+      phase: published
+    after_native:
+      mode: after_native
+      pid: 726460
+      native_done: true
+      backend_killed: false
+      phase: native_accepted
+    intent_commit_loss:
+      mode: intent_commit_loss
+      pid: 726703
+      native_done: false
+      backend_killed: true
+      backend_pid: 41013
+      phase: issued_before_commit
+      error_type: OperationalError
+    receipt_commit_loss:
+      mode: receipt_commit_loss
+      pid: 726811
+      native_done: true
+      backend_killed: true
+      backend_pid: 41016
+      phase: recorded_before_commit
+      error_type: OperationalError
+    before_native:
+      mode: before_native
+      pid: 726384
+      native_done: false
+      backend_killed: false
+      phase: issued
+integration_readonly:
+  read_only: true
+  revision: 0018_attempt_predecessor_lineage
+  tables: 44
+  schema_differences: []
+  namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+  original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+  reserve_bytes: 43500000000
+  free_bytes: 43683098624
+prior_published_evidence:
+  path: docs/production-readiness/evidence/phase-1/upload-progress-workflow-2026-10-27.yaml
+  sha256: dcce43132f6f5bcb67a154d387b445aa166bcdaab5aad3382438a0cd84cc72e0
+  unchanged_private_artifacts: 45
+changes:
+- Actual instruction route commits request SQL then freshly checks active actor/token/membership/project,
+  original published admission/source/store/origin/cursor. Original command and compact
+  per-unit owner/attempt anchors commit before SDK construction and credential/signing
+  work outside SQL.
+- Original request/source/actor hashes, per-unit ownership, native lease and attempt,
+  known receipt and published projection cross-check before delivery. Known replies
+  persist independently before fresh publication and replay without another provider
+  constructor or credential request. Revocation, source/policy changes or publication
+  rollback cannot deliver a stale capability.
+- The native lease is released only after a known reply commits. Erasing known reply
+  metadata cannot downgrade this independently released lease into fresh issuance.
+  Live same-key or competing-key owners cannot be stolen; unknown signing can retry
+  only the original target after a five-minute lease and at most five times per command,
+  regardless of reporting counters.
+- Explicit new keys may refresh a settled transfer unit; superseded original history
+  and late replies remain recorded without becoming current delivery authority. Different
+  units preserve independent owner entries. Legacy complete known responses are read-only
+  after current checks; unknown history is not regenerated.
+- GCS shared service and driver now retain the actual confirmed partial offset rather
+  than forcing the original unit boundary. Original session URL and content range
+  are preserved. Azure installed SAS signer tests use an injected test delegation
+  callback outside SQL, including token rotation before publication; no deployed Azure/IAM
+  qualification is claimed.
+- Three actual owning PostgreSQL backend terminations cover intent, receipt and publication
+  commits. Intent rollback performs no credential request, receipt rollback retains
+  a leased unknown outcome, and publication rollback replays the separately committed
+  known reply. Orphan instruction commands preserve the existing project-deletion
+  barrier when upload metadata disappears.
+limits:
+  user_database_ceiling_bytes: 45000000000
+  largest_table_rows: null
+  missing_historical_objects: 7
+  native_admission_cleanup: unqualified
+  production_sized_migration: unqualified
+  large_upload_load: unqualified
+  maintained_images: unqualified
+  deployed_cloud_iam: unqualified
+  mixed_version: unqualified
+  full_release_coverage: unqualified
+  whole_phase_1: unqualified
+remaining:
+- Original admission acceptance remains0/4, completion0/6, inference0/8 and Phase1
+  requirements2Verified/34Open. These raw progress checks are not automatic parent
+  gate evidence.
+- Complete unknown/superseded admission cleanup for every provider, original admission
+  process-loss/runtime qualification and full public/browser retry contracts. Resume/result
+  capability construction still needs review.
+- Ordinary terminal-upload/instruction history still needs complete deletion retirement-proof
+  qualification; orphan protection alone does not qualify it. Project deletion native
+  I/O separation, all-stage credential brokers, pooler and remaining runtime custody
+  are still required.
+- 45GB migration cannot fit alongside43.5GB reserve; largest-table row counts are
+  unspecified.15-by-10GiB load, maintained images, deployed cloud/IAM, prior binaries/mixed
+  versions and current full-release/independent branch coverage remain unqualified.
+- Original deletion:G7 still requires seven missing historical objects(two models,five
+  signed results). None reconstructed or re-signed.
+evidence_hashes:
+  source-sha256.json: f3856ac69eae88f48b22c29685f187b2f3eead92378db64bceab382eeb1e418f
+  before-source-sha256.json: b55c1b6878195c68e2300447db4e2207316d2630ee89caf6cd31c9a16056b917
+  baseline-source-sha256.json: a22781627c133c29be7ebf966e7d6eb39c381978f37c438cdbc6b0fe04402694
+  baseline-test.py: 0173a12bde2d5122298eb29b751b675d71442f4260a87e3cd8820e483885fc1f
+  baseline.log: 7423f6744a6f2ec8fcca9d2ffb736fdb58939c4ea173f337d1db6871d74b65ab
+  baseline.xml: 1b0ce1339351766135b7c29670039afd221b1998f89c978a576572f5c8a42e96
+  baseline-state.json: 7a7d0f256eb2e808e2583aee0aa3008574f7e4f22c7d272c48131c3fcbcc7db4
+  before-uploads.py: b3f77a29b8ad31300c788fe6ce1f8ac35b845ab17a20bdb5ca79095c27d297cd
+  before-route.py: 196b23826089bb7e8169c2e7b3b97740d7b817ac1279ab4aa61d091329a99e2f
+  before-gcs.py: 9cf506b058276b14fc7ce6da7a5dec0db56e2578ff46837ba2ef9f4e9fb29e49
+  before-deletion.py: 08270164f7925dcd3be4fb0c6a0cfd960663e775973765d804794a1df75de0cb
+  run.py: e9cf5d381006cac56b710669d8b2f0a07a7a9ab1080f61b8f3ef3084da1e4bb2
+  audit.py: fae59f491da3c9603a702118ef56d74aaac108da735933cd028e73b7ae863fe0
+  report.py: f59c05ff6f21680ef52070d996546c5945c54d28b15db0c6a24dcf2e36ca0667
+  PLAN.md: b64c8775b3d39a3b28d2af8c0c5d9fd7b2e2885cf62af163be018bf3567da605
+  integration-readonly.json: f767d04c6d5b9d1440deb375c4128b55a7b795dba5d42d7766865298adfabcc5
+  first-instructions.xml: d644e6598a636bfca3e07dc1edfc058468bbab23b36096cb825176c2545f93a2
+  first-instructions-state.json: 7797e1404f7fa4e97e88356a7eba52dd498ab16496f6db4b19677b638f49d7bc
+  first-source-sha256.json: e2a3b26713f73173b10a2f74f0d79ad9a290794b9b2692ce6eb6c20489aa4eb2
+  second-instructions.xml: 9f169fdd4fcd5f9881d32bbbda2824b6e6aec194cb38ef99e33c1fedabdd67c4
+  second-instructions-state.json: a042379c5b41c256895df493fb658092034f62e4d399c29ed30cbc393ed810c4
+  second-source-sha256.json: f49ad89f5a1f3b3c4c4d858c9b2d9fec404f23ecd4be1b659333930a5bf93de3
+  third-instructions.xml: ac0eb7730dbdb9e1b65c86a703cf66146d63e0fccea5d60e58b36bfed6a4c44c
+  third-instructions-state.json: 5d4e3489c3ef38f64e5549c54ef6e3ae0a226e7ceddc594553381e1145630aed
+  third-source-sha256.json: 175e4f0e3f30b51062be3ee24f131240e3bcce7eb272d9f10ec1be9010a1bc4f
+  fourth-instructions.xml: ce97abd1c1e0f291a43a97783ccf063338342d6c82c5aafb683c56ed4de356be
+  fourth-instructions-state.json: 2a2ce1bd9e2afd17c199849867792633ac66e15f7196e9e894cd27a1e183715f
+  fourth-source-sha256.json: e9c8c43bd1c70a516d405ce1248d599c5c0b6913374997b988f73fe80a40c9a1
+  focused.xml: 7f2b19c1ad5715c1f2e8c064071fb411bb6a41a47bca0ffea77edfeff1770738
+  focused-state.json: f1061762df905527096a7550560a73bd8f3243bd909c3f6373478a3586d56d71
+  deletion.xml: 3aa5d342a490d03d88db2224f9e171429802df4143f2b7722b99cad7c5a729ca
+  deletion-state.json: 785b8ba84d183978649c83555f626868e7add8eeed649a996bc09f3186d80369
+  connected.xml: 09f6cc11624badabdd17528e3aad0c092df1e7c4caa028deb2bb62d17c199d32
+  connected-state.json: fc4d1eefd2bab416f13f463e595604b43aec87377015da08b5e052fbf7e0ff99
+  worker.xml: d9fe736e07dc38683c4286ef1d57982145ff3c1603a5350f4a8b3c88472d3479
+  worker-state.json: 2745745a2720edf21ac56935a9234b818ee36479679f0ec04997227c5eeee7cf
+  cancellation.xml: 09a5de9f41e9d345d1ccf30a4f7c1b0599009f3e39d491a8919783625a139fc9
+  cancellation-state.json: e1cc946b4cb98d086a9c124bb0825c95052525a973377ce249c0ce9dce2fde5d
+  process.xml: 07d67fc725378efa85e7f07c4a2406042a42938a9b06e8cb26d3499850fb03a8
+  process-state.json: 53e8ad7e2e3bd3a834a94790742e0fa59c1661133a3e22abe965aa10109def66
+  crash-witnesses/after_native.json: 20e0692cb1c8c79cdad2c06dccab1b4b3ef1c71c724581ec9bff8c084de65a4e
+  crash-witnesses/after_publish.json: 6a2f5169e293ce5448d3aeeaafadf2e05a6f56f34c185b8b0a0675da5daeac80
+  crash-witnesses/after_record.json: 643944487756df81813a42be6fabf19a525b786b4e9ba064320088ef1d1ae6f9
+  crash-witnesses/before_native.json: d754dcf11500e4fc0e0fef5d6a8591863a34e930f8a75b4d80c69a2e447fced9
+  crash-witnesses/intent_commit_loss.json: 898ad858164ea0bc80a42cd4215703f8c7d0cfc617911382fe0523763d1e7cda
+  crash-witnesses/receipt_commit_loss.json: 2dea0b72d6c5b47d909713942316ddf9c7730c980475035d6402aacb57d0079d
+runbook_sha256: 76ceaaf1bd852009fae883068f7c3e5949b0eaa6b2d3fbff3dc1eb364394f193

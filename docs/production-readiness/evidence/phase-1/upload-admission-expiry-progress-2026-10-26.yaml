@@ -1,0 +1,165 @@
+date: '2026-10-26'
+phase: 1
+scope: upload-admission-expiry-progress
+status: in_progress
+phase_complete: false
+scope_integration_complete: false
+source_inputs: 653
+source_manifest_sha256: 87b56e0e62131ff0e0b5656b0ef6aea095b055509229defe0dee49225996fdef
+private_evidence_directory: .unlazy/phase1-upload-admission-expiry
+checks:
+  focused:
+    passed: 77
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43639988224
+    xml_sha256: ec7c3b84747729545b6878c5f3bab68137746c9a9a683b39a0b9515aa014dcf1
+  services:
+    passed: 181
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43637571584
+    xml_sha256: 46a540a17228d986d31babfb0c5726503a03579dc91ad0a25e6fc363d05620ea
+  connected:
+    passed: 212
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43632787456
+    xml_sha256: a85470316c2dae70e076442e06c142a000ebb8a8f0faff072bfde37fb9eff9ae
+  workflow:
+    passed: 74
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43635634176
+    xml_sha256: 4cc1c4045680115df6db83813d562e2bf20a61e3725f6832331f6cb59b777f88
+  verification:
+    passed: 117
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43634847744
+    xml_sha256: 74a9ab22ce79876400a3e37e2c11000f262d5f17d585d598cdc0450ed3b9df64
+  worker:
+    passed: 28
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43634274304
+    xml_sha256: 560324ae4a9c25f38e9851f166ee076e5e854de29ded5e0a6c54a6270d4708fb
+  sdk:
+    passed: 63
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43634544640
+    xml_sha256: 04deb06e12b5f60fd519d3eb8f05e14d2b36d02f5e3624d6c6657fddf7010403
+  provider:
+    passed: 210
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43634184192
+    xml_sha256: 1561b19a2b7c33adfec9da43555c20e6893c8080375b73c90ff820c02f41ca80
+  staged:
+    passed: 171
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43633475584
+    xml_sha256: 4ee2e3814144ab72df6f33df2ed0b2459b33e1e241c411082ff68306dd999031
+  offline:
+    passed: 74
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43629711360
+    xml_sha256: 421a76a12f714821798d4272b01039abde3228b1ec6184ebbab5808ace994149
+counts_overlap: true
+admission_gates:
+  met: 0
+  unmet: 4
+upload_completion_gates:
+  met: 0
+  unmet: 6
+parent_inference_gates:
+  met: 0
+  unmet: 8
+phase_1_requirements:
+  verified: 2
+  open: 34
+original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+integration_readonly:
+  status: terminal_pass
+  source_manifest_sha256: 87b56e0e62131ff0e0b5656b0ef6aea095b055509229defe0dee49225996fdef
+  observed_at: '2026-10-26T18:19:44.792742+00:00'
+  read_only: true
+  schema_differences: []
+  revision: 0018_attempt_predecessor_lineage
+  tables: 44
+  namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+  original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+  free_bytes: 43634642944
+  reserve_bytes: 43500000000
+behavior:
+- Unpublished original admissions expire after application TTL or an exhausted five-attempt
+  native budget and its lease. Original source, command and receipt anchors and absence
+  of issued transfer authority are checked before quota is released.
+- Logical retirement retains all known and uncertain native history. The retirement
+  proof explicitly records native_absence_confirmed=false; no native SDK, abort or
+  delete is invoked by this expiry worker.
+- The original request cannot restart after retirement. Late success is retained as
+  superseded metadata; late failures cannot overwrite terminal state. Concurrent cleanup
+  workers retire only once.
+- Uncertain or corrupt history defers with bounded backoff so neighboring records
+  can progress. Current legal hold and extended retention metadata remain intact.
+- Transfer routes reject pending admission before creating instruction commands. Project
+  deletion remains held on logically retired admissions so unresolved native cleanup
+  evidence cannot be cascaded away.
+- All provider-label expiry cases are metadata-only controls. They do not qualify
+  deployed provider session cleanup or absence.
+remaining:
+- Authenticated native session cleanup and provider-specific unknown/superseded outcomes;
+  superseded replies can alias a winner and must not be blindly aborted.
+- Background admission reconciliation and complete original-source/current-actor factory
+  conversion of instruction/progress native I/O.
+- Complete admission, upload-completion and inference acceptance; full current-source
+  release and independent branch coverage.
+- 45,000,000,000-byte migration qualification; largest-table row counts remain unspecified
+  and current disk reserve prevents the full-size run.
+- Deferred 15-by-10GiB load, maintained images, prior-binary/mixed-version and deployed
+  cloud/IAM/admission/network/native journeys.
+- Original deletion:G7 seven missing historical objects (two models, five signed results);
+  do not reconstruct or re-sign.
+evidence_hashes:
+  source-sha256.json: 87b56e0e62131ff0e0b5656b0ef6aea095b055509229defe0dee49225996fdef
+  before-source-sha256.json: c524c92bbcd7189069c552b264db14705a5a5b1585050fc3b62ba700a76e44de
+  run.py: 5dccd49fa0c957a530d2e5b15e641989cfacf7f995363e6891e09462af23abee
+  baseline-test.py: 7902499f98839b9730fa5bae450143a17cb13f9df8c980727f7c06e806bb516b
+  baseline-state.json: 864d606a12da8c8ded1ec65b51078b5cd1e0c6f564058a729a14a89405c70a2e
+  baseline.xml: 360bc5b393b0f6934fb5e28977256a7e7977ea6932b49a21c6a45fb421482eec
+  integration-readonly.json: e5b4a2d413ab36bd7300a9c09510c17a4ed4ee0a7ae6b2551a4f36ca6b313db6
+  focused-state.json: b1a94c8983c1a28443c930e6000e75ae7a0f770869085ed03e46d25e563efc2e
+  focused.xml: ec7c3b84747729545b6878c5f3bab68137746c9a9a683b39a0b9515aa014dcf1
+  services-state.json: baa7b7141e4366e13831dbc77ab0f94012a0614c26179e9696a0bc88bb9914ae
+  services.xml: 46a540a17228d986d31babfb0c5726503a03579dc91ad0a25e6fc363d05620ea
+  connected-state.json: 4d29b3a587fe029b236bb778e91850f4e484409006f755ebc1664887229eaaa0
+  connected.xml: a85470316c2dae70e076442e06c142a000ebb8a8f0faff072bfde37fb9eff9ae
+  workflow-state.json: e0e79bb567025216cf77055584b12825082b0473bac85ec7d4b0fc3e65d5cb9b
+  workflow.xml: 4cc1c4045680115df6db83813d562e2bf20a61e3725f6832331f6cb59b777f88
+  verification-state.json: 02175616ca5192da14cf1570592d85da39c64a3dc590cb0b2e15dad228e7a266
+  verification.xml: 74a9ab22ce79876400a3e37e2c11000f262d5f17d585d598cdc0450ed3b9df64
+  worker-state.json: 4ffea9ab8b784c57ddc361c40a4965cd5525dd451f6a8bf5f63a8e72dedead61
+  worker.xml: 560324ae4a9c25f38e9851f166ee076e5e854de29ded5e0a6c54a6270d4708fb
+  sdk-state.json: 729c93c8913408b6cd4e3569b4a3a936fc08e34c45c749927072913b264138e1
+  sdk.xml: 04deb06e12b5f60fd519d3eb8f05e14d2b36d02f5e3624d6c6657fddf7010403
+  provider-state.json: 2efb9fc22bbac9bbcdcaf2e157dc4ee1ba9fffb8e3322aec92f38ac3d1df83eb
+  provider.xml: 1561b19a2b7c33adfec9da43555c20e6893c8080375b73c90ff820c02f41ca80
+  staged-state.json: 34dd68ea06c5bb329bd3a4951757909f8ede1873cecd3023d05cd021522ca541
+  staged.xml: 4ee2e3814144ab72df6f33df2ed0b2459b33e1e241c411082ff68306dd999031
+  offline-state.json: 08c2ad3c230f99396cb1249fafff16ecd93ee5d95d9685a5a3e53809e40dab57
+  offline.xml: 421a76a12f714821798d4272b01039abde3228b1ec6184ebbab5808ace994149

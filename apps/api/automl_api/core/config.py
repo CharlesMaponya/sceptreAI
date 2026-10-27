@@ -156,6 +156,8 @@ class Settings:
     inference_image_pull_policy: str = "IfNotPresent"
     inference_service_account: str = "default"
     inference_service_type: str = "ClusterIP"
+    inference_identity_ca_certificate_file: Path | None = None
+    inference_identity_ca_private_key_file: Path | None = None
     attempt_control_base_url: str = ""
     internal_api_url: str = "http://sceptre-api:8000"
     inference_external_host: str | None = None
@@ -479,6 +481,16 @@ def get_settings() -> Settings:
             )
         ),
         inference_image=str(_get_env("INFERENCE_IMAGE", Settings.inference_image, dotenv)),
+        inference_identity_ca_certificate_file=(
+            Path(value)
+            if (value := _get_env("INFERENCE_IDENTITY_CA_CERTIFICATE_FILE", None, dotenv))
+            else None
+        ),
+        inference_identity_ca_private_key_file=(
+            Path(value)
+            if (value := _get_env("INFERENCE_IDENTITY_CA_PRIVATE_KEY_FILE", None, dotenv))
+            else None
+        ),
         inference_image_pull_policy=str(
             _get_env(
                 "INFERENCE_IMAGE_PULL_POLICY",

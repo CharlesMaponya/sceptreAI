@@ -86,6 +86,24 @@ class UploadCapabilitiesRead(BaseModel):
     supports_abort: bool
 
 
+class UploadCleanupReplayRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def strip_reason(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+
+class UploadCleanupReplayRead(BaseModel):
+    id: uuid.UUID
+    cleanup_command_id: uuid.UUID
+    session_id: uuid.UUID
+    attempt_budget: int
+    status: Literal["pending"] = "pending"
+
+
 class ResumableUploadBeginRequest(BaseModel):
     upload_kind: Literal["dataset", "validation", "drift", "offline_scoring"] = "dataset"
     dataset_name: str = Field(min_length=1, max_length=220)

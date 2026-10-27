@@ -9,6 +9,7 @@ from automl_api.models.enums import WorkflowStage
 from automl_api.models.workflows import OutboxEntry, WorkflowCommand
 from automl_api.services import reconciler
 from automl_api.services.workflow_state import StaleFence, enqueue_outbox
+from ray_submission_helpers import submit_dataset_ray_job, submit_training_ray_job
 from sqlalchemy.orm import Session
 from test_phase1_postgres_contracts import committed_tenant as committed_tenant
 from test_phase1_postgres_contracts import phase1_engine as phase1_engine
@@ -202,7 +203,7 @@ def test_training_dispatch_rejects_explicit_unknown_protocol_before_native_work(
     before = attempt.status
     entry.payload["credential_protocol"] = protocol
     with pytest.raises(StaleFence, match="credential protocol"):
-        reconciler.submit_training_ray_job(db, entry, k8s)
+        submit_training_ray_job(db, entry, k8s)
     assert attempt.status == before
     k8s.ensure_service_account.assert_not_called()
     k8s.create_ray_job.assert_not_called()
@@ -211,7 +212,7 @@ def test_training_dispatch_rejects_explicit_unknown_protocol_before_native_work(
 def test_training_dispatch_uses_the_saved_credential_policy(submission):
     db, _, _, entry, k8s = submission
     entry.payload["credential_protocol"] = PROTOCOL
-    reconciler.submit_training_ray_job(db, entry, k8s)
+    submit_training_ray_job(db, entry, k8s)
     submitter, head, worker = pods(k8s.create_ray_job.call_args.args[0])
     assert "DATABASE_URL" not in env(submitter)
     assert "DATABASE_URL" in env(head) and "DATABASE_URL" in env(worker)
@@ -227,13 +228,17 @@ def test_dataset_dispatch_uses_the_saved_credential_policy(stage):
     values = iter([attempt, profile, version])
     db.scalar.side_effect = lambda statement: (
         None
-        if statement.column_descriptions[0]["entity"].__name__ == "DatasetProviderImport"
+        if statement.column_descriptions[0]["entity"].__name__
+        in {"DatasetProviderImport", "WorkflowEvent"}
         else next(values)
     )
     db.get.return_value = version
     k8s = MagicMock()
-    k8s.create_ray_job.side_effect = lambda body: body
-    reconciler.submit_dataset_ray_job(db, entry, k8s)
+    k8s.create_ray_job.side_effect = lambda body: {
+        **body,
+        "metadata": {**body["metadata"], "uid": "original-ray-uid"},
+    }
+    submit_dataset_ray_job(db, entry, k8s)
     submitter, head, worker = pods(k8s.create_ray_job.call_args.args[0])
     assert "DATABASE_URL" not in env(submitter) and "DATABASE_URL" not in env(worker)
     assert "DATABASE_URL" in env(head)

@@ -1,0 +1,100 @@
+date: '2026-10-26'
+phase: 1
+scope: upload-completion-provider-progress
+status: in_progress
+phase_complete: false
+scope_integration_complete: false
+source_inputs: 639
+source_manifest_sha256: 4bbf1a88b7e826e38229b501e8d7fe2bbcfa2a63e03a286246a081af5ac18fdb
+private_evidence_directory: .unlazy/phase1-upload-completion
+checks:
+  providers:
+    passed: 128
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43734192128
+    test_xml_sha256: 4bec93105ec808e8d7d49fa7f213c16ddaf9d80b8bca6f361383b6c0c496c6a0
+  connected:
+    passed: 254
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43728445440
+    test_xml_sha256: 0be688ec746e1dd83a034788212b7ef2177fb7ca4cd9cd51c56e9034ff94d19d
+counts_overlap: false
+actual_sdk_local_http_cases:
+  s3_sdk_completion: 6
+  azure_sdk_completion: 3
+  gcs_sdk_session: 3
+baseline_version_selection_failures: 4
+upload_completion_gates:
+  met: 0
+  unmet: 6
+parent_inference_gates:
+  met: 0
+  unmet: 8
+phase_1_requirements:
+  verified: 2
+  open: 34
+original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+strict_schema:
+  status: terminal_pass
+  revision: 0018_attempt_predecessor_lineage
+  read_only: true
+installed_sdk_versions:
+  boto3: 1.43.56
+  botocore: 1.43.56
+  azure-storage-blob: 12.30.0
+  azure-core: 1.41.0
+  google-cloud-storage: 3.13.1
+  httpx: 0.28.1
+crypto_runtime_versions: 49.0.0 2.1.1 3.0
+behavior:
+- S3 multipart completion uses IfNoneMatch:*, requires the single-attempt SDK configuration, and retains the
+  VersionId and checksum from that original response. It does not HEAD latest to choose a version. Missing/invalid/oversized
+  versions remain errors.
+- Azure block-list completion uses the create-only MatchConditions.IfMissing condition with per-request retries
+  disabled and retains the original response version_id. Real installed SDK requests prove If-None-Match:*
+  on the wire, one accepted commit after503/disconnect and no properties lookup to adopt latest.
+- Azure progress now consumes the SDK tuple of committed/uncommitted blocks and its decoded IDs. Strict one-based
+  sceptre block names bind each receipt to its transfer unit; SDK completion encodes them exactly once. Old
+  fixtures had hidden the tuple/encoding defect.
+- GCS session initiation carries if_generation_match=0 with retry=None. Completion reads the original session
+  response, bounds streamed metadata to64KiB, validates bucket/key/size and a positive uint64 generation, and
+  never substitutes latest object metadata. A308 response with all bytes still does not invent a completed
+  receipt.
+- Real local HTTP tests exercise all installed SDK protocols. The GCS fixture distinguishes legitimate bucket
+  metadata reads from object lookup and deliberately reads replacement generation99 after the completion result
+  to positively validate the detector; original completion remains generation7.
+retained_pilots:
+- 'Four controlled replacement cases failed before the provider changes: both S3 modes, Azure and GCS selected
+  latest metadata instead of the original completion response.'
+- 'The first connected provider pilot passed120 and failed5: a GCS response context-manager test-double mismatch
+  and three Azure SDK cases. An isolated Azure pilot exposed that this installed SDK forwards an unused etag
+  keyword with IfMissing; the driver now passes the match condition alone, and real wire headers confirm the
+  create-only condition.'
+- GCS SDK pilots initially counted bucket metadata GETs as latest-object reads. The fixture now classifies
+  the exact bucket path and validates the object-read counter with a real positive control. Captured failure
+  logs/XML/source hashes remain in the private evidence directory.
+limitations:
+- This is a provider component change. uploads.complete_upload_session still has its latest-object recovery
+  branch, drops provider_headers and holds SQL during native work. Therefore these driver checks are not end-to-end
+  upload custody protection; old upload-service regression tests still cover that unsafe recovery behavior.
+- Durable completion intent/receipt publication, acknowledgement-loss/concurrent request fences and current
+  caller/source revalidation must be integrated before the new receipt can be trusted downstream. No unknown
+  history may be adopted or reissued automatically.
+- S3/Azure completion reports acknowledge the declared part byte budget. Original-version byte-size/SHA/scanner
+  verification remains required; an acknowledgement alone does not prove actual input integrity.
+- Verification ranges and JSON object-backed offline inference still read latest object bytes. Exact-version
+  reads, SQL-free scanning/streaming and real TLS refusal before any offline object read remain unfinished.
+- These are local protocol servers with actual installed SDKs, not native AWS/Azure/GCS services, IAM, maintained-image,
+  deployed inference or full release/branch coverage qualification. Versioned storage is required for the new
+  completion contract.
+- The45,000,000,000-byte migration and deferred15-by-10-GiB load were not run; largest-table counts remain
+  unspecified. The43.5GB reserve and original coverage are preserved. Original phase1-deletion:G7 remains a
+  seven-missing-object handoff. No whole requirement or gate is promoted.
+protocol_references:
+- https://docs.aws.amazon.com/boto3/latest/reference/services/s3/client/complete_multipart_upload.html
+- https://learn.microsoft.com/en-us/python/api/azure-storage-blob/azure.storage.blob.blobclient?view=azure-python
+- https://docs.cloud.google.com/storage/docs/performing-resumable-uploads

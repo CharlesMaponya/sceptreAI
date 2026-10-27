@@ -32,6 +32,7 @@ SUPPORTED_STARTS = (
     "0015_attempt_predecessor_project",
     "0016_trial_parent_integrity",
     "0017_upload_session_project",
+    "0018_attempt_predecessor_lineage",
 )
 UPLOAD_SEED_ROWS = int(os.environ.get("PHASE1_REHEARSAL_UPLOAD_ROWS", "10000"))
 

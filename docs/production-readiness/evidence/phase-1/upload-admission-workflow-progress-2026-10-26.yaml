@@ -1,0 +1,202 @@
+date: '2026-10-26'
+phase: 1
+scope: upload-admission-workflow-progress
+status: in_progress
+phase_complete: false
+scope_integration_complete: false
+source_inputs: 651
+source_manifest_sha256: c524c92bbcd7189069c552b264db14705a5a5b1585050fc3b62ba700a76e44de
+private_evidence_directory: .unlazy/phase1-upload-admission
+checks:
+  focused:
+    passed: 50
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43644416000
+    xml_sha256: 1fb0143f278ce8f382f121073992475bd9922b0034465c21b203b98164172f1f
+  services:
+    passed: 181
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43651923968
+    xml_sha256: ddcbe30941d456394e55be84de6a78e65dd7151990bad49b7738226f6c83119c
+  connected:
+    passed: 212
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43646521344
+    xml_sha256: 2736795f79073439e67cfd527dae4d9e73ac8446283c752ce341c4addd1d996e
+  workflow:
+    passed: 74
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43653300224
+    xml_sha256: 8cf1cc5f909c1d1af268c9a8e1b1721a49e138bdb52615ab729413fde0c36c33
+  verification:
+    passed: 117
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43653197824
+    xml_sha256: c04ec6136fcc4b45ac9f51677a6b3ab8c0ec2a1be4e9c793f9c66de5827cf4ba
+  worker:
+    passed: 28
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43652677632
+    xml_sha256: 8f539c495fffb16ef14f43915543ac56aa058e682537f0e6af3b88cf4bc5dbcc
+  sdk:
+    passed: 63
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43652587520
+    xml_sha256: 34a820fa804de587d662b3bb5404ddde93a1782d94ef2f6d751c0633c0285a38
+  provider:
+    passed: 210
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43653263360
+    xml_sha256: 9c5f733346b52495b7d23c87469de56a63b4d785a1452bcf180dc4c2d0fe2e7f
+  staged:
+    passed: 171
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43652857856
+    xml_sha256: 46f0bb4feb328bd9c2e0b9f76d5ac79f297b2cecba08445b4fc7b8d69e1a82ab
+  offline:
+    passed: 74
+    failures: 0
+    errors: 0
+    skips: 0
+    minimum_free_bytes: 43649867776
+    xml_sha256: 1881087fb81df9b4905fa544c4bef24a79c7ee9645b306c01602cc583762ee60
+counts_overlap: true
+admission_gates:
+  met: 0
+  unmet: 4
+upload_completion_gates:
+  met: 0
+  unmet: 6
+parent_inference_gates:
+  met: 0
+  unmet: 8
+phase_1_requirements:
+  verified: 2
+  open: 34
+original_coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+evidence_hashes:
+  source-sha256.json: c524c92bbcd7189069c552b264db14705a5a5b1585050fc3b62ba700a76e44de
+  before-source-sha256.json: ecd0a940168695913930343332e824036eb7d6252cb1c59e50fcda33f6751795
+  run.py: 82a115d5dadce56a5732a4f167e8d23a07713fb3adad11b0ad02d0dce37ad32d
+  baseline-test.py: 8f6bbc51a52f07e7edc8e10cfc54ed1a02b4d42868c129dcb7a3f236bc3cb171
+  baseline-source-sha256.json: a3a376a44dcf53f6be738f3a4be5fb6831bedd5e9f287967921dec90ef63acf4
+  baseline-state.json: d345cccc6fa99ac24df5641b0fa610d0f1cfb96c91aecd1498e18e2486c80d0d
+  baseline.xml: 0835a9fa9031baa6c86d8cf0851972c7d49db5d472c267e9bef7005c579d824a
+  focused-state.json: 3c7e79180b39ea325a02a0e75d251a31d789fb420eb7bae40864a4c9eb8b3fb6
+  focused.xml: 1fb0143f278ce8f382f121073992475bd9922b0034465c21b203b98164172f1f
+  services-state.json: cec8e3641c6be719bbbdcae75ddebe6ec01d99d550c04d92433e1243c6260087
+  services.xml: ddcbe30941d456394e55be84de6a78e65dd7151990bad49b7738226f6c83119c
+  connected-state.json: 65c75d13db7be3f77142bf378eabea3c7c923e2c87f4660daeac6d5ec65457b0
+  connected.xml: 2736795f79073439e67cfd527dae4d9e73ac8446283c752ce341c4addd1d996e
+  workflow-state.json: 3a9f09e85b5e9579535f487d659f5985572dd042cbe7ecc98d137da7d6bf6e66
+  workflow.xml: 8cf1cc5f909c1d1af268c9a8e1b1721a49e138bdb52615ab729413fde0c36c33
+  verification-state.json: bd202d4597a6ab78d0d4f54ce96b00f9165f90792d3cf0afba118a98094c2267
+  verification.xml: c04ec6136fcc4b45ac9f51677a6b3ab8c0ec2a1be4e9c793f9c66de5827cf4ba
+  worker-state.json: 08563a38356a68b6b188a6917a99c51f7d50195cb039dd774da0a3674d4cdcfd
+  worker.xml: 8f539c495fffb16ef14f43915543ac56aa058e682537f0e6af3b88cf4bc5dbcc
+  sdk-state.json: 10e9b44cf2c8ac05f228fa41c83ce7f1913b7ebe1e92a9f67f3b53e6a87f9675
+  sdk.xml: 34a820fa804de587d662b3bb5404ddde93a1782d94ef2f6d751c0633c0285a38
+  provider-state.json: 4b00540f6178f7bffc775fae8df2b1f8544798ad791cf14e95bb2478eff4a006
+  provider.xml: 9c5f733346b52495b7d23c87469de56a63b4d785a1452bcf180dc4c2d0fe2e7f
+  staged-state.json: 2e18bded6d20ec67f861bcd306039f110fe7f70c8c2fc36007fb5e0075cc35f3
+  staged.xml: 46f0bb4feb328bd9c2e0b9f76d5ac79f297b2cecba08445b4fc7b8d69e1a82ab
+  offline-state.json: 9e3816f6ccdca40d3d25e242a54f4c9f7e58a7e5e4b3551934b3a767804b9876
+  offline.xml: 1881087fb81df9b4905fa544c4bef24a79c7ee9645b306c01602cc583762ee60
+  integration-readonly.json: 8da8664e15bef0a5bbbb6abe32d2f7d3293aa96408618af71184123dc769cc17
+behavior:
+- The actual begin route captures authenticated actor/token version, commits its authentication transaction
+  and delegates to a factory-owned workflow. Project-first locking freshly checks actor/token/membership/project
+  and reserves quota with an initiated upload plus original request/target/issued attempt before native
+  session creation. SDK construction and begin callbacks hold zero SQL connections.
+- Known native replies are validated and retained independently before fresh authorization/source publication.
+  Revocation or a publication rollback leaves the initiated reservation and known receipt intact. Fresh
+  authenticated retries publish the original known receipt without repeating creation; conflicting requests
+  and live attempts cannot issue another logical session.
+- Native key namespaces include a committed random intent UUID below the deterministic API session UUID.
+  This prevents fresh admission from adopting unrelated multipart state under a legacy or missing-history
+  deterministic key. Lease retries reuse the same original request namespace.
+- Independent command anchors bind original intent, native attempt, known receipt and result. Missing/corrupted
+  custody and downgrade of a recorded outcome cannot restart native work. Superseded-attempt replies remain
+  in command metadata and cannot replace the winner; they may alias its native identity and must not be
+  blindly aborted by cleanup.
+- Configured backend type, endpoint/public endpoint/bucket/region/GCS project/Azure account and actual
+  driver are fingerprinted without storing credentials. Changed configuration cannot publish a retained
+  reply or rebind transfer/completion/retirement/verifier/offline reads of new admissions. The existing
+  minio alias and credential rotation preserve identity. A shared mutable caller payload is deeply copied
+  before constructor callbacks can change it.
+- Unpublished admissions cannot issue transfer/progress/completion/retirement work using an empty native
+  ID. Existing direct-service fixtures use the new factory workflow. Policy/quota rejection moved from
+  four mock-only begin checks into real PostgreSQL cases; instruction/progress/registration positives
+  remain.
+- Live hold/retention/readiness/reference checks remain separate from immutable byte/object identity.
+  Releasing a published staged/dataset hold and allowing an extended upload/version retention deadline
+  to expire can retire the original identity without rewriting its receipts. Verification keeps original
+  authenticated policy snapshots in proof scopes while allowing current policy to change; released-hold
+  reads preserve the original byte proof.
+- One real subprocess is SIGKILLed after committing issued intent/quota and writing a controlled native-creation
+  witness. Parent recovery selects the witnessed session after test-clock lease expiry without another
+  controlled native write. This proves the SQL/process boundary with controlled provider state; it is
+  not a deployed cloud process-loss journey. Separate installed-SDK/local-HTTP provider profiles also
+  pass.
+- A controlled GCS unknown-response case renews only an unpublished opaque capability, and only the current
+  attempt publishes. Complete provider lifecycle and cleanup qualification remain open. All ten current-source
+  profiles pass with no failures/errors/skips; counts overlap.
+strict_schema:
+  status: terminal_pass
+  read_only: true
+  revision: 0018_attempt_predecessor_lineage
+  tables: 44
+shared_native_fixture_uids:
+  namespace: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service: 365dd74f-551c-4fb3-8d9b-fe4026273558
+  read_only: true
+lint: Repository ruff, twelve-file format and git diff --check passed.
+baseline: Actual old begin route failed its SQL-free construction check with one checked-out connection.
+  Retained service/TLS/endpoint pilots identified stricter fixture context/source requirements; guards
+  were preserved and fixtures corrected before final reruns.
+remaining:
+- 'All four admission acceptance gates remain formally unmet. Their executable audit is not yet written;
+  passing component profiles do not complete the scope. Pending expiry and exhausted/unknown creation
+  cleanup remain unimplemented: initiated reservations can remain held, and native retry is capped at
+  five attempts. Implement and qualify bounded lifecycle rather than silently releasing uncertain history.'
+- Background admission recovery, complete provider-by-provider/native process-loss and actual thread/concurrency
+  acceptance remain required. Current overlapping callbacks and PostgreSQL reservations are useful evidence,
+  not the full load or deployment campaign.
+- Instruction/progress native I/O still spans SQL. Their factory conversion must freshly bind original
+  published admission source/command/current actor before transfer authority, including independent missing-history/corruption
+  controls and typed pending responses.
+- UI source is unchanged and its previous 60-test/Node24 checkpoint is historical. No browser suite was
+  repeated for this Python-only increment. Earlier retirement/provider acceptance checkpoints retain their
+  historical source bindings; no full Phase1 requirement is promoted.
+- The user database ceiling is 45,000,000,000 physical bytes; largest-table row counts remain unspecified.
+  The production-sized migration and deferred fifteen-users-by-ten-GiB campaign remain unqualified.
+- Maintained images, full release/branch coverage, deployed cloud IAM/admission/network policy, mixed-version/prior-binary
+  and complete native journeys remain unqualified. Original deletion:G7 still requires seven missing historical
+  objects; none were reconstructed or re-signed.
+limits:
+  user_database_ceiling_bytes: 45000000000
+  largest_table_rows: null
+  production_sized_migration: unqualified
+  large_upload_load: unqualified
+  maintained_images: unqualified
+  deployed_cloud_iam: unqualified
+  whole_phase_1: unqualified
+  missing_historical_objects: 7

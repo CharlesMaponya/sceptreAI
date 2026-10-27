@@ -58,6 +58,7 @@ export class ResumableUploadController<TDataset = unknown, TVersion = unknown> {
   readonly result: Promise<UploadCompletion<TDataset, TVersion>>;
   private paused = false;
   private cancelled = false;
+  private cancellation: Promise<void> | null = null;
   private resumeWaiters: Array<() => void> = [];
   private session: UploadSession | null = null;
   private activeRequest: XMLHttpRequest | null = null;
@@ -79,16 +80,25 @@ export class ResumableUploadController<TDataset = unknown, TVersion = unknown> {
   }
 
   async cancel() {
-    if (this.cancelled) return;
+    if (this.cancellation) return this.cancellation;
     this.cancelled = true;
     this.activeRequest?.abort();
     this.paused = false;
     this.resumeWaiters.splice(0).forEach((resolve) => resolve());
-    if (this.session) {
-      await api(`/projects/${this.session.project_id}/datasets/uploads/${this.session.id}/abort`,
-        json("POST", {}));
-      await removePersistedUpload(persistenceKey(this.session.project_id, this.session.original_filename,
-        this.session.byte_size));
+    const session = this.session;
+    if (!session) return;
+    this.cancellation = (async () => {
+      await api(`/projects/${session.project_id}/datasets/uploads/${session.id}/abort`, {
+        ...json("POST", {}), headers: { "Idempotency-Key": `upload-abort:${session.id}` },
+      });
+      await removePersistedUpload(persistenceKey(session.project_id, session.original_filename,
+        session.byte_size));
+    })();
+    try {
+      await this.cancellation;
+    } catch (error) {
+      this.cancellation = null;
+      throw error;
     }
   }
 
@@ -254,6 +264,10 @@ async function runUpload<TDataset, TVersion>(
     await savePersistedUpload(persisted);
   }
   controller._setSession(session);
+  if (controller._isCancelled()) {
+    await controller.cancel();
+    throw new Error("The upload was cancelled.");
+  }
   let progress = await api<UploadProgress>(
     `/projects/${options.projectId}/datasets/uploads/${session.id}/progress`);
   const startedAt = performance.now();

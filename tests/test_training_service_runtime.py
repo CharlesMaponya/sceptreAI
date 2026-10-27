@@ -36,6 +36,9 @@ class _ListResult:
     def all(self) -> list[object]:
         return self.values
 
+    def __iter__(self):
+        return iter(self.values)
+
 
 class _Session:
     def __init__(

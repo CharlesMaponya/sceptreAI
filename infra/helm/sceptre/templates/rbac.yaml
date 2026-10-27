@@ -104,7 +104,7 @@ rules:
     verbs: ["get", "list"]
   - apiGroups: [""]
     resources: ["services"]
-    verbs: ["get", "list", "watch", "delete"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["secrets"]
     resourceNames:
@@ -115,18 +115,16 @@ rules:
     verbs: ["get"]
   - apiGroups: ["apps"]
     resources: ["deployments"]
-    verbs: ["get", "list", "watch", "delete"]
-  - apiGroups: ["apps"]
-    resources: ["deployments/scale"]
-    verbs: ["get", "patch"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: ["apps"]
     resources: ["deployments/status"]
     verbs: ["get"]
-  {{- if .Values.inference.ingress.enabled }}
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list"]
   - apiGroups: ["networking.k8s.io"]
     resources: ["ingresses"]
-    verbs: ["create", "get", "list", "watch", "delete"]
-  {{- end }}
+    verbs: ["get", "list", "watch"]
   - apiGroups: ["ray.io"]
     resources: ["rayjobs", "rayclusters"]
     verbs: ["get"]
@@ -179,11 +177,17 @@ rules:
     verbs: ["create", "get", "list", "delete"]
   - apiGroups: ["apps"]
     resources: ["deployments"]
-    verbs: ["create", "get", "list", "watch", "delete"]
+    verbs: ["create", "get", "list", "watch", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch", "delete"]
   {{- if .Values.inference.ingress.enabled }}
   - apiGroups: ["networking.k8s.io"]
     resources: ["ingresses"]
-    verbs: ["create", "get", "list", "watch", "delete"]
+    verbs: ["create"]
   {{- end }}
   - apiGroups: ["ray.io"]
     resources: ["rayjobs", "rayjobs/status", "rayclusters", "rayclusters/status"]
@@ -203,6 +207,36 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: {{ include "sceptre.fullname" . }}-reconciler
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ printf "%s-%s-namespace-custody" .Release.Namespace (include "sceptre.fullname" .) }}
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    resourceNames: [{{ .Release.Namespace | quote }}]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ printf "%s-%s-namespace-custody" .Release.Namespace (include "sceptre.fullname" .) }}
+  labels:
+    {{- include "sceptre.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "sceptre.apiServiceAccount" . }}
+    namespace: {{ .Release.Namespace }}
+  - kind: ServiceAccount
+    name: {{ include "sceptre.reconcilerServiceAccount" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ printf "%s-%s-namespace-custody" .Release.Namespace (include "sceptre.fullname" .) }}
 {{- if .Values.capabilities.clusterObserver.enabled }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1

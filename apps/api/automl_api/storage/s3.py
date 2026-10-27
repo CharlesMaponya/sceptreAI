@@ -9,6 +9,7 @@ from automl_api.storage.contracts import (
     BeginUpload,
     ByteRange,
     CompletedObject,
+    DeletionPending,
     HealthcheckResult,
     ObjectMetadata,
     ProviderUpload,
@@ -94,6 +95,10 @@ class S3ObjectStoreDriver:
 
     def begin_upload(self, request: BeginUpload) -> ProviderUpload:
         object_key = self._key(request.object_key)
+        if self.client.meta.config.retries.get("total_max_attempts") != 1:
+            raise UploadContractError(
+                "Upload admission requires single-attempt S3 SDK configuration."
+            )
         params: dict[str, Any] = {
             "Bucket": self.bucket,
             "Key": object_key,
@@ -109,7 +114,15 @@ class S3ObjectStoreDriver:
             provider_id = self._existing_multipart_upload_id(object_key)
             if provider_id is None:
                 response = self.client.create_multipart_upload(**params)
-                provider_id = str(response["UploadId"])
+                if (
+                    not isinstance(response, dict)
+                    or response.get("Bucket", self.bucket) != self.bucket
+                    or response.get("Key", object_key) != object_key
+                ):
+                    raise UploadContractError(
+                        "S3 creation returned another or missing upload receipt."
+                    )
+                provider_id = self._multipart_id(response.get("UploadId"))
         except Exception as exc:
             self._raise_provider_error(exc)
             raise
@@ -126,19 +139,63 @@ class S3ObjectStoreDriver:
         )
 
     def _existing_multipart_upload_id(self, object_key: str) -> str | None:
-        response = self.client.list_multipart_uploads(
-            Bucket=self.bucket,
-            Prefix=object_key,
-        )
-        matches = sorted(
-            (
-                value
-                for value in response.get("Uploads", [])
-                if value.get("Key") == object_key and value.get("UploadId")
-            ),
-            key=lambda value: (str(value.get("Initiated") or ""), str(value["UploadId"])),
-        )
-        return str(matches[0]["UploadId"]) if matches else None
+        params = dict(Bucket=self.bucket, Prefix=object_key, MaxUploads=1000)
+        seen, matches = set(), set()
+        for _ in range(100):
+            response = self.client.list_multipart_uploads(**params)
+            if (
+                not isinstance(response, dict)
+                or type(response.get("IsTruncated")) is not bool
+                or response.get("Bucket", self.bucket) != self.bucket
+                or response.get("Prefix", object_key) != object_key
+                or response.get("KeyMarker", params.get("KeyMarker", ""))
+                != params.get("KeyMarker", "")
+                or response.get("UploadIdMarker", params.get("UploadIdMarker", ""))
+                != params.get("UploadIdMarker", "")
+                or not isinstance(response.get("Uploads", []), list)
+                or len(response.get("Uploads", [])) > 1000
+            ):
+                raise UploadContractError("S3 multipart inventory is incomplete or foreign.")
+            for row in response.get("Uploads", []):
+                if (
+                    not isinstance(row, dict)
+                    or not isinstance(row.get("Key"), str)
+                    or not row["Key"].startswith(object_key)
+                ):
+                    raise UploadContractError("S3 multipart inventory contains a foreign key.")
+                upload_id = self._multipart_id(row.get("UploadId"))
+                if row["Key"] == object_key:
+                    matches.add(upload_id)
+                    if len(matches) > 1:
+                        raise UploadContractError(
+                            "Original multipart upload identity is ambiguous."
+                        )
+            if not response["IsTruncated"]:
+                return next(iter(matches), None)
+            key = response.get("NextKeyMarker")
+            marker = self._multipart_id(response.get("NextUploadIdMarker"))
+            if (
+                not isinstance(key, str)
+                or not key.startswith(object_key)
+                or key < params.get("KeyMarker", object_key)
+                or len(key) > 1024
+                or (key, marker) in seen
+            ):
+                raise UploadContractError("S3 multipart inventory did not advance.")
+            seen.add((key, marker))
+            params.update(KeyMarker=key, UploadIdMarker=marker)
+        raise UploadContractError("S3 multipart inventory exceeded its bounded page budget.")
+
+    @staticmethod
+    def _multipart_id(value):
+        if (
+            not isinstance(value, str)
+            or not value.strip()
+            or len(value) > 1024
+            or any(ord(c) < 32 or ord(c) == 127 for c in value)
+        ):
+            raise UploadContractError("S3 returned no qualified multipart upload identity.")
+        return value
 
     def create_transfer_instruction(
         self, upload: ProviderUpload, cursor: TransferCursor
@@ -183,13 +240,50 @@ class S3ObjectStoreDriver:
 
     def query_progress(self, upload: ProviderUpload) -> UploadProgress:
         self._ensure_active(upload)
-        try:
-            response = self.client.list_parts(
-                Bucket=self.bucket, Key=upload.object_key, UploadId=upload.provider_id
-            )
-        except Exception as exc:
-            self._raise_provider_error(exc)
-            raise
+        params = dict(
+            Bucket=self.bucket, Key=upload.object_key, UploadId=upload.provider_id, MaxParts=1000
+        )
+        parts, last_part = [], 0
+        for _ in range(100):
+            try:
+                response = self.client.list_parts(**params)
+            except Exception as exc:
+                self._raise_provider_error(exc)
+                raise
+            if (
+                not isinstance(response, dict)
+                or type(response.get("IsTruncated")) is not bool
+                or response.get("Bucket", self.bucket) != self.bucket
+                or response.get("Key", upload.object_key) != upload.object_key
+                or response.get("UploadId", upload.provider_id) != upload.provider_id
+                or response.get("PartNumberMarker", params.get("PartNumberMarker", 0))
+                != params.get("PartNumberMarker", 0)
+                or not isinstance(response.get("Parts", []), list)
+                or len(response.get("Parts", [])) > 1000
+            ):
+                raise UploadContractError("S3 part inventory is incomplete or foreign.")
+            page = response.get("Parts", [])
+            if any(
+                not isinstance(part, dict)
+                or type(part.get("PartNumber")) is not int
+                or type(part.get("Size")) is not int
+                or part["Size"] <= 0
+                for part in page
+            ):
+                raise UploadContractError("S3 part inventory contains malformed parts.")
+            for part in sorted(page, key=lambda value: value["PartNumber"]):
+                if not last_part < part["PartNumber"] <= 10_000:
+                    raise UploadContractError("S3 part inventory repeated or exceeded its bounds.")
+                last_part = part["PartNumber"]
+                parts.append(part)
+            if not response["IsTruncated"]:
+                break
+            marker = response.get("NextPartNumberMarker")
+            if type(marker) is not int or not page or marker != last_part:
+                raise UploadContractError("S3 part inventory did not advance.")
+            params["PartNumberMarker"] = marker
+        else:
+            raise UploadContractError("S3 part inventory exceeded its bounded page budget.")
         unit_size = int(upload.state["transfer_unit_size"])
         receipts = tuple(
             TransferReceipt(
@@ -199,7 +293,7 @@ class S3ObjectStoreDriver:
                 etag=str(part.get("ETag") or "").strip('"') or None,
                 checksum_sha256=part.get("ChecksumSHA256"),
             )
-            for part in sorted(response.get("Parts", []), key=lambda value: value["PartNumber"])
+            for part in parts
         )
         confirmed = sum(receipt.length for receipt in receipts)
         return UploadProgress(
@@ -231,41 +325,95 @@ class S3ObjectStoreDriver:
             if receipt.checksum_sha256 and not self.compatible:
                 part["ChecksumSHA256"] = receipt.checksum_sha256
             parts.append(part)
+        if self.client.meta.config.retries.get("total_max_attempts") != 1:
+            raise UploadContractError("Completion requires single-attempt S3 SDK configuration.")
         try:
-            self.client.complete_multipart_upload(
+            response = self.client.complete_multipart_upload(
                 Bucket=self.bucket,
                 Key=upload.object_key,
                 UploadId=upload.provider_id,
                 MultipartUpload={"Parts": parts},
+                IfNoneMatch="*",
             )
         except Exception as exc:
             self._raise_provider_error(exc)
             raise
-        metadata = self.stat(self._uri(upload.object_key))
-        if metadata.byte_size != upload.byte_size:
-            raise UploadContractError("The completed provider object has an unexpected size.")
+        if not isinstance(response, dict):
+            raise UploadContractError("Completion has no original immutable receipt.")
+        version = immutable_object_version(response.get("VersionId"))
+        if len(version) > 256:
+            raise UploadContractError("The completion version exceeds its receipt budget.")
         return CompletedObject(
-            metadata.uri,
-            metadata.byte_size,
-            metadata.checksum,
-            metadata.provider_headers,
+            self._uri(upload.object_key),
+            upload.byte_size,
+            response.get("ChecksumSHA256"),
+            {"version_id": version},
         )
 
     def abort_upload(self, upload: ProviderUpload) -> None:
+        key = self._key(upload.object_key)
+        if (
+            upload.protocol != "multipart"
+            or not isinstance(upload.provider_id, str)
+            or not upload.provider_id.strip()
+            or any(ord(c) < 32 or ord(c) == 127 for c in upload.provider_id)
+        ):
+            raise UploadContractError("Cancellation requires the original multipart identity.")
+        if self.client.meta.config.retries.get("total_max_attempts") != 1:
+            raise UploadContractError("Cancellation requires single-attempt S3 SDK configuration.")
+        if self._remaining_parts(key, upload.provider_id) is None:
+            return
         try:
             self.client.abort_multipart_upload(
-                Bucket=self.bucket, Key=upload.object_key, UploadId=upload.provider_id
+                Bucket=self.bucket, Key=key, UploadId=upload.provider_id
             )
         except Exception as exc:
-            if not self._is_not_found(exc):
+            if not self._missing_upload(exc):
                 self._raise_provider_error(exc)
+                raise
+        remaining = self._remaining_parts(key, upload.provider_id)
+        if remaining is not None:
+            raise DeletionPending("The original S3 multipart session still exists.")
+
+    @staticmethod
+    def _missing_upload(exc):
+        response = getattr(exc, "response", None) or {}
+        status = (response.get("ResponseMetadata") or {}).get("HTTPStatusCode")
+        return (
+            (response.get("Error") or {}).get("Code") == "NoSuchUpload"
+            and type(status) is int
+            and status == 404
+        )
+
+    def _remaining_parts(self, key, upload_id):
+        try:
+            result = self.client.list_parts(
+                Bucket=self.bucket, Key=key, UploadId=upload_id, MaxParts=1
+            )
+        except Exception as exc:
+            if self._missing_upload(exc):
+                return None
+            self._raise_provider_error(exc)
+            raise
+        if (
+            type(result.get("IsTruncated")) is not bool
+            or result.get("UploadId", upload_id) != upload_id
+            or result.get("Key", key) != key
+        ):
+            raise UploadContractError("S3 returned another or incomplete multipart inventory.")
+        return result
 
     def uri_for_key(self, object_key: str) -> str:
         return self._uri(object_key)
 
-    def stat(self, uri: str) -> ObjectMetadata:
+    def stat(self, uri: str, *, version: str | None = None) -> ObjectMetadata:
         key = self._key_from_uri(uri)
-        response = self.client.head_object(Bucket=self.bucket, Key=key)
+        params = {"Bucket": self.bucket, "Key": key}
+        if version is not None:
+            params["VersionId"] = immutable_object_version(version)
+        response = self.client.head_object(**params)
+        if version is not None and response.get("VersionId") != version:
+            raise UploadContractError("Object metadata returned a different or missing version.")
         checksum = response.get("ChecksumSHA256") or (response.get("Metadata") or {}).get(
             "sceptre-sha256"
         )
@@ -280,6 +428,7 @@ class S3ObjectStoreDriver:
                 for key, value in {
                     "version_id": response.get("VersionId"),
                     "request_charged": response.get("RequestCharged"),
+                    "sceptre_grant": (response.get("Metadata") or {}).get("sceptre_grant"),
                 }.items()
                 if value is not None
             },
@@ -371,11 +520,95 @@ class S3ObjectStoreDriver:
             params["CreateBucketConfiguration"] = {"LocationConstraint": self.region}
         self.client.create_bucket(**params)
 
+    def prefix_absent(self, prefix: str) -> bool:
+        prefix = self._key(prefix).rstrip("/") + "/"
+        for operation, kinds, limits in (
+            ("list_multipart_uploads", ("Uploads",), {"MaxUploads": 1}),
+            ("list_object_versions", ("Versions", "DeleteMarkers"), {"MaxKeys": 1}),
+        ):
+            page = getattr(self.client, operation)(Bucket=self.bucket, Prefix=prefix, **limits)
+            if (
+                not isinstance(page, dict)
+                or not isinstance(page.get("ResponseMetadata"), dict)
+                or page["ResponseMetadata"].get("HTTPStatusCode") != 200
+                or type(page.get("IsTruncated")) is not bool
+            ):
+                raise UploadContractError("S3 prefix absence needs a complete native inventory.")
+            for kind in kinds:
+                items = page.get(kind, [])
+                if not isinstance(items, list):
+                    raise UploadContractError("S3 prefix inventory is malformed.")
+                for item in items:
+                    if (
+                        not isinstance(item, dict)
+                        or not isinstance(item.get("Key"), str)
+                        or not item["Key"].startswith(prefix)
+                    ):
+                        raise UploadContractError("S3 prefix inventory escaped its original root.")
+                if items:
+                    return False
+            if page["IsTruncated"]:
+                raise DeletionPending("S3 prefix absence inventory is incomplete.")
+        return True
+
     def delete_prefix(self, prefix: str) -> None:
         self._delete_matching(self._key(prefix).rstrip("/") + "/", exact=False)
 
-    def delete(self, uri: str) -> None:
-        self._delete_matching(self._key_from_uri(uri), exact=True)
+    def delete(self, uri: str, *, version: str | None = None) -> None:
+        key = self._key_from_uri(uri)
+        if version is None:
+            self._delete_matching(key, exact=True)
+            return
+        version = immutable_object_version(version)
+        if self.client.meta.config.retries.get("total_max_attempts") != 1:
+            raise UploadContractError(
+                "Version retirement requires single-attempt S3 SDK configuration."
+            )
+        if not self._version_present(key, version):
+            return
+        reply = self.client.delete_object(Bucket=self.bucket, Key=key, VersionId=version)
+        if reply.get("VersionId") != version:
+            raise UploadContractError("S3 returned another or missing deletion version.")
+        if self._version_present(key, version):
+            raise DeletionPending("The original S3 version is still stored.")
+
+    def _version_present(self, key, version):
+        markers = {}
+        seen = set()
+        # shortcut: hold inventories beyond 100 pages; add resumable scans for larger histories.
+        for _ in range(100):
+            page = self.client.list_object_versions(
+                Bucket=self.bucket, Prefix=key, MaxKeys=1000, **markers
+            )
+            if type(page.get("IsTruncated")) is not bool:
+                raise UploadContractError("S3 version inventory is incomplete.")
+            for kind in ("Versions", "DeleteMarkers"):
+                for item in page.get(kind, []):
+                    name = item.get("Key")
+                    if not isinstance(name, str) or not name.startswith(key):
+                        raise UploadContractError("S3 version inventory escaped its prefix.")
+                    if name == key:
+                        found_version = item.get("VersionId")
+                        if not isinstance(found_version, str) or not found_version:
+                            raise UploadContractError("S3 returned an unversioned inventory row.")
+                        if found_version == version:
+                            return True
+            if not page["IsTruncated"]:
+                return False
+            token = (page.get("NextKeyMarker"), page.get("NextVersionIdMarker"))
+            if (
+                not isinstance(token[0], str)
+                or not token[0]
+                or token[1] is not None
+                and not isinstance(token[1], str)
+                or token in seen
+            ):
+                raise UploadContractError("S3 version inventory did not advance.")
+            seen.add(token)
+            markers = dict(KeyMarker=token[0])
+            if token[1]:
+                markers["VersionIdMarker"] = token[1]
+        raise DeletionPending("S3 version inventory exceeds the bounded qualification scan.")
 
     def _deletion_items(self, operation, prefix, exact, kinds, **limits):
         options = dict(Bucket=self.bucket, Prefix=prefix, **limits)
@@ -422,7 +655,7 @@ class S3ObjectStoreDriver:
                             "Multipart cleanup still has stored parts; retry required."
                         )
                 except Exception as exc:
-                    if getattr(exc, "response", {}).get("Error", {}).get("Code") != "NoSuchUpload":
+                    if not self._missing_upload(exc):
                         raise
         previous = None
         while True:
@@ -519,5 +752,5 @@ class S3ObjectStoreDriver:
                 "The object provider throttled the transfer request.",
                 retry_after_seconds=retry_after,
             ) from exc
-        if code in {"NoSuchUpload", "ExpiredToken", "RequestExpired"}:
+        if code in {"ExpiredToken", "RequestExpired"} or S3ObjectStoreDriver._missing_upload(exc):
             raise UploadExpired("The provider upload session is no longer usable.") from exc

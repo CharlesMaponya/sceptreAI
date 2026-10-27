@@ -4,6 +4,7 @@ import ast
 import logging
 import math
 import os
+import time
 import uuid
 from copy import deepcopy
 from dataclasses import dataclass, replace
@@ -19,9 +20,115 @@ from automl_api.core.config import Settings, get_settings
 from automl_api.models.enums import TaskType, WorkflowStage
 from automl_api.models.workflows import WorkflowAttempt
 from automl_api.schemas.training import ClusterCapacityRead, TrainingEstimateRead
-from automl_api.security.deployments import deployment_token
+from automl_api.services.inference_tls import (
+    DATA_PORT,
+    HEALTH_PORT,
+    credential_mounts,
+    credential_volumes,
+    serving_declaration,
+)
+from automl_api.services.inference_tls import (
+    PROTOCOL as INFERENCE_PROTOCOL,
+)
+from automl_api.services.workflow_state import canonical_request_hash
 
 logger = logging.getLogger(__name__)
+
+
+def _model_deployment_state(deployment, pods):
+    status = deployment.get("status") or {}
+    desired = deployment["spec"].get("replicas") or 0
+    if desired > 0 and (status.get("availableReplicas") or 0) >= desired:
+        return "ready"
+    containers = [
+        container
+        for pod in pods
+        for container in ((pod.get("status") or {}).get("containerStatuses") or [])
+    ]
+    waiting = {
+        (container.get("state") or {}).get("waiting", {}).get("reason")
+        for container in containers
+        if (container.get("state") or {}).get("waiting")
+    }
+    terminated = {
+        value.get("terminated", {}).get("reason")
+        for container in containers
+        for value in (container.get("state") or {}, container.get("lastState") or {})
+        if value.get("terminated")
+    }
+    if "OOMKilled" in terminated:
+        return "out_of_memory"
+    if waiting & {"ImagePullBackOff", "ErrImagePull"}:
+        return "image_pull_error"
+    if "CrashLoopBackOff" in waiting:
+        return "crash_loop"
+    if waiting & {"CreateContainerConfigError", "CreateContainerError", "InvalidImageName"}:
+        return "configuration_error"
+    return "progressing" if status.get("unavailableReplicas") else "pending"
+
+
+def _model_deployment_urls(service, ingress, settings):
+    port = next((p for p in service["spec"].get("ports", []) if p.get("name") == "http"), None)
+    if port is None:
+        return {}
+    base_url = None
+    if ingress is not None:
+        rules = ingress["spec"].get("rules") or []
+        if (
+            ((ingress.get("status") or {}).get("loadBalancer") or {}).get("ingress")
+            and rules
+            and rules[0].get("host")
+        ):
+            scheme = "https" if ingress["spec"].get("tls") else "http"
+            base_url = f"{scheme}://{rules[0]['host']}"
+    elif service["spec"].get("type") == "LoadBalancer":
+        admitted = ((service.get("status") or {}).get("loadBalancer") or {}).get("ingress") or []
+        if admitted:
+            host = admitted[0].get("hostname") or admitted[0].get("ip")
+            if host:
+                base_url = f"{settings.inference_external_scheme}://{host}:{port['port']}"
+    elif (
+        service["spec"].get("type") == "NodePort"
+        and port.get("nodePort")
+        and settings.inference_external_host
+    ):
+        base_url = f"{settings.inference_external_scheme}://{settings.inference_external_host}:{port['nodePort']}"
+    if not base_url:
+        return {}
+    return dict(
+        base_url=base_url,
+        endpoint=f"{base_url}/v1/predict",
+        docs_url=f"{base_url}/docs",
+        openapi_url=f"{base_url}/openapi.json",
+    )
+
+
+class ModelDeploymentRetirementPending(RuntimeError):
+    pass
+
+
+def _requested_inference_spec(actual, wanted, path=()):
+    if isinstance(wanted, dict):
+        return isinstance(actual, dict) and all(
+            key in actual and _requested_inference_spec(actual[key], value, (*path, key))
+            for key, value in wanted.items()
+        )
+    if isinstance(wanted, list):
+        return (
+            isinstance(actual, list)
+            and len(actual) == len(wanted)
+            and all(
+                _requested_inference_spec(value, expected, (*path, str(index)))
+                for index, (value, expected) in enumerate(zip(actual, wanted, strict=True))
+            )
+        )
+    if len(path) >= 3 and path[-3] == "resources" and path[-2] in {"requests", "limits"}:
+        try:
+            return parse_quantity(str(actual)) == parse_quantity(str(wanted))
+        except (ValueError, TypeError):
+            return False
+    return type(actual) is type(wanted) and actual == wanted
+
 
 _FATAL_CONTAINER_WAITING_REASONS = {
     "CreateContainerConfigError",
@@ -159,12 +266,16 @@ class KubernetesTrainingClient:
                 config.load_incluster_config()
             except config.ConfigException:
                 config.load_kube_config()
-            self.core = client.CoreV1Api()
-            self.batch = client.BatchV1Api()
-            self.apps = client.AppsV1Api()
-            self.networking = client.NetworkingV1Api()
-            self.scheduling = client.SchedulingV1Api()
-            self.custom = client.CustomObjectsApi()
+            configuration = client.Configuration.get_default_copy()
+            configuration.retries = 0
+            api_client = client.ApiClient(configuration)
+            self.core = client.CoreV1Api(api_client)
+            self.batch = client.BatchV1Api(api_client)
+            self.apps = client.AppsV1Api(api_client)
+            self.networking = client.NetworkingV1Api(api_client)
+            self.scheduling = client.SchedulingV1Api(api_client)
+            self.custom = client.CustomObjectsApi(api_client)
+            self.authentication = client.AuthenticationV1Api(api_client)
             self._configured = True
         except Exception as exc:
             self._configuration_error = str(exc)
@@ -332,26 +443,15 @@ class KubernetesTrainingClient:
         namespace = (
             manifest.get("metadata", {}).get("namespace") or self.settings.training_namespace
         )
-        try:
-            created = self.custom.create_namespaced_custom_object(
-                group="ray.io",
-                version="v1",
-                namespace=namespace,
-                plural="rayjobs",
-                body=manifest,
-                _request_timeout=5,
-            )
-        except ApiException as exc:
-            if exc.status != 409:
-                raise
-            created = self.custom.get_namespaced_custom_object(
-                group="ray.io",
-                version="v1",
-                namespace=namespace,
-                plural="rayjobs",
-                name=manifest["metadata"]["name"],
-                _request_timeout=5,
-            )
+        # A conflict cannot attest the original UID after an unknown create outcome.
+        created = self.custom.create_namespaced_custom_object(
+            group="ray.io",
+            version="v1",
+            namespace=namespace,
+            plural="rayjobs",
+            body=manifest,
+            _request_timeout=5,
+        )
         metadata = created.get("metadata") if isinstance(created, dict) else None
         uid = metadata.get("uid") if isinstance(metadata, dict) else None
         labels = metadata.get("labels") if isinstance(metadata, dict) else None
@@ -369,6 +469,56 @@ class KubernetesTrainingClient:
         ):
             raise ValueError("RayJob identity or submitted specification differs from the command.")
         return created
+
+    def activate_ray_job(self, manifest: dict[str, Any], uid: str) -> dict[str, Any]:
+        name, namespace = (manifest["metadata"][key] for key in ("name", "namespace"))
+
+        def verify(value):
+            metadata = value.get("metadata", {})
+            wanted = deepcopy(manifest["spec"])
+            suspended = value.get("spec", {}).get("suspend")
+            wanted["suspend"] = suspended
+            if (
+                metadata.get("uid") != uid
+                or metadata.get("name") != name
+                or metadata.get("namespace") != namespace
+                or not isinstance(metadata.get("resourceVersion"), str)
+                or not metadata["resourceVersion"]
+                or type(suspended) is not bool
+                or value.get("spec") != wanted
+                or any(
+                    metadata.get("labels", {}).get(key) != expected
+                    for key, expected in manifest["metadata"].get("labels", {}).items()
+                )
+            ):
+                raise ValueError("Original Ray activation target or specification changed.")
+            return suspended
+
+        original = self.ray_job(name, namespace=namespace)
+        if not verify(original):
+            return original
+        activated = self.custom.patch_namespaced_custom_object(
+            group="ray.io",
+            version="v1",
+            namespace=namespace,
+            plural="rayjobs",
+            name=name,
+            body=[
+                {"op": "test", "path": "/metadata/uid", "value": uid},
+                {
+                    "op": "test",
+                    "path": "/metadata/resourceVersion",
+                    "value": original["metadata"]["resourceVersion"],
+                },
+                {"op": "test", "path": "/spec", "value": original["spec"]},
+                {"op": "replace", "path": "/spec/suspend", "value": False},
+            ],
+            _content_type="application/json-patch+json",
+            _request_timeout=5,
+        )
+        if verify(activated):
+            raise ValueError("Original RayJob remains suspended after activation.")
+        return activated
 
     def ray_job(self, name: str, namespace: str | None = None) -> dict[str, Any]:
         if not self._configured:
@@ -934,8 +1084,11 @@ class KubernetesTrainingClient:
         replicas: int,
         cpu_request: str,
         memory_request: str,
-        model_digest: str = "",
+        model_digest: str,
+        identity_ca_digest: str,
+        identity_control_base_url: str,
     ) -> dict[str, Any]:
+        identity_base = identity_control_base_url + f"/{deployment_id}"
         suffix = str(deployment_id)[:8]
         name = f"automl-model-{suffix}"
         labels = {
@@ -965,6 +1118,11 @@ class KubernetesTrainingClient:
                         "spec": {
                             "serviceAccountName": self.settings.inference_service_account,
                             "automountServiceAccountToken": False,
+                            "securityContext": {
+                                "fsGroup": 10001,
+                                "seccompProfile": {"type": "RuntimeDefault"},
+                            },
+                            "volumes": credential_volumes(deployment_id, identity_ca_digest),
                             **(
                                 {
                                     "imagePullSecrets": [
@@ -980,21 +1138,35 @@ class KubernetesTrainingClient:
                                     "name": "model",
                                     "image": image,
                                     "imagePullPolicy": self.settings.inference_image_pull_policy,
-                                    "ports": [{"name": "http", "containerPort": 8080}],
+                                    "command": ["python", "-m", "automl_api.inference.runtime"],
+                                    "ports": [
+                                        {"name": "https", "containerPort": DATA_PORT},
+                                        {"name": "health", "containerPort": HEALTH_PORT},
+                                    ],
+                                    "volumeMounts": credential_mounts(),
                                     "env": [
                                         {"name": "MODEL_URI", "value": model_uri},
                                         {"name": "MODEL_SHA256", "value": model_digest},
                                         {
-                                            "name": "INFERENCE_GATEWAY_TOKEN",
-                                            "value": deployment_token(deployment_id),
+                                            "name": "INFERENCE_IDENTITY_PROTOCOL",
+                                            "value": INFERENCE_PROTOCOL,
+                                        },
+                                        {
+                                            "name": "INFERENCE_CA_SHA256",
+                                            "value": identity_ca_digest,
+                                        },
+                                        {
+                                            "name": "INFERENCE_DEPLOYMENT_ID",
+                                            "value": str(deployment_id),
+                                        },
+                                        {"name": "INFERENCE_PROJECT_ID", "value": str(project_id)},
+                                        {
+                                            "name": "INFERENCE_IDENTITY_URL",
+                                            "value": identity_base + "/identity",
                                         },
                                         {
                                             "name": "MODEL_DOWNLOAD_URL",
-                                            "value": (
-                                                self.settings.internal_api_url.rstrip("/")
-                                                + "/api/v1/internal/deployments/"
-                                                + f"{deployment_id}/model"
-                                            ),
+                                            "value": identity_base + "/model",
                                         },
                                         {"name": "MODEL_NAME", "value": model_name},
                                         {
@@ -1017,17 +1189,17 @@ class KubernetesTrainingClient:
                                         },
                                     },
                                     "startupProbe": {
-                                        "httpGet": {"path": "/health/ready", "port": "http"},
+                                        "httpGet": {"path": "/health/ready", "port": "health"},
                                         "periodSeconds": 5,
                                         "failureThreshold": 60,
                                     },
                                     "readinessProbe": {
-                                        "httpGet": {"path": "/health/ready", "port": "http"},
+                                        "httpGet": {"path": "/health/ready", "port": "health"},
                                         "periodSeconds": 5,
                                         "failureThreshold": 3,
                                     },
                                     "livenessProbe": {
-                                        "httpGet": {"path": "/health/live", "port": "http"},
+                                        "httpGet": {"path": "/health/live", "port": "health"},
                                         "periodSeconds": 15,
                                         "failureThreshold": 3,
                                     },
@@ -1035,6 +1207,7 @@ class KubernetesTrainingClient:
                                         "allowPrivilegeEscalation": False,
                                         "capabilities": {"drop": ["ALL"]},
                                         "runAsNonRoot": True,
+                                        "runAsUser": 10001,
                                     },
                                 }
                             ],
@@ -1055,7 +1228,7 @@ class KubernetesTrainingClient:
                     "selector": {
                         "automl.platform/deployment-id": str(deployment_id),
                     },
-                    "ports": [{"name": "http", "port": 8080, "targetPort": "http"}],
+                    "ports": [{"name": "https", "port": DATA_PORT, "targetPort": "https"}],
                 },
             },
         }
@@ -1079,7 +1252,7 @@ class KubernetesTrainingClient:
                                     "backend": {
                                         "service": {
                                             "name": name,
-                                            "port": {"name": "http"},
+                                            "port": {"name": "https"},
                                         }
                                     },
                                 }
@@ -1107,188 +1280,446 @@ class KubernetesTrainingClient:
                 },
                 "spec": ingress_spec,
             }
+        serving_declaration(
+            manifests,
+            project_id=project_id,
+            run_id=deployment_id,
+            model_digest=model_digest,
+            model_uri=model_uri,
+            ca_digest=identity_ca_digest,
+            base_url=identity_control_base_url,
+        )
         return manifests
 
-    def create_model_deployment(self, manifests: dict[str, Any]) -> None:
-        deployment = manifests["deployment"]
-        service = manifests["service"]
+    def _model_deployment_plans(self, manifests: dict[str, Any]):
         namespace = self.settings.training_namespace
+        plans = [
+            ("deployment", "Deployment", "apps/v1", "apps"),
+            ("service", "Service", "v1", "core"),
+        ]
+        if "ingress" in manifests:
+            plans.append(("ingress", "Ingress", "networking.k8s.io/v1", "networking"))
+        owner_keys = ("automl.platform/project-id", "automl.platform/deployment-id")
         try:
-            self.apps.create_namespaced_deployment(namespace=namespace, body=deployment)
-        except ApiException as exc:
-            if exc.status != 409:
-                raise
-        try:
-            try:
-                self.core.create_namespaced_service(namespace=namespace, body=service)
-            except ApiException as exc:
-                if exc.status != 409:
-                    raise
-            if ingress := manifests.get("ingress"):
+            identity = None
+            for key, kind, api_version, _ in plans:
+                resource = manifests[key]
+                metadata = resource["metadata"]
+                labels = metadata["labels"]
+                owner = tuple(labels[name] for name in owner_keys)
+                if (
+                    resource["kind"] != kind
+                    or resource["apiVersion"] != api_version
+                    or not isinstance(metadata["name"], str)
+                    or not metadata["name"]
+                    or metadata.get("namespace", namespace) != namespace
+                    or not isinstance(resource["spec"], dict)
+                    or not resource["spec"]
+                    or any(str(uuid.UUID(value)) != value for value in owner)
+                    or identity is not None
+                    and owner != identity
+                ):
+                    raise ValueError("Inference manifest target or ownership is invalid")
+                identity = owner
+            deployment, service = manifests["deployment"], manifests["service"]
+            labels = deployment["spec"]["template"]["metadata"]["labels"]
+            if (
+                tuple(labels[name] for name in owner_keys) != identity
+                or deployment["spec"]["selector"]["matchLabels"][owner_keys[1]] != identity[1]
+                or service["spec"]["selector"][owner_keys[1]] != identity[1]
+            ):
+                raise ValueError("Inference selectors do not bind the requested deployment")
+            if "ingress" in manifests:
+                spec = manifests["ingress"]["spec"]
+                backends = [
+                    path["backend"]
+                    for rule in spec.get("rules", [])
+                    for path in rule["http"]["paths"]
+                ]
+                if "defaultBackend" in spec:
+                    backends.append(spec["defaultBackend"])
+                if not backends or any(
+                    backend["service"]["name"] != service["metadata"]["name"]
+                    for backend in backends
+                ):
+                    raise ValueError("Inference ingress does not bind the requested Service")
+        except (KeyError, TypeError, AttributeError) as exc:
+            raise ValueError("Inference manifest target or ownership is malformed") from exc
+
+        return plans
+
+    def _verify_model_resource(self, existing, resource, kind):
+        namespace = self.settings.training_namespace
+        if not isinstance(existing, dict):
+            with client.ApiClient() as serializer:
+                existing = serializer.sanitize_for_serialization(existing)
+        if not isinstance(existing, dict) or not isinstance(existing.get("metadata"), dict):
+            raise ValueError(f"Existing inference {kind} has malformed ownership or spec")
+        metadata = existing["metadata"]
+        labels = metadata.get("labels") or {}
+        if (
+            existing.get("kind") != kind
+            or existing.get("apiVersion") != resource["apiVersion"]
+            or not isinstance(labels, dict)
+            or not isinstance(metadata.get("uid"), str)
+            or not metadata["uid"]
+            or metadata.get("name") != resource["metadata"]["name"]
+            or metadata.get("namespace") != namespace
+            or metadata.get("deletionTimestamp") is not None
+            or any(
+                labels.get(name) != value for name, value in resource["metadata"]["labels"].items()
+            )
+            or not _requested_inference_spec(existing.get("spec"), resource["spec"])
+        ):
+            raise ValueError(f"Existing inference {kind} has different ownership or spec")
+        if any(
+            existing["metadata"].get("annotations", {}).get(key) != value
+            for key, value in resource["metadata"].get("annotations", {}).items()
+        ):
+            raise ValueError(f"Existing inference {kind} has different creation intent")
+        return existing
+
+    def create_model_deployment(self, manifests: dict[str, Any], *, custody=None) -> None:
+        plans = self._model_deployment_plans(manifests)
+        namespace = self.settings.training_namespace
+        for key, kind, _, api_name in plans:
+            resource = manifests[key]
+            api = getattr(self, api_name)
+            first = True
+            if custody is not None:
+                custody.check_namespace()
+                first = custody.start(key, resource)
+                if first is None:
+                    continue
+                custody.check_namespace()
+            existing = None
+            conflicted = False
+            if first:
                 try:
-                    self.networking.create_namespaced_ingress(
+                    existing = getattr(api, f"create_namespaced_{key}")(
                         namespace=namespace,
-                        body=ingress,
+                        body=resource,
+                        **({"_request_timeout": 5} if custody is not None else {}),
                     )
                 except ApiException as exc:
-                    if exc.status != 409:
+                    if custody is None and exc.status != 409:
                         raise
-        except Exception:
-            try:
-                self.core.delete_namespaced_service(
-                    name=service["metadata"]["name"],
+                    conflicted = True
+                except Exception:
+                    if custody is None:
+                        raise
+                else:
+                    if custody is not None:
+                        existing = self._verify_model_resource(existing, resource, kind)
+                        custody.record(key, resource, existing)
+            if custody is not None or conflicted:
+                existing = getattr(api, f"read_namespaced_{key}")(
+                    name=resource["metadata"]["name"],
                     namespace=namespace,
+                    **({"_request_timeout": 5} if custody is not None else {}),
                 )
-            except Exception as cleanup_error:  # noqa: BLE001 - best-effort cleanup
-                logger.debug(
-                    "Inference service cleanup skipped for %s: %s",
-                    service["metadata"]["name"],
-                    cleanup_error,
-                )
-            self.apps.delete_namespaced_deployment(
-                name=deployment["metadata"]["name"],
-                namespace=namespace,
-                propagation_policy="Foreground",
-            )
-            raise
+                existing = self._verify_model_resource(existing, resource, kind)
+            if custody is not None:
+                custody.check_namespace()
+                custody.record(key, resource, existing)
 
-    def model_deployment_state(self, name: str) -> str:
+    def observe_model_deployment(self, name, *, custody, control, deadline):
+        def bounded(call, *args, **kwargs):
+            if time.monotonic() + 5 > deadline:
+                raise TimeoutError("Deployment observation budget exhausted")
+            return call(*args, **kwargs)
+
+        bounded(self._lifecycle_plans, name, custody)
         try:
-            deployment = self.apps.read_namespaced_deployment_status(
-                name=name,
-                namespace=self.settings.training_namespace,
+            deployment = bounded(
+                self._lifecycle_resource, "deployment", "Deployment", "apps", custody
             )
-        except ApiException as exc:
-            if exc.status == 404:
-                return "missing"
-            raise
-        desired = deployment.spec.replicas or 0
-        available = deployment.status.available_replicas or 0
-        if desired > 0 and available >= desired:
-            return "ready"
-        selector = deployment.spec.selector.match_labels or {}
-        label_selector = ",".join(f"{key}={value}" for key, value in selector.items())
-        pods = self.core.list_namespaced_pod(
-            namespace=self.settings.training_namespace,
-            label_selector=label_selector,
-        ).items
-        waiting_reasons = {
-            status.state.waiting.reason
-            for pod in pods
-            for status in (pod.status.container_statuses or [])
-            if status.state and status.state.waiting
-        }
-        terminated_reasons = {
-            status.state.terminated.reason
-            for pod in pods
-            for status in (pod.status.container_statuses or [])
-            if status.state and getattr(status.state, "terminated", None)
-        }
-        previous_terminated_reasons = {
-            status.last_state.terminated.reason
-            for pod in pods
-            for status in (pod.status.container_statuses or [])
-            if getattr(status, "last_state", None) and status.last_state.terminated
-        }
-        if "OOMKilled" in terminated_reasons | previous_terminated_reasons:
-            return "out_of_memory"
-        if waiting_reasons & {"ImagePullBackOff", "ErrImagePull"}:
-            return "image_pull_error"
-        if "CrashLoopBackOff" in waiting_reasons:
-            return "crash_loop"
-        if waiting_reasons & {
-            "CreateContainerConfigError",
-            "CreateContainerError",
-            "InvalidImageName",
-        }:
-            return "configuration_error"
-        if deployment.status.unavailable_replicas:
-            return "progressing"
-        return "pending"
-
-    def model_deployment_urls(self, name: str) -> dict[str, str] | None:
-        service = self.core.read_namespaced_service(
-            name=name,
-            namespace=self.settings.training_namespace,
-        )
-        port = next(
-            (item for item in (service.spec.ports or []) if item.name == "http"),
-            None,
-        )
-        if port is None:
-            return None
-        base_url: str | None = None
-        if self.settings.inference_ingress_enabled:
-            try:
-                ingress = self.networking.read_namespaced_ingress_status(
-                    name=name,
-                    namespace=self.settings.training_namespace,
-                )
-                load_balancer = getattr(ingress.status, "load_balancer", None)
-                admitted = getattr(load_balancer, "ingress", None) or []
-                rules = ingress.spec.rules or []
-                if admitted and rules and rules[0].host:
-                    scheme = "https" if self.settings.inference_ingress_tls_secret_name else "http"
-                    base_url = f"{scheme}://{rules[0].host}"
-            except ApiException as exc:
-                if exc.status != 404:
-                    raise
-        elif service.spec.type == "LoadBalancer":
-            load_balancer = getattr(getattr(service, "status", None), "load_balancer", None)
-            ingress = getattr(load_balancer, "ingress", None) or []
-            if ingress:
-                host = getattr(ingress[0], "hostname", None) or getattr(ingress[0], "ip", None)
-                if host:
-                    base_url = f"{self.settings.inference_external_scheme}://{host}:{port.port}"
-        elif (
-            service.spec.type == "NodePort"
-            and port.node_port
-            and self.settings.inference_external_host
-        ):
-            base_url = (
-                f"{self.settings.inference_external_scheme}://"
-                f"{self.settings.inference_external_host}:{port.node_port}"
-            )
-        if not base_url:
-            return None
-        return {
-            "base_url": base_url,
-            "endpoint": f"{base_url}/v1/predict",
-            "docs_url": f"{base_url}/docs",
-            "openapi_url": f"{base_url}/openapi.json",
-        }
-
-    def start_model_deployment(self, name: str, replicas: int) -> None:
-        self.apps.patch_namespaced_deployment_scale(
-            name=name,
-            namespace=self.settings.training_namespace,
-            body={"spec": {"replicas": replicas}},
-        )
-
-    def shutdown_model_deployment(self, name: str) -> None:
-        self.apps.patch_namespaced_deployment_scale(
-            name=name,
-            namespace=self.settings.training_namespace,
-            body={"spec": {"replicas": 0}},
-        )
-
-    def delete_model_deployment(self, name: str) -> None:
-        namespace = self.settings.training_namespace
-        if self.settings.inference_ingress_enabled:
-            try:
-                self.networking.delete_namespaced_ingress(name=name, namespace=namespace)
-            except ApiException as exc:
-                if exc.status != 404:
-                    raise
-        try:
-            self.core.delete_namespaced_service(name=name, namespace=namespace)
         except ApiException as exc:
             if exc.status != 404:
                 raise
-        self.apps.delete_namespaced_deployment(
+            bounded(self._lifecycle_namespace, custody)
+            return "missing", {}
+        version = deployment["metadata"].get("resourceVersion")
+        if not isinstance(version, str) or not version:
+            raise ValueError("Deployment observation requires a native resourceVersion")
+        annotations = deployment["metadata"].get("annotations") or {}
+        marker = (
+            annotations.get("automl.platform/control-generation"),
+            annotations.get("automl.platform/control-command"),
+        )
+        expected = (
+            (str(control["generation"]), control["command_id"])
+            if control["generation"]
+            else (None, None)
+        )
+        if (
+            marker != expected
+            or type(deployment["spec"].get("replicas")) is not int
+            or deployment["spec"]["replicas"] != control["replicas"]
+        ):
+            raise ValueError("Deployment observation lost its original control generation")
+        resources = {"deployment": deployment}
+        for key, kind, _, api_name in self._model_deployment_plans(custody["manifests"]):
+            if key != "deployment":
+                resources[key] = bounded(self._lifecycle_resource, key, kind, api_name, custody)
+        selector = (
+            "automl.platform/deployment-id="
+            + deployment["metadata"]["labels"]["automl.platform/deployment-id"]
+        )
+        replicas = bounded(
+            self.apps.list_namespaced_replica_set,
+            namespace=custody["namespace"],
+            label_selector=selector,
+            limit=100,
+            _request_timeout=5,
+        )
+        pods = bounded(
+            self.core.list_namespaced_pod,
+            namespace=custody["namespace"],
+            label_selector=selector,
+            limit=100,
+            _request_timeout=5,
+        )
+        if getattr(replicas.metadata, "_continue", None) or getattr(
+            pods.metadata, "_continue", None
+        ):
+            raise ValueError("Deployment workload observation is incomplete")
+        with client.ApiClient() as serializer:
+            replica_items = [
+                item if isinstance(item, dict) else serializer.sanitize_for_serialization(item)
+                for item in replicas.items
+            ]
+            pod_items = [
+                item if isinstance(item, dict) else serializer.sanitize_for_serialization(item)
+                for item in pods.items
+            ]
+
+        def owned(item, kind, uid):
+            metadata = item["metadata"]
+            owners = metadata.get("ownerReferences") or []
+            return (
+                metadata.get("namespace") == custody["namespace"]
+                and isinstance(metadata.get("uid"), str)
+                and bool(metadata["uid"])
+                and len([owner for owner in owners if owner.get("controller") is True]) == 1
+                and any(
+                    owner.get("controller") is True
+                    and owner.get("kind") == kind
+                    and owner.get("uid") == uid
+                    for owner in owners
+                )
+            )
+
+        if any(
+            len({item["metadata"].get("uid") for item in items}) != len(items)
+            for items in (replica_items, pod_items)
+        ):
+            raise ValueError("Deployment workload observation repeats a native UID")
+        replica_uids = set()
+        template = custody["manifests"]["deployment"]["spec"]["template"]
+        for item in replica_items:
+            if not owned(
+                item, "Deployment", deployment["metadata"]["uid"]
+            ) or not _requested_inference_spec(item["spec"]["template"], template):
+                raise ValueError("ReplicaSet does not belong to the original deployment template")
+            replica_uids.add(item["metadata"]["uid"])
+        for item in pod_items:
+            if not any(
+                owned(item, "ReplicaSet", uid) for uid in replica_uids
+            ) or not _requested_inference_spec(item["spec"], template["spec"]):
+                raise ValueError("Pod does not belong to an original deployment ReplicaSet")
+        current = bounded(self._lifecycle_resource, "deployment", "Deployment", "apps", custody)
+        if current["metadata"].get("resourceVersion") != deployment["metadata"].get(
+            "resourceVersion"
+        ):
+            raise ValueError("Deployment changed during native observation")
+        bounded(self._lifecycle_namespace, custody)
+        live = [item for item in pod_items if not item["metadata"].get("deletionTimestamp")]
+        state = _model_deployment_state(deployment, live)
+        if state == "ready":
+            generation = deployment["metadata"].get("generation")
+            observed = (deployment.get("status") or {}).get("observedGeneration")
+            ready = sum(
+                any(
+                    c.get("type") == "Ready" and c.get("status") == "True"
+                    for c in ((item.get("status") or {}).get("conditions") or [])
+                )
+                for item in live
+            )
+            if (
+                type(generation) is not int
+                or type(observed) is not int
+                or observed < generation
+                or ready < control["replicas"]
+            ):
+                incomplete = deepcopy(deployment)
+                incomplete["status"].update(availableReplicas=0, unavailableReplicas=1)
+                state = _model_deployment_state(incomplete, live)
+        urls = (
+            _model_deployment_urls(resources["service"], resources.get("ingress"), self.settings)
+            if state == "ready"
+            else {}
+        )
+        return state, urls
+
+    def _lifecycle_namespace(self, custody):
+        if (
+            not isinstance(custody, dict)
+            or custody.get("namespace") != self.settings.training_namespace
+        ):
+            raise ValueError("Deployment requires original namespace custody")
+        namespace = self.core.read_namespace(custody["namespace"], _request_timeout=5)
+        if (
+            namespace.metadata.uid != custody.get("namespace_uid")
+            or namespace.metadata.name != custody["namespace"]
+            or namespace.metadata.deletion_timestamp is not None
+        ):
+            raise ValueError("Original deployment namespace lifetime changed")
+
+    def _lifecycle_resource(self, key, kind, api_name, custody, *, missing=False, deleting=False):
+        resource = custody["manifests"][key]
+        receipt = custody["resources"][key]
+        if (
+            receipt["request_digest"] != canonical_request_hash(resource)
+            or receipt["intent_digest"] != custody["intent_digest"]
+        ):
+            raise ValueError("Original deployment request custody changed")
+        try:
+            actual = getattr(getattr(self, api_name), f"read_namespaced_{key}")(
+                name=resource["metadata"]["name"],
+                namespace=custody["namespace"],
+                _request_timeout=5,
+            )
+        except ApiException as exc:
+            if missing and exc.status == 404:
+                return None
+            raise
+        if not isinstance(actual, dict):
+            with client.ApiClient() as serializer:
+                actual = serializer.sanitize_for_serialization(actual)
+        normalized = deepcopy(actual)
+        if key == "deployment":
+            normalized["spec"]["replicas"] = resource["spec"]["replicas"]
+        if deleting:
+            normalized["metadata"].pop("deletionTimestamp", None)
+        normalized = self._verify_model_resource(normalized, resource, kind)
+        if (
+            normalized["metadata"]["uid"] != receipt["uid"]
+            or canonical_request_hash(normalized["spec"]) != receipt["spec_digest"]
+        ):
+            raise ValueError("Original deployment native UID or spec changed")
+        return actual
+
+    def _lifecycle_plans(self, name, custody):
+        self._lifecycle_namespace(custody)
+        plans = self._model_deployment_plans(custody["manifests"])
+        if custody["manifests"]["deployment"]["metadata"]["name"] != name or set(
+            custody["resources"]
+        ) != {key for key, _, _, _ in plans}:
+            raise ValueError("Original deployment lifecycle targets changed")
+        return plans
+
+    def _scale_model_deployment(self, name, replicas, custody):
+        plans = self._lifecycle_plans(name, custody)
+        if type(replicas) is not int or replicas < 0:
+            raise ValueError("Deployment replicas must be a nonnegative integer")
+        deployment = None
+        for key, kind, _, api_name in plans:
+            if replicas == 0 and key != "deployment":
+                continue
+            actual = self._lifecycle_resource(key, kind, api_name, custody)
+            if key == "deployment":
+                deployment = actual
+        metadata = deployment["metadata"]
+        version = metadata.get("resourceVersion")
+        if not isinstance(version, str) or not version:
+            raise ValueError("Original deployment native resourceVersion is missing")
+        self._lifecycle_namespace(custody)
+        self.apps.patch_namespaced_deployment(
             name=name,
-            namespace=namespace,
-            propagation_policy="Foreground",
+            namespace=custody["namespace"],
+            _request_timeout=5,
+            body=[
+                {"op": "test", "path": "/metadata/uid", "value": metadata["uid"]},
+                {"op": "test", "path": "/metadata/resourceVersion", "value": version},
+                {"op": "replace", "path": "/spec/replicas", "value": replicas},
+            ],
+        )
+        self._lifecycle_namespace(custody)
+
+    def start_model_deployment(self, name: str, replicas: int, *, custody=None) -> None:
+        self._scale_model_deployment(name, replicas, custody)
+
+    def shutdown_model_deployment(self, name: str, *, custody=None) -> None:
+        self._scale_model_deployment(name, 0, custody)
+
+    def delete_model_deployment(self, name: str, *, custody=None, control=None):
+        plans = self._lifecycle_plans(name, custody)
+        targets = [
+            (
+                key,
+                self._lifecycle_resource(key, kind, api_name, custody, missing=True, deleting=True),
+                api_name,
+            )
+            for key, kind, _, api_name in plans
+        ]
+        if control is not None:
+            deployment = next(actual for key, actual, _ in targets if key == "deployment")
+            if deployment is not None:
+                annotations = deployment["metadata"].get("annotations") or {}
+                if annotations.get("automl.platform/control-generation") != str(
+                    control[0]
+                ) or annotations.get("automl.platform/control-command") != str(control[1]):
+                    raise ValueError("Cleanup lost its native control generation fence")
+        for key, actual, api_name in reversed(targets):
+            if actual is None:
+                continue
+            self._lifecycle_namespace(custody)
+            receipt = custody["resources"][key]
+            try:
+                getattr(getattr(self, api_name), f"delete_namespaced_{key}")(
+                    name=custody["manifests"][key]["metadata"]["name"],
+                    namespace=custody["namespace"],
+                    body=client.V1DeleteOptions(
+                        preconditions=client.V1Preconditions(
+                            uid=receipt["uid"],
+                            resource_version=actual["metadata"]["resourceVersion"],
+                        ),
+                        propagation_policy="Foreground",
+                    ),
+                    _request_timeout=5,
+                )
+            except ApiException as exc:
+                if exc.status != 404:
+                    raise
+        for key, kind, _, api_name in plans:
+            if (
+                self._lifecycle_resource(key, kind, api_name, custody, missing=True, deleting=True)
+                is not None
+            ):
+                raise ModelDeploymentRetirementPending(
+                    "Original deployment resources are still retiring"
+                )
+        selector = (
+            "automl.platform/deployment-id="
+            + custody["manifests"]["deployment"]["metadata"]["labels"][
+                "automl.platform/deployment-id"
+            ]
+        )
+        for method in (self.apps.list_namespaced_replica_set, self.core.list_namespaced_pod):
+            remaining = method(
+                namespace=custody["namespace"], label_selector=selector, limit=1, _request_timeout=5
+            )
+            if remaining.items or getattr(remaining.metadata, "_continue", None):
+                raise ModelDeploymentRetirementPending(
+                    "Original deployment workloads are still retiring"
+                )
+        self._lifecycle_namespace(custody)
+        return dict(
+            journal_digest=custody["journal_digest"],
+            namespace_uid=custody["namespace_uid"],
+            resource_uids={key: value["uid"] for key, value in custody["resources"].items()},
+            workload_absent=True,
         )
 
     def cleanup_finished_jobs(self, project_id: uuid.UUID) -> list[str]:

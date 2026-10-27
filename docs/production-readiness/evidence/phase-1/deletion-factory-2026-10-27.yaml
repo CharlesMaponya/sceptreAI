@@ -1,0 +1,153 @@
+status: in_progress
+phase_complete: false
+deletion_factory_acceptance_complete: false
+scope: Factory-owned deletion implementation and scoped qualification progress
+source_inputs: 673
+source_manifest_sha256: ce240981ad4177e7e2e65a5d72e142496e06409170dfc5f680b4b99dc74fc4bc
+changes:
+- Actual worker dispatches project/run deletion through a session factory; direct
+  Session callers cannot execute native cleanup.
+- Shared current policy checks precede stage intent and publication; qualified history
+  replaces legacy completion flags.
+- Original Ray/analysis/legacy runtime receipts bind namespace/name/UID and physical
+  ownership labels; cleanup uses UID preconditions and checks descendant inventories.
+- Store construction and prefix operations release SQL; immutable store/context/root
+  bindings and provider-copy protection precede effects.
+- Native attempt facts commit independently; current source/policy/delivery is rechecked
+  before publication and metadata erasure.
+- Expired uncertain deletes inspect first and only repair the same original target
+  under writer-retirement barriers; known absence avoids repeat delete.
+- Deployment cleanup timestamps alone cannot qualify retirement; original lifecycle
+  receipts are required and archived without manifest/secret bodies.
+- Committed fixtures and caller migration preserve project-owned teardown; no shared/global
+  reset.
+checks:
+  focused:
+    passed: 30
+    returncode: 0
+    xml_sha256: cf834208cedae7aea3ce53e3e9ccb7a5cff4b3c3b8cb4967d28c5bee9a9a9d54
+    state_sha256: 9dbad55c52e3b98b222119327e6725991cb2951d45a71be83b0a1f0cc1554c05
+  deletion:
+    passed: 225
+    returncode: 0
+    xml_sha256: 1538a86b736f5c4c397f65bb1c77c7a85e2823131a205debb88983fc85c6ef42
+    state_sha256: a7e0d3f3b89de42b75c269938d7ca1e67085872795be2a56088e1d60f8f33cfb
+  connected:
+    passed: 217
+    returncode: 0
+    xml_sha256: f188d3987e5e57ddffe95997b193ff0061063768a864b3ba970e6c8d191fa523
+    state_sha256: ffe7c47910d2cf2d1b3afccc631b5dc144e2c5592219552d0eaa4f0943c67c6f
+  legacy:
+    passed: 96
+    returncode: 0
+    xml_sha256: cdc01d21ed4e31127864ce3dab8571deccf6165cd486353fb1bdd5f445f7b07c
+    state_sha256: 0908098a7d6451f0baaedd43be47b04aa1b42b3a55de52a3fe9825772e31d2f6
+process_controls:
+  real_sigkill_before_native: true
+  real_sigkill_after_native: true
+  owned_postgres_backend_terminated_after_native: true
+  owned_postgres_backend_terminated_during_uncommitted_fact: true
+  unknown_original_outcomes_retained: true
+  live_native_lease_not_stolen: true
+  late_fact_cannot_acknowledge_successor: true
+native_control:
+  kind: Owned suspended local k3d RayJob factory deletion
+  factory_replacement_held: true
+  factory_completed: true
+  original_uid: 34c62af5-8d0a-43e8-82c4-1aa83ea8cfb4
+  replacement_uid: b672b412-903c-4543-bea0-ca362c4fcaef
+  native_sql_checkouts:
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  history_digests:
+  - 4956c61b36603fc5a5561bc36d4355cdafc404edee6fa0de6d604791e7388cbe
+  - 45ca9616864d278e256caf8f8d278fbc46cfe0511086a60018ba8a1541949ee0
+  - 99e21626d992f4309036c92234baacf18da1ddb12d785cea06765fbaf531b859
+  - 44e9c8e2c65980b9db7acaa17d39f09650ea89b59eddbac20fc408f90ea1a7f5
+  pod_inventory_snapshots:
+  - 0
+  - 0
+  - 0
+  namespace_removed: true
+  full_runtime_qualified: false
+preflight:
+  read_only: true
+  schema_differences: []
+  revision: 0019_deletion_stage_custody
+  tables: 44
+  namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+  coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+  free_bytes: 43598344192
+  reserve_bytes: 43500000000
+disk_maintenance:
+  recovered_from_below_reserve: true
+  action: Removed regenerable task-venv bytecode; archived logs for two confirmed
+    terminal owned Ray test PIDs.
+  evidence: disk-reclamation.json
+  future_driver_bytecode_writes: false
+acceptance:
+  factory_gates_met: 0
+  factory_gates_unmet: 5
+  phase_verified: 2
+  phase_open: 34
+  note: Implementation and raw scoped evidence only; complete independent acceptance
+    has not been certified.
+remaining:
+- Complete acceptance against the full deletion gate inventory, including additional
+  current-source/store/receipt mutation controls and broader provider/runtime qualification.
+- Other native producers/callers outside project/run deletion still need their Phase1
+  transaction/custody/credential requirements completed.
+- 45 GB migration, deferred 15 users x10 GiB load, maintained images, cloud/IAM/native
+  full journeys, mixed-version and full release/branch coverage remain unqualified.
+- Original deletion G7 requires seven missing historical objects (two models, five
+  signed results); none were reconstructed or re-signed.
+evidence_hashes:
+  source-sha256.json: ce240981ad4177e7e2e65a5d72e142496e06409170dfc5f680b4b99dc74fc4bc
+  before-source-sha256.json: 42a91c73ed56b2649a52c19792d6e881b1ccaf7fb9c733a92bc06030f99b0b41
+  baseline-source-sha256.json: 28df33e33ab6161136b223e746f73c999a64e78e5792eba820deb642f61e84c3
+  baseline-test.py: cf194a209d0509a56a39e7f2528f04f7015dcc7fa640e74c4a462acdb362d74c
+  baseline-state.json: 456cb1e68fe5d7c909a14d0c1b63ccce090b56033f0f0b873600959841a372b3
+  baseline.xml: efec6c35dd28d405b3e678a380752688d0de120a0c87d4a5e4168f7a1a6b9b15
+  baseline.log: 63f769a14b04f827454c8a0d892cb25da2512d8fe5961fc76c97e9230b19df6d
+  run.py: efc2312f6c84cc4e491a798a46acc77d1d07e5350fb93ca6fa6383bb02adc1f5
+  run_native.py: d78ef38ecb07332f5ba2dfbede06e62a33d15dbcced03026743d24db06adc03e
+  native_probe.py: 416cc428d0472fc035569298e1c6a4f84c475056cb36473e566310c97bfa06a8
+  native-state.json: 31dda524d6bbd0019113d57207cc931f96a740ed7eb6d891fe5bed1eeb007ccd
+  native-witness.json: b099c658b79fd0a40f3d3381f15ee133e5a8efd02a14c83d529924842fb3609a
+  native.log: bd304441791941ec12dbefd830ead4b7e3181a1181ebe1b3bc8b73170af598f0
+  process_child.py: da3f7e6a294cb052527bf0ddcf3e7c543e26d6e51c82112748e260198164ed67
+  preflight.py: 3bbb9a8ad4ee7becc7ae9a85ccc41dfe6ad5d17508c14b60b6b4994b146c6bcd
+  preflight.json: 0053543e93da85cfa06715795194b5a1aa1e30b9509b5658c49558f7ebd31219
+  verify_progress.py: 0f98bc6610b560d8f243a2e33802f60e677271f3a83d589e4899c00ad15d6439
+  report.py: 7bb5006a83e9ca507b0073580aa2caf274735e1ff6021e3e4899f7c609b8a4e6
+  PLAN.md: a039fd82b09d032d103a1c3f873a401eb924060539d5f75ca92761f465defc56
+  GATES.md: 1301dd22f005858f24e41e293c9a8f6974fa34a99df78f310833e565d3de0f98
+  disk-reclamation.json: 7a67c474f815c70e2c5f37d4b9e185e41cd71bcbf8f9d4d479fef0125cb959cd
+  owned-ray-diagnostics.tar.gz: 5e77c262329d765d92067a78fa46a92e59fab3da501f874312e0f9b04f69db01
+  focused.xml: cf834208cedae7aea3ce53e3e9ccb7a5cff4b3c3b8cb4967d28c5bee9a9a9d54
+  focused.log: 579491f64e075acff787885b15f427f9ce9c747aac36f8a65e5ef09095282ea6
+  focused-state.json: 9dbad55c52e3b98b222119327e6725991cb2951d45a71be83b0a1f0cc1554c05
+  deletion.xml: 1538a86b736f5c4c397f65bb1c77c7a85e2823131a205debb88983fc85c6ef42
+  deletion.log: 79e82d21bab372dfa4790e35e806617d657c9408e93a971f7c9fa963cf8630a1
+  deletion-state.json: a7e0d3f3b89de42b75c269938d7ca1e67085872795be2a56088e1d60f8f33cfb
+  connected.xml: f188d3987e5e57ddffe95997b193ff0061063768a864b3ba970e6c8d191fa523
+  connected.log: a90d880e1dffaf4ac0a96dcb999219e4575f61c992dab87f4c4a2a8762d5ced5
+  connected-state.json: ffe7c47910d2cf2d1b3afccc631b5dc144e2c5592219552d0eaa4f0943c67c6f
+  legacy.xml: cdc01d21ed4e31127864ce3dab8571deccf6165cd486353fb1bdd5f445f7b07c
+  legacy.log: f07e258ec02cb765d8e85f762f87df628f278705537539a38e7f2ed625534e00
+  legacy-state.json: 0908098a7d6451f0baaedd43be47b04aa1b42b3a55de52a3fe9825772e31d2f6

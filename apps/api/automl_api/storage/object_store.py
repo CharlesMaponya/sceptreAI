@@ -32,7 +32,7 @@ class ObjectStore:
     def dataframe_source(self, uri: str):
         raise NotImplementedError
 
-    def delete(self, uri: str) -> None:
+    def delete(self, uri: str, *, version: str | None = None) -> None:
         raise NotImplementedError
 
     def healthcheck(self) -> None:

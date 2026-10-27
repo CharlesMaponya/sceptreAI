@@ -1,0 +1,112 @@
+date: '2026-10-25'
+scope: deployment-create-safety
+phase: 1
+phase_complete: false
+source_inputs: 585
+source_manifest_sha256: 56d4e8f52ddfe030f93414ec7e3520f9e55b696a0eda19fbeacddeba78a54d98
+checks:
+  passed: 333
+  focused: 39
+  failures: 0
+  errors: 0
+  skips: 0
+  original_negative_control_failures: 2
+  strict_schema: 0018_attempt_predecessor_lineage
+  repository_ruff: pass
+  changed_hunk_format: pass
+  ci_preflights: 3
+  native_k3d_cases: 1
+  scoped_gates_reverified: 4
+behavior:
+- Preflight validates every requested target, canonical project/deployment identity,
+  namespace, selectors and Ingress Service binding before any Kubernetes POST.
+- 409 conflicts require nonempty native UID, original namespace/name/kind/API version,
+  no deletion timestamp, all requested labels and matching requested spec. Lists retain
+  exact length and order; CPU/memory quantities compare semantically through the installed
+  Kubernetes parser.
+- A later creation error propagates without name-only compensating deletion. Matching
+  same-manifest retries preserve existing resource UIDs and finish partial creation.
+- This fixes collision and destructive compensation behavior in the shared creator.
+  It does not introduce a durable expected-UID journal or move the caller out of SQL.
+native_kubernetes:
+  provider: owned local k3d-sceptre
+  tls_verified: true
+  zero_replica_resources: true
+  pods_started: 0
+  matching_conflicts_reused: true
+  foreign_owner_rejected: true
+  later_failure_preserved_resources: true
+  creator_delete_attempts: 0
+  resources_retired_with_uid_preconditions: 2
+  owned_namespace_retired: true
+  shared_fixture_namespace_uid_preserved: true
+  maintained_image_tested: false
+  cloud_iam_qualified: false
+retained_failures:
+- Two original control bodies reproduced foreign-conflict acceptance and deletion
+  of Service/Deployment by name. Both pass unchanged after the fix.
+- The first expanded focused run passed 37 and failed two fault cases because manifest
+  labels shared dictionary aliases. Independent resource copies repaired the fault
+  injection; all assertions remain. The final focused run passes all 39.
+- A draft lint check required explicit exception chaining on the malformed-conflict
+  error. Current lint passes.
+- The first native launcher attempt used an unavailable unqualified python command,
+  so native mode was not added and the driver rejected it before spawning pytest or
+  touching Kubernetes. The launcher was corrected to the project Python; the subsequent
+  single native run passed.
+limits:
+  requirements:
+    total: 36
+    verified: 2
+    open: 34
+  kubernetes_mutations_qualified: false
+  user_database_ceiling_bytes: 45000000000
+  largest_table_rows: not supplied
+  free_disk_reserve_bytes: 43500000000
+  minimum_free_bytes_during_regression: 43821592576
+  scale_qualified: false
+  required_handoff: Original phase1-deletion:G7 remains abandoned for seven missing
+    original historical QA objects (2 models, 5 signed results); do not reconstruct
+    or re-sign.
+  remaining:
+  - Requested-spec comparison permits additional dictionary fields used by server
+    defaults; complete defaulted Pod/security-policy attestation is not qualified.
+  - Durable namespace-lifetime and expected native UID/spec receipts, partial-creation
+    acknowledgement recovery, creation outside SQL, restart/stop/cleanup lifecycle
+    and native physical retirement remain required.
+  - Unknown pre-write outcomes, unqualified legacy history, remaining worker credentials
+    and cloud IAM/network restrictions remain required.
+  - Current full backend/release and independent branch coverage >=90.01 percent,
+    maintained images, actual prior binaries, mixed versions, cloud providers and
+    complete native process-loss journeys remain required.
+  - 45 GB production-sized migration rehearsal and 15 users each uploading 10 GiB
+    require suitable infrastructure; neither was run locally.
+evidence_hashes:
+  source-sha256.json: 56d4e8f52ddfe030f93414ec7e3520f9e55b696a0eda19fbeacddeba78a54d98
+  before-source-sha256.json: 7efa8c5dd87e1405dd921bb0236bce4336dc9f41717ab7beffae76be52e910c3
+  baseline-source-sha256.json: 363f3b30ed5b450770cee1651a1fac4d96dd22a4d8a0f6ef8c594b8795722825
+  baseline-test.py: db923034adc325357775505a4ef0ba125db8a33837fa19b476654fad7d9a288d
+  first-source-sha256.json: 376b10d1a1a5f0100e3defea89daf92c81b7e65526e035719bcbe7c37c777c83
+  run.py: a17737d0ea759d17a6b7859b5cd24264b03818a3f121f315b33d8e5ff8631feb
+  audit.py: 04732b34a76032c5099f089696404eb3ccaf67ab7355a230344dcc5f7c15d2cc
+  test_native_create.py: ff0f72115447275860d0410ed46495586f96686f2ae1129b180c3c3ec107d60a
+  native-probe-state.json: 78ed0f366186d642932375fa57896be74204a1e259f39754c5ee0be8676949ad
+  lint.log: 82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18
+  preflight-0.log: 00c8dcf3b37f2eac6114a4c21f9f742c56e354ada6672f1b15189664820d92a5
+  preflight-1.log: a414947a0f058a04ee8ca14e4023b0661f0892a6cb81c082ba87469dd71ed9e9
+  preflight-2.log: dffd5dbca119ddf99cc5a088942e02d1127f7108463f4627161d74775ec7e554
+  baseline.log: d557efc4e27a85c900083553952ea4fee1dd347801e3e2907ca0e417ed2efe9d
+  baseline.xml: dc715f354400d3a55c6ddbc2c98322f87e7a33b0a6ac373021e371f4cee2de64
+  baseline-state.json: 5820a671283ac281f2ed0223b9703ff9079d43b3e82ae6f19363967322bcfbe4
+  first-focused.log: e142d572779ed482203fbbf56fc00ceb28420627a0c578c9f6faae821d6c64db
+  first-focused.xml: ed9a0c04d8663838474494572a578361a940503eb8e2ad68c132e8a605af2b07
+  first-focused-state.json: 4280c58f5b455609bb21c5f03f64952a7d4dfbbad1381023b929a30962898e95
+  focused.log: bf3adabbc2b9cb3cdc3321050b98e9fa01351c84f018286968cf641573aa8585
+  focused.xml: 05a89c238bc292d10bf83a3b23de7603ecc00fe5d8b12afd650c72342b87d983
+  focused-state.json: a09c59deece92f8e1f1221b6dd3a950fc123b0d03c123887b73436dbdec507d3
+  regression.log: 49a41438b55e0909cf452f3139a391809e0d4385fa0c31416ca152d8f87d2e62
+  regression.xml: a7d9e9eb65c2d3b43b824ca5bf17d580ae7c4fea36956895cc37a5a809030fb1
+  regression-state.json: e557205e205792baf66636d03e3d369d77ac1c67849181fefe722499411b9bd3
+  native.log: 48cab997393f1bf220f34d7d59e23bf6cedf418776fe123889d7e376a8a1d0e4
+  native.xml: 58323f66965a952ca24e8ab4ec0141fc0a24ca271dacd8e5490858de9d9170ce
+  native-state.json: d3bb4f6afe740d7e7711a0953f9b56f6b98c47b747f8d74c91ae055295c6e8e4
