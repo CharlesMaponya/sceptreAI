@@ -1,5 +1,7 @@
 """Single-transaction legacy fixture setup, not SQL-boundary qualification."""
 
+from unittest.mock import Mock, patch
+
 from automl_api.services import reconciler
 from sqlalchemy.orm import Session
 
@@ -24,13 +26,21 @@ def _fixture_read(db, k8s, request):
     return reconciler.inspect_ray_observation(SimpleNamespace(ray_job=ray_job), request)
 
 
+def _observe(observer, db, k8s, **kwargs):
+    assert isinstance(k8s, Mock), "Legacy component adapter accepts owned mocks only"
+
+    def original(_db, attempt, resource, namespace):
+        return dict(
+            uid="owned-fixture-ray-uid", job_name=attempt.ray_job_name, namespace=namespace
+        ), {"fixture": "owned-original-uid", "attempt_id": str(attempt.id)}
+
+    with patch.object(reconciler, "_ray_observation_source", side_effect=original):
+        return observer(db, read=lambda request: _fixture_read(db, k8s, request), **kwargs)
+
+
 def observe_training_ray_jobs(db, k8s, **kwargs):
-    return reconciler.observe_training_ray_jobs(
-        db, read=lambda request: _fixture_read(db, k8s, request), **kwargs
-    )
+    return _observe(reconciler.observe_training_ray_jobs, db, k8s, **kwargs)
 
 
 def observe_dataset_ray_jobs(db, k8s, **kwargs):
-    return reconciler.observe_dataset_ray_jobs(
-        db, read=lambda request: _fixture_read(db, k8s, request), **kwargs
-    )
+    return _observe(reconciler.observe_dataset_ray_jobs, db, k8s, **kwargs)

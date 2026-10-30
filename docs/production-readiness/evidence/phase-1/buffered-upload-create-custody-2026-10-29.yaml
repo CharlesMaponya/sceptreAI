@@ -1,0 +1,151 @@
+recorded_on: '2026-10-29'
+status: in_progress
+phase_complete: false
+scope: Original response custody for exclusive byte creation; first dependency of
+  full buffered recovery
+changes:
+- ObjectStoreDriver and four concrete drivers expose create_bytes without changing
+  existing overwrite callers. It has no public buffered caller yet.
+- S3 requires its existing single-attempt client, uses IfNoneMatch, and returns only
+  the original VersionId. Azure disables call retries and returns its original write/commit
+  version.
+- GCS sends expected CRC32C for server validation, disables SDK retries and automatic
+  corrupt-outcome deletion, and validates the returned ID, generation, size and checksum
+  without latest-object reads.
+- Embedded creation uses fsynced private input and an exclusive hard link, preserving
+  the concurrent winner and cleaning only its temporary file. It remains local-only
+  without immutable versions or power-loss qualification.
+checks:
+  focused: 101
+  integration: 332
+distinct_passing_cases: 433
+source_python_inputs: 541
+source_manifest_sha256: fb9d6e137c0b2b2db76c9ddf3ac62cdfb808b3edfc86d35d5ff4f302f7848b09
+sdk_wire_cases: 32
+component_cases: 69
+native:
+  kind: SeaweedFS S3-compatible
+  namespace: phase1-byte-create-ecd33531b7
+  image: docker.io/maponyacharles/sceptreai@sha256:7c8a525f08e9823f918777623e7da1f339d034a103bb023080c70f97a4004716
+  object_tls_verified: true
+  original_version: 671cfcc0a0992daa2a0da9f1c2f605a1
+  collision_rejected: true
+  concurrent_winners: 1
+  lost_reply_writes: 1
+  lost_reply_propagated: true
+  owned_prefix_removed: true
+  namespace_removed: true
+  protected_identities:
+    namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+    service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+    store_pod_uid: c129c80c-db2a-40cd-8f5c-0b7d3934e7aa
+  protected_object_data_requalified: false
+  cloud_iam_qualified: false
+retained_attempts:
+  preliminary_component_passed: 69
+  initial_sdk_fixture_failed: 12
+  initial_sdk_fixture_passed: 93
+  initial_sdk_fixture_bucket_read_corrected: true
+  expired_shared_tls_probe_before_write: true
+  initial_isolated_tls_issuer_failure_before_write: true
+  failed_isolated_namespace_removed: true
+preflight:
+  read_only: true
+  schema_differences: []
+  revision: 0021_legacy_observer_clock
+  tables: 44
+  namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+  coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+  free_bytes: 45234655232
+  reserve_bytes: 43500000000
+closure:
+  read_only: true
+  removed_namespaces:
+  - phase1-byte-create-ecd33531b7
+  - phase1-byte-create-3c54687b74
+  protected_identities:
+    namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+    service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+    store_pod_uid: c129c80c-db2a-40cd-8f5c-0b7d3934e7aa
+  port_forward_pids_gone: true
+  free_bytes: 45231644672
+  reserve_bytes: 43500000000
+previous_artifact_hashes_verified: 924
+raw_oracles_passed:
+- focused
+- integration
+- native
+formal_storage_gates:
+  met: 0
+  unmet: 3
+  abandoned: 0
+formal_recovery_root_gates:
+  met: 0
+  unmet: 6
+  abandoned: 0
+phase_requirements:
+  verified: 2
+  open: 34
+remaining:
+- Buffered HTTP still uses the old write-before-SQL-commit path. Private durable input/schema,
+  intent, SQL-free factory/API dispatcher, recovery, source/actor fences and late-write-safe
+  policy/deletion custody remain required under the full recovery plan.
+- Unknown native outcomes, partial Azure blocks and GCS resumable sessions must retain
+  custody. This operation does not implement adoption, retry or unknown-outcome resolution.
+- Native AWS/GCS/Azure accounts and IAM, complete buffered/runtime/image journeys
+  and the full Phase 1 requirement matrix remain unqualified.
+- The protected fixture CA expired on 2026-10-26; its original ephemeral-data Pod
+  was not restarted and its certificate/Secret/data was not rewritten. Its object
+  bytes were not requalified through expired TLS. The isolated native probe used fresh
+  verified TLS.
+- Physical45GB migration and unspecified largest-table cardinalities, prior binaries/mixed-version
+  startup, the15-user by10GiB campaign and seven missing original historical objects
+  remain open. No objects were recreated or re-signed.
+- Formal automatic gate approval/evidence remains pending. No recovery or phase completion
+  is claimed.
+evidence_hashes:
+  GATES.md: e6628ee0c181c78fece1030fe718b52dad463e4424622094afe206c8918016b2
+  audit.py: d7d2e2c557216c86b84f87dd3fbd86e8e557dd731ddd5ea6c49f4066d5b45f89
+  auditor-control.json: 4343b7934b5dff26ad366207429233b6c3a1c38ce5f38e7d30607c681dc17c73
+  bucket-fixture-focused-source.json: e4b07ea682fbcda15654a3d9e952f3296ab5983adcb20043fd5b10e96966b816
+  bucket-fixture-focused-state.json: 81ef20cf3670d56192dbc56c2090439909a4f253e1b9c2c8a5040c8c8e2ecfce
+  bucket-fixture-focused.log: 567a939e38a1f6538ac0b94bc9a6c58abefb92f486304a0710b7f68877ed64ee
+  bucket-fixture-focused.xml: 5381a750ab36ac937c556a07be1c4ccffbe7bd8a18871e6669fd71e04b8ed5e1
+  closure.json: 4d0bf5fa58afaa4d63e3c34fbba60d095c8f8915f9014eb750b7079ad77c19ac
+  closure.py: ce0ae7033ddfac6edb4acb4cada5d244c086f99627a6e0698d1c866b73f15dc9
+  control.py: 3dc27c2030e88ccb803b55638ec4206e79c5f04de5e84893d7e17432e962f6e9
+  expired-fixture-native-state.json: 05dd0b0a85e72e28f8ff22adda1cb517173fb820848e85b378d5689e4ca6a0d4
+  expired-fixture-native.py: bdb9552c34456dcc36ddd688598914fe737880ccc1cf4fde90afd30bf5f86805
+  expired-fixture-port-forward.log: e595b4b98ae13a1246fdc654f8681ab1bcad1cfd25edb34ea567a95756694b3e
+  focused-source.json: fb9d6e137c0b2b2db76c9ddf3ac62cdfb808b3edfc86d35d5ff4f302f7848b09
+  focused-state.json: 0b9a1bffce7c510248f99765cdf21ecd71727aa6c1fcb8577aa3d0d03efabc1a
+  focused.log: 9cf6555dc47f4d6040cf9a8fccb4a6d4d148a84326c6bf6d68dcb4735b9fd47d
+  focused.xml: 7021ac23cb1c0bfd0ed029f5a79ed1463c08eb06092665df6151a7fdfc9a9321
+  integration-source.json: fb9d6e137c0b2b2db76c9ddf3ac62cdfb808b3edfc86d35d5ff4f302f7848b09
+  integration-state.json: 741ad0854a3b0f6ffad905d277eebf1fc9bb840380b6a059195f610737951061
+  integration.log: 5d5c4effaed81e5b0ec3a981de58d6509782dc1bc741e04c0aede32cce604b17
+  integration.xml: 8813f69c4a54db071fbc5e105a5972364bb087005bdade0d652d28b156556667
+  issuer-fixture-native-ca.crt: e93b9d7742d4b25768954385b2cde0f1e95edf89da1d84f620c83f7fb9781a73
+  issuer-fixture-native-state.json: 603d6007915e3cae4ca7ed30a9d6b5b6ebab6a9db29fb1d6d3ddb49ed02bc0f1
+  issuer-fixture-native.log: 4bc4f5dd6dae3c43f828bcebde5b4fadeba36d8c77a088009b5a5be8be42f7be
+  issuer-fixture-native.py: 34116b6fe5fe07bec9f0de9bd8ea3220a097eaba445f4e8f97c7a901d13bbec1
+  issuer-fixture-port-forward.log: 8431c516b179ff372003e02b7590589a3ec5ea5e031c0cc90966255e87f53099
+  native-ca.crt: dfaa69d9f20d75eb514c211898157d7ac7aeffcedbc14c403e367ba2371e1ae1
+  native-leaf.crt: 7998b976e51ba45cd4fc8f11151b2c0a7bf171f7e094c366679e671175c5f1cf
+  native-state.json: e62afce42ce75881f57f09df5b556ee77608fc8b0b13d91b6bc0871a935c54e9
+  native.log: f6d818c728dbc705e17e04ad2d903a0907d86a5d85da22d3efeba9f6e2f3f175
+  native.py: 0aa8a8e9df289c1bb72d75e25e62cafdb0e5598bc4bd0ddef3d9d125d8959190
+  port-forward.log: bf71a3b0b35cb8b6d6450c35387dc7ff46ed8b95068d89d02bc5633c8057ef57
+  preflight.json: 414228608575f02db4a8dfc7dfe29ed335d165ca882eafb2d1f0e24a23f79a7a
+  preflight.py: 5e15f999ec396157ec7423bc146ed423a6077901c6b597f6cb78737c74343ae5
+  preliminary-focused-source.json: 848f24ae29a4dd2975638a71df4ba2fcfd53b9f12f837625ce0f62f41e79fbff
+  preliminary-focused-state.json: d64fbce54fbbbb3663e127e5599266764a6ab76ca81e29654222f6090ae9f691
+  preliminary-focused.log: ecb536e31308b56e0bdae5cf1201af94bb44c2617a331c19911d4640ae35cd5b
+  preliminary-focused.xml: de2cbad061beae9a3aa66d869d15864ca70f2ca9c32c77e704ef6f22b46d7518
+  prior-artifacts.json: 1710bebfc2184f01563c3aa7990a264bb6d182b3885babb0f96ffa9246ae030f
+  references.md: f72d2db808584a399e9fdb36ad456a0aba59d72c63d7395187309c926af2422e
+  report.py: 493a8aa4ffcb7d028f9fcfc418a185ad06ed637a852bd14205d8e815133936bf
+  run.py: a7b23ab415c561d5ec5cde4b42283a5d2c420e267c7eff8d9df280b86147aaa7
+recovery_plan_sha256: 0c696015e8a0de295501705792d392ddc15752e73bd4686e894505bebb75df37
+recovery_gates_sha256: 41c33c4f7882fab222f39df1819f17471edfdb92d4933f783aeb2601feb46937

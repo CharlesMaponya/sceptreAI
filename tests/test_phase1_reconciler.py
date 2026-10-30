@@ -8,6 +8,8 @@ from unittest.mock import MagicMock
 
 import pytest
 import ray_observer_fixture
+from analysis_submission_helpers import reconcile_entry as reconcile_analysis_entry
+from analysis_submission_helpers import submit_analysis_job
 from automl_api.core.config import Settings
 from automl_api.models.enums import (
     AttemptStatus,
@@ -31,6 +33,7 @@ from automl_api.services.kubernetes_training import (
 )
 from digest_fixtures import verified_raw_version
 from kubernetes.client import ApiException
+from ray_cancellation_helpers import cancel_training_ray_job
 from ray_submission_helpers import submit_training_ray_job
 
 
@@ -343,18 +346,18 @@ def test_cancel_reconciler_deletes_once_and_terminal_state_is_stable() -> None:
     db.get.return_value = run
     k8s = MagicMock()
     k8s.ray_job.return_value = ray_job_identity(run, attempt)
-    result = reconciler.cancel_training_ray_job(db, entry, k8s)
+    result = cancel_training_ray_job(db, entry, k8s)
     assert result.status == AttemptStatus.CANCELLED
     k8s.delete_ray_job.assert_called_once_with(
         "ray-job", namespace=run.k8s_namespace, uid=k8s.ray_job.return_value["metadata"]["uid"]
     )
 
     db.scalar.return_value = attempt
-    reconciler.cancel_training_ray_job(db, entry, k8s)
+    cancel_training_ray_job(db, entry, k8s)
     assert attempt.terminal_cas_version == 1
     db.scalar.return_value = None
     with pytest.raises(LookupError):
-        reconciler.cancel_training_ray_job(db, entry, k8s)
+        cancel_training_ray_job(db, entry, k8s)
 
 
 @pytest.mark.parametrize(
@@ -377,7 +380,7 @@ def test_cancel_reconciler_handles_an_unsubmitted_attempt_without_external_delet
     db.scalar.return_value = attempt
     k8s = MagicMock()
 
-    reconciler.cancel_training_ray_job(db, entry, k8s)
+    cancel_training_ray_job(db, entry, k8s)
 
     k8s.delete_ray_job.assert_not_called()
     assert attempt.status == AttemptStatus.CANCELLED
@@ -654,7 +657,6 @@ def test_entry_dispatch_requeues_failure_and_delivers_success(monkeypatch) -> No
 @pytest.mark.parametrize(
     ("topic", "handler_name"),
     [
-        ("ray.training.cancel", "cancel_training_ray_job"),
         ("kubernetes.analysis.submit", "submit_analysis_job"),
         ("upload.reconcile", "reconcile_upload_session"),
         ("governance.reconcile", "reconcile_governance_object"),
@@ -671,6 +673,12 @@ def test_entry_dispatches_every_builtin_topic(monkeypatch, topic: str, handler_n
     db = MagicMock()
     db.get.side_effect = lambda model, *_args, **_kwargs: entry if model is OutboxEntry else command
 
+    if topic == "kubernetes.analysis.submit":
+        with pytest.raises(RuntimeError, match="factory-owned dispatcher"):
+            reconciler.reconcile_entry(db, entry, worker_id="worker-a", k8s=MagicMock())
+        handler.assert_not_called()
+        complete.assert_not_called()
+        return
     reconciler.reconcile_entry(db, entry, worker_id="worker-a", k8s=MagicMock())
 
     handler.assert_called_once()
@@ -754,14 +762,14 @@ def test_analysis_reconciler_submits_once_and_records_desired_state() -> None:
     )
     k8s.settings.max_concurrent_jobs = 1
 
-    assert reconciler.submit_analysis_job(db, entry, k8s) is run
+    assert submit_analysis_job(db, entry, k8s) is run
     k8s.create_job.assert_called_once_with(entry.payload["manifest"])
     assert run.tags["desired_state"] == "kubernetes_submitted"
-    assert reconciler.submit_analysis_job(db, entry, k8s) is run
+    assert submit_analysis_job(db, entry, k8s) is run
     k8s.create_job.assert_called_once()
 
     with pytest.raises(LookupError, match="analysis run"):
-        reconciler.submit_analysis_job(db, entry, k8s)
+        submit_analysis_job(db, entry, k8s)
 
 
 @pytest.mark.parametrize(
@@ -783,7 +791,7 @@ def test_analysis_waits_for_capacity_without_spending_retry_budget(connected, po
     )
     k8s.settings.max_concurrent_jobs = 1
     before = datetime.now(UTC)
-    reconciler.reconcile_entry(db, entry, worker_id="worker-a", k8s=k8s)
+    reconcile_analysis_entry(db, entry, worker_id="worker-a", k8s=k8s)
     k8s.create_job.assert_not_called()
     assert run.status == RunStatus.QUEUED
     assert run.tags["waiting_for_capacity"] is True
@@ -802,7 +810,7 @@ def test_analysis_queued_command_cannot_resurrect_terminal_run(terminal):
     entry.payload = {"run_id": str(run.id), "manifest": {}}
     db, k8s = MagicMock(), MagicMock()
     db.scalar.return_value = run
-    assert reconciler.submit_analysis_job(db, entry, k8s) is run
+    assert submit_analysis_job(db, entry, k8s) is run
     k8s.create_job.assert_not_called()
     k8s.capacity_snapshot.assert_not_called()
 

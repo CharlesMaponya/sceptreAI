@@ -36,7 +36,7 @@ def test_deletion_stage_can_retain_structured_native_custody():
     assert stage.custody == value
 
 
-HEAD = "0019_deletion_stage_custody"
+HEAD = "0023_private_buffered_chunks"
 PREVIOUS = "0018_attempt_predecessor_lineage"
 PREFIX = "sceptre_phase1_deletion_schema_"
 

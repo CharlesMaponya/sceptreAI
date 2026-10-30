@@ -458,6 +458,26 @@ class S3ObjectStoreDriver:
         self.client.put_object(Bucket=self.bucket, Key=normalized, Body=value)
         return self.stat(self._uri(normalized))
 
+    def create_bytes(self, key: str, value: bytes) -> ObjectMetadata:
+        normalized = self._key(key)
+        if self.client.meta.config.retries.get("total_max_attempts") != 1:
+            raise UploadContractError("Byte creation requires single-attempt S3 SDK configuration.")
+        response = self.client.put_object(
+            Bucket=self.bucket, Key=normalized, Body=value, IfNoneMatch="*"
+        )
+        if not isinstance(response, dict):
+            raise UploadContractError("Byte creation has no original immutable receipt.")
+        version = immutable_object_version(response.get("VersionId"))
+        if len(version) > 256:
+            raise UploadContractError("The byte creation version exceeds its receipt budget.")
+        return ObjectMetadata(
+            uri=self._uri(normalized),
+            byte_size=len(value),
+            etag=str(response.get("ETag") or "").strip('"') or None,
+            checksum=response.get("ChecksumSHA256"),
+            provider_headers={"version_id": version},
+        )
+
     def read_bytes(self, uri: str) -> bytes:
         response = self.open_stream(uri)
         try:

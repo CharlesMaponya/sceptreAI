@@ -15,6 +15,7 @@ from automl_api.models.iam import User
 from automl_api.schemas.datasets import DatasetUploadRequest
 from automl_api.services.dataset_inspection import inspect_tabular_bytes
 from automl_api.services.projects import require_project_role
+from automl_api.services.uploads import _lock_project, require_storage_quota
 from automl_api.storage.object_store import get_object_store
 
 
@@ -60,6 +61,8 @@ def upload_dataset_version(
     content: bytes,
 ) -> tuple[Dataset, DatasetVersion]:
     require_project_role(db, user, project_id, ProjectRole.EDITOR)
+    _lock_project(db, project_id)
+    require_storage_quota(db, project_id, len(content), get_settings())
     inspection = inspect_tabular_bytes(payload.filename, content)
     content_hash = hashlib.sha256(content).hexdigest()
 
@@ -122,7 +125,7 @@ def upload_dataset_version(
 
 def _object_store_type_from_settings() -> ObjectStoreType:
     settings = get_settings()
-    raw_value = settings.object_store_type.lower()
+    raw_value = settings.object_store_type.strip().lower()
     raw_value = {
         "minio": ObjectStoreType.S3_COMPATIBLE.value,
         "s3": ObjectStoreType.AWS_S3.value,

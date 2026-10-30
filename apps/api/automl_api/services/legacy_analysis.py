@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from kubernetes.client import ApiException
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from automl_api.core.redaction import redact_text
 from automl_api.models.enums import CommandStatus, OutboxStatus, RunKind, RunStatus
@@ -144,6 +144,7 @@ def _enqueue_cleanup(db, run, observed):
 
 
 def observe_jobs(db, *, read, limit=25, run_id=None):
+    from automl_api.services.reconciler import _record_observer_scan
     from automl_api.services.training import _sync_run_status
 
     runs = list(
@@ -156,14 +157,23 @@ def observe_jobs(db, *, read, limit=25, run_id=None):
                 ModelRun.tags["workflow_attempt_id"].astext.is_(None),
             )
             .where(ModelRun.id == run_id if run_id is not None else True)
-            .order_by(ModelRun.updated_at, ModelRun.id)
+            .order_by(func.coalesce(ModelRun.last_observed_at, ModelRun.updated_at), ModelRun.id)
             .limit(limit)
             .with_for_update(skip_locked=True)
             .execution_options(populate_existing=True)
         )
     )
+    if run_id is None:
+        _record_observer_scan(db, runs, model=ModelRun)
     for run in runs:
-        request = _request(run)
+        try:
+            request = _request(run)
+        except StaleFence as exc:
+            LOGGER.warning(
+                "Legacy analysis observation scope unavailable",
+                extra={"run_id": str(run.id), "error_type": type(exc).__name__},
+            )
+            continue
         observed = read(request)
         if observed is None or replace(observed, uid=None, state=None, failure=None) != request:
             continue

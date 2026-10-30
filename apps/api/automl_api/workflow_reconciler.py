@@ -16,6 +16,13 @@ from sqlalchemy.orm import Session
 from automl_api.db.session import get_session_factory
 from automl_api.models.enums import AttemptStatus, ScopeStatus, WorkflowStage
 from automl_api.models.workflows import OutboxEntry, PromotionalScope, WorkflowAttempt
+from automl_api.services.analysis_cleanup import TOPIC as ANALYSIS_CLEANUP_TOPIC
+from automl_api.services.analysis_cleanup import reconcile_analysis_cleanup
+from automl_api.services.analysis_submission import TOPIC as ANALYSIS_SUBMISSION_TOPIC
+from automl_api.services.analysis_submission import reconcile_analysis_submission
+from automl_api.services.buffered_execution import TOPIC as BUFFERED_UPLOAD_TOPIC
+from automl_api.services.buffered_execution import reconcile_buffered_upload
+from automl_api.services.buffered_retirement import cleanup_inputs
 from automl_api.services.champion_planning import RefitInspection, plan_scope_refit
 from automl_api.services.deletion_workflow import reconcile_deletion
 from automl_api.services.deployment_controls import TOPIC as DEPLOYMENT_CONTROL_TOPIC
@@ -28,6 +35,8 @@ from automl_api.services.legacy_analysis import TOPIC as LEGACY_CLEANUP_TOPIC
 from automl_api.services.legacy_analysis import observe_legacy_once, reconcile_legacy_cleanup
 from automl_api.services.profiling_jobs import resume_incomplete_profiling_jobs
 from automl_api.services.provider_import_jobs import reconcile_provider_imports_once
+from automl_api.services.ray_cancellation import TOPICS as RAY_CANCELLATION_TOPICS
+from automl_api.services.ray_cancellation import reconcile_ray_cancellation
 from automl_api.services.ray_submission import TOPICS as RAY_SUBMISSION_TOPICS
 from automl_api.services.ray_submission import reconcile_ray_submission
 from automl_api.services.reconciler import (
@@ -84,9 +93,25 @@ def run_once(
                 entry = db.get(OutboxEntry, entry_id)
                 if entry is None:
                     continue
-                if getattr(entry, "topic", None) in RAY_SUBMISSION_TOPICS:
+                if getattr(entry, "topic", None) == BUFFERED_UPLOAD_TOPIC:
+                    factory_dispatch = partial(
+                        reconcile_buffered_upload, store_factory=get_object_store
+                    )
+                elif getattr(entry, "topic", None) in RAY_SUBMISSION_TOPICS:
                     factory_dispatch = partial(
                         reconcile_ray_submission, k8s_factory=KubernetesTrainingClient
+                    )
+                elif getattr(entry, "topic", None) in RAY_CANCELLATION_TOPICS:
+                    factory_dispatch = partial(
+                        reconcile_ray_cancellation, k8s_factory=KubernetesTrainingClient
+                    )
+                elif getattr(entry, "topic", None) == ANALYSIS_SUBMISSION_TOPIC:
+                    factory_dispatch = partial(
+                        reconcile_analysis_submission, k8s_factory=KubernetesTrainingClient
+                    )
+                elif getattr(entry, "topic", None) == ANALYSIS_CLEANUP_TOPIC:
+                    factory_dispatch = partial(
+                        reconcile_analysis_cleanup, k8s_factory=KubernetesTrainingClient
                     )
                 elif getattr(entry, "topic", None) in {"project.delete", "run.delete"}:
                     factory_dispatch = reconcile_deletion
@@ -198,6 +223,10 @@ def observe_once(
 
 def cleanup_uploads_once(session_factory: Callable[[], Session]) -> int:
     expired = 0
+    try:
+        expired += cleanup_inputs(session_factory)
+    except Exception as exc:
+        LOGGER.error("buffered input cleanup failed", extra={"error_type": type(exc).__name__})
     try:
         expired += recover_pending_admissions(session_factory, now=datetime.now(UTC))
     except Exception as exc:

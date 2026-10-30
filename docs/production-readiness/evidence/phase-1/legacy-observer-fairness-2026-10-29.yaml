@@ -1,0 +1,134 @@
+recorded_on: '2026-10-29'
+status: in_progress
+phase_complete: false
+scope: Legacy analysis observer fairness and nullable run scan-clock expansion
+source_inputs: 713
+source_manifest_sha256: eb91167b9365f326f90e40225ca5cb00198371ff694d08fd7548999ecd500c00
+changes:
+- Legacy validation, explainability and drift scans rotate with a separate nullable
+  ModelRun.last_observed_at, leaving domain/startup clocks untouched.
+- A missing stored namespace or Job name holds its own row while valid legacy work
+  continues in the same or a later bounded fresh-session scan.
+- Transient native read failures and foreign physical identity also rotate through
+  the actual legacy dispatcher without changing held runs or issuing deletes.
+- The existing bulk scan-clock helper accepts the row model; Ray and managed analysis
+  observers retain their existing default behavior.
+- Additive revision 0021 expands model_runs with no default or backfill; downgrade
+  drops only the scan timestamp. The rehearsal inventory now includes revision 0020.
+checks:
+  focused: 36
+  schema: 113
+  connected: 500
+  submission: 234
+distinct_passing_cases: 883
+baseline:
+  failed: 33
+  passed: 3
+  errors: 0
+migration:
+  head: 0021_legacy_observer_clock
+  strict_schema_differences: []
+  tables: 44
+  supported_prior_paths:
+  - 0001_initial
+  - 0002_expand_artifact_kind
+  - 0003_security_controls
+  - 0004_resumable_dataset_uploads
+  - 0005_phase1_durable_workflows
+  - 0006_phase1_public_contracts
+  - 0007_phase1_attempt_lineage
+  - 0008_phase2_cloud_ingestion
+  - 0009_phase2_storage_default
+  - 0010_phase3_contract_target
+  - 0011_preserve_deletion_evidence
+  - 0012_final_test_revision_pair
+  - 0013_provider_dataset_import
+  - 0014_attempt_object_grants
+  - 0015_attempt_predecessor_project
+  - 0016_trial_parent_integrity
+  - 0017_upload_session_project
+  - 0018_attempt_predecessor_lineage
+  - 0019_deletion_stage_custody
+  - 0020_observer_scan_clock
+  upload_metadata_rows_requested_per_path: 4
+  production_sized: false
+  previous_application_startup_qualified: false
+controls:
+  fresh_sessions: true
+  bounded_batches:
+  - 1
+  - 2
+  sql_checkouts_during_native_read: 0
+  domain_clocks_preserved: true
+  targeted_publication_does_not_rescan: true
+  rollback: true
+  concurrent_skip_locked: true
+  negative_xml_failure_rejected: true
+previous_artifact_hashes_verified: 482
+raw_oracles_passed:
+- fairness
+- schema
+- integration
+formal_gates:
+  met: 0
+  unmet: 3
+  abandoned: 0
+phase_requirements:
+  verified: 2
+  open: 34
+limitations:
+- This scope uses PostgreSQL and native SDK service doubles; no new running workload
+  or release-image qualification is claimed. Protected local k3d namespace/service
+  identities were read-only verified.
+- Legacy and managed analysis source/actor/context recovery, all-stage worker credentials/capacity
+  and remaining workflow families remain open.
+- Migration evidence covers bounded seeded metadata and prior SQL projections; representative
+  complete workflow histories and maintained prior application binaries are not qualified.
+- The physical migration target remains 45,000,000,000 bytes. Present disk cannot
+  hold it alongside the preserved 43,500,000,000-byte reserve and migration overhead;
+  largest-table cardinalities are unknown.
+- "The 15 users \xD7 10 GiB campaign, full running images/workloads, cloud IAM, prior-release\
+  \ startup, mixed-version deployment and full branch/release coverage remain unqualified."
+- The new expansion/rollback test, like the existing clone rehearsals, is restricted
+  to the owned local test database; clean-checkout remote CI execution remains unqualified.
+- Original deletion G7 still requires seven missing historical objects; none were
+  reconstructed or re-signed.
+- Formal automatic skill gates remain pending; successful raw oracles do not supply
+  missing gate approval/evidence.
+evidence_hashes:
+  GATES.md: 1bd8605081a9ba9ada34dadb79d322bf2fabe47e3b614100bf4e35eb724a7f85
+  run.py: bbcf01b6f4e4d9c173fbb35b2b0cc968551c3ab398e20640cbdab8b6164bb14a
+  run_rehearsal.py: 4fe207d6cba31866f8d4f779d834326d9cb3926763cce6dd11de9b59604906c3
+  campaign.py: 49ebf2076f62f902d5d8dc9833179f4aee112ad9c9b532e3c0b2bfb9536d48f8
+  audit.py: 09004eeb974b92e44a8d23dd41308aab66861a48661bbbce637fcc6ea4247c63
+  control.py: 306979eab8d3ed3d0546dfcc06a7673e947df4e158f724e243b372884f103cd1
+  report.py: 0d6ffab3bb81941d16d1d16df0e92d8dd04e3dae702aa1c26e802b96212c1239
+  preflight.py: 58e7cdd79e95daa8fef92825d5b4b739737bd2ddc333e55ac26fc05f5c222fae
+  preflight.json: 799af961750eefadd2786e42d3e729300cefe98515b92bc7b86ae6d38ab87d6a
+  closure.py: 8466b784e2e0d0f53ec6f9bc5d69aed5ace5f715c9f96b225f1e1fb53faeadfc
+  closure.json: 8bda4329aeb90279d4732d86231826b830b751a05a56b605dca1b26e74ffb129
+  before-legacy.py: 7a72579dc3b2c4438883517cb09c75ca2e28bc2364423f467c9c83cfc8bf94ae
+  source-sha256.json: eb91167b9365f326f90e40225ca5cb00198371ff694d08fd7548999ecd500c00
+  baseline-source-sha256.json: 61456efe1ed77faf385cebbaa70adb2d739a6be1803a12c05239290d33b2ead4
+  upgrade-source-sha256.json: fdc0508d6d9cee07a9b2e919c16e1773cee88f5c89ef0856488520c23df61cdf
+  prior-artifacts.json: 174a0d61064c24e692e1e2c6987ade6c187cfd824626b51806f13ec0fbde6bb6
+  auditor-control.json: 34d60168e223c8a35f8d2efdbda10849827e840f6a2e21f1fd0148f768c93f6b
+  baseline.log: 88c842c74108998e55751df640246f3483fc29c3f2c429de462459e762a01239
+  baseline.xml: ce9bfa4dd60f586bcbfff2e9566268d4b0880c11cb2ee000e204191832a60788
+  baseline-state.json: a34d95a7910f989f8641500a496d9ac79a691201fb12b8320f6f47d309abe2fc
+  focused.log: c26b558af8577fcc34b33072058506a8bc30bf5a9241d9749c6b9778e91253f1
+  focused.xml: 381350f603f4d6fad6a5946efcd88b9ab908ae2c52283337b8bf4bded671ebbc
+  focused-state.json: 0719cddc3e684514494a7eb68f5b10be13d1e5d571fb76d7841954b710d00f70
+  schema.log: 5e9ab8b0fed13c6ebfecd4439569e2888a60edc8d7296f35f19bd502697d4cf8
+  schema.xml: 66e42d17ab48d0444e0f291f848b7cecd579a30be4ea7f981b6fdbc9bbe02017
+  schema-state.json: 0cf96d51d031b4fccc039c0bf1d5af5c0435e167006795d527724af365fb30e6
+  connected.log: f1b47d543ffbe52f183aa95d8d91e9dec70e483f482b3faec3e9fb0aec5c12f0
+  connected.xml: a49f5d0da45467a4c151b62f93eda29eae8b0382f94180b9dc7f954aaeb28ac7
+  connected-state.json: c78dafe55d44cc55e0cf2cd63850dcf7f9fb6c45ab71231549a71f3f400caac6
+  submission.log: 33dabb65f951b139e9b3dc176e156f3844ca37d89c8bee4400d26a61bd2cc476
+  submission.xml: a6d031552eb5912502a6f92b97c240c52686b4bfdd12beea6cbb20c515ed3349
+  submission-state.json: 2414344a2f55cef8cec7a7b3a406c99822965db9bd53366e6923b7d075f0b6ac
+  upgrade.log: f6a9a3d76439371e505f9c71297d5af44ecdca028c67d78c8751a4ff59073322
+  upgrade-state.json: 39036e60597178ce98f26b94956eaeb56a5fb841b1deaf0a522a0d5b23da691b
+  rehearsal.log: 952d93a7e52cec5f8b00a4f1506bfd28ce47da9bbb7c8ef71f7dce79aef13a6b
+  rehearsal-state.json: e511744982cbf08342658677f5ae4e7a31ff81e1e8b33b504bc40e1e68733700

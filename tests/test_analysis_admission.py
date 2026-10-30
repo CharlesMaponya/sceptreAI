@@ -7,12 +7,13 @@ from unittest.mock import MagicMock
 
 import httpx
 import pytest
+from analysis_submission_helpers import submit_analysis_job
 from automl_api.core.config import Settings
 from automl_api.models.datasets import DatasetVersion
 from automl_api.models.enums import AttemptStatus, RunKind, RunStatus
 from automl_api.models.runs import Metric, ModelRun, RunArtifact
 from automl_api.models.workflows import WorkflowAttempt
-from automl_api.services import reconciler, training_parent
+from automl_api.services import training_parent
 from automl_api.services.attempt_identity import attempt_audience
 from automl_api.services.kubernetes_training import KubernetesTrainingClient
 from automl_api.services.workflow_state import StaleFence
@@ -229,10 +230,10 @@ def test_analysis_submission_transitions_exact_attempt_once(analysis_scope):
                 name="analysis-test-job", namespace="analysis-test", uid="test-job-uid"
             )
         )
-        assert reconciler.submit_analysis_job(db, entry, k8s).id == run_id
+        assert submit_analysis_job(db, entry, k8s).id == run_id
         assert attempt.status == AttemptStatus.SUBMITTED
     with Session(engine) as db, db.begin():
-        reconciler.submit_analysis_job(db, entry, k8s)
+        submit_analysis_job(db, entry, k8s)
     k8s.create_job.assert_called_once_with(manifest)
 
 

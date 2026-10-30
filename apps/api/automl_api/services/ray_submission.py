@@ -473,6 +473,10 @@ def assert_no_unpublished_creations(db, attempts):
     for attempt in candidates:
         if attempt.id not in started_ids:
             continue
+        from automl_api.services.ray_cancellation import retirement_complete
+
+        if retirement_complete(db, attempt):
+            continue
         started = _event(db, attempt, SA_START)
         if started is None:
             if _event(db, attempt, CREATE_START) is not None:
@@ -525,6 +529,16 @@ def reconcile_ray_submission(factory, entry_id, worker_id, *, k8s_factory):
             entry, command, attempt, _, _ = rows
             delivery = _delivery(entry)
             old = _event(db, attempt, INTENT)
+            if old is not None and attempt.status in {
+                AttemptStatus.CANCELLED,
+                AttemptStatus.SUPERSEDED,
+                AttemptStatus.FAILED,
+            }:
+                from automl_api.services.ray_cancellation import retirement_complete
+
+                if retirement_complete(db, attempt):
+                    complete_outbox(db, entry_id, worker_id=worker_id, delivered=True)
+                    return
             if old is None and attempt.status not in {AttemptStatus.PENDING, AttemptStatus.CLAIMED}:
                 if attempt.ray_job_name:
                     reconciler._ray_submission(db, attempt)

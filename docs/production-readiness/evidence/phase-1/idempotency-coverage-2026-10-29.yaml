@@ -1,0 +1,173 @@
+recorded_on: '2026-10-29'
+status: in_progress
+phase_complete: false
+scope: Current command idempotency inventory and API analysis command compatibility
+source_inputs: 717
+source_manifest_sha256: 4c32ffd95289841f5ed87ba36d9d3c8871ba242b676b46c46a3e07199fdfc84e
+changes:
+- Header coverage now names all 22 current handlers explicitly, including cleanup
+  replay, and compares their metadata with the global OpenAPI header set.
+- Analysis consumers accept the actual API operation resource label or the legacy
+  model_run label. Exact operation/run-kind, project/resource/actor/fence and original
+  identity checks remain enforced.
+- New HTTP/PostgreSQL tests inspect actual stored request hashes for ten public variants,
+  then prove stable pending replay and changed-body/file/resource conflicts before
+  runtime callbacks.
+- New real HTTP admission/outbox/factory tests dispatch, observe, clean up and replay
+  all three analysis kinds; qualified legacy operation labels migrate before creation.
+inventory:
+  public_headers: 22
+  production_python_files: 219
+  command_constructors: 1
+  manual_key_lookup_boundaries: 11
+  constructor_and_raw_sql_writer_controls: true
+checks:
+  headers: 23
+  contracts: 144
+  consumer: 6
+  concurrency: 2
+  legacy: 49
+  uploads: 198
+  workers: 274
+  analysis: 431
+distinct_passing_cases: 1127
+baseline:
+  header_inventory_failed: 1
+  header_probes_passed: 22
+  consumer_contract_failures: 6
+  preliminary_family_cases_passed: 10
+  preliminary_consumer_cases_passed: 6
+  collector_api_failures_retained: 2
+native:
+  kind: validation
+  command_resource_type: validation.launch
+  namespace: phase1-idempotency-api-0dcba5e706
+  namespace_removed: true
+  original_observation_accepted: true
+  changed_command_held: true
+  original_uid_retired: true
+  native_sql_checkouts:
+  - 0
+  pod_observations:
+  - 0
+  - 0
+  - 0
+  full_runtime_qualified: false
+  capacity_sampler_qualified: false
+schema:
+  head: 0021_legacy_observer_clock
+  tables: 44
+  strict_differences: []
+previous_artifact_hashes_verified: 813
+raw_oracles_passed:
+- inventory
+- contracts
+- integration
+formal_gates:
+  met: 0
+  unmet: 3
+  abandoned: 0
+phase_requirements:
+  verified: 2
+  open: 34
+remaining:
+- 'P1-W04/P1-W05 remain open: this inventories current boundaries and qualifies current
+  contracts, not every historical/deployed protocol and ingress/provider path.'
+- Buffered upload writes its object before the surrounding SQL transaction commits;
+  this failure/recovery gap still needs remediation. Hash/conflict checks do not qualify
+  that native crash boundary.
+- HTTP hash tests override authentication and stop at runtime callbacks; analysis
+  handoff tests use a prepared plan and native SDK doubles. The real zero-Pod probe
+  validates the operation label and lifecycle without running a workload.
+- Uncertain original outcomes and unowned/unsupported histories still require controlled
+  qualification; this fix does not silently reissue them.
+- Actor/project policy, native-context and all-stage credential/capacity qualification,
+  full workloads/images, cloud IAM, previous binaries/mixed-version startup and full
+  remote CI/branch/release coverage remain open.
+- "The physical 45,000,000,000-byte migration target cannot fit alongside the preserved\
+  \ 43,500,000,000-byte reserve and WAL. Largest-table cardinalities are unknown;\
+  \ the 15 users \xD7 10 GiB campaign remains deferred."
+- Original deletion G7 still needs seven missing historical objects; none were rebuilt
+  or re-signed.
+- Formal automatic gate approval/evidence remains pending; raw oracle success does
+  not replace it.
+evidence_hashes:
+  GATES.md: c37d919c9b2772474975ead1046118170f417266c46cc432eaa877f3524f3017
+  run.py: 41288ee105d423ef19cd356b47ea9ccfe569352821d166605fd1436d0a4d4e28
+  run_native.py: 0d30e2480c1e4bec3a863ea03ebc080fd9c774c3ae5c51b6dd87354b2c45c144
+  native_probe.py: c503da9f119e9604e0052024763e5fb427cca8371d60bf600db4155bc03ae674
+  campaign.py: 7c40360f7d4240ec400636dc2d14e288c6fd84f98964d3b3bee86d890414c4b1
+  audit.py: b52d8e8bc34031f84bb0fb1c25a34bd3f2b1964ae5f6a27b60a040f568d369ce
+  control.py: bc883b879eb91fbb9625d99d628c8837ca55b4913db03b7a1d74e6ebca5fc6d9
+  report.py: 22d20b42654415d459ee4de89357919b024016fa1c4c833242fa8c8b4952b692
+  inventory.py: d52219aa3195706bdfb5b3ddb706c924da05f5db4903971477b1cc1de4742b1f
+  inventory.json: 14894a98968b3003f56e48265a6decf6048138e6097ccbea947495490e03f765
+  preflight.py: d6f5a2e28b70b967496e8b86d4d0d6435830554fd38a5ac3cce6e9bc1be930ed
+  preflight.json: f5eb93ca57acdbd76adcc2a28dae3c5ca2304cfcc53732ea602a00b74f8947fd
+  closure.py: 747c830d238594236fc78718538bc41fc148ebb31c88cb91f2e9adb0fa89fc3e
+  closure.json: dc4316679320f4ebd961da9cd009aaf4c17bc1c2c1c29dcdab71cf18db772ed2
+  source-sha256.json: 4c32ffd95289841f5ed87ba36d9d3c8871ba242b676b46c46a3e07199fdfc84e
+  baseline-source-sha256.json: c806b4802ee51ef68150657abebf745c08b105fbf8b35fd2011708293e06345f
+  consumer-baseline-source-sha256.json: bd91f382599d641867d4c9047e35de3c7595184861a63bf30097d1abf6c23a6a
+  family-source-sha256.json: 453a3c72e844028ba4e9a46c818cedee81100ad2979a1e915b48e23823aaa1c9
+  initial-source-sha256.json: 3d12c3bb97db73d33fd9bbde0240d5c399617cf28bce8b2f90c6f34bdb646dd5
+  before-headers.py: e9082dd98e9815e9daf535ad59c4c4df9b25a7ddd3d6fc6cc14acc361222aa07
+  before-analysis_submission.py: 84f5f5b23f7d5013dd6e94dc2d2a2fa879d6d982763de4cb07f695013c8109e3
+  before-analysis_cleanup.py: 1a934bfca5e223ec16a2fc844030d27c925e495b441439ceac06acd5869137d7
+  before-analysis_migration.py: f08c604f1790fafda707239a66e5a24aea04cae5889f6dcb03c16885da544ac8
+  before-reconciler.py: c313916d2d7b1be4721624a4f41ae5c5d65632b28bc90116cbe100d637f13e95
+  before-consumer-tests.py: 0f9c7d38a3ef6de3903ecb5d644c6870ffe9151cf20ed52c50dc79f5efa56e88
+  prior-artifacts.json: b1e0a76bcfe23e3c6a20cb4acba9cee6186ae9bd98274d1b9d577f22796e6bf9
+  auditor-control.json: 0b69e796fdf61d45e5a6f9def45d4f681e4f0dce42bfac26a2badae5fc795e3d
+  native-witness-normal.json: 864027ec5cbfda28eb34f8ed3ac535a9dba1cad50397914552924f6af398194d
+  initial-inventory.py: 92644df04e41b1435ee2bc7792ea08b3cb589e895a4a1df25715e1869d4612da
+  initial-inventory.log: 235136d675779b015c3a1a93689a67d3ad779639a02722d5ad43943b3bc51ad4
+  initial-inventory-state.json: c506a75854752da2851814bf14a8fefd24278068841f533109082a520df66a8e
+  field-api-inventory.py: 2e59b771c045d94561c90985cf727d9d90fcf03edd883bafe7fde6e980e3963f
+  field-api-inventory.log: 7ed38646573e7a601f15966d148d9ce6cc504ce49bd525cae255584945dd8369
+  field-api-inventory-state.json: 79e43a26a98b71c1801e37cb3c69a7e8a9dcf52a4b402677c4dae360af2c0a50
+  api-only-inventory.py: 3720b169ab41c909177302d95fa6cc029c9f3695923f0d5e994441fcf2fdc453
+  api-only-inventory.log: 678f348356843da8f2d502f9bb1df812bdf68b7d71cf51625f0100d818bf08ab
+  api-only-inventory-state.json: e408c937d66addfc3e8ccc3b410b8fdef1807a6fed7abf22308520adfb4ac2c0
+  api-only-inventory.json: 7476ac9ca2e876eef3ce2bf476e39631b01dd868f46475196ed095b988b2cd88
+  headers.log: 1e57afa30b33e6b8250ccc02b2b91ca524f36c6ef5d28e76b43504c9df379d26
+  headers.xml: 59798f63f714d8ac4475d42daa5c11848f05c9b9597162359e217d7e0c6a4e81
+  headers-state.json: 811e75e53ba3b03e497e5b1e66197f1c652f6964b3aeac55b2d70ae2099ef188
+  contracts.log: bfde185d2fb194feeded9962299c8031b13ff458bbe6abba851f62f111919218
+  contracts.xml: 09ba07dda6efacf86548682cb227c0e326d040553b23c71dfe1b2b051ff45bd2
+  contracts-state.json: b2d4f83524f6f49aa99d6db5a0d0136657005e3cb21930beb2859e00010e6145
+  consumer.log: 469a62c561d7b7e8ab80e90fd919b5812f5482e0b9852b98b79f71c9532ff676
+  consumer.xml: e25485ceed062caa0b92bbe96fded8a0f3dffdad5c0cea5486e730fb72f7ca20
+  consumer-state.json: cefddc05829d3f68e0391aaa080a6de48bc81204871ced264c4ff06143892af0
+  concurrency.log: 6827ca626a1ae9402c318628ca91a78c5be970809cfe33ab659386f62b82731b
+  concurrency.xml: 343d9cd4ab29f5e233a143f8d3f8d2e2fe36d0d37da93dd34dedfa6f064fb238
+  concurrency-state.json: bf71d737a1c36bd6e5eae54956dd05968cf058fce99a5f6e0690064fcc65db04
+  legacy.log: 1cabeb5f3699837a6ae98dc3a629f99cd5192ee5dd1f7d803e136b6908d28c02
+  legacy.xml: 1199771ac273903dc6bbc25660b88743456d01ce1e280a3e769d743778d06306
+  legacy-state.json: 0eb187392bdf3e48bd5c30406cdb6db7b1176c0603ec7d16847683e628b46726
+  uploads.log: 19dabb8aa1336f48c9ecfd95cc7d5594cff0b84eef16cd713ac282a929f6207a
+  uploads.xml: ab71ec572f321fe7a6a3f32662a871380bd81c51fc40c3d3161c2f44e7e72b68
+  uploads-state.json: 1cebb38274566fd9b8110329e68f3451ba572042163b0cd03b48aaafb5ad5de3
+  workers.log: 6c69fcab4a955f26db80bb7c4793e399ba830f13288cdf1d8bd9832dbf88766a
+  workers.xml: 7e9ae38e148334c3c4aaa43a799524d7fcc2790c73e1af360b1d15a3101d563c
+  workers-state.json: d65520b896d40038c0613025bcb3e3fb06a62de8882df6b1f010f4987b629225
+  analysis.log: 751a8801e3bdbd53e816d84efb9f7b950d2f21feced111652147e9d477c1c816
+  analysis.xml: e6b378890121e066f0944a9c474525804c04b32ae9350711e5df610d87b5a064
+  analysis-state.json: e49ccaef31629191e5215e346cb24340ac16d26e11063dda13a11d1b82ffbf59
+  baseline.log: 27ba1307f4b94bc5deec930972e847bc79aa4b038a446d301c441291a2d1e983
+  baseline.xml: 9e8d1c59d0af9d4570ec29583c7e9fc77f3d51e482b593c2f48604c8d149cbc0
+  baseline-state.json: 0e85167126cb90dbb1c9322fd2945589256d2d0106e4c9b179cd6b9669f5fed5
+  consumer-baseline.log: df28f65bbe26da8eb229eee840c6224c0a1796e1e9fc71f3bb2988ae5bd7188e
+  consumer-baseline.xml: 6ae5ef18778aad2a12148c4f988d585ec9a50314e4dc2f6449b696c4fb6ce79f
+  consumer-baseline-state.json: 02d4f08d6d7ba3e8d157887a3b052a562667b2369a0cf35be06cca06157004f1
+  family.log: 08a596630ecbef9090609b89adb27b99485c41b324c9f1108661a7f3f96df9e7
+  family.xml: 7a4e0494013c633a175120110cb46a98d3de9106566bfd7ca7cc89d1ff3891fb
+  family-state.json: 83cc2d57b5d999b93f90ec7d025326ac3fd9a557d48799e2bca2d7d681eea2e4
+  initial-consumer.log: 2335f42280fa6c7bbddfdecacffad5478679ff3f027e38384cf44a06825871ba
+  initial-consumer.xml: 8e0da4f5bf483c1917096dda9ebef856ff34373774d649871cdf6120e6d1f1ea
+  initial-consumer-state.json: 8d994bfa52071f978fac0ba8a6fe86f214c8e5fcd6ccd73df6fdf8a35dea348e
+  inventory.log: 678f348356843da8f2d502f9bb1df812bdf68b7d71cf51625f0100d818bf08ab
+  inventory-state.json: 63a3395f63255dbfc96b3282d2aeefd3a7ed96e6c91c631d53700217749c6cff
+  native-normal.log: a0773ad8f076200800c6c1f0c422b2ba2a5a549642b146174af368041d37ba47
+  native-normal-state.json: c4743dbf23e9e20fbfaf1c0b3840c9318c1afffa69d8de915e08c9c8eed02c54
+coverage_document_sha256: bb7f1a23000c7389c19b8677d745dbcd5e21410cefa7d8de64830561af9d4760

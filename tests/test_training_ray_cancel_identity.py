@@ -5,10 +5,10 @@ from unittest.mock import MagicMock
 
 import pytest
 from automl_api.models.enums import AttemptStatus
-from automl_api.services import reconciler
 from automl_api.services.kubernetes_training import KubernetesTrainingClient
 from automl_api.services.workflow_state import StaleFence
 from kubernetes.client import ApiException
+from ray_cancellation_helpers import cancel_training_ray_job
 from test_phase1_reconciler import _attempt, _entry, _run
 
 
@@ -17,7 +17,7 @@ def ray_job_identity(run, attempt):
         "metadata": {
             "name": attempt.ray_job_name,
             "namespace": run.k8s_namespace,
-            "uid": str(uuid.uuid4()),
+            "uid": str(uuid.uuid5(uuid.NAMESPACE_URL, str(attempt.id))),
             "labels": {
                 "automl.platform/project-id": str(attempt.project_id),
                 "automl.platform/run-id": str(run.id),
@@ -55,7 +55,7 @@ def test_foreign_or_incomplete_ray_labels_never_authorize_delete(cancellation, k
     else:
         job["metadata"]["labels"][label] = "foreign"
     with pytest.raises(StaleFence, match="identity"):
-        reconciler.cancel_training_ray_job(db, entry, k8s)
+        cancel_training_ray_job(db, entry, k8s)
     k8s.custom.delete_namespaced_custom_object.assert_not_called()
     assert attempt.status == AttemptStatus.RUNNING and attempt.terminal_cas_version == 0
 
@@ -80,7 +80,7 @@ def test_malformed_ray_metadata_never_authorizes_delete(cancellation, field, val
     db, _, attempt, entry, k8s, job = cancellation
     job["metadata"][field] = value
     with pytest.raises(StaleFence, match="identity"):
-        reconciler.cancel_training_ray_job(db, entry, k8s)
+        cancel_training_ray_job(db, entry, k8s)
     k8s.custom.delete_namespaced_custom_object.assert_not_called()
     assert attempt.status == AttemptStatus.RUNNING
 
@@ -90,7 +90,7 @@ def test_malformed_ray_response_never_authorizes_delete(cancellation, job):
     db, _, attempt, entry, k8s, _ = cancellation
     k8s.custom.get_namespaced_custom_object.return_value = job
     with pytest.raises(StaleFence, match="identity"):
-        reconciler.cancel_training_ray_job(db, entry, k8s)
+        cancel_training_ray_job(db, entry, k8s)
     k8s.custom.delete_namespaced_custom_object.assert_not_called()
     assert attempt.status == AttemptStatus.RUNNING
 
@@ -108,7 +108,7 @@ def test_malformed_ray_response_never_authorizes_delete(cancellation, job):
 def test_owned_ray_delete_uses_native_uid_and_stored_namespace(cancellation, status):
     db, run, attempt, entry, k8s, job = cancellation
     attempt.status = status
-    reconciler.cancel_training_ray_job(db, entry, k8s)
+    cancel_training_ray_job(db, entry, k8s)
     get = k8s.custom.get_namespaced_custom_object.call_args.kwargs
     assert get["namespace"] == run.k8s_namespace and get["name"] == attempt.ray_job_name
     assert get["_request_timeout"] == 5
@@ -129,7 +129,7 @@ def test_native_read_error_preserves_attempt_for_retry(cancellation, error):
     db, _, attempt, entry, k8s, _ = cancellation
     k8s.custom.get_namespaced_custom_object.side_effect = error
     with pytest.raises(type(error)):
-        reconciler.cancel_training_ray_job(db, entry, k8s)
+        cancel_training_ray_job(db, entry, k8s)
     k8s.custom.delete_namespaced_custom_object.assert_not_called()
     assert attempt.status == AttemptStatus.RUNNING
 
@@ -138,7 +138,7 @@ def test_already_absent_job_is_safe_idempotent_cancellation(cancellation):
     db, _, attempt, entry, k8s, _ = cancellation
     k8s.custom.get_namespaced_custom_object.side_effect = ApiException(status=404)
     for _ in range(2):
-        reconciler.cancel_training_ray_job(db, entry, k8s)
+        cancel_training_ray_job(db, entry, k8s)
     k8s.custom.delete_namespaced_custom_object.assert_not_called()
     assert attempt.status == AttemptStatus.CANCELLED and attempt.terminal_cas_version == 1
 
@@ -156,7 +156,7 @@ def test_same_name_replacement_between_read_and_delete_survives(cancellation):
 
     k8s.custom.delete_namespaced_custom_object.side_effect = native_delete
     with pytest.raises(ApiException) as caught:
-        reconciler.cancel_training_ray_job(db, entry, k8s)
+        cancel_training_ray_job(db, entry, k8s)
     assert caught.value.status == 409
     assert attempt.status == AttemptStatus.RUNNING and attempt.terminal_cas_version == 0
 
@@ -164,7 +164,7 @@ def test_same_name_replacement_between_read_and_delete_survives(cancellation):
 def test_disappearance_after_read_is_safe(cancellation):
     db, _, attempt, entry, k8s, _ = cancellation
     k8s.custom.delete_namespaced_custom_object.side_effect = ApiException(status=404)
-    reconciler.cancel_training_ray_job(db, entry, k8s)
+    cancel_training_ray_job(db, entry, k8s)
     assert attempt.status == AttemptStatus.CANCELLED
 
 
@@ -173,8 +173,8 @@ def test_lost_delete_reply_then_404_does_not_issue_a_second_delete(cancellation)
     k8s.custom.get_namespaced_custom_object.side_effect = [job, ApiException(status=404)]
     k8s.custom.delete_namespaced_custom_object.side_effect = ConnectionError("lost ACK")
     with pytest.raises(ConnectionError):
-        reconciler.cancel_training_ray_job(db, entry, k8s)
+        cancel_training_ray_job(db, entry, k8s)
     assert attempt.status == AttemptStatus.RUNNING
-    reconciler.cancel_training_ray_job(db, entry, k8s)
+    cancel_training_ray_job(db, entry, k8s)
     assert k8s.custom.delete_namespaced_custom_object.call_count == 1
     assert attempt.status == AttemptStatus.CANCELLED and attempt.terminal_cas_version == 1

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -31,6 +32,12 @@ def immutable_object_version(version: str) -> str:
         or any(ord(c) < 32 or ord(c) == 127 for c in version)
     ):
         raise UploadContractError("An immutable object version is required.")
+    return version
+
+
+def embedded_object_version(version: str) -> str:
+    if not isinstance(version, str) or not re.fullmatch(r"embedded-v1:[0-9a-f]{32}", version):
+        raise UploadContractError("An immutable original embedded incarnation is required.")
     return version
 
 
@@ -197,6 +204,10 @@ class ObjectStoreDriver(UploadDriver, Protocol):
     def put_stream(self, uri: str, source: BinaryIO) -> ObjectMetadata: ...
 
     def put_bytes(self, key: str, value: bytes) -> ObjectMetadata: ...
+
+    def create_bytes(self, key: str, value: bytes) -> ObjectMetadata:
+        """Create exclusively; return the original write identity without reading latest."""
+        ...
 
     def read_bytes(self, uri: str) -> bytes: ...
 

@@ -18,7 +18,10 @@ class DatasetUploadRequest(BaseModel):
     @field_validator("dataset_name", "filename")
     @classmethod
     def strip_text(cls, value: str) -> str:
-        return value.strip()
+        value = value.strip()
+        if not value:
+            raise ValueError("Upload names and filenames must not be blank.")
+        return value
 
 
 class DatasetRead(BaseModel):
@@ -209,6 +212,18 @@ class UploadCompletionRead(BaseModel):
     session: ResumableUploadRead
     dataset: DatasetRead | None = None
     version: DatasetVersionRead | None = None
+
+
+class BufferedRetirementRead(BaseModel):
+    id: uuid.UUID
+    status: Literal["aborted", "expired"]
+    retired_at: datetime
+
+
+class BufferedReplayRead(BaseModel):
+    id: uuid.UUID
+    input_id: uuid.UUID
+    attempt_budget: int
 
 
 class AbortUploadRead(BaseModel):

@@ -1,0 +1,456 @@
+recorded_on: '2026-10-29'
+scope: Buffered custody handoff through project deletion
+status: in_progress
+phase_complete: false
+public_buffered_pipeline_switched: false
+standalone_retirement_implemented: false
+unknown_resolution_qualified: false
+changes:
+- Project deletion captures and revalidates the complete original buffered inventory.
+  Unissued and known recorded deliveries cancel atomically with owner-authorized deletion
+  admission; original unknown writes remain held.
+- The existing stage protocol retains original manifest/request/content digests, object-version
+  receipts and publication bindings. Every stage revalidates current source, backend
+  and policy; no additional table or migration was added.
+- Private bytes and original receipt rows survive until all native stages qualify
+  cleanup. Metadata publication retires private input and removes project metadata
+  atomically; rollback preserves custody and replays without another native erase.
+- Independent command and delivery anchors detect missing private history. Published
+  metadata must retain its original object binding. Tombstone legal holds and published
+  version rows lock through the final SQL transaction.
+- Pure original-receipt validation is shared with buffered execution; five backend
+  URI bindings are checked without SDK construction during SQL-only custody checks.
+checks:
+  focused: 43
+  execution: 109
+  integration: 388
+distinct_passing_cases: 540
+source_python_inputs: 609
+source_manifest_sha256: 801d57cda1bc3e3fbd3b277295fe7d80ffdd802cb63da7f2bf0bdd673f9c8172
+focused_controls:
+  project_issue_races: 2
+  request_rollback_cases: 3
+  metadata_rollback_cases: 3
+  private_byte_hold_cases: 2
+  backend_uri_controls: 10
+  missing_command_and_delivery_anchor: true
+process_fault_regressions:
+  sigkill_cases: 5
+  actual_postgresql_backend_terminations: 2
+  children_and_backends_retired: true
+  providers: SDK doubles and owned files; not cloud failure qualification
+native_probe:
+  status: terminal
+  namespace: phase1-buffered-delete-38e440fd92
+  image: docker.io/maponyacharles/sceptreai@sha256:7c8a525f08e9823f918777623e7da1f339d034a103bb023080c70f97a4004716
+  namespace_uid: 00257849-fffa-4be1-a73c-29c6e58bbc6b
+  pod_uid: 2e2a0701-7326-4de7-9f37-eb1ab9231c11
+  port_forward_pid: 3710812
+  project_id: e676df89-c06c-4289-a3d8-93d3337e15d1
+  actor_id: ad5468b1-6c38-4553-9634-e42ee716d239
+  factory_published: true
+  deletion_complete: true
+  project_removed_before_fixture_cleanup: true
+  original_versions:
+  - 671ce7418597281cbf136c737bf06ffa
+  - 671ce7417169b899252e6f8eab9a297f
+  command_ids:
+  - b39c33ac-f30f-440e-95af-808a6b976958
+  - 10f74d61-2952-4b74-b5b6-6cac0fdb5d54
+  - 4860de9b-7869-4bcd-93df-637b2ba544d9
+  phases_transferred:
+  - admitted
+  - published
+  - recorded
+  native_custody_sha256: 8a3ccbf05702a18539796c9b9854d17b63a1edb2a6e19804398214ebe2e36dd1
+  sql_checkouts:
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  native_calls:
+  - uri_for_key
+  - create_bytes
+  - stat
+  - open_stream
+  - uri_for_key
+  - create_bytes
+  - stat
+  - open_stream
+  - uri_for_key
+  - delete_prefix
+  - prefix_absent
+  - uri_for_key
+  - delete_prefix
+  - prefix_absent
+  factory_create_count: 2
+  cached_replay_without_native: true
+  legal_hold_prevented_native: true
+  private_bytes_retained_until_metadata: true
+  owned_prefix_removed: true
+  neighboring_project_preserved: true
+  neighboring_fixture_removed: true
+  object_tls_verified: true
+  public_pipeline_switched: false
+  standalone_retirement_implemented: false
+  unknown_resolution_qualified: false
+  protected_fixture_object_tls_expired: true
+  port_forward_returncode: -15
+  namespace_removed: true
+  protected_identities:
+    namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+    service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+    store_pod_uid: c129c80c-db2a-40cd-8f5c-0b7d3934e7aa
+  owned_sql_fixture_removed: true
+  returncode: 0
+  free_bytes: 45422440448
+  reserve_bytes: 43500000000
+preflight:
+  read_only: true
+  schema_differences: []
+  revision: 0022_private_buffered_input
+  tables: 45
+  namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+  coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+  free_bytes: 45422075904
+  reserve_bytes: 43500000000
+closure:
+  read_only: true
+  schema_differences: []
+  revision: 0022_private_buffered_input
+  tables: 45
+  owned_namespace_absent: true
+  protected_identities_unchanged: true
+  private_inputs: 0
+  rehearsal_databases: []
+  owned_backends: []
+  free_bytes: 45426388992
+  reserve_bytes: 43500000000
+previous_artifact_hashes_verified: 1277
+auditor_negative_control:
+  positive_accepted: true
+  injected_failure_rejected: true
+  auditor_sha256: 318a78d8f616b98235d3d7b0e34c69d5d6218ce01bbfe549d86b5e7cfd028f6e
+  negative_xml_sha256: b433e8f4493c295201219dad8f35f3026e84b507ae9b28acce3129f43ea3ec73
+retained_attempts:
+  initial_test_expectation_failures: 2
+  initial_positive_controls: 21
+  intermediate_focused_passed: 31
+raw_oracles_passed:
+- admission
+- custody
+- integration
+formal_deletion_gates:
+  met: 0
+  unmet: 3
+  abandoned: 0
+formal_buffered_pipeline_gates:
+  met: 0
+  unmet: 18
+  abandoned: 0
+phase_requirements:
+  verified: 2
+  open: 34
+remaining:
+- The public route still uses the previous native-in-SQL producer. Actual HTTP handoff,
+  factory dispatcher, removal of that producer and compatible API behavior remain
+  required before activation.
+- This implements whole-project custody transfer, not standalone buffered cancellation/expiry/quarantine
+  policy, quota reservation or controlled unknown-outcome resolution. Unknown writes
+  and ambiguous original history remain held.
+- A new original receipt cannot be inferred from matching names or latest objects.
+  Physical producer quiescence and partial Azure/GCS native outcomes remain unqualified.
+- Private BYTEA/WAL capacity, large local single-value compatibility and SQL storage/backups/WAL
+  physical lifecycle remain unqualified. SQL byte clearing and row removal are logical
+  retirement, not a secure-erasure assertion.
+- The native probe uses an isolated pinned SeaweedFS fixture over verified TLS, not
+  deployed AWS/Azure/GCS IAM, maintained workload images or complete all-stage credential/context
+  qualification.
+- No physical45GB migration, previous-binary/mixed-version or15x10GiB load run was
+  performed. The root disk cannot fit45GB plus43.5GB reserve before WAL; table cardinalities
+  remain unknown.
+- The original protected fixture CA remains expired and its ephemeral Pod was preserved.
+  Its historical bytes were not requalified. Original deletionG7 still needs seven
+  missing objects; none were rebuilt or re-signed.
+- Formal automatic approval/evidence, full release/branch remote CI and remaining
+  Phase1 requirements remain open. Passing direct oracles does not certify the recovery
+  or phase complete.
+evidence_hashes:
+  GATES.md: ea4cba2fd5affd45d2993c106bdb56c9da687db00e41958fc83d8a47c816b40e
+  audit.py: 318a78d8f616b98235d3d7b0e34c69d5d6218ce01bbfe549d86b5e7cfd028f6e
+  auditor-control.json: 2115ccdc4ac4d0cefad512d0d387040ca7b62a180fbec204860a836bb22b0ee5
+  auditor-negative-control/focused-source.json: 801d57cda1bc3e3fbd3b277295fe7d80ffdd802cb63da7f2bf0bdd673f9c8172
+  auditor-negative-control/focused-state.json: dab4f0faea0d48758e1283fe895af9fc7aaa63406194f33a4a93f89d46cd8618
+  auditor-negative-control/focused.xml: b433e8f4493c295201219dad8f35f3026e84b507ae9b28acce3129f43ea3ec73
+  before-final-controls-focused-source.json: 20837499235af900ba24145f7cb3f89bde83d2d8cf14cb3f1e65d7406b5d1011
+  before-final-controls-focused-state.json: 0e10534acfb64d604994bb5f93bc28f5c6a0e3b49cd764e551cf0a709a59e858
+  before-final-controls-focused-witnesses/test_changed_handoff_stops_bef0/native/accepted.json: 207b27b44dac345c3c4071d8c6006d89cd92a95d877f4e21e8c13cade4483824
+  before-final-controls-focused-witnesses/test_changed_handoff_stops_bef0/native/f7fedeee-8288-43b0-ad46-55d9c4084cd5: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  before-final-controls-focused-witnesses/test_changed_handoff_stops_bef1/native/5e646276-9421-481c-855d-c5234e392850: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  before-final-controls-focused-witnesses/test_changed_handoff_stops_bef1/native/accepted.json: bd48156bad188a40194908e3d2158898e05f0863f383771b7fdd33f5ec7784ff
+  before-final-controls-focused-witnesses/test_changed_handoff_stops_bef2/native/904acc9c-a3eb-45f0-9aaa-bce5aa6600a2: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  before-final-controls-focused-witnesses/test_changed_handoff_stops_bef2/native/accepted.json: bc41260e549c5afe7f63c277f9b63d645570eec6047b1571429c39ebbf536826
+  before-final-controls-focused-witnesses/test_changed_handoff_stops_bef3/native/88d63e1c-f4d6-4f81-b68d-dad86b6d081c: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  before-final-controls-focused-witnesses/test_changed_handoff_stops_bef3/native/accepted.json: c271bf938f63ef439281e695c8d3b825794671d72cd88c0e696b6a76576f1ea4
+  before-final-controls-focused-witnesses/test_changed_handoff_stops_bef4/native/7d1ed61e-8ab9-4206-903a-4e8210f89ec6: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  before-final-controls-focused-witnesses/test_changed_handoff_stops_bef4/native/accepted.json: f26b05d6722a7d668a7bacf182a97608bb0c653e76841f8bfa639d5932222547
+  before-final-controls-focused-witnesses/test_changed_handoff_stops_bef5/native/47612056-f352-4093-b37d-a7f0bbd98196: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  before-final-controls-focused-witnesses/test_changed_handoff_stops_bef5/native/accepted.json: 108fedc5db0975b5db19d199e1e9b319cf3fe1f0b9fb2838a0b82bfe05ccbb2f
+  before-final-controls-focused-witnesses/test_changed_handoff_stops_bef6/native/16155cf4-a8c5-4dc0-95e6-76acfd1ec719: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  before-final-controls-focused-witnesses/test_changed_handoff_stops_bef6/native/accepted.json: 5526e59c96336ef9bc3f4a4a488353ecd71aab1eb1fd011f8286d7c09a3a6e3e
+  before-final-controls-focused-witnesses/test_changed_handoff_stops_bef7/native/2642522a-fe4f-4989-9c3c-9deed246a57f: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  before-final-controls-focused-witnesses/test_changed_handoff_stops_bef7/native/accepted.json: e6cbbc13c87f6aba3ec09c1a24e43b76e9603fb7f2194b98992b67f940c71262
+  before-final-controls-focused-witnesses/test_deletion_owns_complete_mi0/native/accepted.json: 86aac0d9fcfdad7c656c84cdfb23ecf15a36b43422dc193ed84a74358461cd44
+  before-final-controls-focused-witnesses/test_legal_hold_preserves_priv1/native/accepted.json: fce367e3864e7eb9745e28b92b67d07d7c2199c1842fa28d10bcf8b12a0ce553
+  before-final-controls-focused-witnesses/test_metadata_rollback_preserv1/native/accepted.json: e788c0ef73ce60360eb5543c28ea913efae058df4a09c6839578de817bc6583f
+  before-final-controls-focused-witnesses/test_metadata_rollback_preserv2/native/accepted.json: 62d1a721c8828b096db05b108341b9985e19550168c0f25a42c4812558494eb8
+  before-final-controls-focused-witnesses/test_original_known_custody_cl0/native/foreign-neighbor: cf6511ee3a033ac113dffbd63a1767fe2ac0400cef52050e53ecc0d542e176ab
+  before-final-controls-focused-witnesses/test_original_known_custody_cl1/native/accepted.json: 6e2f305efde24d286c6d6b5ff2366f173a0c1f0b6036088edb8620c720a95ab4
+  before-final-controls-focused-witnesses/test_original_known_custody_cl1/native/foreign-neighbor: cf6511ee3a033ac113dffbd63a1767fe2ac0400cef52050e53ecc0d542e176ab
+  before-final-controls-focused-witnesses/test_original_known_custody_cl2/native/accepted.json: 093430850848451aa08b4d60e63e2577222a4282fe11e4c42789a60578433050
+  before-final-controls-focused-witnesses/test_original_known_custody_cl2/native/foreign-neighbor: cf6511ee3a033ac113dffbd63a1767fe2ac0400cef52050e53ecc0d542e176ab
+  before-final-controls-focused-witnesses/test_policy_change_after_nativ0/native/accepted.json: 35f517301fd64548fffd609b32ed3d53baea577c72cecfe73293f5d4ea275ceb
+  before-final-controls-focused-witnesses/test_project_delete_and_native1/native/accepted.json: a10a9cb5cceb54593eea340e24046cd65d46c74ce0c9c5b13c759b0b3bc65bbd
+  before-final-controls-focused-witnesses/test_request_rollback_preserve1/native/579d627b-e8bc-4b30-9747-ff5c9797d508: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  before-final-controls-focused-witnesses/test_request_rollback_preserve1/native/accepted.json: 0c3ee965834b0bf358bfbb0df50ea9d5b886f4ba74e16fbc4fab5a285261e610
+  before-final-controls-focused-witnesses/test_request_rollback_preserve2/native/accepted.json: 94f34577f1d1b72c2e75a8a238286ce6d9214ce88162921fa5b74f06334855ef
+  before-final-controls-focused-witnesses/test_request_rollback_preserve2/native/d008e671-9131-469d-8367-aedc800e0e7c: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  before-final-controls-focused-witnesses/test_unknown_write_blocks_owne0/native/491f402f-2687-4c8e-ae85-07b64a39b8c9: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  before-final-controls-focused-witnesses/test_unknown_write_blocks_owne0/native/accepted.json: cf0dba4a980930434cf3df1ca08c5358e69b7e92f484dec66d4bd6ddaa1048a0
+  before-final-controls-focused-witnesses/test_unqualified_project_reque0/native/8a0e0611-cbf7-4478-82d2-8877beee202b: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  before-final-controls-focused-witnesses/test_unqualified_project_reque0/native/accepted.json: cdb66e15110cd97745571e8ed50d1cd2f731a84fd606f9a68558b1e0c22bc11d
+  before-final-controls-focused-witnesses/test_unqualified_project_reque1/native/319e9b2a-2b2c-4cd0-856d-9b4d6f5515ee: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  before-final-controls-focused-witnesses/test_unqualified_project_reque1/native/accepted.json: f71024e04c312851854544b2ef93e115a726c631237469f6a0e6dad14edd774e
+  before-final-controls-focused-witnesses/test_unqualified_project_reque2/native/3aa1139f-e913-4aaa-bcdd-e728b2d85a71: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  before-final-controls-focused-witnesses/test_unqualified_project_reque2/native/accepted.json: 593c56259001e2584df50cb26310cf0f0e16573d008675449ba976e0a34f07eb
+  before-final-controls-focused-witnesses/test_unqualified_project_reque3/native/a781d4b2-79a3-4ccf-9440-bb41cdea5f19: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  before-final-controls-focused-witnesses/test_unqualified_project_reque3/native/accepted.json: 4faf63027e328eff29275c2417a902d66d7ed1de0b310015e9c5b6e54f157051
+  before-final-controls-focused-witnesses/test_unqualified_project_reque4/native/6a2f03d9-05bd-4cfd-9bb2-8076893b7e92: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  before-final-controls-focused-witnesses/test_unqualified_project_reque4/native/accepted.json: 2714f15e1e1517d6bb78aaf5994898394f4ff74dd5fa630ebcc9aa1a45abcdac
+  before-final-controls-focused-witnesses/test_unqualified_project_reque5/native/1d5572af-b113-48b8-abb8-870c2f681450: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  before-final-controls-focused-witnesses/test_unqualified_project_reque5/native/accepted.json: fb453f873e99f65429f45cbf219d47ebaaa20f9099f50063b2be243827aaf751
+  before-final-controls-focused-witnesses/test_unqualified_project_reque6/native/aad7bc05-f15b-4f07-99eb-e49cea34e787: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  before-final-controls-focused-witnesses/test_unqualified_project_reque6/native/accepted.json: 1dc2e65b85601726650e9dbc77272e6328a420d7aa80716733bf003f388f42dc
+  before-final-controls-focused.log: dc87cc21c4d4203920c5bc612d81c854eef597685e238b379de0a47320b26acd
+  before-final-controls-focused.xml: 2c1afefe4b8ab64430e00413fe1343c962e7f9610ecb0140bc0d44123f4c7c3a
+  closure.json: 91faefbfb588a0cc5d26e5d1748304ecd4861ebef31c6dc0c9ad514b7cd0f6b4
+  closure.py: 429a784bae4646fc1f537b89e39e7932201213ec848aef6617e19bff89a30ba8
+  control.py: 96ea42bad0c199fe8b929152ddf8aa06f06950effe2e5c86cc423afd18048aac
+  execution-source.json: 801d57cda1bc3e3fbd3b277295fe7d80ffdd802cb63da7f2bf0bdd673f9c8172
+  execution-state.json: 243b3b0fce6f8f6a19aa1479bd85383d084d6a4e20407d936ff8003aecd1fd4d
+  execution-witnesses/test_constructor_failure_can_r0/native/1733eb00-9c83-46b6-931f-a98937558197: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_constructor_failure_can_r0/native/accepted.json: 9a4db46cb5f9e478e0d2741954da3f6b9b1db4c14888ff470df788259184f109
+  execution-witnesses/test_expired_lease_rolls_back_0/native/096e4ad4-ee79-476e-a4af-bd4dcd459039: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_expired_lease_rolls_back_0/native/accepted.json: dade7c082652afc5b882caf8465aaf663d237ff953444ec509171a3ebdb56b97
+  execution-witnesses/test_independent_native_writes0/native/7ef16c45-733c-43bc-bdd2-2aad600dd072: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_independent_native_writes0/native/accepted.json: e5ea31f5922d046f56ddbf5e39cd81a24b36d1d532972ffe73c33db8dc153252
+  execution-witnesses/test_independent_native_writes0/other-native/accepted.json: 2268b6b50842428971eb65b26ce7a462f8375a6e21a0e336146ed7b7405bf007
+  execution-witnesses/test_independent_native_writes0/other-native/e8883205-6c6f-40c8-b547-8c537d7a6fb6: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_independent_native_writes1/native/52dc0aa6-5940-457e-a4bd-a5ea83fd545a: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_independent_native_writes1/native/accepted.json: 1452d2df38d660fbf00b31cf218960c4f207ef33ab18e637e3fd281e4d25467c
+  execution-witnesses/test_independent_native_writes1/other-native/accepted.json: 317ba18a7c81526602d9c0fa0eae04292bf186121b8dd0e76559e419c2e50af6
+  execution-witnesses/test_independent_native_writes1/other-native/da3f15f7-4dd7-4c04-ae86-90cef971030a: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_known_original_reply_surv0/native/4452c173-92ba-479e-a9f3-8f3d32190ee8: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_known_original_reply_surv0/native/accepted.json: 5bbe0351706a3aea0886b1a3d62ffd7ea1480e15422080fe9f21340ca97e9b83
+  execution-witnesses/test_known_original_reply_surv1/native/02f856e8-7098-444b-9de2-7f565caef27a: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_known_original_reply_surv1/native/accepted.json: d7feb91166a8d8c3f167afeb82b52250de3052a7eb3104e099991d1fd53a18af
+  execution-witnesses/test_known_original_reply_surv10/native/a9c25650-af32-4873-a647-73e0a930edc5: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_known_original_reply_surv10/native/accepted.json: 765f97f9861c94de47205d95bc045f4ae52982eb650f2938183295a9ec1d73c2
+  execution-witnesses/test_known_original_reply_surv2/native/accepted.json: 7a83ff0a25f6d7f0026785b8aecd47ca19130ac50d4d64d4d58bd89a7e193d11
+  execution-witnesses/test_known_original_reply_surv2/native/f6c73b5b-29a7-4564-a837-86027e669a05: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_known_original_reply_surv3/native/559454e1-2fc7-430c-a7db-f8696dfd5be4: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_known_original_reply_surv3/native/accepted.json: 33f6b482046a49f289180ee48e53db66ca65811d874b01018d024c5ef00d161f
+  execution-witnesses/test_known_original_reply_surv4/native/accepted.json: efbe1e3144361d11aec837c526fafbd8e2e81db33e1f583da0eddbbfa35d9986
+  execution-witnesses/test_known_original_reply_surv4/native/f4dce65c-eba7-4499-b987-44904950b499: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_known_original_reply_surv5/native/accepted.json: ef34c156a3cf2991efb48e679fc69607da5929bef0885791f811e5d95ce5c24a
+  execution-witnesses/test_known_original_reply_surv5/native/f738ee17-b2db-42f5-af6d-da08e190bbfc: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_known_original_reply_surv6/native/accepted.json: 64171724726f7f545129e7712eeab202b9d4e2ea7d5efc8db434db45aff68963
+  execution-witnesses/test_known_original_reply_surv6/native/ff7fecae-e517-4aff-80f7-d1c2689a8caa: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_known_original_reply_surv7/native/accepted.json: ecfb8e317706891873182da664294efd357a79c3963859ea7e035ee083713b7b
+  execution-witnesses/test_known_original_reply_surv7/native/dec81976-9637-4b0f-ba70-179890887aa7: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_known_original_reply_surv8/native/3115d217-7110-47a8-86c0-625b48846fae: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_known_original_reply_surv8/native/accepted.json: b83b8c072c1c2793a5e3500eb223fba722c54856425c606d4b386693debace9b
+  execution-witnesses/test_known_original_reply_surv9/native/055e6279-16cc-490a-98e8-2c2b476b541e: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_known_original_reply_surv9/native/accepted.json: f46b32435a5af20473bd19d27a7aa100e1cfc4fdfd6a00c53f9cdb9c955ffbf5
+  execution-witnesses/test_lost_write_reply_is_not_r0/native/accepted.json: 1aca84057f17fb1877dd6f4045aaaabfc853b5549a8a349df6bcff787359c38c
+  execution-witnesses/test_lost_write_reply_is_not_r0/native/bf2b9d3f-7372-478a-a8d8-d42055becc92: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_original_reply_is_verifie0/native/accepted.json: 35c2af78811fc1c06af82725cd848e44570ae95398e8e1bd771dbe0a54835cf3
+  execution-witnesses/test_original_reply_is_verifie0/native/c4e5c87b-cc45-4173-b0d8-a45603750e13: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_process_and_backend_loss_0/execution-checkpoint.json: 2fd3c10c1cd2a90086f5209f297a5dccbbf4d3a063932bcc1cbd981d5f215914
+  execution-witnesses/test_process_and_backend_loss_0/worker.log: 4b0f70fed5613b434d51037fc5c9b7549dd292a76e08225e4574a856bfc9ceae
+  execution-witnesses/test_process_and_backend_loss_1/execution-checkpoint.json: 60d2858b693b17abbb630e4eaca568904f30b747755ea3e2ce144c564eca56a9
+  execution-witnesses/test_process_and_backend_loss_1/native/7e5cfcb8-080f-47cf-b140-7cf00fc4ba28: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_process_and_backend_loss_1/native/accepted.json: b4c6dd6d16bf9e8dbc1121472be0ad67382421f34207c087ac3ad039e303b8f1
+  execution-witnesses/test_process_and_backend_loss_1/worker.log: 4b0f70fed5613b434d51037fc5c9b7549dd292a76e08225e4574a856bfc9ceae
+  execution-witnesses/test_process_and_backend_loss_2/execution-checkpoint.json: a52cda878a31e6213478149cacab15caad2f0a66e9b7ab9c2de1441b7634bf9b
+  execution-witnesses/test_process_and_backend_loss_2/native/18ca583d-626f-475f-8126-03bf02b81d19: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_process_and_backend_loss_2/native/accepted.json: a1a0316b55fee402876f895afae6fe606842a1b1da7f961a780ecd629460ec5d
+  execution-witnesses/test_process_and_backend_loss_2/worker.log: 4b0f70fed5613b434d51037fc5c9b7549dd292a76e08225e4574a856bfc9ceae
+  execution-witnesses/test_process_and_backend_loss_3/execution-checkpoint.json: ad729f545068fb08c04725c5446223909b89c00859d458296d2a553bc1c98eb2
+  execution-witnesses/test_process_and_backend_loss_3/native/4e7c958e-9051-4c8b-b482-ea620920880d: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_process_and_backend_loss_3/native/accepted.json: ef494785ea7e896e281f3282f986f7a22a31a568da89f5e1e168b646760cd892
+  execution-witnesses/test_process_and_backend_loss_3/worker.log: a86dc26badb17fbf1834099b1167254eb980ed40771af92f4a2682ddb698f5e5
+  execution-witnesses/test_process_and_backend_loss_4/execution-checkpoint.json: e15384056f88abf09c4f09764904b55d26ef4ef9253415a6b2b6ef7982ad36a6
+  execution-witnesses/test_process_and_backend_loss_4/native/1ca8e129-b249-48eb-a041-d017d0edbbcc: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_process_and_backend_loss_4/native/accepted.json: 449f2ca86cb3e1d002a58b8c9162db076251383c7089b7b217fb07a5a30e6a7f
+  execution-witnesses/test_process_and_backend_loss_4/worker.log: 104aa4004389543e8da2fadc1202aea6bfbf11ed76ffb04f5cd22068404dc691
+  execution-witnesses/test_process_loss_on_either_si0/body.csv: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_process_loss_on_either_si0/checkpoint.json: 1c69cd4058019cf6ea287646ef80622f0fc87d305de65469b24e57cce667a5cc
+  execution-witnesses/test_process_loss_on_either_si0/payload.json: 699609453c3271b08de2fc5834502fba4a951805dae03409b2d318f855bf7a4f
+  execution-witnesses/test_process_loss_on_either_si0/worker.log: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  execution-witnesses/test_process_loss_on_either_si1/body.csv: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_process_loss_on_either_si1/checkpoint.json: 75b1d4bd87a0d8ffa146a2c571e8da1dc380250e26eb19bb88e1ef251b322065
+  execution-witnesses/test_process_loss_on_either_si1/payload.json: 699609453c3271b08de2fc5834502fba4a951805dae03409b2d318f855bf7a4f
+  execution-witnesses/test_process_loss_on_either_si1/worker.log: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  execution-witnesses/test_publication_rollback_keep0/native/9319237d-68b9-4782-8826-c488b7dbc8a7: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_publication_rollback_keep0/native/accepted.json: 8b982c5d5b9096ab67c64f1b87f766f6e8dc1c388ae83ef4492a15ce14120110
+  execution-witnesses/test_read_failure_resumes_orig0/native/accepted.json: 1130426738ada34ed022eaf19a146e7bdb3f676c77be38cbc8780daa8e6b6297
+  execution-witnesses/test_read_failure_resumes_orig0/native/b45d42f5-6f8d-4e41-b139-e5da9f57afcb: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_revocation_after_verifica0/native/accepted.json: ffcf9ae5438e339666805fce9694e8de107d682730ec312e7ff25b7bf37edd2a
+  execution-witnesses/test_revocation_after_verifica0/native/bac0ea02-5fcc-41e8-a2cb-2d71f4b68321: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_unqualified_write_reply_r0/native/accepted.json: f36491042b377ec53f3ba33efc5ee9e0e2e20b2bf4c71e6be10003cab8f8a84f
+  execution-witnesses/test_unqualified_write_reply_r0/native/e71032c5-6c42-4f29-8923-0d9930b654e1: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_unqualified_write_reply_r1/native/10ba2200-891f-4999-8f80-7108fd197fd8: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_unqualified_write_reply_r1/native/accepted.json: 1c585e912c7039b4b1358a2b7531c3ef8546b7446dcb8db87e5bc1e375e757c2
+  execution-witnesses/test_unqualified_write_reply_r2/native/accepted.json: 0dcd9acae1d2e22c59486792930a74265b1748cbd278bdfe799e10259b220dec
+  execution-witnesses/test_unqualified_write_reply_r2/native/fc2bc276-dd9c-45e4-a4d9-380c9a1d3ab9: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution-witnesses/test_verification_checks_origi0/native/accepted.json: 09d84260a8aa20f39c4e00ba2b5ecc97fe63779b7176cf697b2c2288180b6a16
+  execution-witnesses/test_verification_checks_origi0/native/aee91790-fce3-4afc-9911-ee3ec372415d: 1af257cacf04c01bca12f8a71cb0fdd24eb3657eec4d98da36e9808292d5c26e
+  execution-witnesses/test_verification_checks_origi0/native/latest: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  execution.log: e4b0ff275adc4cf87f196860a525d5326d4f1c7ed819181c252767195e46cb03
+  execution.xml: 40090671c04660597e0e5c80109eee19cb5301598a2a5560affb118a67cad7e9
+  focused-source.json: 801d57cda1bc3e3fbd3b277295fe7d80ffdd802cb63da7f2bf0bdd673f9c8172
+  focused-state.json: dab4f0faea0d48758e1283fe895af9fc7aaa63406194f33a4a93f89d46cd8618
+  focused-witnesses/test_changed_handoff_stops_bef0/native/accepted.json: 428383d7a36341f5c584032ce86b22ade91e64901b7acfa4a4b24e9f934a566d
+  focused-witnesses/test_changed_handoff_stops_bef0/native/e1360772-46a8-4aa9-80b7-f56b3a09c71d: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  focused-witnesses/test_changed_handoff_stops_bef1/native/96ca7dd9-9714-48c5-b494-524b54d080b6: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  focused-witnesses/test_changed_handoff_stops_bef1/native/accepted.json: eb41e1a310f614c5ca708d23c7234dd8f0480cf9bc5ef5ccb6acd5caa88a074a
+  focused-witnesses/test_changed_handoff_stops_bef2/native/7818831d-3e00-4824-9dc0-12b7f12f44af: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  focused-witnesses/test_changed_handoff_stops_bef2/native/accepted.json: e625c8699e551c579b62d7bee2c34b86f2b3d8714c268a2f140c49d8462728ff
+  focused-witnesses/test_changed_handoff_stops_bef3/native/accepted.json: ed151e565a89c5f39b10ec49d7db9bd811c68acfdb2e2ba585c79c92470ea5f3
+  focused-witnesses/test_changed_handoff_stops_bef3/native/bf5ebfe2-25b3-42e6-aaae-9dfd678e69e8: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  focused-witnesses/test_changed_handoff_stops_bef4/native/55e87f2b-d420-4d7d-b894-51de1038dd92: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  focused-witnesses/test_changed_handoff_stops_bef4/native/accepted.json: f535c10290eda8102515a54d60c38d0c5fe63d273252b60f8788d8fd6aa27795
+  focused-witnesses/test_changed_handoff_stops_bef5/native/a55c5f82-d1d4-423a-85cd-011de5d0c85e: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  focused-witnesses/test_changed_handoff_stops_bef5/native/accepted.json: 88ac5a33b5d87c3dfb2ceb61bf8accb63c700a6f4bc008cad1b72b22854556ba
+  focused-witnesses/test_changed_handoff_stops_bef6/native/accepted.json: db271a090486d6b79330bf1a3ffd8b15bb9dd2adf8f2aee8568cab3b00dd5dd3
+  focused-witnesses/test_changed_handoff_stops_bef6/native/bd9e9ad4-afc1-4905-a1f2-2af32042b194: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  focused-witnesses/test_changed_handoff_stops_bef7/native/8b9d00ed-7dab-4a0b-b88f-b3a253fe9795: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  focused-witnesses/test_changed_handoff_stops_bef7/native/accepted.json: 83c46a7f8327360c7a3862d042d1d863fa3eef26be63b4bb72bacfc1f194ac10
+  focused-witnesses/test_deletion_owns_complete_mi0/native/accepted.json: 3ba020fe5d0a55fd3c36d45d1bf945bdd3c5e1917e81fd96398ec26dd565148d
+  focused-witnesses/test_legal_hold_preserves_priv1/native/accepted.json: a5619a7d5d082f3d72011095d45323eb1217d2d083f21096197bd38a4c9af1b4
+  focused-witnesses/test_metadata_rollback_preserv1/native/accepted.json: d1fdf543200b3b10f1918ab2d1886300388f493d98c8caac2ae6067947a281b2
+  focused-witnesses/test_metadata_rollback_preserv2/native/accepted.json: 396f698373e405b7e9ba61111503ed98575d810d5c246353da8cee84d54bc647
+  focused-witnesses/test_original_known_custody_cl0/native/foreign-neighbor: cf6511ee3a033ac113dffbd63a1767fe2ac0400cef52050e53ecc0d542e176ab
+  focused-witnesses/test_original_known_custody_cl1/native/accepted.json: a55d86dac666d7e03ceda6ecd9705fe542dbac0c847401d5bc9e68ad6bb5c291
+  focused-witnesses/test_original_known_custody_cl1/native/foreign-neighbor: cf6511ee3a033ac113dffbd63a1767fe2ac0400cef52050e53ecc0d542e176ab
+  focused-witnesses/test_original_known_custody_cl2/native/accepted.json: 03369fbf78dfb71b166ebbcd9d7c027530d2d26cd3e88a168123df234ce9b247
+  focused-witnesses/test_original_known_custody_cl2/native/foreign-neighbor: cf6511ee3a033ac113dffbd63a1767fe2ac0400cef52050e53ecc0d542e176ab
+  focused-witnesses/test_policy_change_after_nativ0/native/accepted.json: af6f7e07e6a47c4e05894b8d94d62fd1edf1b99fe52367498a84a2f8e2543f97
+  focused-witnesses/test_project_delete_and_native1/native/accepted.json: 3cbf454b3a0bae8220156c3e46efb9f31845e53f8db2ba043d02aabde6f8ac0a
+  focused-witnesses/test_request_rollback_preserve1/native/accepted.json: f03a9890ff7ecbf9d5506a516fda876409c12c037c06319ee13cfdfd16c3c69f
+  focused-witnesses/test_request_rollback_preserve1/native/d2223cdd-38c7-490c-abbc-4e131b6cdf8d: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  focused-witnesses/test_request_rollback_preserve2/native/accepted.json: 4291fdf2c40580b683e74f06bf7e0743546a5d434af3f9b6caea9eeacce3d974
+  focused-witnesses/test_request_rollback_preserve2/native/f2d5816a-a757-40f5-851c-4300281242e8: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  focused-witnesses/test_unknown_write_blocks_owne0/native/2d489f93-0f70-4714-ab04-c4a3c8714347: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  focused-witnesses/test_unknown_write_blocks_owne0/native/accepted.json: 77330ec84ba72f9ce9aff836beda54ad6ecc02e9a8a1bf75f7109dc85a5c51e1
+  focused-witnesses/test_unqualified_project_reque0/native/accepted.json: e04aa04337650e7650d90ddc242ad83d1709d4bec37bed09fef616cddeafeeec
+  focused-witnesses/test_unqualified_project_reque0/native/ba69364c-d053-4704-954b-d581b52d18c1: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  focused-witnesses/test_unqualified_project_reque1/native/accepted.json: a74b6a37a2d8b9f5f646c72028c3f92f2b9c158bb95ca0781f6f2c5150faffd6
+  focused-witnesses/test_unqualified_project_reque1/native/eb303299-2854-484f-a20b-f3fdb7c852dd: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  focused-witnesses/test_unqualified_project_reque2/native/6ac55fa8-77a5-4c0d-ab5f-66fca6830f51: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  focused-witnesses/test_unqualified_project_reque2/native/accepted.json: e83d216dafff60bd1582f413483d07626e88245548fc4ff72c21fb0fb1d1b427
+  focused-witnesses/test_unqualified_project_reque3/native/accepted.json: 03be56703231c9f3deabb9d5947c410fb5abba937bd332044a874a5f4fcf0f05
+  focused-witnesses/test_unqualified_project_reque3/native/e8893afd-3761-4e9d-a52e-e65763deca5a: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  focused-witnesses/test_unqualified_project_reque4/native/accepted.json: ad33b6ed14494312cb1e1c9b5b388242f49eb6ad97530678973ce5b62829590e
+  focused-witnesses/test_unqualified_project_reque4/native/bfb68523-69a8-4b6e-8d8f-c76cf0049fc9: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  focused-witnesses/test_unqualified_project_reque5/native/8ff61655-0eb6-4522-9879-59357f005567: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  focused-witnesses/test_unqualified_project_reque5/native/accepted.json: d1942e353c40a091715776409e0a61863e50fcf458e8ce99e1cb7098264886bf
+  focused-witnesses/test_unqualified_project_reque6/native/accepted.json: 51c774fd76def3f58e55fc747f5904b22f8681137653f60e723bebe5369534fb
+  focused-witnesses/test_unqualified_project_reque6/native/ca868652-e1e6-47f6-9a4e-52e42e25cb98: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  focused-witnesses/test_unqualified_project_reque7/native/279e1774-ef69-46aa-9a28-14ceccc91012: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  focused-witnesses/test_unqualified_project_reque7/native/accepted.json: a56ba37a4a8dff51c2e768358c951540b15c87fd27a98a2781804471a7ca08f7
+  focused.log: 6e352cc85440300ede0f7f652521e8b43a0f488ba6ef1cc87c433c574ec8d11c
+  focused.xml: 03b10a09d1944c0d29daffface66745a99798e533b83a6ae0979908d81bdcb9f
+  initial-focused-source.json: 411599955280f98bc8c58de615ba25d4605c00bc51c41ef897eb3e0bd4a2fa84
+  initial-focused-state.json: 9b5991e42cdc5b7775b1947d05c405e1d24ae78fdb7b8621c4daca940c9a44f6
+  initial-focused-witnesses/test_changed_handoff_stops_bef0/native/accepted.json: 2011c33e6ec4d88967c43f4bb4604a496074a415e03486e0127a3df0bd200672
+  initial-focused-witnesses/test_changed_handoff_stops_bef0/native/fb3a141c-61fe-423e-a086-2477d42d3860: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  initial-focused-witnesses/test_changed_handoff_stops_bef1/native/2478f25a-6a1b-458a-8009-31985f7d8a9a: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  initial-focused-witnesses/test_changed_handoff_stops_bef1/native/accepted.json: 2401a00a930f5dfa124f3d2c22a62460b9c4602fd51bc56669002d3a50c28ec4
+  initial-focused-witnesses/test_changed_handoff_stops_bef2/native/accepted.json: abcce68779726c23d3aba68f39489581902a911bc7956d7a45cc36ad7971a00f
+  initial-focused-witnesses/test_changed_handoff_stops_bef2/native/ae669cd4-f620-43bf-b853-f07b6c6c9b2f: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  initial-focused-witnesses/test_changed_handoff_stops_bef3/native/accepted.json: 7dab50332444aa080b1bc3016e01c4deee6bc9561c12d351a50240860abe7369
+  initial-focused-witnesses/test_changed_handoff_stops_bef3/native/d16c4b0e-2cea-4e25-876f-412f8673ab37: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  initial-focused-witnesses/test_changed_handoff_stops_bef4/native/69f3afc7-cede-4f31-b1ae-d27629e7e36a: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  initial-focused-witnesses/test_changed_handoff_stops_bef4/native/accepted.json: ca86d460cefcf990a57c676de1133a5965d18c1495d383e051e0960d4e1f6967
+  initial-focused-witnesses/test_changed_handoff_stops_bef5/native/accepted.json: 2f77ae605df0add0a0f08bf0cf0f040fdacf7f4a34d541a292e626607e1a120d
+  initial-focused-witnesses/test_changed_handoff_stops_bef5/native/b563940d-4c33-43d1-b5aa-4de04accc387: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  initial-focused-witnesses/test_changed_handoff_stops_bef6/native/accepted.json: 3648420ac3dd9aad6df575841ba551a8278899792c5590587f5e65425f6774cd
+  initial-focused-witnesses/test_changed_handoff_stops_bef6/native/fb8f61b6-7334-4858-aac6-0a3e9938f267: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  initial-focused-witnesses/test_changed_handoff_stops_bef7/native/00c41f0d-6b0c-4dde-babf-fa2cc7fb23ae: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  initial-focused-witnesses/test_changed_handoff_stops_bef7/native/accepted.json: ae3130276f880b3ffbe97d4e1d8a7f885052a73b0dbc5bddd4e2234648fad564
+  initial-focused-witnesses/test_original_known_custody_cl0/native/foreign-neighbor: cf6511ee3a033ac113dffbd63a1767fe2ac0400cef52050e53ecc0d542e176ab
+  initial-focused-witnesses/test_original_known_custody_cl1/native/accepted.json: df179039ed5481699555c03cf011c4175286aaab0ff29128d00eedcece6bdc02
+  initial-focused-witnesses/test_original_known_custody_cl1/native/c844eee8-9cd8-4977-98b3-89f2df8a0421: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  initial-focused-witnesses/test_original_known_custody_cl1/native/foreign-neighbor: cf6511ee3a033ac113dffbd63a1767fe2ac0400cef52050e53ecc0d542e176ab
+  initial-focused-witnesses/test_original_known_custody_cl2/native/accepted.json: cef5c8ddda4f56110901e78184652b406886d0846413d58e1caa58e302d35147
+  initial-focused-witnesses/test_original_known_custody_cl2/native/foreign-neighbor: cf6511ee3a033ac113dffbd63a1767fe2ac0400cef52050e53ecc0d542e176ab
+  initial-focused-witnesses/test_policy_change_after_nativ0/native/accepted.json: 191ada9427c73a921d0d1d91ed464045ff99c212f70d7b33548999d626a5490c
+  initial-focused-witnesses/test_request_rollback_preserve1/native/accepted.json: 4d05f8b4578d040d594b1df18a66332f86970f047e21d83e523853b0a60cc737
+  initial-focused-witnesses/test_request_rollback_preserve1/native/aff09bf1-3b8e-4816-ac30-3804461359dc: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  initial-focused-witnesses/test_request_rollback_preserve2/native/accepted.json: d8e2ea44fe5d6c7055e9db0b31fada11227119fcaec997e1b6c7a7dbf03cde46
+  initial-focused-witnesses/test_request_rollback_preserve2/native/feca2d5f-7c55-4c09-9924-dc800c3da0f4: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  initial-focused-witnesses/test_unknown_write_blocks_owne0/native/accepted.json: ee708cbce0d8a9c7d36ac90bbef5ee92e4a7a0f88283109e9264064d177b1491
+  initial-focused-witnesses/test_unknown_write_blocks_owne0/native/ceeefcee-c6b2-4f8d-898b-51aeface8bb6: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  initial-focused-witnesses/test_unqualified_project_reque0/native/accepted.json: 95f59940a3b86b250f7b4583c5c3f3d45398d6081f7f3f7270bde1d4150286e8
+  initial-focused-witnesses/test_unqualified_project_reque0/native/c6e926fa-5c51-4927-aeb9-9f8c9f7f224d: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  initial-focused-witnesses/test_unqualified_project_reque1/native/6c168634-c91d-4b64-9071-6c89f3ea3cac: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  initial-focused-witnesses/test_unqualified_project_reque1/native/accepted.json: 59f27c7a68cb2cb01a323758df9d028db47f0bc60561f0213542749f98dacf8a
+  initial-focused-witnesses/test_unqualified_project_reque2/native/899f4bc4-61c9-4bd8-9914-6ad1017dc858: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  initial-focused-witnesses/test_unqualified_project_reque2/native/accepted.json: 522af108cc94ab03577b361e8dcc72cdc7cd18fbec9de6df21e961b2636ee67a
+  initial-focused-witnesses/test_unqualified_project_reque3/native/4bb22a61-f3c6-4d9c-87c4-7bfae19a6a24: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  initial-focused-witnesses/test_unqualified_project_reque3/native/accepted.json: 5b2a92d6292e884c1b5b33d8c6922684313497f953077a0d8f5568945f9f937b
+  initial-focused-witnesses/test_unqualified_project_reque4/native/a9d950ee-3f65-4fd0-af1a-df1569aff0a0: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  initial-focused-witnesses/test_unqualified_project_reque4/native/accepted.json: 7a1577c6b64812a2858a6ca33b9bc96358f74f028325c1c00dac6535dcda0655
+  initial-focused-witnesses/test_unqualified_project_reque5/native/6f92cb20-7c96-4449-9821-7a6cbc17d796: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  initial-focused-witnesses/test_unqualified_project_reque5/native/accepted.json: 8bd0ac35298eceeed91a523de10be0bf8092f9db0d730ce9d8d2b686c8cf1e0e
+  initial-focused-witnesses/test_unqualified_project_reque6/native/357a1168-49dc-497b-a3a2-3586079bd019: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  initial-focused-witnesses/test_unqualified_project_reque6/native/accepted.json: 4ceb51d7a39a2098e7bb1986d46ba632145b416b6ecc349e7fa919af200c414a
+  initial-focused.log: 9dbc7580e26dae945eafb78cd63ad6ab4c41c7984896737302b6b9fecd7917ec
+  initial-focused.xml: a5df0f7972d83136695e54f9101f73b337607e210017b2afcf6054135ff6bd0c
+  integration-source.json: 801d57cda1bc3e3fbd3b277295fe7d80ffdd802cb63da7f2bf0bdd673f9c8172
+  integration-state.json: d1528736f4a266775b68c043717f8ad46cbe479c40b858af6630ba2989821fc8
+  integration.log: dcd152d6d58e07e869d0739d6811224070e2de9f2c094dadef00b62b155f6b36
+  integration.xml: 9321ec863c29442a39bfb6a731809427a38f7a2d4dacc304f5a2f8f4bf77a61c
+  lint.json: 5fdd2006d743d201bebac50e0076f52e574e9c7ecb3995d59251e1179060671b
+  native-ca.crt: 32d84b2ffe8e525341b6e0e192221ad0d23e1aec7144c2f45ff833c75aa2e5cc
+  native-custody.json: 8a3ccbf05702a18539796c9b9854d17b63a1edb2a6e19804398214ebe2e36dd1
+  native-leaf.crt: a865f2ba042e01010d8924b54e3a9bd5a395e91a22d93439283e730ed998f27b
+  native-state.json: d78035de41fff25dab7c440adb462f2c529392936659c7d5a1ebfbb0d1703ccc
+  native.log: 70a398779e3e842303d7f54e45f3c9116e9d94561f4ba14632968ea6429ec617
+  native.py: a3b842141316e99712141a6633eb5c8c97b3da0786a5636d40f01d8331104ee6
+  port-forward.log: 5f0dc01de2ed9e146ce95f7eec2a5ca7aa2bb1db8749850934e900c2dd35aa3b
+  preflight.json: 7c6d867fb3ab00eb6ad70d5a377e070fbee2d7389b8036bbaeea6213bef52773
+  preflight.py: 26966c63259c1b4edb2061889ddf8bcaa72c0e41ac70f87d7c9d8a3056e09275
+  prior-artifacts.json: 6be76d206b02a5a14dfd4abf8b548f80acc7cfe77657b691cbe75860800efde5
+  report.py: 1a9421e661bb0eee3e10445100a3d5982534cb0b621b4bceb5f14b1c0bf4b862
+  run.py: 6eb644069ca8a30058fd5c20f20f663386431fac963e17d31419fe52afe3aba4

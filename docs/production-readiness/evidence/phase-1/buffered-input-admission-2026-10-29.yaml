@@ -1,0 +1,237 @@
+recorded_on: '2026-10-29'
+scope: Private durable buffered input and atomic admission dependency
+status: in_progress
+phase_complete: false
+public_buffered_pipeline_switched: false
+changes:
+- Revision0022 adds private deferred BYTEA input with exact PostgreSQL SHA256/size
+  checks and a restrictive project/command foreign key. Command/outbox/response JSON
+  never receives the raw input.
+- A monotonic INSERT/UPDATE/DELETE trigger protects original source and write-once
+  native outcomes. Bytes clear only after publication or retirement, unresolved inputs
+  block direct/cascade deletion, and populated downgrade is rejected before custody
+  can be dropped.
+- Factory-based admission commits source, canonical command and minimal outbox reference
+  atomically. Inspection and shared pure provider configuration validation run without
+  SDK construction or retained SQL checkout. Fresh role/token/project checks surround
+  inspection.
+- Replay preserves one original input per key, conflicts on changed identity, rejects
+  changed/missing/ambiguous history and retains qualified cached legacy responses.
+  No original private source is inferred for legacy pending commands.
+- The shared upload schema now rejects normalized empty names/filenames while preserving
+  its existing coercion and length-check order. Storage settings validation is shared
+  with the existing factory; dataset storage identity also trims configured whitespace.
+checks:
+  schema: 39
+  admission: 74
+  integration: 394
+distinct_passing_cases: 507
+source_python_inputs: 604
+source_manifest_sha256: ceac34498fd17c5469487ad64f23121a97dab606913abbd4ff23c6de511b19e7
+process_faults:
+  sigkill_cases: 2
+  before_commit_rolled_back: true
+  after_commit_original_source_and_delivery_survived: true
+  child_and_backend_processes_retired: true
+  actual_http_process: false
+schema:
+  head: 0022_private_buffered_input
+  tables: 45
+  strict_differences: []
+  critical_trigger_contracts: 5
+  supported_prior_schema_paths: 21
+  upload_metadata_rows_per_applicable_path: 4
+  physical_size_qualified: false
+  previous_binary_qualified: false
+retained_controls:
+  birth_guard_before_fix_failed: 4
+  birth_guard_controls_passed: 8
+  whitespace_before_fix_failed: 6
+  whitespace_controls_passed: 7
+  intermediate_coercion_regression_failed: 4
+  initial_catalog_mismatch_failed: 8
+  initial_schema_controls_passed: 27
+  preliminary_admission_passed: 32
+  pre_validation_campaign_passed: 352
+  before_coercion_campaign_passed: 503
+  initial_audit_attempt_before_preflight_was_ready: true
+preflight:
+  read_only: true
+  schema_differences: []
+  revision: 0022_private_buffered_input
+  tables: 45
+  namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+  coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+  free_bytes: 45456867328
+  reserve_bytes: 43500000000
+closure:
+  read_only: true
+  private_inputs: 0
+  rehearsal_databases: []
+  owned_backends: []
+  free_bytes: 45456961536
+  reserve_bytes: 43500000000
+previous_artifact_hashes_verified: 969
+raw_oracles_passed:
+- schema
+- admission
+- integration
+formal_input_gates:
+  met: 0
+  unmet: 3
+  abandoned: 0
+formal_recovery_root_gates:
+  met: 0
+  unmet: 6
+  abandoned: 0
+formal_storage_gates:
+  met: 0
+  unmet: 3
+  abandoned: 0
+phase_requirements:
+  verified: 2
+  open: 34
+remaining:
+- The public buffered route still uses its old write-before-SQL-commit path. This
+  admission dependency is unexposed until its factory, dispatcher, HTTP handoff, original
+  native fact recovery and deletion/retention integration are implemented together.
+- Unknown native writes, partial Azure blocks, GCS sessions, late replies and physical
+  producer quiescence still require original-outcome custody and controlled qualification;
+  no adoption or blind retry was added.
+- Private BYTEA and WAL introduce storage cost. Sustained capacity, maximum production-sized
+  body performance and local inputs approaching PostgreSQL single-value limits are
+  not qualified; full local/public compatibility remains required before activation.
+- All21 migration paths use bounded preserved metadata, not a production-sized fixture
+  or maintained previous-binary/mixed-version startup. The45GB physical target, unspecified
+  largest-table cardinalities and15-user by10GiB campaign remain open.
+- The protected native fixture CA is expired; its ephemeral store was not restarted,
+  reconfigured or requalified. No Kubernetes resources were created by this dependency.
+- Full native workloads/images, cloud IAM, all-stage credentials, other Phase1 requirements
+  and original deletionG7 with seven missing historical objects remain open. No missing
+  original objects were rebuilt or re-signed.
+- Formal automatic gate approval/evidence remains pending; raw test success is not
+  full recovery or phase completion.
+evidence_hashes:
+  DESIGN.md: 0bc15b0528164271ac47ece5ccd19e27c45bf75347c6c6642de95133aa74ff88
+  GATES.md: 089effe165e420103f0d8e64f6e8bda24d3b0e375878202b473d25c726504502
+  admission-source.json: ceac34498fd17c5469487ad64f23121a97dab606913abbd4ff23c6de511b19e7
+  admission-state.json: 33fd27211d37bd4c66c7bb6b6f6e83f58eafc276e447b4f15d5730061a77cb9e
+  admission-witnesses/test_process_loss_on_either_si0/body.csv: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  admission-witnesses/test_process_loss_on_either_si0/checkpoint.json: e22cbe12909f350d18127f77b409ae45146cf7917884d29199f61b7aef59898b
+  admission-witnesses/test_process_loss_on_either_si0/payload.json: 699609453c3271b08de2fc5834502fba4a951805dae03409b2d318f855bf7a4f
+  admission-witnesses/test_process_loss_on_either_si0/worker.log: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  admission-witnesses/test_process_loss_on_either_si1/body.csv: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  admission-witnesses/test_process_loss_on_either_si1/checkpoint.json: a77ccf705c7bc497b80fc0354b320435ad3e12d056d6ee4940ffe003f8be7f21
+  admission-witnesses/test_process_loss_on_either_si1/payload.json: 699609453c3271b08de2fc5834502fba4a951805dae03409b2d318f855bf7a4f
+  admission-witnesses/test_process_loss_on_either_si1/worker.log: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  admission.log: 1d091beb1109aa74f4fa393df9941c2ff4d961b7f35fc2c344306a9ae8d9f825
+  admission.xml: 29040c71325fbdfac280fa51fd158154e80e8096f192b923727d215b805253eb
+  audit.py: fe55ac83a84e0f2571e0f6ef6d7c3965b4881fa8d196444cb6824892b4673989
+  auditor-control.json: 2cb2bcedc539ecf98c86ac18063b0b2a7d16ee59a7cd4263bea2849823017921
+  auditor-negative-control/schema.xml: 63e38121958b4821614f3ec96b01791c19e1f0d4e84ec1edf733f546e949b7f7
+  before-coercion-admission-source.json: c026451ff5623d3bd5f93fc76e9a70105a43416bdef84feb2987ae8ac35f7a7c
+  before-coercion-admission-state.json: d021d74fc25c0be0d81586bab72f327aa2a4c1eecaec3c13b7e987c808e0e78a
+  before-coercion-admission-witnesses/test_process_loss_on_either_si0/body.csv: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  before-coercion-admission-witnesses/test_process_loss_on_either_si0/checkpoint.json: 38a9be62fd0623281ada581d75c5bfdae7010b1556259914cf668c284e849e39
+  before-coercion-admission-witnesses/test_process_loss_on_either_si0/payload.json: 699609453c3271b08de2fc5834502fba4a951805dae03409b2d318f855bf7a4f
+  before-coercion-admission-witnesses/test_process_loss_on_either_si0/worker.log: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  before-coercion-admission-witnesses/test_process_loss_on_either_si1/body.csv: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  before-coercion-admission-witnesses/test_process_loss_on_either_si1/checkpoint.json: 24f4a3cc6395715a9236db33b8cc6543cf2473583f34317daafef2cf26622a6d
+  before-coercion-admission-witnesses/test_process_loss_on_either_si1/payload.json: 699609453c3271b08de2fc5834502fba4a951805dae03409b2d318f855bf7a4f
+  before-coercion-admission-witnesses/test_process_loss_on_either_si1/worker.log: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  before-coercion-admission.log: ed4b2e6119d620d40ef05f2a275f08032ca116595acac5569c118875f6c5b3b4
+  before-coercion-admission.xml: 730c02f52d61dab09f22737df74fcbdc27c0a75c74cd11c6e4cedf2b56ecac80
+  before-coercion-campaign-state.json: 591eec55fb85b0b7fc3e9512b725eaa31013c9764b7bc7e8ff4e48ad3ad6bbb1
+  before-coercion-campaign.log: 63f1589f926646c237b9c158982d2c6014a7322baa9b5e7bd3eee965126f2d91
+  before-coercion-integration-source.json: c026451ff5623d3bd5f93fc76e9a70105a43416bdef84feb2987ae8ac35f7a7c
+  before-coercion-integration-state.json: 99a6138e266227680e5b4142e7a410f0426cf3fd9f50721707317c4b9a9d24a1
+  before-coercion-integration.log: ea5098e1c81c584982ca88e12f2889d31e9b512b326b47be78639323b73003ff
+  before-coercion-integration.xml: 7a1f8567069d7a486f5ec22ee45ee522c34bbac6b183afa4614f0e01ea3e97b3
+  before-coercion-migrations-source.json: c026451ff5623d3bd5f93fc76e9a70105a43416bdef84feb2987ae8ac35f7a7c
+  before-coercion-migrations-state.json: ffa703ba27254267172e2d73e1a3de47d88c0bb64e1bd3fb1625205968613e31
+  before-coercion-migrations.log: 5e0e88b36627623bc1fe3ea7758ddbb2e2772e6e6d81b614baab144641bbf08d
+  before-coercion-schema-source.json: c026451ff5623d3bd5f93fc76e9a70105a43416bdef84feb2987ae8ac35f7a7c
+  before-coercion-schema-state.json: 82dee68912b41bd0ea462c747ec911b55d9e2fa1080b2c98e63b49cfcc6ce5f1
+  before-coercion-schema.log: fad96f75c686834f16b77d69305f98dfcfcfe6e505464acbb50ca40809d4562a
+  before-coercion-schema.xml: f125c35dc87a866cf8ae1fceed095ceabe7de0e8379cf6928861db91bde7140a
+  birth-baseline-source.json: 51d9f8b2a1fa809b0ad869c90f9e4eef46f1e23c49f96ded727b04aebb498c1f
+  birth-baseline-state.json: 1996716c37e2a1a5cb171191abc50b061b3891881806af89ff664782ffe3469f
+  birth-baseline.log: 9066f2771db53224d63a86d16777ad9bd14a2d7e5530bb4465761679a92ff13e
+  birth-baseline.xml: f6ec97b27090913b9979dad7b8da933985ac0ae48535ad33534e5aa4f7ef7133
+  campaign-state.json: 591eec55fb85b0b7fc3e9512b725eaa31013c9764b7bc7e8ff4e48ad3ad6bbb1
+  campaign.log: 47db41adafa902afbc458ae57b6f5996fbb72f9989a6696e4fca07e016d63b5e
+  campaign.py: 6bcd04718686bfacc75c8ecbdda0f07e9ca03352f247abeca8102e93ebb12830
+  catalog-reapply-source.json: a446abb7d53bcb018c2dcf74cec7d148dc204a7087a8f270683e4abc5f4d7153
+  catalog-reapply-state.json: 7956b551d927a8877557b25baa3c6f08ba42ea2f7017a395a4b1cbc42662761e
+  catalog-reapply.log: 0e955fe326c7cf47ebdcbe42f4bb6c0dcf9da89eae01ed2d8b0e1fa373f602d4
+  closure.json: 5fad924369c0cf172c423c70f368bd96d5bebffeb4d85b34dc8301fa21c78200
+  closure.py: 6c26665695e789b2e11abc2f437a5fddf6795241533876ddea25453b7940eeb9
+  coercion-baseline-source.json: 16d60e8c1d650795620544bc694c03ca22e1e2193cf23298eaaaf14b95a476a9
+  coercion-baseline-state.json: e341893d6feb15d20147c90cda2076292394a86b6501a50ea19a6f056563e612
+  coercion-baseline.log: bdac8dbc3ffeac2028131428ed73160169c8e257c0e91510736b0122571af8a0
+  coercion-baseline.xml: 75a0c0225186214cf6f49078a0e943582d14a861f430e59b107cd3a3763fba8a
+  control.py: c5644e1ca42f4c646282f3cecdcba841b31be6317bb2eae84bb21f673b12706c
+  initial-schema-source.json: c70c43b7b18afc6f1669b43c8bd47105bfd222ee08b5dbdd8f92e809c03bca4b
+  initial-schema-state.json: 84192826d0ac1bfabced8a6c6ea836a56ab334fceeae74096fb6c8cd58b1fb80
+  initial-schema.log: 264fdead481cbcd27026d5c93f6f981fc91b693f2402518440a857db133c6cdb
+  initial-schema.xml: f469dfcaa26f239ce8719daaf27418657b1ed5a7cfea4b258a4759c5b6205843
+  initial-upgrade-source.json: 4e5bdca63fb2af023dc197061db39a25622df977d7d2e2be689dadb16c677f62
+  initial-upgrade-state.json: 3554d058aacb0ff4622298e9191faacf657242390e7b02b579f60b20e03549b3
+  initial-upgrade.log: ddbccb5d0965cc4c181595a2c6bd724cd54409a23f5c2cbe648adf67cdc776a3
+  integration-source.json: ceac34498fd17c5469487ad64f23121a97dab606913abbd4ff23c6de511b19e7
+  integration-state.json: c32b07c419404843dcd9e5bc160fba1e2ce40e2e8a9a0ec8bfa21fed9739e970
+  integration.log: effa862b639179af97ccb63c18ad91bfd55a32be36ca022a0a44e0d29d69e0d6
+  integration.xml: a09b264e59b07b6e1a7c6c561b26629df7e853731320d4bcc2caf46873ed5609
+  migrations-source.json: ceac34498fd17c5469487ad64f23121a97dab606913abbd4ff23c6de511b19e7
+  migrations-state.json: 2299f1bdaf297f3717873ee0e6fb38b38401ce2fec7c67695a72ffd80094a157
+  migrations.log: 3473910bf3bc9e6d4b294038884b7d5ca006a80e78776b13534c2146478f5ba4
+  pre-process-label-admission-source.json: 2e08271454502c193217fda2e2963f4a8cf58b2a463de0708382bdae21fedb01
+  pre-process-label-admission-state.json: 9ddac26f07b386ca882ae31939cf5635a8ece4691c235fc840323711ac5b18b2
+  pre-process-label-admission.log: 4764f56eee7af54f753fcb8a3d436f45e5415554beed4fac884562801b34da36
+  pre-process-label-admission.xml: b66bec8d645536130746030df78dca81b4eb04e5ccfcbff09bdcc693ab7f6334
+  pre-validation-admission-source.json: 06aa5505fef543ff74af69f685bc12436363541597194e296dde1cebb7f711e3
+  pre-validation-admission-state.json: fc806b542d0f05433acabc75c65d02ca222cba1ab48596ccc0d763c21c759cbf
+  pre-validation-admission-witnesses/test_process_loss_on_either_si0/body.csv: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  pre-validation-admission-witnesses/test_process_loss_on_either_si0/checkpoint.json: b8446171577f0eac96415f639fe05de6477d56ae39201e45b5247b8498f0733c
+  pre-validation-admission-witnesses/test_process_loss_on_either_si0/payload.json: 699609453c3271b08de2fc5834502fba4a951805dae03409b2d318f855bf7a4f
+  pre-validation-admission-witnesses/test_process_loss_on_either_si0/worker.log: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  pre-validation-admission-witnesses/test_process_loss_on_either_si1/body.csv: 19e73bfe22ebc5eed530a9825238081f22c8182616798f0d7b61acc3eeae1712
+  pre-validation-admission-witnesses/test_process_loss_on_either_si1/checkpoint.json: ff16fa747454c357d13062e380af9e6593699338a2cc9d4259bcd9a245fe117f
+  pre-validation-admission-witnesses/test_process_loss_on_either_si1/payload.json: 699609453c3271b08de2fc5834502fba4a951805dae03409b2d318f855bf7a4f
+  pre-validation-admission-witnesses/test_process_loss_on_either_si1/worker.log: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  pre-validation-admission.log: 42f4dd031a00564e71ca999d5d8f9cdb67ee51bec93da9d8f3cf65be4fce2c2e
+  pre-validation-admission.xml: 2023e659dd090864d448c1ff276a54c483f66a36b3ef6a91e6ed6b2a36b34bd3
+  pre-validation-campaign-state.json: 591eec55fb85b0b7fc3e9512b725eaa31013c9764b7bc7e8ff4e48ad3ad6bbb1
+  pre-validation-campaign.log: f19bd00ed3c814b6d55d82283f4454dc9ce965fca2ff294a515c4909af05c806
+  pre-validation-integration-source.json: 06aa5505fef543ff74af69f685bc12436363541597194e296dde1cebb7f711e3
+  pre-validation-integration-state.json: 4fddd67aa1744c6219b44a7faaabf5c0c3036bfd75e3abcd89f070b63c8f80bc
+  pre-validation-integration.log: 33eda9bec1347690c2e5d14f420d90547030547deec1fb98cd9341fd6f426ab9
+  pre-validation-integration.xml: c4e57a358070d9e1237b9ed7528c7df561936ad2a428cf9df325bbbfe7673864
+  pre-validation-migrations-source.json: 06aa5505fef543ff74af69f685bc12436363541597194e296dde1cebb7f711e3
+  pre-validation-migrations-state.json: 3adf1de959940daa2e3dd96a0264c44e95fa34680aba756ad55576e2fc644466
+  pre-validation-migrations.log: a308671c2e0b7d6679320113b47f12bb0e9014a306f7dd07542ed36f4262c1cb
+  pre-validation-schema-source.json: 06aa5505fef543ff74af69f685bc12436363541597194e296dde1cebb7f711e3
+  pre-validation-schema-state.json: a36830b30dd994d0892672b581e65f5d94bbb2ddbd3ac4c801eaf03f1eeabe0a
+  pre-validation-schema.log: 4864439cfd89c43a6311e89a80daf3866c7bc6bb09ea01a966996e2b611113ba
+  pre-validation-schema.xml: a80d7ad41630af2d409273df1f3d449a3ef7ee3e8105b39695b3c1b43e37d593
+  preflight.json: bae60ab97ef3fedd64aad8bb34769f150f01f4784d62a6cd9995900517f36c9c
+  preflight.py: 96bb61e55b583994215a3e4b1fa4fb0c10a0c975c02d3bc483477ff55e615ca1
+  preliminary-admission-source.json: 54bebf6d8b1e42560447dfe687081f897db7e9e3db66513c25118ed82ad1d6de
+  preliminary-admission-state.json: 14425fbccf1c305c668f3c4283b565cc7f083cb69efaa3e80c165cea9303348d
+  preliminary-admission.log: 1a341813b59f304f32888ec6aef1de2687b560a3a9e0bb9ce0e7e8be170cae2b
+  preliminary-admission.xml: fbf0cc52f666c8596c3c83f314bee9778f89e3e64220cf566471c1e1dd634a65
+  prior-artifacts.json: 843ae5a425d5a34f7547b52794396e4db07aa9cc004a931dbb83da7e428eadbf
+  reapply-source.json: 06aa5505fef543ff74af69f685bc12436363541597194e296dde1cebb7f711e3
+  reapply-state.json: a3a98b290e1dbe3b7ca949418bedf5f6b0a7c39150f0bebe9fba8e3e8c2917f2
+  reapply.log: 0e955fe326c7cf47ebdcbe42f4bb6c0dcf9da89eae01ed2d8b0e1fa373f602d4
+  report.py: 4e957cbb7179b52bd9ae7b8fb262783324b03619f0a3a370ebaec25bed20c82c
+  run.py: f24a148d2eaeaac0792c98c58cf17514dca502c2d3d16ddf1e94c23da7acfedb
+  schema-source.json: ceac34498fd17c5469487ad64f23121a97dab606913abbd4ff23c6de511b19e7
+  schema-state.json: ccb8de46f9d11378f464dfaa1286c0b22d2bc9b3df9304ecddf0f036683a87ad
+  schema.log: e488665a5348d6e0e14e138c42c6527b7c44a7ea361b3d719da029a2f75a0228
+  schema.xml: ff6b9970690e906a2fa44316e15c0e64d75bc707f205a808631beed49c101882
+  validation-baseline-source.json: 6d49a055f484ac094e45a48fc1720038879642826257d7fb5a8bcefbc69a3c71
+  validation-baseline-state.json: c9e13b213868cbce356b03066beba65d8a2f4f809ac7ac659b0510f8e7b9bcc3
+  validation-baseline.log: 0beea93e4fc0e3e13a503ce5223db0b4748482d5df27d58aca11999232b70bac
+  validation-baseline.xml: 24ce2636cb5733ffccb83e490da020e56119007fe9fea1051f3eaa6dea872caa

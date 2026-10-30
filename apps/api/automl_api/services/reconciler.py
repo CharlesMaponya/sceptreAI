@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 import uuid
 from collections.abc import Callable
@@ -9,9 +10,9 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from kubernetes.client import ApiException
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
-from urllib3.exceptions import HTTPError
+from sqlalchemy.orm.attributes import set_committed_value
 
 from automl_api.core.config import get_settings
 from automl_api.core.redaction import redact_text
@@ -216,6 +217,9 @@ def reconcile_entry(
     if entry is None:
         return
     if entry.topic in {
+        "dataset.buffered.upload.v1",
+        "ray.training.cancel",
+        "ray.dataset.cancel",
         "ray.training.submit",
         "ray.dataset.split.submit",
         "ray.dataset.prepare.submit",
@@ -223,6 +227,8 @@ def reconcile_entry(
         "run.delete",
         "upload.reconcile.v2",
         "kubernetes.analysis.legacy.cancel",
+        "kubernetes.analysis.cancel",
+        "kubernetes.analysis.submit",
         "registry.reconcile",
         "deployment.reconcile",
         "deployment.reconcile.v3",
@@ -236,16 +242,6 @@ def reconcile_entry(
             from automl_api.services.profiling_jobs import run_local_profile
 
             run_local_profile(db, entry, worker_id)
-        elif entry.topic == "ray.dataset.cancel":
-            cancel_dataset_ray_job(db, entry, k8s or KubernetesTrainingClient())
-        elif entry.topic == "ray.training.cancel":
-            cancel_training_ray_job(db, entry, k8s or KubernetesTrainingClient())
-        elif entry.topic == "kubernetes.analysis.submit":
-            if submit_analysis_job(db, entry, k8s or KubernetesTrainingClient()) is None:
-                defer_outbox(db, entry, worker_id=worker_id)
-                return
-        elif entry.topic == "kubernetes.analysis.cancel":
-            cancel_analysis_job(db, entry, k8s or KubernetesTrainingClient())
         elif entry.topic == "upload.reconcile":
             reconcile_upload_session(db, entry)
         elif entry.topic == "governance.reconcile":
@@ -293,135 +289,20 @@ def reconcile_entry(
         db.flush()
 
 
-def submit_analysis_job(
-    db: Session, entry: OutboxEntry, k8s: KubernetesTrainingClient
-) -> ModelRun | None:
-    from automl_api.services.training import _lock_training_admission
-
-    _lock_training_admission(db)
-    manifest = dict(entry.payload["manifest"])
-    identity = (manifest.get("metadata") or {}).get("labels", {}).get("automl.platform/attempt-id")
-    attempt = None
-    if identity:
-        attempt = db.scalar(
-            select(WorkflowAttempt)
-            .where(WorkflowAttempt.id == uuid.UUID(identity))
-            .with_for_update()
-            .execution_options(populate_existing=True)
-        )
-        env = {
-            item["name"]: item.get("value")
-            for item in manifest["spec"]["template"]["spec"]["containers"][0]["env"]
-        }
-        if (
-            attempt is None
-            or attempt.project_id != entry.project_id
-            or attempt.stage != WorkflowStage.TRAINING_RUN
-            or str(attempt.model_run_id) != str(entry.payload["run_id"])
-            or attempt.logical_key != f"analysis-run:{attempt.model_run_id}"
-            or env.get("AUTOML_FENCING_TOKEN") != attempt.fencing_token
-        ):
-            raise StaleFence("The analysis submission scope or fence is stale.")
-        if attempt.status not in {AttemptStatus.PENDING, AttemptStatus.CLAIMED}:
-            return db.get(ModelRun, attempt.model_run_id)
-    elif get_settings().environment in {"production", "staging"}:
-        return _migrate_first_analysis_delivery(db, entry, k8s)
-    run = db.scalar(
-        select(ModelRun)
-        .where(
-            ModelRun.project_id == entry.project_id,
-            ModelRun.id == uuid.UUID(str(entry.payload["run_id"])),
-        )
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
-    if run is None:
-        raise LookupError("The tracked analysis run no longer exists.")
-    if run.tags.get("desired_state") == "kubernetes_submitted":
-        return run
-    if run.status in {RunStatus.CANCELLED, RunStatus.FAILED, RunStatus.SUCCEEDED}:
-        return run
-    if attempt is not None and (
-        run.run_kind not in {RunKind.VALIDATION, RunKind.EXPLAINABILITY, RunKind.DRIFT}
-        or str(run.tags.get("workflow_attempt_id", "")) != str(attempt.id)
-        or manifest["metadata"].get("namespace") != run.k8s_namespace
-    ):
-        raise StaleFence("The analysis submission no longer owns this run.")
-    capacity = k8s.capacity_snapshot().capacity
-    # Include submitted rows whose pod has not appeared yet. The admission lock
-    # prevents two reconcilers from both taking the last available slot.
-    submitted = int(
-        db.scalar(
-            select(func.count(ModelRun.id)).where(
-                ModelRun.id != run.id,
-                ModelRun.k8s_namespace == k8s.settings.training_namespace,
-                ModelRun.run_kind.in_({RunKind.EXPLAINABILITY, RunKind.VALIDATION, RunKind.DRIFT}),
-                ModelRun.status.in_({RunStatus.QUEUED, RunStatus.RUNNING}),
-                ModelRun.tags["desired_state"].astext == "kubernetes_submitted",
-            )
-        )
-        or 0
-    )
-    if (
-        not capacity.connected
-        or max(capacity.active_training_jobs, submitted) >= k8s.settings.max_concurrent_jobs
-    ):
-        run.tags = {**run.tags, "waiting_for_capacity": True}
-        db.flush()
-        return None
-    if attempt is not None:
-        if attempt.status == AttemptStatus.PENDING:
-            transition_attempt(attempt, AttemptStatus.CLAIMED, fencing_token=attempt.fencing_token)
-        k8s.ensure_service_account(attempt.workload_identity, namespace=run.k8s_namespace)
-    created = k8s.create_job(manifest)
-    if attempt is not None:
-        metadata = created.metadata
-        if (
-            not isinstance(metadata.uid, str)
-            or not metadata.uid
-            or metadata.namespace != run.k8s_namespace
-            or metadata.name != manifest["metadata"]["name"]
-        ):
-            raise StaleFence("The submitted analysis Job identity is incomplete.")
-        payload = {
-            "namespace": metadata.namespace,
-            "job_name": metadata.name,
-            "uid": metadata.uid,
-            "outbox_id": str(entry.id),
-            "manifest_sha256": canonical_request_hash(manifest),
-        }
-        sequence = (
-            db.scalar(
-                select(func.max(WorkflowEvent.sequence)).where(
-                    WorkflowEvent.attempt_id == attempt.id
-                )
-            )
-            or 0
-        )
-        db.add(
-            WorkflowEvent(
-                project_id=attempt.project_id,
-                attempt_id=attempt.id,
-                sequence=sequence + 1,
-                event_key="analysis.submitted",
-                event_type="analysis.submitted",
-                payload=payload,
-                result_digest=canonical_request_hash(payload),
-            )
-        )
-        transition_attempt(attempt, AttemptStatus.SUBMITTED, fencing_token=attempt.fencing_token)
-    run.status = RunStatus.QUEUED
-    run.tags = {**run.tags, "desired_state": "kubernetes_submitted", "waiting_for_capacity": False}
-    db.flush()
-    return run
+def submit_analysis_job(db, entry, k8s):
+    raise RuntimeError("Analysis submission requires the factory-owned dispatcher.")
 
 
 def _migrate_first_analysis_delivery(db, entry, k8s):
+    raise RuntimeError("Legacy analysis requires the factory-owned dispatcher.")
+
+
+def prepare_legacy_analysis_delivery(db, entry, *, first_delivery=True):
     now = datetime.now(UTC)
     command = db.get(WorkflowCommand, entry.command_id, populate_existing=True)
     if (
         entry.aggregate_type != "model_run"
-        or entry.delivery_attempts != 1
+        or (first_delivery and entry.delivery_attempts != 1)
         or entry.status != OutboxStatus.CLAIMED
         or not entry.lease_owner
         or entry.lease_expires_at is None
@@ -453,6 +334,20 @@ def _migrate_first_analysis_delivery(db, entry, k8s):
         or not run.k8s_job_name
     ):
         raise StaleFence("Legacy analysis is not an unsubmitted, unmoved pending scope.")
+    if (
+        db.scalar(
+            select(WorkflowAttempt.id)
+            .where(
+                WorkflowAttempt.project_id == run.project_id,
+                WorkflowAttempt.logical_key == f"analysis-run:{run.id}",
+            )
+            .limit(1)
+        )
+        is not None
+    ):
+        raise StaleFence(
+            "Legacy analysis already has attempt history; controlled replay is required."
+        )
     legacy = entry.payload["manifest"]
     meta = legacy.get("metadata") or {}
     labels = meta.get("labels") or {}
@@ -469,29 +364,11 @@ def _migrate_first_analysis_delivery(db, entry, k8s):
         != str(run.id)
     ):
         raise StaleFence("Legacy analysis manifest identity is ambiguous.")
-    try:
-        k8s.batch.read_namespaced_job(
-            name=run.k8s_job_name, namespace=run.k8s_namespace, _request_timeout=5
-        )
-    except (ApiException, HTTPError) as exc:
-        if not isinstance(exc, ApiException) or exc.status != 404:
-            entry.last_error = redact_text(f"Legacy analysis preflight unavailable: {exc}")[:2000]
-            db.flush()
-            return None
-    else:
-        raise StaleFence("A legacy analysis Job still exists; drain it before controlled replay.")
-    try:
-        pods = k8s.core.list_namespaced_pod(
-            namespace=run.k8s_namespace,
-            label_selector=f"automl.platform/run-id={run.id}",
-            _request_timeout=5,
-        ).items
-    except (ApiException, HTTPError) as exc:
-        entry.last_error = redact_text(f"Legacy analysis preflight unavailable: {exc}")[:2000]
-        db.flush()
-        return None
-    if pods:
-        raise StaleFence("Legacy analysis Pods remain; drain them before controlled replay.")
+    return run
+
+
+def publish_legacy_analysis_delivery(db, entry, run, k8s, *, migration_fact=None):
+    legacy = entry.payload["manifest"]
     attempt = WorkflowAttempt(
         id=uuid.uuid4(),
         project_id=run.project_id,
@@ -521,6 +398,8 @@ def _migrate_first_analysis_delivery(db, entry, k8s):
         "legacy_job_name": run.k8s_job_name,
         "namespace": run.k8s_namespace,
     }
+    if migration_fact is not None:
+        evidence["migration_fact"] = migration_fact
     db.add(
         WorkflowEvent(
             project_id=run.project_id,
@@ -988,123 +867,12 @@ def publish_ray_submission(db, entry, plan, created):
     return attempt
 
 
-def cancel_dataset_ray_job(
-    db: Session, entry: OutboxEntry, k8s: KubernetesTrainingClient
-) -> WorkflowAttempt:
-    attempt = db.scalar(
-        select(WorkflowAttempt)
-        .where(WorkflowAttempt.id == uuid.UUID(str(entry.payload["attempt_id"])))
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
-    if (
-        attempt is None
-        or attempt.stage not in {WorkflowStage.SPLITTER, WorkflowStage.PREPARATION}
-        or attempt.project_id != entry.project_id
-        or attempt.fencing_token != str(entry.payload["fencing_token"])
-        or entry.aggregate_type != "profiling_job"
-        or attempt.status
-        not in {
-            AttemptStatus.SUPERSEDED,
-            AttemptStatus.FAILED,
-            AttemptStatus.CANCELLED,
-        }
-    ):
-        raise StaleFence("Dataset cancellation scope, status or fence is stale.")
-    profile = _profile_job_for_attempt(db, attempt)
-    namespace = entry.payload.get("namespace")
-    if profile.id != entry.aggregate_id or not isinstance(namespace, str) or not namespace:
-        raise StaleFence("Dataset cancellation profile or namespace is missing.")
-    if attempt.ray_job_name:
-        try:
-            job = k8s.ray_job(attempt.ray_job_name, namespace=namespace)
-        except ApiException as exc:
-            if exc.status != 404:
-                raise
-        else:
-            metadata = job.get("metadata") or {}
-            expected = {
-                "automl.platform/project-id": str(attempt.project_id),
-                "automl.platform/profile-job-id": str(profile.id),
-                "automl.platform/attempt-id": str(attempt.id),
-                "automl.platform/workflow-stage": attempt.stage.value,
-                "automl.platform/generation": str(attempt.generation),
-            }
-            if (
-                not metadata.get("uid")
-                or metadata.get("namespace") != namespace
-                or any((metadata.get("labels") or {}).get(k) != v for k, v in expected.items())
-            ):
-                raise StaleFence("Dataset cancellation RayJob identity differs from its attempt.")
-            k8s.delete_ray_job(attempt.ray_job_name, namespace=namespace, uid=metadata["uid"])
-    attempt.cleanup_state = "completed"
-    db.flush()
-    return attempt
+def cancel_dataset_ray_job(db, entry, k8s):
+    raise RuntimeError("Ray cancellation requires the factory-owned dispatcher.")
 
 
-def cancel_training_ray_job(
-    db: Session, entry: OutboxEntry, k8s: KubernetesTrainingClient
-) -> WorkflowAttempt:
-    attempt = db.scalar(
-        select(WorkflowAttempt)
-        .where(WorkflowAttempt.id == uuid.UUID(str(entry.payload["attempt_id"])))
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
-    if attempt is None:
-        raise LookupError("The tracked Ray attempt no longer exists.")
-    if (
-        attempt.stage != WorkflowStage.TRAINING_RUN
-        or attempt.fencing_token != str(entry.payload["fencing_token"])
-        or attempt.project_id != entry.project_id
-        or entry.aggregate_type != "model_run"
-        or attempt.model_run_id != entry.aggregate_id
-    ):
-        raise StaleFence("The Ray cancellation scope or fence is stale.")
-    if attempt.ray_job_name:
-        run = db.get(ModelRun, attempt.model_run_id, populate_existing=True)
-        if run is None or run.project_id != attempt.project_id or not run.k8s_namespace:
-            raise StaleFence("The Ray cancellation run namespace is missing or inconsistent.")
-        try:
-            job = k8s.ray_job(attempt.ray_job_name, namespace=run.k8s_namespace)
-        except ApiException as exc:
-            if exc.status != 404:
-                raise
-        else:
-            metadata = job.get("metadata") if isinstance(job, dict) else None
-            metadata = metadata if isinstance(metadata, dict) else {}
-            labels = metadata.get("labels")
-            uid = metadata.get("uid")
-            expected = {
-                "automl.platform/project-id": str(attempt.project_id),
-                "automl.platform/run-id": str(run.id),
-                "automl.platform/attempt-id": str(attempt.id),
-                "automl.platform/generation": str(attempt.generation),
-            }
-            if (
-                not isinstance(uid, str)
-                or not uid.strip()
-                or metadata.get("name") != attempt.ray_job_name
-                or metadata.get("namespace") != run.k8s_namespace
-                or not isinstance(labels, dict)
-                or any(labels.get(key) != value for key, value in expected.items())
-            ):
-                raise StaleFence("Training cancellation RayJob identity differs from its attempt.")
-            k8s.delete_ray_job(attempt.ray_job_name, namespace=run.k8s_namespace, uid=uid)
-    if attempt.status not in {
-        AttemptStatus.SUCCEEDED,
-        AttemptStatus.FAILED,
-        AttemptStatus.CANCELLED,
-        AttemptStatus.SUPERSEDED,
-    }:
-        transition_attempt(
-            attempt,
-            AttemptStatus.CANCELLED,
-            fencing_token=str(entry.payload["fencing_token"]),
-            terminal_reason="cancelled by durable command",
-        )
-    db.flush()
-    return attempt
+def cancel_training_ray_job(db, entry, k8s):
+    raise RuntimeError("Ray cancellation requires the factory-owned dispatcher.")
 
 
 @dataclass(frozen=True)
@@ -1114,9 +882,10 @@ class JobObservation:
     job_name: str
     namespace: str | None
     result: Any | None = None
+    uid: str | None = None
 
 
-def _job_observation(attempt, resource, model, job_name, namespace, *, evidence=None):
+def _job_observation(attempt, resource, model, job_name, namespace, *, evidence=None, uid=None):
     return JobObservation(
         attempt_id=attempt.id,
         snapshot_digest=canonical_request_hash(
@@ -1133,20 +902,88 @@ def _job_observation(attempt, resource, model, job_name, namespace, *, evidence=
         ),
         job_name=job_name,
         namespace=namespace,
+        uid=uid,
     )
 
 
+def _ray_observation_source(db, attempt, resource, namespace):
+    from automl_api.services import ray_submission
+
+    identity, source = _ray_submission(db, attempt)
+    command = db.get(WorkflowCommand, source.command_id, populate_existing=True)
+    if (
+        identity["namespace"] != namespace
+        or command is None
+        or command.project_id != attempt.project_id
+        or command.resource_id != resource.id
+        or command.resource_type != source.aggregate_type
+        or command.operation
+        != ("training.launch" if attempt.stage == WorkflowStage.TRAINING_RUN else "dataset.profile")
+        or command.request_hash != canonical_request_hash(command.request_payload)
+    ):
+        raise StaleFence("Original Ray observation command or namespace changed.")
+    original = ray_submission._event(db, attempt, ray_submission.INTENT)
+    if original is not None:
+        created = ray_submission._created(db, attempt, original.payload)
+        if created is None:
+            raise StaleFence("Original Ray observation has no creation fact.")
+        ray_submission._published(db, attempt, original.payload, created)
+        version = db.get(DatasetVersion, resource.dataset_version_id, populate_existing=True)
+        if version is None:
+            raise StaleFence("Original Ray observation dataset disappeared.")
+        intent = original.payload
+        plan = RaySubmissionPlan(
+            attempt=attempt,
+            manifest={"metadata": {"name": intent["name"], "namespace": intent["namespace"]}},
+            fingerprints={key: intent[key] for key in ("request_sha256", "manifest_sha256")},
+        )
+        if ray_submission._intent((source, command, attempt, resource, version), plan) != intent:
+            raise StaleFence("Original Ray observation immutable source changed.")
+    elif (
+        db.scalar(
+            select(WorkflowEvent.id)
+            .where(
+                WorkflowEvent.attempt_id == attempt.id,
+                WorkflowEvent.event_key.in_(
+                    [ray_submission.CREATE_START, ray_submission.CREATE_RESULT]
+                ),
+            )
+            .limit(1)
+        )
+        is not None
+    ):
+        raise StaleFence("Original Ray observation lost its creation intent.")
+    return identity, {
+        "submission": identity,
+        "source": {
+            column.key: getattr(source, column.key) for column in OutboxEntry.__table__.columns
+        },
+        "command": {
+            column.key: getattr(command, column.key) for column in WorkflowCommand.__table__.columns
+        },
+        "creation": original.payload if original is not None else None,
+    }
+
+
 def inspect_ray_observation(k8s, request: JobObservation) -> JobObservation:
+    if not isinstance(request.uid, str) or not request.uid.strip():
+        raise StaleFence("Ray observation requires its original native UID.")
     try:
         result = k8s.ray_job(request.job_name, namespace=request.namespace)
     except ApiException as exc:
         if exc.status != 404:
             raise
         result = None
+    if result is not None and (
+        not isinstance(result, dict)
+        or not isinstance(result.get("metadata"), dict)
+        or result["metadata"].get("uid") != request.uid
+    ):
+        raise StaleFence("Ray observation returned a replacement of its original UID.")
     return replace(request, result=deepcopy(result))
 
 
-def _verify_ray_observation(job, attempt, resource_id, namespace):
+def _verify_ray_observation(job, attempt, resource_id, namespace, original_uid):
     metadata = job.get("metadata") if isinstance(job, dict) else None
     metadata = metadata if isinstance(metadata, dict) else {}
     labels, uid = metadata.get("labels"), metadata.get("uid")
@@ -1175,6 +1012,7 @@ def _verify_ray_observation(job, attempt, resource_id, namespace):
         or metadata.get("name") != attempt.ray_job_name
         or not isinstance(uid, str)
         or not uid.strip()
+        or uid != original_uid
         or not isinstance(labels, dict)
         or any(labels.get(key) != value for key, value in expected.items())
         or not isinstance(spec, dict)
@@ -1203,6 +1041,24 @@ def _verify_ray_observation(job, attempt, resource_id, namespace):
         raise StaleFence("Ray submitter identity is missing or malformed.") from exc
 
 
+def _record_observer_scan(db, attempts, *, model=WorkflowAttempt):
+    if not attempts:
+        return
+    # Scanning must not renew worker leases or restart the native startup grace.
+    observed = dict(
+        db.execute(
+            update(model)
+            .where(model.id.in_([row.id for row in attempts]))
+            .values(last_observed_at=func.clock_timestamp(), updated_at=model.updated_at)
+            .returning(model.id, model.last_observed_at)
+            .execution_options(synchronize_session=False)
+        ).all()
+    )
+    for attempt in attempts:
+        if attempt.id in observed:
+            set_committed_value(attempt, "last_observed_at", observed[attempt.id])
+
+
 def observe_training_ray_jobs(
     db: Session,
     *,
@@ -1220,12 +1076,17 @@ def observe_training_ray_jobs(
                 WorkflowAttempt.ray_job_name.is_not(None),
             )
             .where(WorkflowAttempt.id == attempt_id if attempt_id is not None else True)
-            .order_by(WorkflowAttempt.updated_at, WorkflowAttempt.id)
+            .order_by(
+                func.coalesce(WorkflowAttempt.last_observed_at, WorkflowAttempt.updated_at),
+                WorkflowAttempt.id,
+            )
             .limit(limit)
             .with_for_update(skip_locked=True)
             .execution_options(populate_existing=True)
         )
     )
+    if attempt_id is None:
+        _record_observer_scan(db, attempts)
     for attempt in attempts:
         run = db.scalar(
             select(ModelRun)
@@ -1282,12 +1143,22 @@ def observe_training_ray_jobs(
             )
             _replace_lost_ray_attempt(db, attempt, reason="Training parent lease expired")
             continue
+        try:
+            identity, evidence = _ray_observation_source(db, attempt, run, run.k8s_namespace)
+        except (StaleFence, ValueError, TypeError, KeyError) as exc:
+            logging.getLogger(__name__).warning(
+                "Ray observation evidence unavailable",
+                extra={"attempt_id": str(attempt.id), "error_type": type(exc).__name__},
+            )
+            continue
         request = _job_observation(
             attempt,
             run,
             ModelRun,
-            str(attempt.ray_job_name),
-            getattr(run, "k8s_namespace", None),
+            identity["job_name"],
+            identity["namespace"],
+            evidence=evidence,
+            uid=identity["uid"],
         )
         observed = read(request)
         if observed is None or replace(observed, result=None) != request:
@@ -1297,7 +1168,7 @@ def observe_training_ray_jobs(
             _replace_lost_ray_attempt(db, attempt, reason="RayJob disappeared before terminal CAS")
             continue
 
-        _verify_ray_observation(ray_job, attempt, run.id, request.namespace)
+        _verify_ray_observation(ray_job, attempt, run.id, request.namespace, identity["uid"])
         status = ray_job.get("status") or {}
         cluster_name = status.get("rayClusterName")
         submission_id = status.get("jobId")
@@ -1375,6 +1246,7 @@ def _analysis_submission(db, attempt):
         event is None
         or event.project_id != attempt.project_id
         or event.event_type != "analysis.submitted"
+        or not isinstance(event.payload, dict)
         or event.result_digest != canonical_request_hash(event.payload)
         or any(
             not isinstance(event.payload.get(k), str) or not event.payload[k]
@@ -1389,10 +1261,14 @@ def _analysis_submission(db, attempt):
         or source.topic != "kubernetes.analysis.submit"
         or source.aggregate_type != "model_run"
         or source.aggregate_id != attempt.model_run_id
+        or not isinstance(source.payload, dict)
         or canonical_request_hash(source.payload.get("manifest", {}))
         != event.payload["manifest_sha256"]
     ):
         raise StaleFence("Analysis source manifest no longer matches its submission evidence.")
+    from automl_api.services.analysis_submission import verify_published_identity
+
+    verify_published_identity(db, attempt, event.payload, source)
     return event.payload, source
 
 
@@ -1416,52 +1292,55 @@ def _queue_analysis_cleanup(db, attempt, identity, source):
     attempt.cleanup_state = "queued"
 
 
-def cancel_analysis_job(db, entry, k8s):
-    attempt = db.scalar(
-        select(WorkflowAttempt)
-        .where(WorkflowAttempt.id == uuid.UUID(entry.payload["attempt_id"]))
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
+def _analysis_observation_source(db, attempt, run):
     if (
-        attempt is None
-        or attempt.stage != WorkflowStage.TRAINING_RUN
-        or attempt.logical_key != f"analysis-run:{attempt.model_run_id}"
-        or attempt.project_id != entry.project_id
-        or entry.aggregate_type != "model_run"
-        or attempt.model_run_id != entry.aggregate_id
-        or attempt.fencing_token != entry.payload["fencing_token"]
-        or attempt.status
-        not in {
-            AttemptStatus.SUPERSEDED,
-            AttemptStatus.FAILED,
-            AttemptStatus.CANCELLED,
-            AttemptStatus.SUCCEEDED,
-        }
+        run is None
+        or run.project_id != attempt.project_id
+        or run.run_kind not in {RunKind.VALIDATION, RunKind.EXPLAINABILITY, RunKind.DRIFT}
+        or not isinstance(run.tags, dict)
     ):
-        raise StaleFence("Analysis cleanup scope, status or fence is stale.")
-    identity, _ = _analysis_submission(db, attempt)
-    if any(entry.payload.get(k) != identity[k] for k in ("namespace", "job_name", "uid")):
-        raise StaleFence("Analysis cleanup identity differs from its recorded Job.")
-    try:
-        job = k8s.batch.read_namespaced_job(
-            name=identity["job_name"], namespace=identity["namespace"], _request_timeout=5
+        raise StaleFence("Analysis observer run scope changed.")
+    if (
+        attempt.status in {AttemptStatus.SUBMITTED, AttemptStatus.RUNNING}
+        and str(run.tags.get("workflow_attempt_id", "")) == str(attempt.id)
+        and run.status not in {RunStatus.CANCELLED, RunStatus.FAILED}
+        and (
+            run.tags.get("analysis_result_receipt") is not None or run.status == RunStatus.SUCCEEDED
         )
-    except ApiException as exc:
-        if exc.status != 404:
-            raise
-    else:
-        _verify_analysis_job(job, attempt, identity)
-        try:
-            k8s.delete_job(
-                identity["job_name"], namespace=identity["namespace"], uid=identity["uid"]
-            )
-        except ApiException as exc:
-            if exc.status != 404:
-                raise
-    attempt.cleanup_state = "completed"
-    db.flush()
-    return attempt
+    ):
+        # Reports and CAS commit together. Never rerun an inconsistent committed scope.
+        raise StaleFence("Analysis receipt and terminal attempt state are inconsistent.")
+    identity, source = _analysis_submission(db, attempt)
+    command = db.get(WorkflowCommand, source.command_id, populate_existing=True)
+    if (
+        identity["namespace"] != run.k8s_namespace
+        or source.payload.get("run_id") != str(run.id)
+        or command is None
+        or command.project_id != attempt.project_id
+        or command.resource_id != run.id
+        or command.resource_type not in {source.aggregate_type, command.operation}
+        or command.operation != f"{run.run_kind.value}.launch"
+        or command.request_hash != canonical_request_hash(command.request_payload)
+    ):
+        raise StaleFence("Original analysis observation command or namespace changed.")
+    return (
+        identity,
+        source,
+        {
+            "submission": identity,
+            "source": {
+                column.key: getattr(source, column.key) for column in OutboxEntry.__table__.columns
+            },
+            "command": {
+                column.key: getattr(command, column.key)
+                for column in WorkflowCommand.__table__.columns
+            },
+        },
+    )
+
+
+def cancel_analysis_job(db, entry, k8s):
+    raise RuntimeError("Analysis cleanup requires the factory-owned dispatcher.")
 
 
 def _verify_analysis_job(job, attempt, identity):
@@ -1583,26 +1462,27 @@ def observe_analysis_attempts(
                 ),
             )
             .where(WorkflowAttempt.id == attempt_id if attempt_id is not None else True)
-            .order_by(WorkflowAttempt.updated_at, WorkflowAttempt.id)
+            .order_by(
+                func.coalesce(WorkflowAttempt.last_observed_at, WorkflowAttempt.updated_at),
+                WorkflowAttempt.id,
+            )
             .limit(limit)
             .with_for_update(of=WorkflowAttempt, skip_locked=True)
             .execution_options(populate_existing=True)
         )
     )
+    if attempt_id is None:
+        _record_observer_scan(db, attempts)
     for attempt in attempts:
         run = db.get(ModelRun, attempt.model_run_id, with_for_update=True, populate_existing=True)
-        if (
-            run is None
-            or run.project_id != attempt.project_id
-            or run.run_kind
-            not in {
-                RunKind.VALIDATION,
-                RunKind.EXPLAINABILITY,
-                RunKind.DRIFT,
-            }
-        ):
-            raise StaleFence("Analysis observer run scope changed.")
-        identity, source = _analysis_submission(db, attempt)
+        try:
+            identity, source, evidence = _analysis_observation_source(db, attempt, run)
+        except (StaleFence, ValueError, TypeError, KeyError) as exc:
+            logging.getLogger(__name__).warning(
+                "Analysis observation evidence unavailable",
+                extra={"attempt_id": str(attempt.id), "error_type": type(exc).__name__},
+            )
+            continue
         if attempt.status in {
             AttemptStatus.SUCCEEDED,
             AttemptStatus.FAILED,
@@ -1624,10 +1504,6 @@ def observe_analysis_attempts(
             )
             _queue_analysis_cleanup(db, attempt, identity, source)
             continue
-        receipt = (run.tags or {}).get("analysis_result_receipt")
-        if receipt is not None or run.status == RunStatus.SUCCEEDED:
-            # Reports and CAS commit together. Never rerun an inconsistent committed scope.
-            raise StaleFence("Analysis receipt and terminal attempt state are inconsistent.")
         now = datetime.now(UTC)
         reason = None
         if attempt.lease_expires_at is not None and attempt.lease_expires_at <= now:
@@ -1644,13 +1520,7 @@ def observe_analysis_attempts(
                 ModelRun,
                 identity["job_name"],
                 identity["namespace"],
-                evidence={
-                    "submission": identity,
-                    "source": {
-                        column.key: getattr(source, column.key)
-                        for column in OutboxEntry.__table__.columns
-                    },
-                },
+                evidence=evidence,
             )
             observed = read(request)
             if observed is None or replace(observed, result=None) != request:
@@ -1694,12 +1564,17 @@ def observe_dataset_ray_jobs(
                 WorkflowAttempt.ray_job_name.is_not(None),
             )
             .where(WorkflowAttempt.id == attempt_id if attempt_id is not None else True)
-            .order_by(WorkflowAttempt.updated_at, WorkflowAttempt.id)
+            .order_by(
+                func.coalesce(WorkflowAttempt.last_observed_at, WorkflowAttempt.updated_at),
+                WorkflowAttempt.id,
+            )
             .limit(limit)
             .with_for_update(skip_locked=True)
             .execution_options(populate_existing=True)
         )
     )
+    if attempt_id is None:
+        _record_observer_scan(db, attempts)
     for attempt in attempts:
         profile = _profile_job_for_attempt(db, attempt)
         if profile.status not in {"queued", "running"} or str(
@@ -1728,8 +1603,22 @@ def observe_dataset_ray_jobs(
             )
             _replace_lost_dataset_attempt(db, attempt, reason="Dataset worker lease expired")
             continue
+        try:
+            identity, evidence = _ray_observation_source(db, attempt, profile, namespace)
+        except (StaleFence, ValueError, TypeError, KeyError) as exc:
+            logging.getLogger(__name__).warning(
+                "Ray observation evidence unavailable",
+                extra={"attempt_id": str(attempt.id), "error_type": type(exc).__name__},
+            )
+            continue
         request = _job_observation(
-            attempt, profile, ProfilingJob, str(attempt.ray_job_name), namespace
+            attempt,
+            profile,
+            ProfilingJob,
+            identity["job_name"],
+            identity["namespace"],
+            evidence=evidence,
+            uid=identity["uid"],
         )
         observed = read(request)
         if observed is None or replace(observed, result=None) != request:
@@ -1740,7 +1629,7 @@ def observe_dataset_ray_jobs(
                 db, attempt, reason="Dataset RayJob disappeared before terminal CAS"
             )
             continue
-        _verify_ray_observation(ray_job, attempt, profile.id, namespace)
+        _verify_ray_observation(ray_job, attempt, profile.id, namespace, identity["uid"])
         ray_status = ray_job.get("status") or {}
         if ray_status.get("rayClusterName"):
             attempt.ray_cluster_name = str(ray_status["rayClusterName"])

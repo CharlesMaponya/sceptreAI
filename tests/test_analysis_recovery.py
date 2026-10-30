@@ -6,13 +6,15 @@ from unittest.mock import MagicMock
 
 import analysis_observer_fixture
 import pytest
+from analysis_cleanup_helpers import cancel_analysis_job
+from analysis_submission_helpers import reconcile_entry as reconcile_analysis_entry
+from analysis_submission_helpers import submit_analysis_job
 from automl_api.core.config import Settings
 from automl_api.models.enums import AttemptStatus, OutboxStatus, RunStatus
 from automl_api.models.runs import ModelRun, RunArtifact
 from automl_api.models.workflows import OutboxEntry, WorkflowAttempt, WorkflowCommand, WorkflowEvent
-from automl_api.services import reconciler
 from automl_api.services.kubernetes_training import KubernetesTrainingClient
-from automl_api.services.workflow_state import StaleFence
+from automl_api.services.workflow_state import StaleFence, canonical_request_hash
 from automl_api.training import analysis, worker
 from kubernetes import client
 from kubernetes.client import ApiException
@@ -41,9 +43,9 @@ def create_delivery(engine, run_id, attempt_id, k8s, *, namespace="analysis-test
         command = WorkflowCommand(
             project_id=run.project_id,
             actor_id=run.created_by_id,
-            operation="validation.launch",
+            operation=f"{run.run_kind.value}.launch",
             idempotency_key=uuid.uuid4().hex,
-            request_hash="a" * 64,
+            request_hash=canonical_request_hash({}),
             resource_type="model_run",
             resource_id=run_id,
         )
@@ -52,7 +54,7 @@ def create_delivery(engine, run_id, attempt_id, k8s, *, namespace="analysis-test
         entry = OutboxEntry(
             project_id=run.project_id,
             command_id=command.id,
-            event_key="initial-submit",
+            event_key=f"analysis:{attempt_id}:initial-submit",
             topic="kubernetes.analysis.submit",
             aggregate_type="model_run",
             aggregate_id=run_id,
@@ -60,7 +62,7 @@ def create_delivery(engine, run_id, attempt_id, k8s, *, namespace="analysis-test
         )
         db.add(entry)
         db.flush()
-        reconciler.submit_analysis_job(db, entry, k8s)
+        submit_analysis_job(db, entry, k8s)
         return entry.id, manifest
 
 
@@ -295,7 +297,7 @@ def test_cleanup_rejects_stale_or_changed_identity(recovery, invalid):
             source.payload = {**source.payload, "manifest": {}}
             db.flush()
         with pytest.raises(StaleFence):
-            reconciler.cancel_analysis_job(db, entry, k8s)
+            cancel_analysis_job(db, entry, k8s)
         k8s.delete_job.assert_not_called()
 
 
@@ -310,14 +312,23 @@ def test_lost_delete_ack_replays_without_changing_old_cas(recovery):
 
     k8s.delete_job.side_effect = delete
     with Session(engine) as db, pytest.raises(RuntimeError):
-        reconciler.cancel_analysis_job(db, cleanup_entry(db, run_id), k8s)
+        cancel_analysis_job(db, cleanup_entry(db, run_id), k8s)
     with Session(engine) as db, db.begin():
         entry = cleanup_entry(db, run_id)
         entry.status, entry.lease_owner = OutboxStatus.CLAIMED, "cleanup"
         entry.lease_expires_at = datetime.now(UTC) + timedelta(seconds=90)
         entry_id = entry.id
         db.flush()
-        reconciler.reconcile_entry(db, entry, worker_id="cleanup", k8s=k8s)
+    from automl_api.services.analysis_cleanup import reconcile_analysis_cleanup
+    from sqlalchemy.orm import sessionmaker
+
+    k8s.custom.api_client.configuration = SimpleNamespace(
+        host="https://owned-analysis.invalid", verify_ssl=True, retries=0, ssl_ca_cert=None
+    )
+    k8s.core.list_namespaced_pod.return_value = {"items": [], "metadata": {}}
+    reconcile_analysis_cleanup(
+        sessionmaker(engine, expire_on_commit=False), entry_id, "cleanup", k8s_factory=lambda: k8s
+    )
     with Session(engine) as db:
         assert db.get(OutboxEntry, entry_id).status == OutboxStatus.DELIVERED
         assert db.get(WorkflowAttempt, old_id).cleanup_state == "completed"
@@ -341,7 +352,7 @@ def test_replacement_can_submit_claim_and_publish_one_report(recovery, analysis_
         entry.status, entry.lease_owner = OutboxStatus.CLAIMED, "replacement"
         entry.lease_expires_at = datetime.now(UTC) + timedelta(seconds=90)
         db.flush()
-        reconciler.reconcile_entry(db, entry, worker_id="replacement", k8s=k8s)
+        reconcile_analysis_entry(db, entry, worker_id="replacement", k8s=k8s)
         new = db.scalar(
             select(WorkflowAttempt).where(WorkflowAttempt.predecessor_attempt_id == old_id)
         )
@@ -411,7 +422,7 @@ def test_observer_refreshes_cached_live_attempt(recovery):
 
 
 @pytest.mark.parametrize("changed", [False, True])
-def test_job_creation_conflict_requires_matching_attempt_scope(changed):
+def test_job_creation_conflict_never_adopts_even_matching_attempt_scope(changed):
     k8s = KubernetesTrainingClient.__new__(KubernetesTrainingClient)
     k8s.settings = Settings(training_namespace="default-neighbor")
     k8s.batch = MagicMock()
@@ -429,9 +440,10 @@ def test_job_creation_conflict_requires_matching_attempt_scope(changed):
         existing.metadata.labels["automl.platform/attempt-id"] = "another-attempt"
     k8s.batch.create_namespaced_job.side_effect = ApiException(status=409)
     k8s.batch.read_namespaced_job.return_value = existing
-    if changed:
-        with pytest.raises(StaleFence):
-            k8s.create_job(manifest)
-    else:
-        assert k8s.create_job(manifest).metadata.uid == "physical-uid"
-    assert k8s.batch.read_namespaced_job.call_args.kwargs["namespace"] == "recorded-scope"
+    with pytest.raises(ApiException) as caught:
+        k8s.create_job(manifest)
+    assert caught.value.status == 409
+    k8s.batch.create_namespaced_job.assert_called_once_with(
+        namespace="recorded-scope", body=manifest, _request_timeout=5
+    )
+    k8s.batch.read_namespaced_job.assert_not_called()

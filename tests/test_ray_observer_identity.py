@@ -96,6 +96,7 @@ def snapshot(scope):
             {
                 column.key: copy.deepcopy(getattr(row, column.key))
                 for column in row.__table__.columns
+                if column.key != "last_observed_at"
             }
             for row in (attempt, resource)
         ]

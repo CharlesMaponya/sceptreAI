@@ -1,0 +1,183 @@
+recorded_on: '2026-10-28'
+status: in_progress
+phase_complete: false
+scope: Original-UID analysis Job cleanup outside SQL sessions
+source_inputs: 694
+source_manifest_sha256: d1ab60e77bb01c8a1ed12bec73bbd28ef0b8418918c779036ec3eedb6d44a9b7
+changes:
+- Validation, explainability and drift cancellation now uses a factory-owned cleanup
+  dispatcher; native construction, GET, UID delete and Pod inventory occur outside
+  SQL sessions.
+- Original submitted identity and manifest/source/command binding fence cleanup. Same-name
+  replacement Jobs and changed source/actor/claim cannot authorize deletion or acknowledgement.
+- Durable intent and native units precede effects; independent observations survive
+  stale owners, lost replies and process/database failures. Uncertain deletes recover
+  by inspection before another delete.
+- Cleanup completes only after original Job and descendant absence in the bound verified
+  context; pending descendants hold without false completion.
+- Legacy component fixtures retain their scope/CAS checks through a Mock-only adapter;
+  actual dispatcher and fault controls exercise factory custody separately.
+checks:
+  focused:
+    passed: 54
+    returncode: 0
+    xml_sha256: 7312c51336aafc4bc43718548fde5e6240c4f7ed70e6167f80b9c8574b66c53a
+    state_sha256: a32435b0f5859c0c24326531d00c7820885386c2f64e64153450cbe3a170abc1
+  process:
+    passed: 15
+    returncode: 0
+    xml_sha256: d71a061f0bdb87c071f37ff01161c3b78b463d8e083d8cdf567b6b88eb991920
+    state_sha256: e982253893eceb8ff8e6bfc8235c5a99457051befc3fe44941959d22da79deee
+  components:
+    passed: 292
+    returncode: 0
+    xml_sha256: 8fa4573302fa2a87678c01d6a9509a9eb9a78bdb41a96952300201d9899e5b6e
+    state_sha256: 41fec86b1a3d50f821e13f126f34a23190e9265d9afcfc423b7d285177c195a5
+  connected:
+    passed: 238
+    returncode: 0
+    xml_sha256: e2a04266f8879fdab7278be0363f5b103e0aa4500235951ab0bde41d6dfbc9fb
+    state_sha256: 39d29dc529b83dfa098a22e52e19f8185ad50b2b16c758668347f2bc2c88ff2c
+distinct_current_cases: 599
+process_failure_controls:
+  witness_count: 15
+  sigkill_cases: 9
+  database_backend_terminations: 6
+  witness_hashes:
+    process-witnesses/test_real_process_and_backend_7/checkpoint.json: 4f7ea857c43b18a7ab6d0b876956e8bafe88208713468c316658b1a4e8ea38dc
+    process-witnesses/test_real_process_and_backend_0/checkpoint.json: 5fc522cbcba845041159ccf4776e506e02bdbbbc8d31528c8672ba5ba3734a61
+    process-witnesses/test_real_process_and_backend_12/checkpoint.json: 491a46d0327da4582f1d7f0f3381a179fdccf4f0832be6fa43667ef48a636cbb
+    process-witnesses/test_real_process_and_backend_3/checkpoint.json: 9e62ab111a7f94cbe0f58c00819cc31cfc175be7e51210ab79d703a90fe2871e
+    process-witnesses/test_real_process_and_backend_11/checkpoint.json: a74fadf4d3c72cafda8346735d1803092717b0ca103acfcb40f47645aa98b06b
+    process-witnesses/test_real_process_and_backend_2/checkpoint.json: 2e182b445fa7793b5db5f63d0180a838d2be4f734b4362bdf111511a0863f470
+    process-witnesses/test_real_process_and_backend_13/checkpoint.json: 5f69ff3917ade3fd97f59e192271105621ee967cef654b7f1ccae3aec48bebaa
+    process-witnesses/test_real_process_and_backend_10/checkpoint.json: 964ab7a62b785193c19da6359c886f6176561bf98abe7efc9b2fc8e0954145f0
+    process-witnesses/test_real_process_and_backend_8/checkpoint.json: 26cd83bf1789c9e36f585328d57063fdac321d77a9248bbf77f02079edc3810e
+    process-witnesses/test_real_process_and_backend_1/checkpoint.json: 9fd48fe0aad491e8859d498131f7a6c3ae23c05f486beafe24138219b3fe5b6b
+    process-witnesses/test_real_process_and_backend_4/checkpoint.json: 595d42a672d3c1cdf3dd2b156012202e5a6d6dadaec4d4d18e6616370dd5f74e
+    process-witnesses/test_real_process_and_backend_6/checkpoint.json: b9f16fb5356ccc98422d667b52f0aa30d0897faab20de54bbe94477dd1ff315c
+    process-witnesses/test_real_process_and_backend_5/checkpoint.json: 7b79aa9395ebf33571e6c3397838efdcd26d6bfc2920a287a5d419df81f86cd6
+    process-witnesses/test_real_process_and_backend_9/checkpoint.json: cd39e62990303e98d7607516683fd623d8fbd0ead0bdb9010f1b957e4b68c7f6
+    process-witnesses/test_real_process_and_backend_14/checkpoint.json: 32badb519034f5474dc710421fe0ee756eca3121104bc749d7cc14b8768e977c
+native_controls:
+  normal:
+    mode: normal
+    namespace: phase1-analysis-clean-62cfc2610d
+    native_sql_checkouts:
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    delete_uids:
+    - 76fad0cd-322a-4414-be86-9c866d8939da
+    pod_observations:
+    - 0
+    - 0
+    - 0
+    full_runtime_qualified: false
+    namespace_uid: 778d14f9-501a-43e3-88cf-b766072d4a28
+    quota_uid: b211982a-fedc-4cbd-9145-2123ce08cfa0
+    original_uid: 76fad0cd-322a-4414-be86-9c866d8939da
+    retirement_delivered: true
+    namespace_removed: true
+  replacement:
+    mode: replacement
+    namespace: phase1-analysis-clean-397a02ef23
+    native_sql_checkouts:
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    delete_uids: []
+    pod_observations:
+    - 0
+    - 0
+    - 0
+    full_runtime_qualified: false
+    namespace_uid: 0c73c306-c865-4bf3-a348-2b3f003a58c7
+    quota_uid: 2380120c-ebc8-4731-8b68-def0e9097a39
+    original_uid: ebb04a88-d959-4e3b-92bb-460fbba577aa
+    replacement_uid: 5e3b32c0-b88c-406e-a73c-2eec937463b9
+    replacement_rejected: true
+    namespace_removed: true
+preflight:
+  read_only: true
+  schema_differences: []
+  revision: 0020_observer_scan_clock
+  tables: 44
+  namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+  coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+  free_bytes: 45113352192
+  reserve_bytes: 43500000000
+acceptance:
+  scoped_raw_oracles_passed: 3
+  scoped_gates_met: 0
+  scoped_gates_unmet: 3
+  phase_verified: 2
+  phase_open: 34
+  note: Raw scoped evidence only; formal automatic acceptance and full Phase1 completion
+    are not claimed.
+remaining:
+- Legacy analysis receipts have no original native-context digest; the first cleanup
+  unit binds the verified current context. Original creation-context qualification
+  awaits the submission factory.
+- Analysis submission/capacity and legacy first-delivery factories, analysis observer
+  recovery and all-stage worker credential isolation remain required.
+- Legacy SQL projection compatibility is tested; maintained previous-release reader
+  startup and mixed-version deployment remain unqualified.
+- Maintained images, full running workloads, cloud/IAM and full release/branch coverage
+  remain unqualified.
+- The 45,000,000,000-byte physical migration target, largest-table row counts and
+  deferred15users x10GiB load remain unqualified. Small migration seeds do not substitute
+  for those gates.
+- Original deletion G7 still requires seven missing historical objects (two models
+  and five signed results); none were reconstructed or re-signed.
+evidence_hashes:
+  PLAN.md: 413b41926bb6dabbac67a44e3c07f68b43a9ab3aae071f79ca6d3e835c22c366
+  GATES.md: 3a7870949650657d7346a38e83e7bbbbad3354821da0a3633d41a30fc63b4e77
+  source-sha256.json: d1ab60e77bb01c8a1ed12bec73bbd28ef0b8418918c779036ec3eedb6d44a9b7
+  baseline-source-sha256.json: 48128042fbf37733de0dfdc5f2d3e834e6b17abf899b6aa3143fe129f51cd6fb
+  before-reconciler.py: a08a906afd04ab166080f10e15f063a266a201d33d474d5aab083520a0caeaf6
+  baseline-state.json: 5a049f7d18a29bac689067028999b04d7a3cea0454623a7c98968d190e16a10c
+  baseline.xml: 6d21f6f84f4d9836e8f774b41b360e6d1ad4a8685b012a633eb5ca0897368aae
+  baseline.log: 3b0efe977c70d9f1164a4278cdcf1dd655e273fb87ce0792ce2c296683ced47a
+  run.py: 65fa7a89a182b9e3bbe5fb56cd49215035831cf5b2888e3cb72806cb18bf6b91
+  campaign.py: ad163dab83e4be4376c34f654bb622bade007a039bb84adf62df7bff0d8147ce
+  run_connected.py: 4809a6262591883283185c7483a1e84f87eff8066327cf206a92dc52f6727a21
+  process_child.py: 817918c584d4f3307089f3304d6e5566b0fc0d896bc6c994fcb398a19409f61b
+  before-worker.py: 2bc4b2a39a4aa09b931ab17e6afabc0c3d135617d6e3ee47ec734bb896319c0e
+  run_native.py: e83871aa1a7083622864bc0293289656ec603e0c118b4cec731af33872cc8ef9
+  native_probe.py: b136e961b77e0b28b5ddaa11595d81a30e83c56d1866aa731e9cc230019ad56d
+  preflight.py: 82946b84356abf797b3f5bacbf915cc88c967512a81acd34cd806f0d1f7d0877
+  preflight.json: 2388ab3308788c342279fbf29ee6a6b36c48886783e7d29a087dbac7f19bd952
+  audit.py: bd7959f4d07288be9e7d4b2b0dcbe5fdfd8952ba997e800bbdd9ac45936136fb
+  control.py: 1098a1414ddc429ddd4d7f1800925186439ed37062d6343ed308560a3a3fc449
+  auditor-control.json: 45e2709486a6a6e34890938d8b28de49e7c17745d832bc6c6c2b03a018c16003
+  report.py: 564b576bef2f19b2f81b7a43385946a32119e0b01e67b6b0c5206e6391fb6b83
+  focused-state.json: a32435b0f5859c0c24326531d00c7820885386c2f64e64153450cbe3a170abc1
+  focused.xml: 7312c51336aafc4bc43718548fde5e6240c4f7ed70e6167f80b9c8574b66c53a
+  focused.log: 3e6ea7550cc47ff44489f5d9baebd5a7c439a97296b6c1a722e584b22ccb4b9f
+  process-state.json: e982253893eceb8ff8e6bfc8235c5a99457051befc3fe44941959d22da79deee
+  process.xml: d71a061f0bdb87c071f37ff01161c3b78b463d8e083d8cdf567b6b88eb991920
+  process.log: fa8d3eae2b130e1bcba27c6f487d5ec7af64343e3c6fdee3c70b9b6e3c3b65fb
+  components-state.json: 41fec86b1a3d50f821e13f126f34a23190e9265d9afcfc423b7d285177c195a5
+  components.xml: 8fa4573302fa2a87678c01d6a9509a9eb9a78bdb41a96952300201d9899e5b6e
+  components.log: 6e98e863e18a8ccd9dddd205f24015bab8c7acf82ac25b9ace2c4a9e48db6ac5
+  connected-state.json: 39d29dc529b83dfa098a22e52e19f8185ad50b2b16c758668347f2bc2c88ff2c
+  connected.xml: e2a04266f8879fdab7278be0363f5b103e0aa4500235951ab0bde41d6dfbc9fb
+  connected.log: 843891bde09525f2e823527ed0eac4aa4d86f0a3d023ed2bf9455c8c8ea50a4d
+  native-normal-state.json: ada7a13c4fc17a6defdd4c09dda9c23cc9f9b6a9e1c842a3c17302ae0193e6fb
+  native-normal.log: 18cd94f483607b24549992e42e6a66345b24ec3c330daa3d33206447e837705d
+  native-witness-normal.json: 5393570a8195e9c7e64b78e6cf9f73da57b2f01d76db0c2cff93442d615228c5
+  native-replacement-state.json: 3d9386406ee1e6af872e066081f3a20480256ebd95e80b1d22935205968e335b
+  native-replacement.log: a9643aad42edd4b93a5ab4d921d85a7f1cbafce9e2e50b0fdd759767bacead61
+  native-witness-replacement.json: c4574b3b252b8e31f78bb41d842a5d9e5efdbc01d5ca063a11f097a0e9c7410d

@@ -6,13 +6,15 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from analysis_submission_helpers import reconcile_entry as reconcile_analysis_entry
+from analysis_submission_helpers import submit_analysis_job
 from automl_api.core.config import Settings
 from automl_api.models.enums import AttemptStatus, OutboxStatus, RunStatus
 from automl_api.models.runs import ModelRun
 from automl_api.models.workflows import OutboxEntry, WorkflowAttempt, WorkflowCommand, WorkflowEvent
 from automl_api.services import reconciler
 from automl_api.services.kubernetes_training import KubernetesTrainingClient
-from automl_api.services.workflow_state import StaleFence
+from automl_api.services.workflow_state import StaleFence, canonical_request_hash
 from automl_api.training import worker
 from kubernetes import client
 from kubernetes.client import ApiException
@@ -44,9 +46,9 @@ def create_legacy_delivery(engine, run_id, old_id, k8s, *, suspend=False):
         command = WorkflowCommand(
             project_id=run.project_id,
             actor_id=run.created_by_id,
-            operation="validation.launch",
+            operation=f"{run.run_kind.value}.launch",
             idempotency_key=uuid.uuid4().hex,
-            request_hash="a" * 64,
+            request_hash=canonical_request_hash({}),
             resource_type="model_run",
             resource_id=run.id,
         )
@@ -107,9 +109,7 @@ def legacy(analysis_scope, monkeypatch):  # noqa: F811
 def test_first_legacy_delivery_commits_tracking_before_job_creation(legacy):
     engine, run_id, entry_id, manifest, k8s = legacy
     with Session(engine) as db, db.begin():
-        reconciler.reconcile_entry(
-            db, db.get(OutboxEntry, entry_id), worker_id="migration", k8s=k8s
-        )
+        reconcile_analysis_entry(db, db.get(OutboxEntry, entry_id), worker_id="migration", k8s=k8s)
     k8s.create_job.assert_not_called()
     k8s.ensure_service_account.assert_not_called()
     with Session(engine) as db:
@@ -138,10 +138,10 @@ def test_first_legacy_delivery_commits_tracking_before_job_creation(legacy):
         entry.lease_expires_at = datetime.now(UTC) + timedelta(seconds=90)
         entry.delivery_attempts = 1
         db.flush()
-        reconciler.reconcile_entry(db, entry, worker_id="migration", k8s=k8s)
+        reconcile_analysis_entry(db, entry, worker_id="migration", k8s=k8s)
     with Session(engine) as db, db.begin():
         entry = db.get(OutboxEntry, entry_id)
-        reconciler.reconcile_entry(db, entry, worker_id="migration", k8s=k8s)
+        reconcile_analysis_entry(db, entry, worker_id="migration", k8s=k8s)
         assert db.get(WorkflowAttempt, attempt_id).status == AttemptStatus.SUBMITTED
         assert (
             len(
@@ -211,7 +211,7 @@ def test_ambiguous_legacy_work_never_hands_off(legacy, invalid):
             ]
             entry.payload = {**entry.payload, "manifest": changed}
     with Session(engine) as db, pytest.raises((StaleFence, ValueError)):
-        reconciler.submit_analysis_job(db, db.get(OutboxEntry, entry_id), k8s)
+        submit_analysis_job(db, db.get(OutboxEntry, entry_id), k8s)
     k8s.create_job.assert_not_called()
     k8s.ensure_service_account.assert_not_called()
     with Session(engine) as db:
@@ -230,7 +230,7 @@ def test_ambiguous_legacy_work_never_hands_off(legacy, invalid):
 def test_migration_rolls_back_as_one_unit(legacy):
     engine, run_id, entry_id, manifest, k8s = legacy
     with Session(engine) as db:
-        reconciler.submit_analysis_job(db, db.get(OutboxEntry, entry_id), k8s)
+        submit_analysis_job(db, db.get(OutboxEntry, entry_id), k8s)
         db.rollback()
     with Session(engine) as db:
         assert db.get(OutboxEntry, entry_id).payload["manifest"] == manifest
@@ -276,9 +276,7 @@ def test_readonly_preflight_failure_defers_without_spending_first_delivery(legac
     else:
         k8s.core.list_namespaced_pod.side_effect = ApiException(status=503)
     with Session(engine) as db, db.begin():
-        reconciler.reconcile_entry(
-            db, db.get(OutboxEntry, entry_id), worker_id="migration", k8s=k8s
-        )
+        reconcile_analysis_entry(db, db.get(OutboxEntry, entry_id), worker_id="migration", k8s=k8s)
     with Session(engine) as db:
         entry = db.get(OutboxEntry, entry_id)
         assert entry.status == OutboxStatus.PENDING and entry.delivery_attempts == 0

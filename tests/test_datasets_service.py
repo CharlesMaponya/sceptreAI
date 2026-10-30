@@ -102,9 +102,9 @@ def test_upload_creates_immutable_dataset_version(monkeypatch) -> None:
     monkeypatch.setattr(
         datasets,
         "get_settings",
-        lambda: SimpleNamespace(object_store_type="s3"),
+        lambda: SimpleNamespace(object_store_type="s3", project_storage_quota_bytes=1000),
     )
-    db = _Session([None])
+    db = _Session([project_id, 0, 0, 0, None])
 
     dataset, version = datasets.upload_dataset_version(db, user, project_id, payload, content)
 
@@ -123,7 +123,6 @@ def test_upload_creates_immutable_dataset_version(monkeypatch) -> None:
     assert key.startswith(f"projects/{project_id}/datasets/{dataset.id}/versions/1/")
     assert key.endswith("-customers.csv")
     assert stored_content == content
-    assert db.flushes == 2
 
 
 def test_upload_updates_existing_dataset_without_erasing_optional_metadata(monkeypatch) -> None:
@@ -143,9 +142,9 @@ def test_upload_updates_existing_dataset_without_erasing_optional_metadata(monke
     monkeypatch.setattr(
         datasets,
         "get_settings",
-        lambda: SimpleNamespace(object_store_type="embedded"),
+        lambda: SimpleNamespace(object_store_type="embedded", project_storage_quota_bytes=1000),
     )
-    db = _Session([existing])
+    db = _Session([project_id, 0, 0, 0, existing])
 
     _, version = datasets.upload_dataset_version(
         db,

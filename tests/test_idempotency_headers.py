@@ -10,6 +10,33 @@ from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
+EXPECTED_KEY_HANDLERS = {
+    "contracts.post_feature_contract",
+    "contracts.post_search_space",
+    "contracts.post_search_objective",
+    "contracts.post_experiment_spec",
+    "contracts.post_scope",
+    "contracts.post_scope_member",
+    "contracts.post_scope_cancel",
+    "datasets.begin_resumable_upload",
+    "datasets.create_upload_instruction",
+    "datasets.complete_resumable_upload",
+    "datasets.abort_resumable_upload",
+    "datasets.abort_buffered_upload",
+    "datasets.replay_buffered_upload",
+    "datasets.replay_upload_cleanup",
+    "datasets.upload_dataset",
+    "monitoring.create_deployment_metric",
+    "monitoring.create_governance_report",
+    "operations.drift",
+    "operations.deploy",
+    "operations.cleanup",
+    "training.estimate",
+    "training.launch",
+    "validation.validate_model",
+    "validation.explain_model",
+}
+
 
 def key_routes():
     return [
@@ -66,7 +93,10 @@ def test_header_inventory_covers_all_command_route_families():
         "training",
         "validation",
     }
-    assert len(key_routes()) == 21
+    assert {
+        route.endpoint.__module__.rsplit(".", 1)[-1] + "." + route.endpoint.__name__
+        for route in key_routes()
+    } == EXPECTED_KEY_HANDLERS
 
     documented = {
         (method.upper(), path)

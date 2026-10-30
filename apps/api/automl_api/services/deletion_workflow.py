@@ -335,6 +335,10 @@ def _publish(db, selected, record, unit, field):
     stage.heartbeat_at = datetime.now(UTC)
     stage.lease_owner = stage.lease_expires_at = None
     if stage.resource_class == "metadata":
+        if entry.topic == "project.delete":
+            from automl_api.services.buffered_deletion import retire
+
+            retire(db, project.id, entry.payload.get("buffered_inputs", []))
         deletion._delete_metadata(db, entry, project, run_ids)
         tombstone.status, tombstone.completed_at = "complete", datetime.now(UTC)
         if entry.topic == "run.delete":

@@ -1,0 +1,126 @@
+recorded_on: '2026-10-28'
+status: in_progress
+phase_complete: false
+scope: Original native analysis create identity without name adoption
+source_inputs: 695
+source_manifest_sha256: 44f02604bf70e7c01d5b1cd255f2e7d1cd3cad31156885e9f53054177e480b8d
+changes:
+- Native analysis Job creation propagates every409 conflict directly, without a GET,
+  name adoption or implicit retry, even when replacement labels match.
+- Bound request name, namespace and five scope labels must be complete before POST;
+  successful original replies require a nonempty UID and the submitted namespace/name/labels
+  before returning to publication.
+- Successful unbound legacy delegation preserves its existing return shape; uncertain/conflicting
+  legacy creates now hold instead of pretending success.
+- Existing conflict fixtures now assert the stricter intentional contract for matching
+  and changed scope, including one POST and no lookup.
+checks:
+  focused:
+    passed: 52
+    returncode: 0
+    xml_sha256: 7050b670cdb0b2258eff42e432c60b217e3054d0ea77be46f9de62460841e478
+    state_sha256: af8ab5e67fc2aed0e82e6b796ca860963eec6413aa46b22c02cd426a09b97d8d
+  components:
+    passed: 344
+    returncode: 0
+    xml_sha256: 3409db557a234a6a8e475d3113e458b6d75ff13a786803e8376564107b7a16eb
+    state_sha256: f717ef1df37db684adf27ba2232e7e33bf9eefad16bfc3ddbf759ff7d5de7e9c
+  connected:
+    passed: 285
+    returncode: 0
+    xml_sha256: 5a0236487d3a69827cc4da94ce9d722611646acd70a8fd2bfa9e873f21c2f6fb
+    state_sha256: db6880300339b720128e5c83a74f19a41b51ef49e708a25274f183355ecd2f61
+distinct_current_cases: 681
+native_controls:
+  namespace: phase1-analysis-create-f104e81479
+  native_sql_checkouts:
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  create_calls: 5
+  sdk_lookup_calls: 0
+  conflicts:
+  - original-present
+  - same-label-replacement
+  - lost-original-reply
+  pod_observations:
+  - 0
+  - 0
+  - 0
+  full_runtime_qualified: false
+  submission_factory_qualified: false
+  namespace_uid: 2bf7ef32-3dc0-4d36-b9ad-828bdcfbb4ae
+  quota_uid: 890e4614-0fbe-4c31-9737-b7c9406bc063
+  original_uid: 9a10c8cf-374a-475a-82ed-5d5529706680
+  replacement_uid: c309e1b9-da5e-457d-8ec0-f6a5fb797dcc
+  lost_reply_original_uid: 37d2dde0-5467-474a-8c60-2917eed6717c
+  namespace_removed: true
+preflight:
+  read_only: true
+  schema_differences: []
+  revision: 0020_observer_scan_clock
+  tables: 44
+  namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+  coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+  free_bytes: 45102440448
+  reserve_bytes: 43500000000
+acceptance:
+  scoped_raw_oracles_passed: 3
+  scoped_gates_met: 0
+  scoped_gates_unmet: 3
+  phase_verified: 2
+  phase_open: 34
+  note: Raw scoped evidence only; formal automatic acceptance and full Phase1 completion
+    are not claimed.
+remaining:
+- Session-native analysis submission still holds SQL during native work. Lost original
+  create outcomes now hold without adoption and need durable factory recovery. This
+  SDK boundary does not qualify complete submission recovery.
+- Legacy analysis receipts have no original native-context digest; the first cleanup
+  unit binds the verified current context. Original creation-context qualification
+  awaits the submission factory.
+- Analysis submission/capacity and legacy first-delivery factories, analysis observer
+  recovery and all-stage worker credential isolation remain required.
+- Legacy SQL projection compatibility is tested; maintained previous-release reader
+  startup and mixed-version deployment remain unqualified.
+- Maintained images, full running workloads, cloud/IAM and full release/branch coverage
+  remain unqualified.
+- The 45,000,000,000-byte physical migration target, largest-table row counts and
+  deferred15users x10GiB load remain unqualified. Small migration seeds do not substitute
+  for those gates.
+- Original deletion G7 still requires seven missing historical objects (two models
+  and five signed results); none were reconstructed or re-signed.
+evidence_hashes:
+  PLAN.md: c5b5efcf4406a2dab73427762e901fdc264a1231ab216bf8f62eb551de7a5321
+  GATES.md: 87a9771262117f3005e549ca01953bde183735953c397ea260498383ebce919a
+  source-sha256.json: 44f02604bf70e7c01d5b1cd255f2e7d1cd3cad31156885e9f53054177e480b8d
+  baseline-source-sha256.json: 9d5baaa8317d8b3b97237bda39a35ed50c57e6986f4376ed3aeb17ecdf72f175
+  before-kubernetes_training.py: 17872d14230ff0ab1bc2b7fd732de1cc86fb3ad7bd2eceaca2a49dc41c6566c2
+  baseline-state.json: 64a14ad3eda8cf03e4bb4e01b0230d6cb54b06fd96e4d894625078d7d7b3c3b4
+  baseline.xml: 1f0a19d9194531254556a1a9fa9f6ae154024361c14e491b54ecfb6580c3d636
+  baseline.log: f3ae494082e632f176d5e8e27cca44cc439e287713b4d5fd3927267891f4e063
+  run.py: 1206558c99a1ef92df6fec4f796519231e8ae1fbf47e67dd7ff5b3fb621104b9
+  campaign.py: bf94b443184b93fdafbc48e4184b76f6acd87eee914f1dd4ab5b9fb2b386f39e
+  run_native.py: 50710240d615ecda1a950c9570f4690696e234b92a96bce6a74141d838dddd6b
+  native_probe.py: 601a401862c8d6458a7a57d99553fa4ba4f2c0993a66f36c6f053b55138c891a
+  preflight.py: c578454c0bbb5cb972b898a36247396f2d3d6788f415598e28ed9efb37bbc71f
+  preflight.json: 623d6aa7b7e8d297c8df018f830db423752471f12fe116e4600946c82ade889e
+  audit.py: ccc400ece2e3c1aa7874a47e3c6929d3a9c6d510c14071d35eb2ce5ae9a1cd1c
+  control.py: 979c69ef02d4165c16486c5bcb49d7bfdef1419859bce8adb0da5c131e413933
+  auditor-control.json: f8f4cd46f399f81dc23d3dad785b9959fd966be4bdba4a8e742f2cefb3715ebb
+  report.py: aac02db04431929e06fa00a6635698c6f73c69d6c0d9449dbf85a04a110c663a
+  focused-state.json: af8ab5e67fc2aed0e82e6b796ca860963eec6413aa46b22c02cd426a09b97d8d
+  focused.xml: 7050b670cdb0b2258eff42e432c60b217e3054d0ea77be46f9de62460841e478
+  focused.log: e1c4079df4a8dbc4bcb564446d285aac0434c0159baaff752d5426bc34e1f102
+  components-state.json: f717ef1df37db684adf27ba2232e7e33bf9eefad16bfc3ddbf759ff7d5de7e9c
+  components.xml: 3409db557a234a6a8e475d3113e458b6d75ff13a786803e8376564107b7a16eb
+  components.log: 69e044427133c4edf595b93e4fbcea83d60b531bde37c6425286368afe5db959
+  connected-state.json: db6880300339b720128e5c83a74f19a41b51ef49e708a25274f183355ecd2f61
+  connected.xml: 5a0236487d3a69827cc4da94ce9d722611646acd70a8fd2bfa9e873f21c2f6fb
+  connected.log: b4c5430a989194edd2b8974580477bc764661056cd5821126f888481b9984eed
+  native-state.json: 35b4f8bae61f21e76c2292c09fd3d54509f114afa7bac4e98369c3259ffba45c
+  native.log: 6ee62f8962eb87bf54fa5a053bd84ae55387e35c74e8a43c9011782029b11265
+  native-witness.json: 04b383fec8948b245437321c600f4ed9159ee7a16232eb72a8d47b29a348ac0e

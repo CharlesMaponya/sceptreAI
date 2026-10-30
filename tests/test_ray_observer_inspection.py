@@ -11,6 +11,7 @@ from automl_api.models.runs import ModelRun
 from automl_api.models.workflows import WorkflowAttempt, WorkflowCommand
 from automl_api.workflow_reconciler import observe_once
 from kubernetes.client import ApiException
+from ray_receipt_fixtures import seed_ray_receipt
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from test_local_profiling_delivery import profile_source as profile_source
@@ -73,17 +74,19 @@ def ray_scope(profile_source, request):
             lease_expires_at=datetime.now(UTC) + timedelta(minutes=5),
         )
         db.add(attempt)
-        db.add(
-            WorkflowCommand(
-                project_id=project_id,
-                actor_id=user_id,
-                operation="training.launch" if kind == "training" else "dataset.profile",
-                idempotency_key=uuid.uuid4().hex,
-                request_hash="a" * 64,
-                resource_type="model_run" if kind == "training" else "profiling_job",
-                resource_id=resource.id,
-            )
+        command = WorkflowCommand(
+            project_id=project_id,
+            actor_id=user_id,
+            operation="training.launch" if kind == "training" else "dataset.profile",
+            idempotency_key=uuid.uuid4().hex,
+            request_hash="a" * 64,
+            resource_type="model_run" if kind == "training" else "profiling_job",
+            resource_id=resource.id,
         )
+
+        db.add(command)
+        db.flush()
+        seed_ray_receipt(db, attempt, resource, command, "observer-test")
         resource_id = resource.id
         native_job = labeled_observation(
             attempt, "observer-test", {"jobStatus": "RUNNING", "jobId": "observed-id"}

@@ -3,14 +3,14 @@
 from kubernetes.client import ApiException
 from sqlalchemy import select
 
-from automl_api.models.enums import CommandStatus, RunKind
+from automl_api.models.enums import CommandStatus, RunKind, WorkflowStage
 from automl_api.models.workflows import WorkflowAttempt, WorkflowCommand
 from automl_api.services.workflow_state import StaleFence, canonical_request_hash
 from automl_api.storage.contracts import DeletionPending
 
 
 def runtime_targets(db, project_id, runs, *, whole_project):
-    from automl_api.services import legacy_analysis, reconciler
+    from automl_api.services import analysis_submission, legacy_analysis, reconciler
 
     query = select(WorkflowAttempt).where(WorkflowAttempt.project_id == project_id)
     if not whole_project:
@@ -53,6 +53,11 @@ def runtime_targets(db, project_id, runs, *, whole_project):
                         ],
                     }
                 )
+        if kind == "Job" and origin.get("factory_intent_sha256"):
+            labels["automl.platform/attempt-id"] = str(attempt_id)
+            labels["automl.platform/generation"] = str(origin["attempt"]["generation"])
+            labels["automl.platform/workflow-stage"] = origin["attempt"]["stage"]
+            target["native_context_sha256"] = origin["native_context_sha256"]
         target["labels"] = labels
         key = kind, namespace, name
         if key in targets and targets[key] != target:
@@ -95,6 +100,24 @@ def runtime_targets(db, project_id, runs, *, whole_project):
         return value
 
     by_id = {run.id: run for run in runs}
+    empty_factory_names = set()
+    for attempt in attempts:
+        if attempt.stage != WorkflowStage.TRAINING_RUN or not attempt.logical_key.startswith(
+            "analysis-run:"
+        ):
+            continue
+        original = analysis_submission.journal._event(db, attempt, analysis_submission.INTENT)
+        if original is None:
+            continue
+        identity, source, context = analysis_submission.cleanup_source(db, attempt)
+        if identity["uid"] is None:
+            empty_factory_names.add((identity["namespace"], identity["job_name"]))
+            continue
+        value = origin(attempt, identity, source, ray=False)
+        value["factory_intent_sha256"] = original.result_digest
+        value["source_digest"] = canonical_request_hash(analysis_submission._payload(source))
+        value["native_context_sha256"] = context
+        add("Job", identity, by_id.get(attempt.model_run_id), attempt.id, value)
     for attempt in attempts:
         if not attempt.ray_job_name:
             continue
@@ -107,6 +130,8 @@ def runtime_targets(db, project_id, runs, *, whole_project):
             origin(attempt, identity, source, ray=True),
         )
     for run in runs:
+        if (run.k8s_namespace, run.k8s_job_name) in empty_factory_names:
+            continue
         if not run.k8s_job_name or run.run_kind == RunKind.DEPLOYMENT:
             continue
         if any(
@@ -171,25 +196,33 @@ def runtime_targets(db, project_id, runs, *, whole_project):
 
 
 def _metadata(value):
-    meta = value.get("metadata") if isinstance(value, dict) else value.metadata
+    meta = value.get("metadata") if isinstance(value, dict) else getattr(value, "metadata", None)
     if isinstance(meta, dict):
         uid, namespace, name = (meta.get(key) for key in ("uid", "namespace", "name"))
         labels = meta.get("labels") or {}
         owners = [owner.get("uid") for owner in meta.get("ownerReferences", [])]
     else:
-        uid, namespace, name = meta.uid, meta.namespace, meta.name
-        labels = meta.labels or {}
-        owners = [owner.uid for owner in meta.owner_references or []]
-    if any(not isinstance(v, str) or not v for v in (uid, namespace, name)):
+        uid, namespace, name = (getattr(meta, key, None) for key in ("uid", "namespace", "name"))
+        labels = getattr(meta, "labels", None) or {}
+        owners = [owner.uid for owner in getattr(meta, "owner_references", None) or []]
+    if any(not isinstance(v, str) or not v.strip() for v in (uid, namespace, name)):
         raise StaleFence("Runtime API returned an incomplete native identity.")
     if not isinstance(labels, dict) or any(
         not isinstance(key, str) or not isinstance(value, str) for key, value in labels.items()
     ):
-        raise StaleFence("Runtime API returned malformed ownership labels.")
+        raise StaleFence("Runtime API returned malformed ownership identity labels.")
     return dict(uid=uid, namespace=namespace, name=name, labels=labels, owners=owners)
 
 
+def _context(k8s, target):
+    if target.get("native_context_sha256") is not None:
+        from automl_api.services.ray_submission import _same_context
+
+        _same_context(k8s, target["native_context_sha256"])
+
+
 def _read(k8s, target):
+    _context(k8s, target)
     try:
         value = (
             k8s.ray_job(target["name"], namespace=target["namespace"])
@@ -204,9 +237,9 @@ def _read(k8s, target):
         return None
     meta = _metadata(value)
     if any(meta[key] != target[key] for key in ("uid", "namespace", "name")):
-        raise StaleFence("Original runtime object was replaced or retargeted.")
+        raise StaleFence("Original runtime identity was replaced or retargeted.")
     if any(meta["labels"].get(key) != value for key, value in target["labels"].items()):
-        raise StaleFence("Original runtime ownership labels changed.")
+        raise StaleFence("Original runtime ownership identity labels changed.")
     return meta
 
 
@@ -225,10 +258,13 @@ def _inventory(k8s, target):
     for read in readers:
         cursor, seen = None, set()
         for _ in range(100):
+            _context(k8s, target)
             page = read(
                 namespace=target["namespace"], limit=250, _continue=cursor, _request_timeout=5
             )
             items = page["items"] if isinstance(page, dict) else page.items
+            if not isinstance(items, list):
+                raise StaleFence("Runtime inventory did not return a complete native list.")
             for item in items:
                 meta = _metadata(item)
                 if meta["namespace"] != target["namespace"]:
@@ -273,6 +309,7 @@ def cleanup_runtime(k8s, targets, *, inspect_only=False):
     for target in targets:
         current = _read(k8s, target)
         if current is not None and not inspect_only:
+            _context(k8s, target)
             if target["kind"] == "RayJob":
                 k8s.delete_ray_job(target["name"], namespace=target["namespace"], uid=target["uid"])
             else:
@@ -280,4 +317,5 @@ def cleanup_runtime(k8s, targets, *, inspect_only=False):
             current = _read(k8s, target)
         if current is not None or _inventory(k8s, target):
             absent = False
+        _context(k8s, target)
     return absent

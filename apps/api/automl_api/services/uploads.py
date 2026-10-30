@@ -8,10 +8,11 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, status
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import func, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from automl_api.core.config import Settings, get_settings
+from automl_api.models.buffered_uploads import BufferedUploadInput
 from automl_api.models.datasets import Dataset, DatasetUploadSession, DatasetVersion
 from automl_api.models.enums import (
     CommandStatus,
@@ -61,6 +62,98 @@ UPLOAD_RETIREMENT_RECORD = "retirement_custody"
 UPLOAD_RETIREMENT_STARTED = "native_retirement_started"
 
 
+def require_storage_quota(db, project_id, byte_size, settings):
+    """The admission caller holds the project lock through reservation commit."""
+    limit = settings.project_storage_quota_bytes
+    if type(limit) is not int or limit < 0 or type(byte_size) is not int or byte_size < 1:
+        raise ValueError("Storage quota and incoming byte size require valid integer bounds.")
+    db.flush()
+    used_bytes = int(
+        db.scalar(
+            select(func.coalesce(func.sum(DatasetVersion.byte_size), 0)).where(
+                DatasetVersion.project_id == project_id
+            )
+        )
+        or 0
+    )
+    linked_version_bytes = (
+        select(DatasetVersion.byte_size)
+        .where(
+            DatasetVersion.project_id == DatasetUploadSession.project_id,
+            DatasetVersion.id == DatasetUploadSession.dataset_version_id,
+        )
+        .correlate(DatasetUploadSession)
+        .scalar_subquery()
+    )
+    reserved_bytes = int(
+        db.scalar(
+            select(
+                func.coalesce(
+                    func.sum(
+                        func.greatest(
+                            DatasetUploadSession.byte_size - func.coalesce(linked_version_bytes, 0),
+                            0,
+                        )
+                    ),
+                    0,
+                )
+            ).where(
+                DatasetUploadSession.project_id == project_id,
+                DatasetUploadSession.status.in_(ACTIVE_UPLOAD_STATES),
+            )
+        )
+        or 0
+    )
+    published_bytes = (
+        select(
+            DatasetVersion.object_uri.label("uri"),
+            DatasetVersion.content_hash.label("content_hash"),
+            func.max(DatasetVersion.byte_size).label("byte_size"),
+        )
+        .where(DatasetVersion.project_id == project_id)
+        .group_by(DatasetVersion.object_uri, DatasetVersion.content_hash)
+        .subquery()
+    )
+    private_bytes = int(
+        db.scalar(
+            select(
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (
+                                BufferedUploadInput.phase == "published",
+                                func.greatest(
+                                    BufferedUploadInput.byte_size
+                                    - func.coalesce(published_bytes.c.byte_size, 0),
+                                    0,
+                                ),
+                            ),
+                            else_=BufferedUploadInput.byte_size,
+                        )
+                    ),
+                    0,
+                )
+            )
+            .select_from(BufferedUploadInput)
+            .outerjoin(
+                published_bytes,
+                and_(
+                    published_bytes.c.uri == BufferedUploadInput.native_receipt["uri"].astext,
+                    published_bytes.c.content_hash == BufferedUploadInput.content_sha256,
+                ),
+            )
+            .where(BufferedUploadInput.project_id == project_id)
+        )
+        or 0
+    )
+    from automl_api.services.buffered_retirement import released_reservations
+
+    if private_bytes:
+        private_bytes -= released_reservations(db, project_id)
+    if used_bytes + reserved_bytes + private_bytes + byte_size > limit:
+        raise ValueError("The upload would exceed the project's storage quota.")
+
+
 def _admit_upload_session(
     db: Session,
     user: User,
@@ -86,25 +179,7 @@ def _admit_upload_session(
     )
     validate_upload_data_region(payload.data_region, settings)
     _lock_project(db, project_id)
-    used_bytes = int(
-        db.scalar(
-            select(func.coalesce(func.sum(DatasetVersion.byte_size), 0)).where(
-                DatasetVersion.project_id == project_id
-            )
-        )
-        or 0
-    )
-    reserved_bytes = int(
-        db.scalar(
-            select(func.coalesce(func.sum(DatasetUploadSession.byte_size), 0)).where(
-                DatasetUploadSession.project_id == project_id,
-                DatasetUploadSession.status.in_(ACTIVE_UPLOAD_STATES),
-            )
-        )
-        or 0
-    )
-    if used_bytes + reserved_bytes + payload.byte_size > settings.project_storage_quota_bytes:
-        raise ValueError("The upload would exceed the project's storage quota.")
+    require_storage_quota(db, project_id, payload.byte_size, settings)
 
     if protocol == "single_put":
         raise ValueError("The selected embedded driver cannot issue browser upload instructions.")

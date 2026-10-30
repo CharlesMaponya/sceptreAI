@@ -15,6 +15,7 @@ from automl_api.services import deletion, reconciler
 from automl_api.services.deletion_workflow import reconcile_deletion as reconcile_factory
 from automl_api.storage.embedded import EmbeddedObjectStoreDriver
 from automl_api.workflow_reconciler import run_once
+from fault_worker_environment import environment as fault_environment
 from sqlalchemy import delete, select
 from sqlalchemy.orm import sessionmaker
 from test_phase1_postgres_contracts import committed_tenant as committed_tenant
@@ -266,7 +267,7 @@ def test_actual_process_and_database_loss_recover_original_deletion(factory_case
         entry.delivery_attempts += 1
     root = c.store.root.resolve()
     marker, log_path = root / f"fault-{mode}.json", root / f"child-{mode}.log"
-    child_script = Path(".unlazy/phase1-deletion-factory/process_child.py").resolve()
+    child_script = Path(__file__).resolve().parent / "support" / "deletion_fault_worker.py"
     with log_path.open("w") as log:
         child = subprocess.Popen(
             [
@@ -278,6 +279,7 @@ def test_actual_process_and_database_loss_recover_original_deletion(factory_case
                 mode,
                 str(marker),
             ],
+            env=fault_environment(c.engine),
             stdin=subprocess.PIPE,
             stdout=log,
             stderr=log,
@@ -300,7 +302,7 @@ def test_actual_process_and_database_loss_recover_original_deletion(factory_case
                         ),
                         dict(
                             pid=witness["backend_pid"],
-                            database="automl_branch_0e6a232bc7_tests",
+                            database=c.engine.url.database,
                             application=f"phase1_deletion_fault_{child.pid}",
                         ),
                     )

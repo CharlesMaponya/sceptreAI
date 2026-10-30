@@ -7,9 +7,10 @@ import ray_observer_fixture
 from automl_api.models.enums import AttemptStatus, RunStatus
 from automl_api.models.runs import ModelRun
 from automl_api.models.workflows import OutboxEntry, WorkflowAttempt, WorkflowCommand
-from automl_api.services import reconciler, training_trials
+from automl_api.services import training_trials
 from automl_api.services.workflow_state import StaleFence
 from automl_api.training import pipeline
+from ray_cancellation_helpers import cancel_training_ray_job
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from test_phase1_postgres_contracts import committed_tenant, phase1_engine  # noqa: F401
@@ -81,7 +82,7 @@ def test_expired_parent_queues_cleanup_and_replacement_without_native_side_effec
         entry = db.get(OutboxEntry, cancel_id)
         old = db.get(WorkflowAttempt, parent_id)
         k8s.ray_job.return_value = ray_job_identity(db.get(ModelRun, run_id), old)
-        reconciler.cancel_training_ray_job(db, entry, k8s)
+        cancel_training_ray_job(db, entry, k8s)
         k8s.delete_ray_job.assert_called_once_with(
             old.ray_job_name,
             namespace="isolated-expiry-test",
@@ -107,7 +108,7 @@ def test_wrong_fence_never_deletes_even_a_terminal_attempt(expired, terminal):
         )
         k8s = MagicMock()
         with pytest.raises(StaleFence):
-            reconciler.cancel_training_ray_job(db, entry, k8s)
+            cancel_training_ray_job(db, entry, k8s)
         k8s.delete_ray_job.assert_not_called()
 
 
@@ -137,7 +138,7 @@ def test_cancel_scope_is_checked_before_external_delete(expired, invalid):
             entry.payload = {"attempt_id": str(child.id), "fencing_token": child.fencing_token}
         k8s = MagicMock()
         with pytest.raises(StaleFence):
-            reconciler.cancel_training_ray_job(db, entry, k8s)
+            cancel_training_ray_job(db, entry, k8s)
         k8s.delete_ray_job.assert_not_called()
 
 
@@ -245,14 +246,14 @@ def test_lost_delete_ack_replays_without_changing_old_terminal_fence(expired):
         k8s.ray_job.return_value = ray_job_identity(
             db.get(ModelRun, run_id), db.get(WorkflowAttempt, parent_id)
         )
-        reconciler.cancel_training_ray_job(db, entry, k8s)
+        cancel_training_ray_job(db, entry, k8s)
     with Session(engine) as db, db.begin():
         entry = db.scalar(
             select(OutboxEntry).where(
                 OutboxEntry.aggregate_id == run_id, OutboxEntry.topic == "ray.training.cancel"
             )
         )
-        reconciler.cancel_training_ray_job(db, entry, k8s)
+        cancel_training_ray_job(db, entry, k8s)
         parent = db.get(WorkflowAttempt, parent_id)
         assert parent.status == AttemptStatus.SUPERSEDED and parent.terminal_cas_version == 1
     assert k8s.delete_ray_job.call_count == 2

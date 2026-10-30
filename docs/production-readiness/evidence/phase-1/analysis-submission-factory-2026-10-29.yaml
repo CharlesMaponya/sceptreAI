@@ -1,0 +1,374 @@
+recorded_on: '2026-10-29'
+status: in_progress
+phase_complete: false
+scope: Factory-owned analysis submission, durable capacity and legacy migration
+source_inputs: 709
+source_manifest_sha256: 63698a8dfb911ce019a5b4c690ffaeed384b2e75056e2b06bf178f063bef7874
+changes:
+- Five fault workers now live in repository test support and inherit the parent's
+  dedicated test database plus import paths; they no longer depend on ignored local
+  scripts or a workstation endpoint. Backend termination remains pinned to each owned
+  child PID, application name and database.
+- Submission, first-delivery migration and cleanup require the exact launch operation
+  for the analysis kind; unrelated or crossed command types cannot authorize native
+  work.
+- Qualified physical retirement can settle an old generation's own source row after
+  the current run moves to a new generation; active moved scopes still cannot authorize
+  native submission, and the new scope is preserved.
+- Submission and legacy migration enforce the same verified raw-dataset digest provenance
+  already required by the public analysis API and worker, before native construction.
+- Validation, explainability and drift submission now uses the factory dispatcher.
+  Intent and durable capacity/native units commit before SDK effects; native construction,
+  capacity sampling, SA ensure, Job create and activation run outside SQL.
+- A suspended Job's original UID and full server-normalized specification are independently
+  journaled, then UID publication commits before UID/resourceVersion/spec JSON Patch
+  activation. Unknown creates are never reissued or adopted.
+- Known create/activation facts survive lost replies, stale actors/owners/source and
+  process/database failures. Unresolved native units retain custody; a fresh original-context
+  observation recovers uncertain activation without recreating the Job.
+- Short SQL admission locks serialize durable capacity reservations. Uncertain outcomes
+  retain their slot after terminal state, and qualified physical retirement releases
+  it. Factory reservations are counted once alongside legacy submitted rows.
+- Legacy first delivery records original intent and Job/Pod absence independently
+  before fresh scoped publication. Tracking/new manifest commits and defers before
+  creation; original migration context and selected proof remain bound while late
+  observations cannot change the executable request.
+- Cleanup and deletion recognize original factory-known unpublished identities, creator
+  context and live activation leases. Unknown creates block erasing history; rehashed
+  submission receipts cannot replace the original UID.
+- Session-native submission/migration entry points now fail before effects. Historical
+  component mocks retain their assertions outside application code, alongside actual
+  dispatcher/native qualification.
+checks:
+  focused:
+    passed: 149
+    returncode: 0
+    xml_sha256: ee748d03a04ce8a5e91a618da1915d06e862ed183884563988d8fc2cf5d23423
+    state_sha256: 28d0281df93987970fbf62b66dd174a8fe795224348d1c8bf4bf32afe40f4b00
+  process:
+    passed: 36
+    returncode: 0
+    xml_sha256: b1a9b5749fa89d2689f571f289bacfae2460be0a584fd27d9e862d6a0e840c0c
+    state_sha256: 7148a30fc8c4d9be7f2052b7a09034389f0111ab1f96a2afce79187a38ee0631
+  components:
+    passed: 247
+    returncode: 0
+    xml_sha256: d34da35844e2869d356f7d96864d05575fc6101a4786b6707c76749fb09eecb0
+    state_sha256: adc9fd7b243c0d966413c66aad5cfd4a91748ebea5cd44c1a12c4cd87b3e6e0d
+  connected:
+    passed: 329
+    returncode: 0
+    xml_sha256: 8b43c78e7f5c54263bf7df15ba84368591e237d1e30b551dde77873891134e55
+    state_sha256: be6c93a47c7ce6893d42222140cc6522b117c3af883c3bf3353ebfc89670d6f0
+  extra-faults:
+    passed: 57
+    returncode: 0
+    xml_sha256: 74889f7ede03528b381d58ba121224cbcaeb8d7a7ee4216fc3bc16fe0a1f2533
+    state_sha256: 898ad6caa412314daa781a23021e9912a4e97383c14f9244bd59fa70f6b1666e
+distinct_current_cases: 818
+native_controls:
+  normal:
+    mode: normal
+    namespace: phase1-analysis-submit-c177b2a7eb
+    delete_uids:
+    - deb1a17e-d286-4afd-a66d-409303b8873e
+    pod_observations:
+    - 0
+    - 0
+    - 0
+    full_runtime_qualified: false
+    namespace_uid: 737c71ee-8dc0-4f32-8eb4-5c7568bf2fbf
+    quota_uid: bf16a2b0-27ef-4de0-84a8-dfe1290897f8
+    activation_uids:
+    - deb1a17e-d286-4afd-a66d-409303b8873e
+    original_uid: deb1a17e-d286-4afd-a66d-409303b8873e
+    uid_committed_before_activation: true
+    retirement_delivered: true
+    namespace_removed: true
+    native_sql_calls: 23
+    native_sql_checkouts_unique:
+    - 0
+  replacement:
+    mode: replacement
+    namespace: phase1-analysis-submit-0ec91a4519
+    delete_uids: []
+    pod_observations:
+    - 0
+    - 0
+    - 0
+    full_runtime_qualified: false
+    namespace_uid: b532d984-2273-48d5-b77f-8a418c8df840
+    quota_uid: ccb1aa24-7fc7-46f1-9923-a17bb2b471bb
+    activation_uids: []
+    original_uid: 29966773-0349-4f4a-a92b-0e8a64c6b8be
+    uid_committed_before_activation: true
+    replacement_uid: 8698ea37-85a7-4626-869b-b7c4b097d9cf
+    replacement_rejected: true
+    replacement_survived: true
+    namespace_removed: true
+    native_sql_calls: 15
+    native_sql_checkouts_unique:
+    - 0
+  legacy:
+    mode: legacy
+    namespace: phase1-analysis-submit-58148a6189
+    delete_uids:
+    - 8186bf7d-5d09-49fd-973c-4cd88867df3b
+    pod_observations:
+    - 0
+    - 0
+    - 0
+    full_runtime_qualified: false
+    namespace_uid: 7e58e4bf-9aff-4fed-ae6b-8ff703b5aaac
+    quota_uid: 7c00865f-a3e1-4e2c-95ac-5320a5acd024
+    activation_uids:
+    - 8186bf7d-5d09-49fd-973c-4cd88867df3b
+    legacy_absence_committed_before_tracking_and_create: true
+    original_uid: 8186bf7d-5d09-49fd-973c-4cd88867df3b
+    uid_committed_before_activation: true
+    retirement_delivered: true
+    namespace_removed: true
+    native_sql_calls: 26
+    native_sql_checkouts_unique:
+    - 0
+preflight:
+  read_only: true
+  schema_differences: []
+  revision: 0020_observer_scan_clock
+  tables: 44
+  namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+  coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+  free_bytes: 45367865344
+  reserve_bytes: 43500000000
+owned_closure:
+  read_only: true
+  owned_fault_backends: 0
+  removed_namespaces:
+  - phase1-analysis-submit-c177b2a7eb
+  - phase1-analysis-submit-0ec91a4519
+  - phase1-analysis-submit-58148a6189
+acceptance:
+  scoped_raw_oracles_passed: 4
+  scoped_gates_met: 0
+  scoped_gates_unmet: 4
+  phase_verified: 2
+  phase_open: 34
+  note: Raw scoped evidence only; formal automatic acceptance and full Phase1 completion
+    are not claimed.
+retained_failure_note: The first process matrix retained 35 passes and 1 foreign-row
+  claim failure under a globally advanced test clock. Owned fixture queue priority
+  corrects isolation; final qualification is sequential. Earlier fixture/default-validation
+  failures remain retained under the scope.
+remaining:
+- Unknown create/SA outcomes still require original native qualification; name lookup
+  cannot reconstruct a lost original UID. This scoped custody evidence does not claim
+  all-side-effect automatic recovery.
+- Clean-checkout CI/release-image execution is not certified by local tests, although
+  all fault workers are now repository-contained and use portable test-database wiring.
+- Analysis/legacy observer source recovery and fairness, all-stage worker credential
+  isolation and remaining workflow families still need qualification.
+- Maintained images, full running workloads, cloud IAM, previous-release application
+  startup/mixed-version deployment and full release/branch coverage remain unqualified.
+- "The physical 45,000,000,000-byte migration target and largest-table cardinalities\
+  \ remain unqualified. The 15 users \xD7 10 GiB load campaign remains deferred to\
+  \ suitable infrastructure."
+- Original deletion G7 still requires seven missing historical objects (two models
+  and five signed results); none were reconstructed or re-signed.
+process_failure_controls:
+  witnesses: 36
+  sigkill_cases: 24
+  database_backend_terminations: 12
+evidence_hashes:
+  PLAN.md: f11607feec7ccf4ce8221fcb0a6fa817e47056e3c68aa00b36120fbcf0a21ff6
+  GATES.md: f15ad010d486387eee85e0fcc6e556b63a0c0d5cbcafeb2f4afda1a25af169c7
+  source-sha256.json: 63698a8dfb911ce019a5b4c690ffaeed384b2e75056e2b06bf178f063bef7874
+  baseline-source-sha256.json: 346520c41365257aca5bf8a5cdb418c3bd56d65bd0f5d295e94e9eb01b4d9d3a
+  before-kubernetes_training.py: de1d047784be1a087156d57016bd9a36117ef8f240fb89bc54588751d16c0ef0
+  before-reconciler.py: fd6854c1038498f91f51a02fd6e3222cfaaf53e8dbd9ed3ca7acc7dd4a93d0e0
+  before-worker.py: 4a43d945d7479abd1189ecc360954e828ace09a9b7743e331f5f3312a34cb179
+  before-moved-scope.py: f1b94f8d54bd4b74cd88102664f0f967179f179444320d4cfaefd44bea6ebb13
+  scope-baseline-source-sha256.json: b6ef8631a9cbfe07ceb3d3853a1b7494684e414984c3610e0ba094a20318016b
+  scope-baseline-state.json: 1d624b550624f72a3ecf868c6d568052285b8e07d63ad03dbbfcb2dbd3fa09d5
+  scope-baseline.xml: a665806b345bc524695e68161f611194987e567658d7dc42a04524ab4220e54d
+  scope-baseline.log: 48315162d289e6f0a69a95c8067e2bde18a7edd72bc057f03240a5ac096de185
+  run_scope_baseline.py: 9114c5ccd38a17e90ba67329feeb482c9fdace5a5dc61c460662b32c13fadee3
+  baseline_probe.py: c7991171e6780e023b548c8c5d68e427dd69ef27172c4007615706d3cbb0803a
+  run_baseline.py: 118fa0d0ebe644322328c955fc383d98216e34daddd2486913d106b5f0e2681e
+  baseline-replay-state.json: 14c98dbb5df7f5277ace61b8d2f93b0b0782b2b9f9b29b1e2c0f2e53bf6cc563
+  baseline-replay.xml: f41179e43398b5ad7b9a5ded2bad3e6f74ddc5fd1fa60da11b4369fa42933e4d
+  baseline-replay.log: b03e5d53c9a11c4b078cfd98932d802d6f1485910367f66ec9cc10b172bf38d4
+  remaining_campaign.py: 61e7025e6bfc1d124b125a02a34865bf3a01c16c9dda742916c85f3b0b240432
+  final_campaign.py: 420183549cc64f08f1ed6287ad83a5ca80460ba7ce5d0a95e5916cb1ab089a39
+  native_campaign.py: acafc75cd35a6ffbf791ce09b066a842d2d818609a0d340b852415bb6f9c17e9
+  baseline-state.json: df075c7c58fae1faf4aeb5cfa4c1bb52a6d7e6c88523a14ad7c82874ddabfa7d
+  baseline.xml: fde770835eae6bcd0298eaaa3c75d6090d90fd437166e6f9c1d07a41c8a60f28
+  baseline.log: d6b5ea4089bce63287e171176f5d5aa67420fe06f54be4b8daa4414d80bd2268
+  run.py: 1227c81785a7f43c662bddccdbb4b63d2e8b37e23a48d4b7d05cba6fe2265d01
+  campaign.py: 7f4dcff448fb2b45d7f48fa8583f5a72214d81f054fd4a6b7712af3591001c72
+  run_native.py: 63fff516e8b401e1633f7916a8c62cb6f5ff0e04b05678bcdbaa45541c1807b6
+  native_probe.py: 13edca50791d14d0943f14a72929373460cda54cd6aeaa9f5ee1f08eb428dce6
+  preflight.py: b7217ed6e409b25556e2877fd712744a236aba9c12e5b6cb7dd0868a908f29b5
+  preflight.json: 0f9c4004e4f4027c54466580eff87031eccf8176a0d7a8b7138fc85149b44ad9
+  closure.py: a6c2dfcd0006da701c463236f50231d2db2ed871e1a5cdd68828fc9a8dc59f0b
+  closure.json: e5e9ed912455d98c481a2bb76fbfe13164ff78a79ca1a8e6b19f0cca055e87a4
+  audit.py: d78c59b0e3bac0240fcaf2c57a979c84c4a12a27fcc84c531789e53f753b2c8f
+  control.py: 7261f6fd06b9186233594b26de6e4d96b769f8967e1b6ecdea71a2dc9c986048
+  auditor-control.json: b362f464d692ccef059a275e3ef6f2a5863fd684697a08939d13bf412e9f80c3
+  report.py: d5c7b3799e9d5fe5f8ad9c831dd5453023b07cf9592eebff0d5b2c453f66c384
+  focused-state.json: 28d0281df93987970fbf62b66dd174a8fe795224348d1c8bf4bf32afe40f4b00
+  focused.xml: ee748d03a04ce8a5e91a618da1915d06e862ed183884563988d8fc2cf5d23423
+  focused.log: 7400fe59708b3c9720bc668f0212b9785da10d7008ced3c721211d63cb79316a
+  process-state.json: 7148a30fc8c4d9be7f2052b7a09034389f0111ab1f96a2afce79187a38ee0631
+  process.xml: b1a9b5749fa89d2689f571f289bacfae2460be0a584fd27d9e862d6a0e840c0c
+  process.log: b28d03a8467c75d51081eee2bfa4f77f461fe2db2f9350b8091b8eb91f8b36b3
+  components-state.json: adc9fd7b243c0d966413c66aad5cfd4a91748ebea5cd44c1a12c4cd87b3e6e0d
+  components.xml: d34da35844e2869d356f7d96864d05575fc6101a4786b6707c76749fb09eecb0
+  components.log: 2737f6958fcaadd71ce188f92ec475bb50497f017ab88684b1bbe977c4433b4d
+  connected-state.json: be6c93a47c7ce6893d42222140cc6522b117c3af883c3bf3353ebfc89670d6f0
+  connected.xml: 8b43c78e7f5c54263bf7df15ba84368591e237d1e30b551dde77873891134e55
+  connected.log: 2d4f48ba95c3f8360080bf8a942587f5ee0d17916daf51158b68eaa0aba0b463
+  extra-faults-state.json: 898ad6caa412314daa781a23021e9912a4e97383c14f9244bd59fa70f6b1666e
+  extra-faults.xml: 74889f7ede03528b381d58ba121224cbcaeb8d7a7ee4216fc3bc16fe0a1f2533
+  extra-faults.log: 020ada102b3ebb3a577f21b978af325d500190b20263042f323c173958b6d730
+  native-normal-state.json: cedab9f77507c1410decaf56afa55bb825745425b5cad560ced12fb0206a593d
+  native-normal.log: d702d95a8556be1a51d5d84f340edf02bb4b1bd7aa9f14e5db1e9445c71f49f0
+  native-witness-normal.json: 92839b79b19d4c2146e6d683ab6a2e6d9bb2d0b62a669908bcab882e9e3f90bc
+  native-replacement-state.json: b24e31bbe9612ef0a1fcfb980b86930be2d401d4fb31b040bce24ba01880ce33
+  native-replacement.log: e8a44b0baba84eae983c0b0d1092a6aeee7103bd72979537418aa45a56deaf91
+  native-witness-replacement.json: dba752681df433cf47ca52f04c417645d6b6e26af051be10b9c55d720584ff58
+  native-legacy-state.json: 69fe4bdfd8981212024b309d7266b149612ce0002997224d72b92533472ebdc7
+  native-legacy.log: 9beb39ae872cca90b9b7a9c29fc6f8d19db6b79ad12717f2f3582c883384e575
+  native-witness-legacy.json: cc66ea0c293353a59196b43cdccabf5ad09b6645556ded0c87c2e0a854ee0df1
+  process-witnesses/test_real_process_and_backend_7/checkpoint.json: d534016865203e82fa01c34b5f20806140430bff8f92952b89f937d9e42aa1dd
+  process-witnesses/test_real_process_and_backend_7/child.log: 4b0f70fed5613b434d51037fc5c9b7549dd292a76e08225e4574a856bfc9ceae
+  process-witnesses/test_real_process_and_backend_7/native.json: b6d43cc6f586d777e30a8fc7adfd517b64c0b1d11d3ca839b0e4c1fb83209244
+  process-witnesses/test_real_process_and_backend_7/service-account.json: 89ed0dd33da3f8e78f9a17dc3bade577d941107e95da5d684f2b35c8902192a4
+  process-witnesses/test_real_process_and_backend_0/checkpoint.json: db9fdad2f6238dd54d7c1dab781c9b03e3c00d560418b0bfd37991d0bace701f
+  process-witnesses/test_real_process_and_backend_0/child.log: 4b0f70fed5613b434d51037fc5c9b7549dd292a76e08225e4574a856bfc9ceae
+  process-witnesses/test_real_process_and_backend_17/checkpoint.json: 92aa95a65cfff106e0ab33e90f2aaa8e26d531fff670b62cdc23f6b754d67efd
+  process-witnesses/test_real_process_and_backend_17/child.log: 4b0f70fed5613b434d51037fc5c9b7549dd292a76e08225e4574a856bfc9ceae
+  process-witnesses/test_real_process_and_backend_17/native.json: 94868b8cf5d96a3ac022f97507f7d7a6feec6f3e2cbe8aa1df631e321aaf8df5
+  process-witnesses/test_real_process_and_backend_17/service-account.json: 19cf54d305775118acbb08126316a0fe4792d95e6bea2b5fe427df09db6ba094
+  process-witnesses/test_real_process_and_backend_15/checkpoint.json: 6ad8c69a3b2b773ada13bbda137c15997f628224d8e683f1ce5c627f7804cd26
+  process-witnesses/test_real_process_and_backend_15/child.log: 4b0f70fed5613b434d51037fc5c9b7549dd292a76e08225e4574a856bfc9ceae
+  process-witnesses/test_real_process_and_backend_15/native.json: 513d4fdf47b9e06b84ca38e5174387d655582c924069e16774ac568fbc26c589
+  process-witnesses/test_real_process_and_backend_15/service-account.json: ebb3af5ea853d13978103250ad5732e71d568cddf460d9357b78f84b93bdae03
+  process-witnesses/test_real_process_and_backend_12/checkpoint.json: 8b4855d62eb45b271ba2dcb76dc75dfa3a9755abd570de3ed3b46557834c6550
+  process-witnesses/test_real_process_and_backend_12/child.log: 4b0f70fed5613b434d51037fc5c9b7549dd292a76e08225e4574a856bfc9ceae
+  process-witnesses/test_real_process_and_backend_3/checkpoint.json: 0707c0d99e8b2883f30faf89dcb34b128726d0ad0e57a02148edaff88246ae0a
+  process-witnesses/test_real_process_and_backend_3/child.log: 4b0f70fed5613b434d51037fc5c9b7549dd292a76e08225e4574a856bfc9ceae
+  process-witnesses/test_real_process_and_backend_3/native.json: e8f24b13b1f80b7d0a396e038bf9e559e3ac08781b8317f917a322f5746abbd2
+  process-witnesses/test_real_process_and_backend_3/service-account.json: 8d3bde2f9dd3e17a1f089eb6225394beda54dbf2180b247b2d838302588a3682
+  process-witnesses/test_real_process_and_backend_11/checkpoint.json: b137be3c193245e78ff243b746e5ab6e6f532de834616d2ae726d49e1ae47efe
+  process-witnesses/test_real_process_and_backend_11/child.log: 234ae68031c2adf8be7eef5052908d17c65c28eac80ac8060daa898de37b3be6
+  process-witnesses/test_real_process_and_backend_11/native.json: 836f392d74a3f58ca44a0d4b18d85d538d4f26d41bd3d92fb3f47fcae042fb4b
+  process-witnesses/test_real_process_and_backend_11/service-account.json: 045ef5b8fc9ea66272ce8f046e8fdcffb7ce471da2800f43931a266d5658f9ba
+  process-witnesses/test_real_process_and_backend_28/checkpoint.json: a9e09601a47e965a93f2474aa4aa91856b51f193f22c4e30134fee9063a2bc12
+  process-witnesses/test_real_process_and_backend_28/child.log: 4b0f70fed5613b434d51037fc5c9b7549dd292a76e08225e4574a856bfc9ceae
+  process-witnesses/test_real_process_and_backend_28/native.json: 7cdbe47f945e410448b17f45b1c89845fffb8c60c4272f2d9666d1a4cbbf2373
+  process-witnesses/test_real_process_and_backend_28/service-account.json: d9b52456f744db045b79b47cdb85ac37ec724dfc0a91e59753bdf3e6c45d0f2e
+  process-witnesses/test_real_process_and_backend_2/checkpoint.json: 7f1af374c94a6a763d41e54219b0d1ec9778acc60cc648330ee31fc908b5ca5c
+  process-witnesses/test_real_process_and_backend_2/child.log: 4b0f70fed5613b434d51037fc5c9b7549dd292a76e08225e4574a856bfc9ceae
+  process-witnesses/test_real_process_and_backend_2/service-account.json: 14f5ed7c606a5fc06c225ccfbd05c7cd77d25b6f9080845798cb1ac03014942f
+  process-witnesses/test_real_process_and_backend_13/checkpoint.json: 46283d940a778725ebd518814218922aa5fed6fa268a2e183552764ab6b439b3
+  process-witnesses/test_real_process_and_backend_13/child.log: 4b0f70fed5613b434d51037fc5c9b7549dd292a76e08225e4574a856bfc9ceae
+  process-witnesses/test_real_process_and_backend_13/service-account.json: 79b7a4738076663ed3e2b4db45ee523b55f2f7241b20a4400626d6b6135ddd8f
+  process-witnesses/test_real_process_and_backend_19/checkpoint.json: ba628ea0cb2a5edd78e9c02dc2089c148ef9f5fb3524b7c07cfbc22297785c00
+  process-witnesses/test_real_process_and_backend_19/child.log: 4b0f70fed5613b434d51037fc5c9b7549dd292a76e08225e4574a856bfc9ceae
+  process-witnesses/test_real_process_and_backend_19/native.json: 8d56679b4fe5403f07274acfc1daff08cab31291290b5796bc9a40d8d180f9cf
+  process-witnesses/test_real_process_and_backend_19/service-account.json: c66728bba155aa52d8239e4bde06bb421106683fa6abf42e098a164692dd7178
+  process-witnesses/test_real_process_and_backend_10/checkpoint.json: f3b073b1bfa393667bcca6242b0b4e56eccde22ec87e8360ca0a1f2f5d38c798
+  process-witnesses/test_real_process_and_backend_10/child.log: 9b72ecae125fb902e5c9837166d4aa8eaff313149a485c8cbaabd2307b7c93b6
+  process-witnesses/test_real_process_and_backend_10/native.json: 1ed03ca008bc9efc299892ef987396ebe705df8679dd9ebbf87db85306a7d5a5
+  process-witnesses/test_real_process_and_backend_10/service-account.json: 9fe8c73b602fcb2be4fb1386f71f80ec3cfdde8916b0ea7c6dce9f6fc1feee2c
+  process-witnesses/test_real_process_and_backend_20/checkpoint.json: dfba2a26de9d096ac2e348927474bdf9f7001143acafdb14727d4fdd4e42f74b
+  process-witnesses/test_real_process_and_backend_20/child.log: 32828cf98c0734be0626e3322c4d0caae301186fd08debb8ad7d57084155785b
+  process-witnesses/test_real_process_and_backend_20/native.json: e2c473b5f15c17a95ae0459f0bce406d28eb1ad2acce5344e0e702f665e1b0a6
+  process-witnesses/test_real_process_and_backend_20/service-account.json: 30689b084fd400f521ba1645b3dbeb318edaefc5459446dceebed686fb240ce0
+  process-witnesses/test_real_process_and_backend_31/checkpoint.json: 6514cf1096d4ddeddbd9017f7373ea38dc0b0346808c6169eb7503db3c04376a
+  process-witnesses/test_real_process_and_backend_31/child.log: 4b0f70fed5613b434d51037fc5c9b7549dd292a76e08225e4574a856bfc9ceae
+  process-witnesses/test_real_process_and_backend_31/native.json: 42ab1e4d122e14dd98873db772cbd4fa59f00446ce240fa1c31f5628c3ecc6c2
+  process-witnesses/test_real_process_and_backend_31/service-account.json: 77e6b4f6f7bed3910a0d33e2ed57147579c2431c3d5892989d7297b89cb4d13a
+  process-witnesses/test_real_process_and_backend_27/checkpoint.json: 9dcfab712d6238a4bbed186b237fb9ac64298e3371706cb1f86e7b7b6f7766ed
+  process-witnesses/test_real_process_and_backend_27/child.log: 4b0f70fed5613b434d51037fc5c9b7549dd292a76e08225e4574a856bfc9ceae
+  process-witnesses/test_real_process_and_backend_27/native.json: bebc7b7e0d65de5b2463da1eafa9154f0d1ec8fbae56430a197030321ff2748e
+  process-witnesses/test_real_process_and_backend_27/service-account.json: 81b5c4ecfa4fff17106a339818db2495b738c6d420fc37d490de01d35ec0eb1a
+  process-witnesses/test_real_process_and_backend_16/checkpoint.json: 55aae7c58cb62c78e36b168855bde6c461241e5f4d63c973dae12595e697e392
+  process-witnesses/test_real_process_and_backend_16/child.log: 4b0f70fed5613b434d51037fc5c9b7549dd292a76e08225e4574a856bfc9ceae
+  process-witnesses/test_real_process_and_backend_16/native.json: 02f39501ae3c514fa61d9f4d87cd636661402482018512984b16a315310e35e5
+  process-witnesses/test_real_process_and_backend_16/service-account.json: e5f6912bdcb710e08ff51b2ff1f45af40308cf16b1cff9fd0e1aab73dda96c50
+  process-witnesses/test_real_process_and_backend_35/checkpoint.json: b0e7576c8b47a7bc387512b15a5649a633bf1450f439332154456dff25126c0c
+  process-witnesses/test_real_process_and_backend_35/child.log: 0c3e30568ef73360fb73e880eebf26fdc9019130a921e3bcd82f133ce31eb748
+  process-witnesses/test_real_process_and_backend_35/native.json: dea4fd9827276b56c4920bbbd60346594df156dff152ea1e0744869586cc200e
+  process-witnesses/test_real_process_and_backend_35/service-account.json: ee9b3f80a147b6cf5dee3604fd7bfa6e402dbc7fe09f43bc5e7e37796baddf22
+  process-witnesses/test_real_process_and_backend_29/checkpoint.json: d970282bfa0aa8c55cd61979f43f796e846c4b4f57d67cd9c0a4826a242752df
+  process-witnesses/test_real_process_and_backend_29/child.log: 4b0f70fed5613b434d51037fc5c9b7549dd292a76e08225e4574a856bfc9ceae
+  process-witnesses/test_real_process_and_backend_29/native.json: a59bff13183634a68a57d200ed1634da3cf23a60bbdc8a858540f1dd582ec89f
+  process-witnesses/test_real_process_and_backend_29/service-account.json: d7303866bb4b65d42c3be708be4323dc18fe9d360cc3540493204e3b36f2799e
+  process-witnesses/test_real_process_and_backend_8/checkpoint.json: 8a9b03dafc6932e3bc8bfca929b4600f4f32b872eca5fefeff27591d7e3f1c92
+  process-witnesses/test_real_process_and_backend_8/child.log: 32828cf98c0734be0626e3322c4d0caae301186fd08debb8ad7d57084155785b
+  process-witnesses/test_real_process_and_backend_8/native.json: e4f98f63ccbffc653dc1dc86e9cdb3d3a66b7301bc9f66bfb8a43c9374e8e7a9
+  process-witnesses/test_real_process_and_backend_8/service-account.json: 27420236d5adce4d8a03ee720886e0410cac7f3131c7f27250157b5d49f40634
+  process-witnesses/test_real_process_and_backend_1/checkpoint.json: 8e348bca43460e91c2b7ad953502563323a9fbf5985315dc58883a7e2806f8f1
+  process-witnesses/test_real_process_and_backend_1/child.log: 4b0f70fed5613b434d51037fc5c9b7549dd292a76e08225e4574a856bfc9ceae
+  process-witnesses/test_real_process_and_backend_1/service-account.json: c74a55433b69dda3102b2deeb897d8b914f7c5763e11469856e632acbaa1d146
+  process-witnesses/test_real_process_and_backend_4/checkpoint.json: bfccbcfec95ba52196ae5ee92aaa9c7665b42a4d45904b220c9568c6060c7ecd
+  process-witnesses/test_real_process_and_backend_4/child.log: 4b0f70fed5613b434d51037fc5c9b7549dd292a76e08225e4574a856bfc9ceae
+  process-witnesses/test_real_process_and_backend_4/native.json: bd85e0a1f27a6a20e2615df5188a2056471259bace995a8120575f53a9240cf9
+  process-witnesses/test_real_process_and_backend_4/service-account.json: 60a24141bcd9317373b60ac39fc59ab93e9a4ee6a0cb246e01ac0b834b226c45
+  process-witnesses/test_real_process_and_backend_6/checkpoint.json: d6ceb1c00ac98af22d8e4550c4691ff9f261d60ca88efb7aa35fa568397c342f
+  process-witnesses/test_real_process_and_backend_6/child.log: 4b0f70fed5613b434d51037fc5c9b7549dd292a76e08225e4574a856bfc9ceae
+  process-witnesses/test_real_process_and_backend_6/native.json: e8d7f5c2074f1fd7f4c6eeb9d65dcfa6b698dd078af999e011aaf4f4265135b4
+  process-witnesses/test_real_process_and_backend_6/service-account.json: b64bb5e02ae2141ebd9358cd32c5a4a2752b074af185bf622025861f82932e7c
+  process-witnesses/test_real_process_and_backend_33/checkpoint.json: be07c8da2a03b9f5185a01ad700ae3205514b575a7f478713da498b6fcb10e45
+  process-witnesses/test_real_process_and_backend_33/child.log: 574feaeb9a94a02b53f167d3bc7682761b236fa3d4156944e03561f87dc7f149
+  process-witnesses/test_real_process_and_backend_33/native.json: e055d80e18792d794e85f4d9fd1823a8b54b029180a34dcaab1a2b27e9c2c033
+  process-witnesses/test_real_process_and_backend_33/service-account.json: 6200a60117ad7adbb2aff713a9e7a0861a45de3c7c9810fdbb1e3d0c2fa9bc54
+  process-witnesses/test_real_process_and_backend_5/checkpoint.json: dd041b84c9d89d60c94719684fdb049f1cdbe5dde78e4cca04a44ccc685b5f1e
+  process-witnesses/test_real_process_and_backend_5/child.log: 4b0f70fed5613b434d51037fc5c9b7549dd292a76e08225e4574a856bfc9ceae
+  process-witnesses/test_real_process_and_backend_5/native.json: e5c4e24cb50a432583c00d1bf4d8c1fabeccbeda13f9d537c696a7c45e57b5dd
+  process-witnesses/test_real_process_and_backend_5/service-account.json: d7f70a0d074c70e7b0823a711d654d30921f17f8833b2a1c63e581fd7aeaaa97
+  process-witnesses/test_real_process_and_backend_24/checkpoint.json: dcc792bdb153219fb485b3dc00bb8e5ec10ccf9367d65c74170fb0509c8d6c79
+  process-witnesses/test_real_process_and_backend_24/child.log: 4b0f70fed5613b434d51037fc5c9b7549dd292a76e08225e4574a856bfc9ceae
+  process-witnesses/test_real_process_and_backend_32/checkpoint.json: 5343cac36d46d0dedb301166cca0b65232a5df827325319508f4f02916c86fc1
+  process-witnesses/test_real_process_and_backend_32/child.log: 32828cf98c0734be0626e3322c4d0caae301186fd08debb8ad7d57084155785b
+  process-witnesses/test_real_process_and_backend_32/native.json: 63096ebc434fe2073694b65d4dcd155bd47fa7710062182420b978f3e67b88eb
+  process-witnesses/test_real_process_and_backend_32/service-account.json: 776e44927e3929e9d34281b802a24e10ec3ab98efb5176b2bf86821fc527f541
+  process-witnesses/test_real_process_and_backend_34/checkpoint.json: 7fb611efd7a6e52b32d9232536ffecd23a10caa83134145406fdb295f1ec02b7
+  process-witnesses/test_real_process_and_backend_34/child.log: 9b72ecae125fb902e5c9837166d4aa8eaff313149a485c8cbaabd2307b7c93b6
+  process-witnesses/test_real_process_and_backend_34/native.json: 1a3d98c301e9a5edc483f9ae20d9f2200f65ce896c86c706080c12a5f467c66a
+  process-witnesses/test_real_process_and_backend_34/service-account.json: 624b98040162d96fd5c7605fc9b0d575e82da61491b2c8b05761d2e056924c35
+  process-witnesses/test_real_process_and_backend_25/checkpoint.json: 17caabbb6e993afeb2913dc13823d590823d741c1fda9aea5a52d6cbcb0f0896
+  process-witnesses/test_real_process_and_backend_25/child.log: 4b0f70fed5613b434d51037fc5c9b7549dd292a76e08225e4574a856bfc9ceae
+  process-witnesses/test_real_process_and_backend_25/service-account.json: c701288e061b848d4099ea757d89c943c498f7e73846f6b75748c91779ad3bc1
+  process-witnesses/test_real_process_and_backend_9/checkpoint.json: 2ea6bb781b1eb8a1481eea23a56af087559a12168cf4c2dc3fa8f4729e1d109f
+  process-witnesses/test_real_process_and_backend_9/child.log: 797b421b67cffc14a0f0a72ad753599bb1069a9e331a51227a5d29dec4714959
+  process-witnesses/test_real_process_and_backend_9/native.json: cf1dce6258bfa0145108afc2f9485e337cbda07fd4d657e2f5a98830420eac12
+  process-witnesses/test_real_process_and_backend_9/service-account.json: 0057a1e29557e5e3c65b1aa808a0662dbd0a5f28cdcb8f26b646d34c53b24945
+  process-witnesses/test_real_process_and_backend_26/checkpoint.json: 4dc94da233fa1637d59f9711237289cc71cfcd5a472f008f96e17b04f22c4f90
+  process-witnesses/test_real_process_and_backend_26/child.log: 4b0f70fed5613b434d51037fc5c9b7549dd292a76e08225e4574a856bfc9ceae
+  process-witnesses/test_real_process_and_backend_26/service-account.json: a06cbf3d66d2c8dc674382ba270e89a8a763860254589e22b64a3dc12bfa87b9
+  process-witnesses/test_real_process_and_backend_18/checkpoint.json: 4f1b25d574c8e618c3393db5e0d3dced098e5ddf00df62e20319ff08be9b999e
+  process-witnesses/test_real_process_and_backend_18/child.log: 4b0f70fed5613b434d51037fc5c9b7549dd292a76e08225e4574a856bfc9ceae
+  process-witnesses/test_real_process_and_backend_18/native.json: 61b6c3cb8e614a26f898c24dc4212119a85e5f8ca09fc7fd9d1aab0f5e9c4cfc
+  process-witnesses/test_real_process_and_backend_18/service-account.json: dbfa36e55e8df40e75d0ffe3f909fe2fa32d3356b71ccaac417d0da2fbe59bbc
+  process-witnesses/test_real_process_and_backend_23/checkpoint.json: 42b74aa9618c8016ea592524bda04c2515b87816fe30703f0ab8ecdca1c1a14a
+  process-witnesses/test_real_process_and_backend_23/child.log: 89aec5d0204dde70abf46186e627f3472bd80c72ca8effcf44eea3ab8053513d
+  process-witnesses/test_real_process_and_backend_23/native.json: 2b5421bf891b56f8aa0c1de9acacd4a59a343320b3a1afa06bc1af968b241fe1
+  process-witnesses/test_real_process_and_backend_23/service-account.json: bcae3a29f5f8a3bb931c38dc469a1c22e117c0e1c1bc762286ea155c0f59399d
+  process-witnesses/test_real_process_and_backend_22/checkpoint.json: 0f6e77df015a3089212cbc7e825e45eb88e49494cb69ba615132ddcf187559b2
+  process-witnesses/test_real_process_and_backend_22/child.log: 9b72ecae125fb902e5c9837166d4aa8eaff313149a485c8cbaabd2307b7c93b6
+  process-witnesses/test_real_process_and_backend_22/native.json: fc27cb907c9814e328a8291bd75ce0e65292f0d45d3aafbc1999fde5c77c043e
+  process-witnesses/test_real_process_and_backend_22/service-account.json: 7a07f1a4a30b62a926d487451a7cd063c2e6061ebc2f69129b16f5fe85438fb0
+  process-witnesses/test_real_process_and_backend_30/checkpoint.json: c53c89567a8d85e2062b33d3a2737b8f7047347234d9a6aa2d1c6bc344235d76
+  process-witnesses/test_real_process_and_backend_30/child.log: 4b0f70fed5613b434d51037fc5c9b7549dd292a76e08225e4574a856bfc9ceae
+  process-witnesses/test_real_process_and_backend_30/native.json: cdc66e5d269a8223d069101e5ef925e6adcd89f4553b18a5ffa7feeb780554db
+  process-witnesses/test_real_process_and_backend_30/service-account.json: 0c7e7a27d6f57e0b61f8e424db316582325dc21f7821501eac6ec1507fc0bd4f
+  process-witnesses/test_real_process_and_backend_21/checkpoint.json: 4e236650906a58a690d6f079e9b979d984680696fe06500a092056ba06a4f02b
+  process-witnesses/test_real_process_and_backend_21/child.log: b031478e971987dc87b1fce55436d4a1965069deabb8528345f5e24b411d6f87
+  process-witnesses/test_real_process_and_backend_21/native.json: a3190100c5ea4c613180c4299bfac5bebde27869927159987f9edd666edb8f1b
+  process-witnesses/test_real_process_and_backend_21/service-account.json: 82e3ef5e79efac61a5456f0971d2dc66f74806c86e058ec58056856c2988fe35
+  process-witnesses/test_real_process_and_backend_14/checkpoint.json: b87085bf7839967a70e40ea167fe414b44231fc1d83cf3a2172d46b1a716aeec
+  process-witnesses/test_real_process_and_backend_14/child.log: 4b0f70fed5613b434d51037fc5c9b7549dd292a76e08225e4574a856bfc9ceae
+  process-witnesses/test_real_process_and_backend_14/service-account.json: 3da94772a84739a8bef9d2c2671dc36a6e4907e229fef3a5f2a3ed7f42b2907a

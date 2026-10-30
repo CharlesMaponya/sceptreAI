@@ -1,0 +1,197 @@
+recorded_on: '2026-10-28'
+status: in_progress
+phase_complete: false
+scope: Factory-owned Ray submission for training, splitter and preparation
+source_inputs: 681
+source_manifest_sha256: 90e29222f27ab7b72fb965991230b91d53fcecbfd4755426b6c498380a7167e4
+changes:
+- Actual dispatcher commits intent/native unit before SQL-free SDK construction, ServiceAccount
+  ensure and suspended RayJob creation.
+- Original known replies commit independently and replay without a second creation;
+  unknown creates cannot reissue, adopt by name or disappear behind a missing logical
+  Job name.
+- Original UID/submitted state commits before activation; JSONPatch tests UID, resourceVersion
+  and complete original spec before unsuspending.
+- Current actor/project/source/claim/native context revalidate before effects, projection
+  and acknowledgement; late facts cannot acknowledge a successor.
+- DNS targets and verified HTTPS/hostname/retry context are checked before native
+  starts; native errors are redacted and construction is bounded.
+- Session-native submission escape paths are removed; pure SQL builders/publication
+  are shared and component adapters accept mocks only.
+checks:
+  focused:
+    passed: 101
+    returncode: 0
+    xml_sha256: 0602c9d61d606637bbd1e0a27f4fac54e4ffae77dadef98d06c4f73501577896
+    state_sha256: 2774d95f9936b13cdb92d4ae1e38c32cfacd001b749710a59f5f90d8b30caa87
+  process:
+    passed: 27
+    returncode: 0
+    xml_sha256: b31f7db2feb3c1676630b1b945ad0f205a925177a9fa5c4955bf840d50698521
+    state_sha256: defe80a725390c0598c30e18d559e2dddb85dc2fe6dcdb7b26cd0bafd7882a02
+  connected:
+    passed: 167
+    returncode: 0
+    xml_sha256: d21442b609ed3a87ad5cb16fa6f9fca972370f41176e821fb492e8f38f9bbe70
+    state_sha256: 54fdb2d0d10d2272c9392203c7c1266e578a639a96a4b1541a23dfe1f47963e7
+  deletion:
+    passed: 39
+    returncode: 0
+    xml_sha256: f401ea23141ea94b38ef926f7ac2f6eed7ec6c7dbb635fc99808b7e4f2153c09
+    state_sha256: 55025f0c8f744ea222c0c26d861fa5d2c01528a2648e7054bac81ce20fdd2dbe
+  components:
+    passed: 353
+    returncode: 0
+    xml_sha256: 8353afdd5597d5879ca4a15fdf4d55cbd48d8510a29bc683048d45cd822da416
+    state_sha256: 597a5493edcbe8dd735d9b1a3f9eadf60a2bd9b5040d999934e9c9f03cded77a
+distinct_matrix_cases: 687
+supplemental_replacement_cases: 3
+total_current_cases: 690
+qualification_retry: Initial supplemental replacement setup failed because the owned
+  PostgreSQL container was stopped; diagnostics retained, container restarted, all
+  three cases passed on the same frozen source.
+process_controls:
+  real_sigkill: 21
+  owned_postgres_backend_terminations: 6
+  stages: 3
+  windows_per_stage: 9
+  known_facts_recovered_without_recreate: true
+  unknown_creates_held: true
+  late_fact_cannot_acknowledge_successor: true
+process_witnesses:
+  process-witnesses/test_real_process_and_backend_7/checkpoint.json: a8ee70a08f7c2a43a8729a18abe92cc04519b29719aff1db4b2207e4e173c745
+  process-witnesses/test_real_process_and_backend_0/checkpoint.json: c67d08f64e39c38a9eee3d215da919aa2d6c75b23b915dfa4a6418e9bd618b66
+  process-witnesses/test_real_process_and_backend_17/checkpoint.json: 33bd209d330553562eea112b530645a49f755ee8757e33fed1ad3f78fe38b033
+  process-witnesses/test_real_process_and_backend_15/checkpoint.json: e8661c805850e10b58df8f297573ebd22530b3338aa8dc9cb359ac5e415917e1
+  process-witnesses/test_real_process_and_backend_12/checkpoint.json: ea4c4fd1141ce5af4d5cdb655b38f8e493df7ed15e2347b2cb87b7ef9ec86e8f
+  process-witnesses/test_real_process_and_backend_3/checkpoint.json: c16b69b519661f9a7f715f996fadfb330ee6d472bff0615d60fb84d78f43ffa8
+  process-witnesses/test_real_process_and_backend_11/checkpoint.json: 7aaf337fb7673891e2c2f6a5390d8334248c28e22a0ad9c9e931d40904becb12
+  process-witnesses/test_real_process_and_backend_2/checkpoint.json: 8bbe3cf9fc831d53de62d41d43328a6954f64d038734510c3c77a3c39eaea1d8
+  process-witnesses/test_real_process_and_backend_13/checkpoint.json: 18bf91933bebf1e19d48384161681f6edd5011188799aa9a01f6f2f01f2c59d5
+  process-witnesses/test_real_process_and_backend_19/checkpoint.json: 9df97ced531b3a520edb4d55fa717f88d1d7558dd9c9d4f11b209f49f3f05d4c
+  process-witnesses/test_real_process_and_backend_10/checkpoint.json: 1e3591b219ae3e69855852345bc966b4f8b10ba6a1863eacc5e5a7632110eda9
+  process-witnesses/test_real_process_and_backend_20/checkpoint.json: 96d77fac4ca224545155c71be144ca919d4bda73504de89714ed833ff2faed9e
+  process-witnesses/test_real_process_and_backend_16/checkpoint.json: 6f87e58bee08b3a79ce60cbff617235bfae847b017374bd80096544bcf04c044
+  process-witnesses/test_real_process_and_backend_8/checkpoint.json: 37f866958c7066279192faebd2b364df430b5cc7278b18d9d68520cfded7bb6a
+  process-witnesses/test_real_process_and_backend_1/checkpoint.json: f58ae930aa8a9204a824543c320ebe152d4f2bba7cb5dcf73ba7b2e9c4a2278a
+  process-witnesses/test_real_process_and_backend_4/checkpoint.json: 27f72ee30c7d67d07433abb27123833ba1e17d9f19ce025a9420a0c75e862259
+  process-witnesses/test_real_process_and_backend_6/checkpoint.json: e482616ab05434b45aa26445eb1aed33917a7d8d0cfc67400f019c129c52e90e
+  process-witnesses/test_real_process_and_backend_5/checkpoint.json: 6d2385feff149d93619b13ac91cf39ab25594447c2e8251676684cab33fa3468
+  process-witnesses/test_real_process_and_backend_24/checkpoint.json: 20aebba619342457e6e337b7e875df152c7a723e86cf9a44102cd7633ab482e9
+  process-witnesses/test_real_process_and_backend_25/checkpoint.json: 8c4bd111ff54fbf13b3fb7121d1023acfb329e1078914fe6a0824f1550eb0bbb
+  process-witnesses/test_real_process_and_backend_9/checkpoint.json: ff4de23b4675ab61856809a95cfde7a73249d67188e48ac455f13d785a1c6b5a
+  process-witnesses/test_real_process_and_backend_26/checkpoint.json: 7054490a00fc9f05435600cfc7855a048ab6476749bce58da19d366661dac62f
+  process-witnesses/test_real_process_and_backend_18/checkpoint.json: 0a8490cc320c1fe768f5473f9ad315377790d70f888cd1de85e40ec0288cc4fb
+  process-witnesses/test_real_process_and_backend_23/checkpoint.json: 0826c2b3eebfd4a1238c67b09d74dfac8d9544d547fb87d2965d4d1491c72fbe
+  process-witnesses/test_real_process_and_backend_22/checkpoint.json: 3789fffd92e9637ffebde883aee06b0da6443930c2022d3d231613bb8040da3f
+  process-witnesses/test_real_process_and_backend_21/checkpoint.json: 10c7ca679fb608ab602fa922090bb95cb7a1d23ad4cfb77344fa0a8ffcd12632
+  process-witnesses/test_real_process_and_backend_14/checkpoint.json: d0121eb214e37c9bb3b1f2c65a9a4d4b5a0d711fb4b6abc237be89400acc80fa
+native_control:
+  kind: Owned local k3d RayJob under a hard zero-Pod quota
+  original_uid: 3b987a5b-c086-4c91-a9cf-1c8c0dce6bfc
+  replacement_uid: 80b3e337-1dbb-4b98-aed9-52454bace457
+  committed_identity_before_activation: true
+  replacement_rejected: true
+  native_sql_checkouts:
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  pod_observations:
+  - 0
+  - 0
+  - 0
+  event_digests:
+    ray.create.intent: 373205a2665a27a9b2a7df7e921f31fc20cb2a3e2e0f6ce9dfce0cdacb34b6fb
+    ray.service_account.started: 9a2d2aab83126cbbe99e5ae05c23bf0bc80e43d2b8e3278658207e45cc8e68db
+    ray.service_account.result: beea8712f0f44025c888802673df3c3fc4dab44e6ce9a622706d08c1591c4ed0
+    ray.create.started: 7e2245a93637f7dfe3ec5a3c8c918b77689f4cce7df958251c511cd30dfb5a26
+    ray.create.result: 80304f240e5561e68aff192100c9b1f914f16b133423000ecb39fc7fa8bda679
+    ray.submitted: fe4c19737a61b4015fb6e0c22d46a4ac9b3ed71b4f5ee96f9554c07eef797078
+    ray.activate.started:dba3fc74-2cb4-4528-8da2-dfa6931385ea: 8f592b1da026f0524b416a7433ce2878f6ed753505eabeb7d4efd5e65534db41
+    ray.activate.result:dba3fc74-2cb4-4528-8da2-dfa6931385ea: b3d264cef841715388cbb524c9f4049efaaa28f0a56e3a270eb4e41debe5946e
+  namespace_removed: true
+  full_runtime_qualified: false
+preflight:
+  read_only: true
+  schema_differences: []
+  revision: 0019_deletion_stage_custody
+  tables: 44
+  namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+  coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+  free_bytes: 45162483712
+  reserve_bytes: 43500000000
+acceptance:
+  scoped_raw_oracles_passed: 6
+  scoped_gates_met: 0
+  scoped_gates_unmet: 6
+  phase_verified: 2
+  phase_open: 34
+  note: Raw scoped qualification only; automatic gate certification and full Phase1
+    acceptance are not claimed.
+remaining:
+- Factory-owned Ray cancellation/retirement must use the original published or known
+  unpublished create UID; existing Session-native cancel and analysis producers remain
+  open.
+- Unknown native histories remain quarantined and require original native qualification;
+  no operator bypass or guessed UID is implemented.
+- All-stage ordinary worker credentials, maintained images, full running workloads,
+  cloud/IAM, mixed-version and full release/branch coverage remain unqualified.
+- 45,000,000,000-byte migration ceiling recorded; representative largest-table row
+  counts and infrastructure qualification remain missing. Deferred15users x10GiB load
+  remains unqualified.
+- Original deletion G7 requires seven missing historical objects; none were reconstructed
+  or re-signed.
+references:
+- https://kubernetes.io/docs/concepts/overview/working-with-objects/names/
+evidence_hashes:
+  PLAN.md: ebcd1d78a40eb22cf559d2783f0491c2a1b9e7d03079ae4e8d566f5b3aa632ff
+  GATES.md: 0f8a45964ff3c6223f36d43706f39ef2395a9bd2c813698294d87fe572591f7d
+  source-sha256.json: 90e29222f27ab7b72fb965991230b91d53fcecbfd4755426b6c498380a7167e4
+  before-source-sha256.json: b92509077e48136a941f8c0e7071e2df468487eb5918d73bf4765a5ff7cb5285
+  baseline-source-sha256.json: 4e9cff56118860c180d463f611eee86e387419ff2b6164288628888efe6fce3d
+  baseline-test.py: 3fc6c3f09a9c6a8b90c454343295977429785e36e4de4c9ffbdd6693ddd5ac8a
+  baseline-state.json: 49f267162dd858cba9da09008e4978f0901e0e78ca136b804b4f3528569473cd
+  baseline.xml: a94d83cc4b54fe116097a1da0b49f0444a69564715d95c7bc49f400708e118d1
+  baseline.log: 32b834539b4e0bd640985ca2a18532fa1f06eb93203dbdd4bc777f41b1264ca7
+  before-reconciler.py: e1e2d0a6f99323439bdff58de498f3116c42148d387f8d5f337f88bcc7a70ecd
+  before-worker.py: 5098e8ff72e04ad1e1d416dbdf111abae9e84a72c78940a655fc765c941a8ab3
+  before-kubernetes-training.py: 097c1630b09c9e48e8d03854ed0287806903c035404051239b7baf93de85530d
+  before-deletion-runtime.py: 0fac07304a34137518f331f0298533055ee2d69f96c39cbc5f4dbe55766e1a1f
+  run.py: 9b7e2ea4e5fce0e32c5ddb9e5164b5b4a016f3737a83f06f01921a3f3dd918f8
+  process_child.py: e398fe9f3e58c5c43d31997438c3da338b6bb31baa448d220d1175b8bb5d9bd1
+  native_probe.py: 1225832dd4e685c9f6d658524293e796f69f62851cc99f5f7d94c66b964b69c9
+  run_native.py: d6a09be4d5033d39367183ded03f6922aa353cbadbdca1b23886f631b71290cf
+  run_replacement.py: 843eb2e1918baeb69ad61641cd93429ce2a9b90e6ff252a8504be69f01cbe717
+  replacement_probe.py: a3ab3a6188773619db1fb0d5451a16293f3475235dbce6e913d42a4a3a285c8a
+  native-state.json: d7db2e9df164c9b977ac96b343cf64d990869b13b078d5057646ee161a0a6469
+  native-witness.json: 4aacb3084804a6c7d3b9e1a14d9a047c69b56b2bc355790fa444bd93e48853bd
+  native.log: c0a52ab5d9959d181ac29d53b5b76439b76f5a4faa4988acbc8004593e16308d
+  replacement-state.json: dc2bbe2f48d8582d1f8e296410a5fa3f7aeaccfeb44948be0f09bde3e4990120
+  replacement.xml: 8d8145a91a417cbd51ff028cf2528917725a11a22731469c4761e84f60b64385
+  replacement.log: 6412481d527bce4147f391101a547c8cb0b2d15496ba516bfec3a017c4e2d395
+  preflight.py: c79905596949d6243de7ec9449394efa1708705fc1a8e49723ac47780ac0334f
+  preflight.json: 49518901c724f66ea4fb44030ca663c69bccae336540e4cba7f68b56bd78f9ef
+  audit.py: 5d84b8a78c24f106194ffe511a8c9aaab527d8e6328797a8c529e9098da6e036
+  auditor-control.json: 43b8b46850772881e6d6d66f7f33f45cf32830fb5abf504c79787d29b100be8d
+  report.py: d15ba86af0db6c3c4c0e2e713420e653c925ab373b381530cb0a9317d286bfa3
+  replacement-unavailable-db/replacement-state.json: 4387f1bdc3cde5dd04522de1be7a65aac45adddab53b897388d9287ab6ea2ddb
+  replacement-unavailable-db/replacement.xml: ad6cc09d25d2c4a20bd9b665a0cb184ac9e611e2c0cffefd8c159b5e867eb0ad
+  replacement-unavailable-db/replacement.log: 0fc5a2db2c9556d817cea9076a8bd1d82b3d04f6e33ce6ec8b5e8f08ce4c14ca
+  focused-state.json: 2774d95f9936b13cdb92d4ae1e38c32cfacd001b749710a59f5f90d8b30caa87
+  focused.xml: 0602c9d61d606637bbd1e0a27f4fac54e4ffae77dadef98d06c4f73501577896
+  focused.log: cd70f05b5c857f34dfb640ab3d8c4bc96c249de2e2a87654b1f1bc0edd7e70c0
+  process-state.json: defe80a725390c0598c30e18d559e2dddb85dc2fe6dcdb7b26cd0bafd7882a02
+  process.xml: b31f7db2feb3c1676630b1b945ad0f205a925177a9fa5c4955bf840d50698521
+  process.log: f1ccdf34b18a0b6efe733c39f3d035f877821668e0d74223ac295ecac56b4c38
+  connected-state.json: 54fdb2d0d10d2272c9392203c7c1266e578a639a96a4b1541a23dfe1f47963e7
+  connected.xml: d21442b609ed3a87ad5cb16fa6f9fca972370f41176e821fb492e8f38f9bbe70
+  connected.log: a3987ea162c452dfd6d4cd2e968d396f6a1120b19ed36879f109ecc69fd06b85
+  deletion-state.json: 55025f0c8f744ea222c0c26d861fa5d2c01528a2648e7054bac81ce20fdd2dbe
+  deletion.xml: f401ea23141ea94b38ef926f7ac2f6eed7ec6c7dbb635fc99808b7e4f2153c09
+  deletion.log: 7108ff4415ef2d56824a503b86b162cb8b728a53d67b127f2ca68c69b3180dcb
+  components-state.json: 597a5493edcbe8dd735d9b1a3f9eadf60a2bd9b5040d999934e9c9f03cded77a
+  components.xml: 8353afdd5597d5879ca4a15fdf4d55cbd48d8510a29bc683048d45cd822da416
+  components.log: 8dde4747e53298a02631d1cc7759687af00d404eaeb9496070a404d96da8abad

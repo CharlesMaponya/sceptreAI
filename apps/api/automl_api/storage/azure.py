@@ -285,6 +285,23 @@ class AzureBlobObjectStoreDriver:
         self.container.get_blob_client(normalized).upload_blob(value, overwrite=True)
         return self.stat(self._uri(normalized))
 
+    def create_bytes(self, key: str, value: bytes) -> ObjectMetadata:
+        normalized = self._key(key)
+        response = self.container.get_blob_client(normalized).upload_blob(
+            value, overwrite=False, retry_total=0, max_concurrency=1
+        )
+        if not isinstance(response, dict):
+            raise UploadContractError("Byte creation has no original immutable receipt.")
+        version = immutable_object_version(response.get("version_id"))
+        if len(version) > 256:
+            raise UploadContractError("The byte creation version exceeds its receipt budget.")
+        return ObjectMetadata(
+            uri=self._uri(normalized),
+            byte_size=len(value),
+            etag=str(response.get("etag") or "").strip('"') or None,
+            provider_headers={"version_id": version},
+        )
+
     def read_bytes(self, uri: str) -> bytes:
         return self.container.get_blob_client(self._key_from_uri(uri)).download_blob().readall()
 

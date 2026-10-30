@@ -1,0 +1,212 @@
+recorded_on: '2026-10-28'
+status: in_progress
+phase_complete: false
+scope: Original-UID Ray observation for training, splitter and preparation
+source_inputs: 686
+source_manifest_sha256: 43abac313c2f48a800e9fb7c662cf8408a77ea7828041098cc3b90422b461e0a
+changes:
+- Ray observation requests carry the original submitted UID; native inspection and
+  fresh publication reject replacements.
+- Receipt, source outbox, command and original factory intent bind the collected snapshot;
+  in-flight changes discard stale results.
+- New factory creation facts and immutable input snapshots prevent coherently rehashed
+  logical receipts from rebinding original identity.
+- Missing/corrupt evidence holds the affected row before native reads; a valid row
+  in the same collection batch still progresses.
+- Existing full fence/scope/spec checks, lease expiry and terminal result-CAS behavior
+  remain covered; native reads hold zero SQL connections.
+- Disposable real-SQL fixtures now seed original receipts; legacy component adapters
+  use explicit owned identities and remain separate from custody qualification.
+checks:
+  focused:
+    passed: 160
+    returncode: 0
+    xml_sha256: 2d09c281f83bd4ff514647af6eeb74af7caabc120695b0f317426f453893769e
+    state_sha256: 64d0f98a487f77fd4ff20a9117eb7814c11f65f14eb6982e364d04502d154f78
+  components:
+    passed: 158
+    returncode: 0
+    xml_sha256: faff1ec502c5e316fbfecf7d1c5cfb9eb5db6b8ac0feaf49369f1d4df7c83f85
+    state_sha256: 313540e240b9855a427804b4e0d25eedd2e586bb1b0e5e745ca9a3c4dbcd0bde
+  connected:
+    passed: 246
+    returncode: 0
+    xml_sha256: 7f145335c190f9d5942bffa5025c56f4633bb54f44ee3f6ac03187df98b414d9
+    state_sha256: 3c6f49ece16716aa33b228e5d751c8798a53f6ba336ad5abd5588c180a5fcb39
+distinct_matrix_cases: 564
+supplemental_mixed_batch_cases: 3
+total_current_cases: 567
+native_controls:
+  normal:
+    mode: normal
+    namespace: phase1-ray-observe-db79e2a0f5
+    native_sql_checkouts:
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    pod_observations:
+    - 0
+    - 0
+    - 0
+    full_runtime_qualified: false
+    namespace_uid: f7a36525-b314-44be-90fc-a20c0fd9ae3d
+    quota_uid: 6b9d1cb5-72e4-401b-8654-374dd1523104
+    published_before_activation: true
+    original_uid: 64abe583-11db-4efa-80af-d222751f5922
+    entry_delivered: true
+    event_digests:
+      ray.create.intent: e35c372baf58b56dac6f04609931f79efeec1fa235e7defadfd6fe15d6839e9e
+      ray.service_account.started: 74ee75f0ccf523db9f330d7073e84bc71a734ad2ae2a974b03312ca0045c6fcb
+      ray.service_account.result: 048c03d95ee818649fb09ddeffb645c3bea6b88e5df7a03a01291b7762535116
+      ray.create.started: 6ad2c5873cc0f912971935a0b863694a1762639f5847bcb0810b6e14dd2f23b1
+      ray.create.result: 0e134c1d82d95b7fd2d8c02f46733d33d039cecfd9658e862c5ae81b92cccb70
+      ray.submitted: ae425e40b506b630ed788fc5e1223741047fe2e308f2564201ebe3359080a851
+      ray.activate.started:86360824-469c-4adf-80c8-de3671079abc: 9b63923d6c86321cd408ac963457c0c1ac6f3277beda538ef7e2f180ef9c2f48
+      ray.activate.result:86360824-469c-4adf-80c8-de3671079abc: e8723e053fdf0be1a956e1c5cd71c54ed23722289d3442a4ef8c1f4579190256
+    active_confirmed: true
+    observer_original_uid_accepted: true
+    delete_uids:
+    - 64abe583-11db-4efa-80af-d222751f5922
+    retirement_delivered: true
+    cancel_event_digests:
+      ray.cancel.intent: bea1131010c9fbbc32e2e9e38542cbdf27068e2158e5627d18d034d774e58765
+      ray.cancel.started:434d8ccc-6800-4209-af39-a9243e12b707: cc0da426d05b82cc970cf527ba71858fee997fdffb2d99c9483adf12e37cd58f
+      ray.cancel.result:434d8ccc-6800-4209-af39-a9243e12b707: a292b17c920f7c06ce0eeda06be604c7685e66b9054b4cceedcbea1a7745a877
+      ray.cancel.started:aa846650-53e7-4089-87b8-be8502227c4c: 3c9912ac20c5e852c1c78e78d356952fba95294a05c68c2fb9072c748fa57ced
+      ray.cancel.result:aa846650-53e7-4089-87b8-be8502227c4c: 51355a4cd555f8caef6c58d391e6f3ad4af0a64e41cd7b0c5919dfd7ea23d24a
+    replacement_uid: 1db8f22c-1b49-4180-a433-ca573c9f2abf
+    observer_replacement_rejected: true
+    delivered_replay_native_calls: 0
+    namespace_removed: true
+  replacement:
+    mode: replacement
+    namespace: phase1-ray-observe-2c3b987732
+    native_sql_checkouts:
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    pod_observations:
+    - 0
+    - 0
+    - 0
+    full_runtime_qualified: false
+    namespace_uid: 5690b4cf-36a6-4f19-8d29-2dbbf2b6cea1
+    quota_uid: 798be05a-e489-442d-a2e6-2767f44f6586
+    published_before_activation: true
+    original_uid: 204827c0-f502-4600-a698-7f7db5b5cd4a
+    entry_delivered: true
+    event_digests:
+      ray.create.intent: e7c8b967b4b2d0c614e2dcd45208a72d347b1b120a2b80e4d4c137963864b2b7
+      ray.service_account.started: 4e1d2ded4dcd054b460434c0ebe090737252ba542959b3f8d37c6efb35a0c870
+      ray.service_account.result: 654a8ff72d0296a4f1eb6b5a4503f7b88287ace7e93aea4193df074cf18db6a1
+      ray.create.started: 337f036d01a1141a06fbd4bfc5a7187110d69a2752f28ee63a011891f1cb2678
+      ray.create.result: 075cb9252f6ccf5be25617f3750e75b8d016ee37774adf26541e8a799d8368d5
+      ray.submitted: 6b9dc1efdde347183d58dd42ca393b952880c395d8b4477fac03b603b8586d39
+      ray.activate.started:d08237a5-9bcd-4a96-b1d1-900a341d717c: cc2fde35a12b20caf0c73db750baa6def701507b0483205d31f817b61d8d7356
+      ray.activate.result:d08237a5-9bcd-4a96-b1d1-900a341d717c: c6410f9065bae3a08fc943ed00f5072e166f03f6988ca788f6ae7234c01c721c
+    active_confirmed: true
+    observer_original_uid_accepted: true
+    replacement_uid: 631f3a91-6f7d-44bc-a0fc-be00a48ccf40
+    observer_replacement_rejected: true
+    delete_uids: []
+    replacement_rejected: true
+    namespace_removed: true
+preflight:
+  read_only: true
+  schema_differences: []
+  revision: 0019_deletion_stage_custody
+  tables: 44
+  namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+  coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+  free_bytes: 45135110144
+  reserve_bytes: 43500000000
+acceptance:
+  scoped_raw_oracles_passed: 3
+  scoped_gates_met: 0
+  scoped_gates_unmet: 3
+  phase_verified: 2
+  phase_open: 34
+  note: Scoped raw qualification only; automatic gate certification and whole-Phase1
+    acceptance are not claimed.
+remaining:
+- Session-native analysis producers and all-stage worker credential isolation remain
+  required.
+- Global observer fairness for backlogs larger than a collection batch and legacy/operator
+  qualification remain open.
+- Maintained images, full running workloads, cloud/IAM, mixed-version and full release/branch
+  coverage remain unqualified.
+- The 45,000,000,000-byte physical migration target and representative largest-table
+  row counts remain unqualified; deferred15users x10GiB load remains unqualified.
+- 'Original deletion G7 still requires seven missing historical objects: two models
+  and five signed results; none were reconstructed or re-signed.'
+evidence_hashes:
+  PLAN.md: bbe7a76440d6d704d5e53ee0265c7a1a3aac4b5253b755b347eaed5642eb0683
+  GATES.md: 60ce0ad57eea8221ec8ddc86ddf413a9de3e7b726b062c88402cea054e999f0c
+  source-sha256.json: 43abac313c2f48a800e9fb7c662cf8408a77ea7828041098cc3b90422b461e0a
+  baseline-source-sha256.json: 1de113ad729ead44fa0f8e8e7575627af1f595028a6b152cf0b3f87720d1fbd3
+  before-reconciler.py: 8e43752fa23df63f321af5249f89a1161cde506c8b9b7432b2b8111905e39204
+  before-fixtures.py: fb0c4a92ee4b86ca788d50b44f367c61833a96afaaeab37d064b4a9ba6ba5433
+  baseline-state.json: 7680e72e875b8cf56aa9d1ca2f87f8306fd47993e55d3869d07ca789aff11ae8
+  baseline.xml: e1bdc687c157629064a5a31060cb80e7a99c1e42509de974ab78993c7ad7b2a6
+  baseline.log: 229cfc2aaa59abf2442841bca3151e08057a5714476a98b5d8cd5fb9be41850f
+  run.py: 22fa70cba562d55d528b4666587ce917f2c07dea78382666e05d21bb1e2000ee
+  campaign.py: 05d1dcc386e609b70e237900ea6328e164bdaae4b7878b673f69ebbbc8c7f5bf
+  run_native.py: 958361c3e58d9248c83bab176312d3e8be7eb432c2d4f52c72b11a1325064b77
+  native_probe.py: 318e2bbbb4fbd344d53bf0eb5fd06bc78684c750f28964a7a5cca8d05e2857f6
+  run_mixed.py: 7acc82d8cdcaa4802db39b4a15d0755815ceaa717975579e088738f9e29456c5
+  mixed_batch_probe.py: 86812e1ea1e8c8477a953d82e0607af38a1164b50dfa80524adbdd2dc702a39b
+  mixed-state.json: 12d4574d29934cd24ea25302f6c851e99a35431072ce434ef767e71340826398
+  mixed.xml: 29576c060a36797434aa3c7c2f121d9b9d7f1092a6b78fef6b8e5782a41cb779
+  mixed.log: c8808bb58a791c6c7148dba2d22ff30a25603e2529cd1d5cece29dc0169786e2
+  preflight.py: e2db31190a60c121b472d98c960639f8f3224bd823944a7f14434a0387e37379
+  preflight.json: fac7d7bd97c94adede5d75d148d5a40f534518846487cb7e1d70307b63d59e73
+  audit.py: 8fe2f0a5c4552a69b3be9cb2a0733ce872df69d7c732a2684f3fd1746ac366d8
+  control.py: f14dfb6e2c486ff2adf553bd85452fc2ae22f2bc04bfab4e775091c25f35a425
+  auditor-control.json: d9f6139d36335a6c7b5524ae18e81edbde565727e26f793723c8e64f95393221
+  report.py: 52936a4b1424df1088b5e5bb181db02498bc89c9ec2904607d626ccee0070633
+  focused-state.json: 64d0f98a487f77fd4ff20a9117eb7814c11f65f14eb6982e364d04502d154f78
+  focused.xml: 2d09c281f83bd4ff514647af6eeb74af7caabc120695b0f317426f453893769e
+  focused.log: 40e8699cf60dfc67a991c864f8531c7ff681831ed0eecda50d1c8e24c60907bb
+  components-state.json: 313540e240b9855a427804b4e0d25eedd2e586bb1b0e5e745ca9a3c4dbcd0bde
+  components.xml: faff1ec502c5e316fbfecf7d1c5cfb9eb5db6b8ac0feaf49369f1d4df7c83f85
+  components.log: b8b06a7d9de37bea13c77c469a03a1ac724c7a48790b8c802128df2c7d659847
+  connected-state.json: 3c6f49ece16716aa33b228e5d751c8798a53f6ba336ad5abd5588c180a5fcb39
+  connected.xml: 7f145335c190f9d5942bffa5025c56f4633bb54f44ee3f6ac03187df98b414d9
+  connected.log: 12e921dc276529d50d7b1d37aef7b74d054c096dfc16281c3e618c39642031f1
+  native-normal-state.json: d940e3a6db9e01051f03ba5cdb8a1e3ffe67cf7e3a7b43c5809d751e292f1ff5
+  native-normal.log: e2f34adda3ef22980fdf5531272aea51804a1b4fac19cf66cb9c9979872a9e35
+  native-witness-normal.json: 403e3f25522536077000914f5e038a0f1b6c33d24132af0b4ab5730d35cb7f1d
+  native-replacement-state.json: 4b383501d8c31d6c6f0defb22a2ed6478f6533d5c2df695a7d7997203ac76920
+  native-replacement.log: d1cacd7dff99f3b941445a3a469f74fad16610b8ffaaf075b5271103e08d8b76
+  native-witness-replacement.json: 6ff41821b23669ece37e47cd5f69cff4c1fb2531bdfea3016e1e5a2646a181f7

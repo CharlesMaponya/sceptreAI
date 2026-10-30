@@ -1,0 +1,104 @@
+recorded_on: '2026-10-29'
+scope: Buffered upload version allocation
+status: in_progress
+phase_complete: false
+buffered_crash_recovery_complete: false
+migration_target_bytes: 45000000000
+largest_table_row_counts: null
+physical_migration_qualified: false
+changes:
+- Public buffered uploads enable the existing project-serialization option before
+  command insertion and native PUT. The same project lock protects resumable SQL publication;
+  unrelated projects proceed independently.
+checks:
+  concurrency: 8
+  integration: 233
+distinct_passing_cases: 241
+source_python_inputs: 539
+source_manifest_sha256: 1b2500fdd61e8edd69e51fdb8e6ec7e6a04cc8c8a97df036b8ebd5b6b045206f
+baseline:
+  failed: 4
+  passed: 4
+  initial_preformat_run_retained: true
+diagnostic:
+  cases: 1
+  confirms_open_gap: true
+  objects_after_failed_retries: 2
+  dataset_version_and_command_rows: 0
+  injected_sql_commit_failure: true
+  process_sigkill: false
+qualification:
+  http: true
+  postgres: true
+  embedded_filesystem: true
+  authentication_override: true
+  mixed_resumable_shared_publication_function: true
+  full_resumable_http_journey: false
+  new_k3d_workload: false
+preflight:
+  read_only: true
+  schema_differences: []
+  revision: 0021_legacy_observer_clock
+  tables: 44
+  namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+  coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+  free_bytes: 45234491392
+  reserve_bytes: 43500000000
+previous_artifact_hashes_verified: 893
+raw_oracles_passed:
+- concurrency
+- integration
+formal_gates:
+  met: 0
+  unmet: 3
+  abandoned: 0
+phase_requirements:
+  verified: 2
+  open: 34
+remaining:
+- Native PUT still occurs before SQL commit. A lost transaction leaves untracked objects;
+  durable input, intent, native-outcome custody, recovery and deletion remain required.
+- Same-project uploads now wait for the prior buffered storage call and SQL commit.
+  The durable recovery design must release SQL before native I/O; this scoped allocation
+  fix does not meet that requirement.
+- The 45 GB physical migration cannot fit alongside the preserved 43.5 GB reserve
+  plus WAL on this host. Table cardinalities are unspecified; no physical rehearsal
+  was run.
+- The 15-user by 10 GiB campaign, full workloads/images, prior binaries/mixed-version
+  startup, cloud IAM and broader Phase 1 requirements remain open.
+- Original deletion G7 still requires seven missing historical objects. None were
+  recreated or re-signed.
+- Formal automatic gate approval/evidence remains pending. Diagnostic success confirms
+  an open defect rather than recovery readiness.
+evidence_hashes:
+  GATES.md: 9c7c949853e7e692b0500ff77676377d775c329b1fb8bac226ee322f3ddf3a79
+  run.py: 1bbaaac8787b208c782b9d4c9255de6d7bf96e2cbce02ef0f9db7b6e4feaf00e
+  audit.py: 2f54527c527b0eccf44e4e4c4c6ce6055f2de14a9ce2b54e7ed9d3d8beb7e088
+  control.py: 1ed793fef3b84c599f8a2d272d474c7f5c90c753a8c4ba897295136748a15b60
+  auditor-control.json: cbe842c398c999f42177e605d8e18e5b83337627de5716cea53c3e601292a4f8
+  preflight.py: 22a7902a37576ad55cd05188e84d140ba7cefc37a885ed063723dd27a45d6d99
+  preflight.json: 73a71e338ac9f65d34816c735b5a018112eb7a35b2188b479d493390c869e138
+  prior-artifacts.json: 8d866e25cbfbc29a913855574c051faf99ff73f8f2045f4e0b021b7cedf6a961
+  crash_gap.py: 4c130bc8262387829965c901b9aee71312b134c92216bd0c648a9fa6d4cfc396
+  report.py: 4daee9f57537cb9df25762e77a538efedb342eb6d449c5d43c62aa3cf302d581
+  concurrency.log: dc8720f8302761f74ba26746697a7ea2c93f676dbb534e8ca03f2bf76f09a08b
+  concurrency.xml: 65fa4ce5ed087f05f5492691b1fef7beba53fcd25c20b550e252693b418bb8d8
+  concurrency-state.json: 069dad7c8d2a6199b8d021586ae40498775bcef50e3cbc02d4504eee30e2a0b5
+  concurrency-source.json: 1b2500fdd61e8edd69e51fdb8e6ec7e6a04cc8c8a97df036b8ebd5b6b045206f
+  integration.log: 41f05a05e9ec4ed0779e843c4a9b8216ec47a683f71f0d1d4f31d7b1d21d4f4e
+  integration.xml: bfe8e0f1d2300558b776518ae7758979717fb9c119ab8ddf6a91bf783a6bad0a
+  integration-state.json: a40d293685d1f4d56c06060f9558df3576562435bc82d435d386c051376a04b3
+  integration-source.json: 1b2500fdd61e8edd69e51fdb8e6ec7e6a04cc8c8a97df036b8ebd5b6b045206f
+  baseline.log: cd42a4105953b910fbbc822926e2c120bbc24f93b4987c95fe14ac9cf36bc8ba
+  baseline.xml: 73aa108a28cd8a59fbaf9b3cf91574d973166b5c278e39cae965596abb8a88a6
+  baseline-state.json: 0ba8bde52fe0dcd880a10b08e9e69b70ca79a7fd527a33d85dce6761694b2d24
+  baseline-source.json: ae2dc0c4a6ac0a488100b46df9712be6235d9df135f03e00e23423200ab0b3ec
+  initial-baseline.log: dd364923d699febca09531ecbddedca75ca4b68a41574bf9b55b42203f908a82
+  initial-baseline.xml: 1fb3176b347ec552856cf10c580e8f4b68db8ccf5f42e499e59bc5f14034b374
+  initial-baseline-state.json: 432d766199b2737bbbd9cf812b535aaef6e682cd34a98960e47f3ea00d0f51e9
+  initial-baseline-source.json: 127de9660dafd37f05a53242d145ef00b9c854cbfc1125f36c1d3ab6c89a5875
+  crash-gap.log: a62108bed774c7bf433330b5fca38610c79ece8ef5bb417f92c038cbf2da7ab7
+  crash-gap.xml: 057234a9627ae5952b8948d57250732273f7cec19ab5e55d417757126f64947b
+  crash-gap-state.json: fd0ec9b96d92955a0e06c0814538f13c4e96a83f61b543b59592c3eea46cdd74
+  crash-gap-source.json: 1b2500fdd61e8edd69e51fdb8e6ec7e6a04cc8c8a97df036b8ebd5b6b045206f

@@ -33,6 +33,10 @@ SUPPORTED_STARTS = (
     "0016_trial_parent_integrity",
     "0017_upload_session_project",
     "0018_attempt_predecessor_lineage",
+    "0019_deletion_stage_custody",
+    "0020_observer_scan_clock",
+    "0021_legacy_observer_clock",
+    "0022_private_buffered_input",
 )
 UPLOAD_SEED_ROWS = int(os.environ.get("PHASE1_REHEARSAL_UPLOAD_ROWS", "10000"))
 
@@ -81,8 +85,10 @@ UPLOAD_BACKFILLS = {
 
 def _fingerprint(connection, table, columns):
     quote = connection.dialect.identifier_preparer.quote
+    key = "command_id" if table == "buffered_upload_inputs" else "id"
     query = text(
-        f"SELECT {', '.join(quote(name) for name in columns)} FROM {quote(table)} ORDER BY id"
+        f"SELECT {', '.join(quote(name) for name in columns)} FROM {quote(table)} "
+        f"ORDER BY {quote(key)}"
     )
     digest = hashlib.sha256()
     count = 0
@@ -293,9 +299,57 @@ def _seed_legacy_rows(database_url: str, revision: str) -> dict:
                 tables.extend(("final_test_allocations", "final_test_authority_receipts"))
             if inspect(connection).has_table("dataset_provider_imports"):
                 tables.extend(_seed_pending_provider_import(connection, user_id, project_id))
+            if inspect(connection).has_table("buffered_upload_inputs"):
+                command_id = uuid.uuid4()
+                body = b"migration,private\n1,2\n"
+                payload = {
+                    "content_sha256": hashlib.sha256(body).hexdigest(),
+                    "byte_size": len(body),
+                }
+                manifest = {"source": str(command_id), "kind": "inline-preservation-fixture"}
+                connection.execute(
+                    text(
+                        "INSERT INTO workflow_commands (id,project_id,actor_id,operation,"
+                        "idempotency_key,"
+                        "request_hash,request_payload,status,resource_type,resource_id) VALUES "
+                        "(:id,:project,:actor,'dataset.upload.complete','inline-preservation',:sha,"
+                        "CAST(:payload AS jsonb),'pending','dataset.buffered.upload.v1',:id)"
+                    ),
+                    dict(
+                        id=command_id,
+                        project=project_id,
+                        actor=user_id,
+                        sha=hashlib.sha256(
+                            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+                        ).hexdigest(),
+                        payload=json.dumps(payload),
+                    ),
+                )
+                connection.execute(
+                    text(
+                        "INSERT INTO buffered_upload_inputs (command_id,project_id,content,"
+                        "byte_size,"
+                        "content_sha256,manifest,manifest_digest) VALUES "
+                        "(:id,:project,:body,:size,:sha,CAST(:manifest AS jsonb),:digest)"
+                    ),
+                    dict(
+                        id=command_id,
+                        project=project_id,
+                        body=body,
+                        size=len(body),
+                        sha=hashlib.sha256(body).hexdigest(),
+                        manifest=json.dumps(manifest),
+                        digest=hashlib.sha256(
+                            json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+                        ).hexdigest(),
+                    ),
+                )
+                tables.append("buffered_upload_inputs")
             expected = _snapshot_seeded_rows(connection, tables)
             for table, snapshot in expected.items():
                 count = UPLOAD_SEED_ROWS if table == "dataset_upload_sessions" else 1
+                if table == "workflow_commands" and "buffered_upload_inputs" in expected:
+                    count = 2
                 if snapshot["rows"] != count:
                     raise RuntimeError(f"Seed row count differs for {table}")
     finally:
@@ -320,13 +374,16 @@ def _verify_seeded_rows(database_url: str, expected: dict) -> None:
                 )
                 if not new_columns:
                     continue
+                key = "command_id" if table == "buffered_upload_inputs" else "id"
                 with connection.execution_options(yield_per=1000).execute(
-                    text(f"SELECT * FROM {quote(table)} ORDER BY id")
+                    text(f"SELECT * FROM {quote(table)} ORDER BY {quote(key)}")
                 ) as rows:
                     for row in rows.mappings():
                         policy = (
                             {"sso_issuer": None, "sso_subject": None} if table == "users" else {}
                         )
+                        if table == "buffered_upload_inputs":
+                            policy = {"chunk_count": 0, "chunk_manifest_sha256": None}
                         if table == "final_test_allocations":
                             policy = {"fixture_revision": None, "split_revision": None}
                         if table == "dataset_upload_sessions":
@@ -352,7 +409,7 @@ def _verify_seeded_rows(database_url: str, expected: dict) -> None:
                         for column in new_columns:
                             if column not in policy or row[column] != policy[column]:
                                 raise RuntimeError(
-                                    f"{table} {row['id']} has incorrect backfill: {column}"
+                                    f"{table} {row[key]} has incorrect backfill: {column}"
                                 )
 
     finally:

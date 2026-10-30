@@ -326,6 +326,8 @@ def replay_dead_outbox(
     row = db.scalar(select(OutboxEntry).where(OutboxEntry.id == entry_id).with_for_update())
     if row is None:
         raise LookupError("Outbox entry was not found.")
+    if row.topic == "dataset.buffered.upload.v1":
+        raise InvalidTransition("Buffered quarantine requires its authenticated replay grant.")
     if row.status != OutboxStatus.DEAD:
         raise InvalidTransition("Only a dead outbox entry can be replayed.")
     command = db.scalar(

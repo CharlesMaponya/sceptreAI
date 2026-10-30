@@ -469,7 +469,11 @@ def test_embedded_stream_replacement_never_exposes_partial_content(tmp_path, fai
     else:
         store.put_stream(uri, Source())
         assert store.read_bytes(uri) == b"replacement"
-    assert len(list(tmp_path.rglob("*"))) == 2  # bucket directory and the complete object
+    assert {
+        p.relative_to(tmp_path).as_posix()
+        for p in tmp_path.rglob("*")
+        if p.name != ".sceptre-store.lock"
+    } == {"atomic", "atomic/model"}
 
 
 @pytest.mark.parametrize("operation", ["abort_multipart_upload", "list_parts"])

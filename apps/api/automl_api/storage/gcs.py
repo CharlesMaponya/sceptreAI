@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import io
 import json
@@ -254,6 +255,33 @@ class GCSObjectStoreDriver:
         blob = self.bucket.blob(self._key(key))
         blob.upload_from_string(value)
         return self.stat(self._uri(blob.name))
+
+    def create_bytes(self, key: str, value: bytes) -> ObjectMetadata:
+        import google_crc32c
+
+        normalized = self._key(key)
+        blob = self.bucket.blob(normalized)
+        checksum = base64.b64encode(google_crc32c.value(value).to_bytes(4, "big")).decode("ascii")
+        blob.crc32c = checksum
+        # Keep corrupt outcomes in workflow custody instead of SDK automatic deletion.
+        blob.upload_from_string(value, if_generation_match=0, retry=None, checksum=None)
+        version = str(blob.generation) if blob.generation is not None else ""
+        self._generation(version)
+        if (
+            blob.id != f"{self.bucket_name}/{normalized}/{version}"
+            or blob.size != len(value)
+            or blob.crc32c != checksum
+        ):
+            raise UploadContractError(
+                "Byte creation returned another or incomplete object identity."
+            )
+        return ObjectMetadata(
+            uri=self._uri(normalized),
+            byte_size=len(value),
+            etag=blob.etag,
+            checksum=blob.crc32c,
+            provider_headers={"generation": version},
+        )
 
     def read_bytes(self, uri: str) -> bytes:
         return self.bucket.blob(self._key_from_uri(uri)).download_as_bytes()

@@ -1,0 +1,268 @@
+recorded_on: '2026-10-28'
+status: in_progress
+phase_complete: false
+scope: Original-UID factory-owned Ray cancellation for training, splitter and preparation
+source_inputs: 684
+source_manifest_sha256: a3b7ed70c4de4962b97902cd4981ee4c18390fed42156a70540e9579e4d9d438
+immutable_helper_inputs:
+  basis: .unlazy/phase1-ray-submission-factory/source-sha256.json
+  basis_sha256: 90e29222f27ab7b72fb965991230b91d53fcecbfd4755426b6c498380a7167e4
+  note: Immutable helper bytes match the prior published submission record; these
+    supplement the base manifest without rewriting profile execution records.
+  inputs:
+    .unlazy/phase1-deletion-factory/process_child.py: da3f7e6a294cb052527bf0ddcf3e7c543e26d6e51c82112748e260198164ed67
+    .unlazy/phase1-ray-submission-factory/process_child.py: e398fe9f3e58c5c43d31997438c3da338b6bb31baa448d220d1175b8bb5d9bd1
+changes:
+- Original published and known unpublished create facts bind retirement; missing/corrupt/unknown
+  histories and live native units hold without name adoption.
+- Actual dispatcher commits cancellation intent before SQL-free SDK construction and
+  per-unit custody before SQL-free UID deletion and complete descendant inventory.
+- Independent native observations survive publication/claim/backend loss; changed
+  or invalid native context observations cannot qualify original-cluster absence.
+- Fresh source, actor, owner and native context govern projection/acknowledgement;
+  uncertain operations recover by inspection before another conditional deletion.
+- Only qualified physical absence completes cleanup; redacted construction failures
+  are bounded and capacity/GC waits preserve failure budgets.
+- Live activation/cancellation leases retry at their actual expiry rather than inheriting
+  the generic one-hour provider-retention delay.
+- Qualified retirement closes old unpublished submission deliveries and releases their
+  replacement/deletion hold; original history remains intact.
+- Session-native cancellation escape paths fail closed; legacy component adapters
+  use owned fixture UIDs and shared scope/native readers, with actual custody tested
+  separately.
+checks:
+  focused:
+    passed: 89
+    returncode: 0
+    xml_sha256: 7db8ded879edef1f122837db8991dadbec415ab7a0bb098ef00256cfedae78a8
+    state_sha256: bf332ca199a46970df9a5c828baca9af7b0b09b987ec0dcca7f105b25eb6ba52
+  process:
+    passed: 15
+    returncode: 0
+    xml_sha256: 99f9b134bbe8328ffd15597be1d394767e8bdf3009d86a92acfaf5de595a0566
+    state_sha256: fca3bcc746ba386a56712ff01145e78443d065bcc86ba876f151dc2ae2edcdd7
+  components:
+    passed: 190
+    returncode: 0
+    xml_sha256: edfcebb2365b96b0d53f79a5403cc7be75a997a6554fb4a0c561a1fd842fd71c
+    state_sha256: bc51ce055a850b7b2e19dfe20499a75418d39c44ae94a2fdcfdae3f9aa4eb525
+  connected:
+    passed: 299
+    returncode: 0
+    xml_sha256: 5736dcf2b30dba1e878bd95b157f8d6e8215691521bb278a5ffc7f272e52952e
+    state_sha256: 4ec2c23bdc3cdea1be8f0881792586d94bfc4f993b1094ffeb6695be29a05fb5
+distinct_matrix_cases: 593
+supplemental_activation_cases: 3
+supplemental_api_cases: 1
+total_current_cases: 597
+cancellation_failure_controls:
+  cancellation_sigkill: 9
+  upstream_activation_sigkill: 3
+  total_real_sigkill: 12
+  owned_postgres_backend_terminations: 6
+  stages: 3
+  windows_per_stage: 5
+  one_original_delete_including_recovery: true
+  known_retirement_facts_recovered: true
+process_witnesses:
+  process-witnesses/test_real_process_and_backend_7/checkpoint.json: 88a48a887bc5d172fa1059d33102a445f2f2fa66210865d2bdf6ae09db5c9a90
+  process-witnesses/test_real_process_and_backend_0/checkpoint.json: b19b5901e0a36df35b7874e30a31fe96672ddcfd04d8b5c179025cb59834358d
+  process-witnesses/test_real_process_and_backend_12/checkpoint.json: 79a68f0598c655e376ec0f734060dde780ee33893cc757c91de2b8b0c2d39946
+  process-witnesses/test_real_process_and_backend_3/checkpoint.json: eff0a6c8788f44ca983d3e4cd30523980859a1312fb9e41bf8799cb87235e078
+  process-witnesses/test_real_process_and_backend_11/checkpoint.json: 9dd24ae60729dce765aa73f1d77cb408e474f8f8b2eaec12c6412b2e24d678fb
+  process-witnesses/test_real_process_and_backend_2/checkpoint.json: d08a77a024a1e7353002f7ef74b5d5f12221793c3e9186e820ac5c76d43a1a67
+  process-witnesses/test_real_process_and_backend_13/checkpoint.json: 293358917daf03b1300ca4144cfb6dc32f733171b17f241ac1d366c234451ab9
+  process-witnesses/test_real_process_and_backend_10/checkpoint.json: 08c7befe0a986165139d773cc1bf81652ef1275cf70a03ec87843cb8b3117336
+  process-witnesses/test_real_process_and_backend_8/checkpoint.json: fff2843557e4a7cd64900507d86edddd096fcc1e956211b005694c4c3446a878
+  process-witnesses/test_real_process_and_backend_1/checkpoint.json: 227d3bc1ec88677763a8f90766dd11a45c298e864015c58b2be9f0d888a3f6bd
+  process-witnesses/test_real_process_and_backend_4/checkpoint.json: 7dcbbf05c041ca7157701e94e07674791bfb323ce6985bf94f3dcebf5fd42449
+  process-witnesses/test_real_process_and_backend_6/checkpoint.json: d5f8fdd0440bafbafb3a555a2ba39088acb4ac3836a2bcfb5f5ec8e472b05b68
+  process-witnesses/test_real_process_and_backend_5/checkpoint.json: 0ec9e922d873c2a116de86b78a1efd9fff7d1333c2bfd67e1f1511dbb6ab0d2a
+  process-witnesses/test_real_process_and_backend_9/checkpoint.json: d49ef91aa2148086c930202b6f3d6d33e79afb0d94faa178e97f46779b52acc0
+  process-witnesses/test_real_process_and_backend_14/checkpoint.json: 1ad288d9d2a10559f78337220e742aeb03d51d94b2d69a3de9370fb324a1caf0
+activation_witnesses:
+  activation-witnesses/test_live_original_activation_1/checkpoint.json: 076792d09aa4c8474682f594dd3e3ba486dc3051a1b0a028f41532f67ee85480
+  activation-witnesses/test_live_original_activation_0/checkpoint.json: 21dc8cc96256d82a3ce9ed143279519aa7339df57fa8ab7e041b07e96ccaed3f
+  activation-witnesses/test_live_original_activation_2/checkpoint.json: 9b4d0a93f7e04db30fabddcee76f945afd5101e34c53590aa71023a42f051da2
+native_controls:
+  normal:
+    mode: normal
+    namespace: phase1-ray-cancel-ea2058a176
+    native_sql_checkouts:
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    pod_observations:
+    - 0
+    - 0
+    - 0
+    full_runtime_qualified: false
+    namespace_uid: 79310fbc-54a7-43a0-8734-e215b8ccba7b
+    quota_uid: 37fdcc1a-2a07-49e7-ba05-36964f642f3d
+    published_before_activation: true
+    original_uid: c822ea02-2223-41fd-98d8-54d5c2675302
+    entry_delivered: true
+    event_digests:
+      ray.create.intent: 2fe6ef766914a9d52b5e5c2187ebbad5be4617e440c77a2237dad37200a4fb9f
+      ray.service_account.started: 42a376caafd5121376aa6b9e3e8c38367b70f7f45e867d7c231605f43ca72aaa
+      ray.service_account.result: 52805dfb6f38236d86608eee5d7fe6409383da7666d201181dfa0a4929fa99eb
+      ray.create.started: 7c463928bdb85c0794945a78e430d6b8bf7adae1f563bbcec0725d4adccfe697
+      ray.create.result: d0ec8a2ae01ff633f9384e1817397ecb594b5b7f65b4095c2ca2c845fb381254
+      ray.submitted: edbdd2755688185406100eccff7088975399de3d42a7426f6596fa361fb26724
+      ray.activate.started:e13986bb-5322-4a85-9085-25c0b9b12c6c: 526bf816c7e8622cd6557dc2318072d2a0179395bd7a101e38c8ae31caba9b59
+      ray.activate.result:e13986bb-5322-4a85-9085-25c0b9b12c6c: 849a2081bdda14eb73782793ad27442dc9be8138771ef95df8aa4f0f05cffd3c
+    active_confirmed: true
+    delete_uids:
+    - c822ea02-2223-41fd-98d8-54d5c2675302
+    retirement_delivered: true
+    cancel_event_digests:
+      ray.cancel.intent: 38bf2cbfa7db9f1195b10ef2d27e2514707e62c0d501dd4316b51f661fad8c32
+      ray.cancel.started:6a39ef28-d247-45a1-b0de-5bad71642b2f: dfbef37f22286df4c9875396f68fd33e48e1af67abf3fab6721b9bb9967caa83
+      ray.cancel.result:6a39ef28-d247-45a1-b0de-5bad71642b2f: d2d56eaa9c7522171f70421d556b1619c76d170830f4d0ec41d7da9c63e3e0fa
+      ray.cancel.started:09c68d81-71da-4a46-ac35-db106f2acfb9: 4d6fb9d6d6fc4f657dac022d72fe9a4e9aeceb2759ac7ed942bcc31f5d933c73
+      ray.cancel.result:09c68d81-71da-4a46-ac35-db106f2acfb9: f66e29562b739ac9e53f48f2e25fdc02783637e655d1e2d6e20c4f68d0c3f164
+    replacement_uid: da0030c1-78c9-41a8-b9c0-aa22d8a4483c
+    delivered_replay_native_calls: 0
+    namespace_removed: true
+  replacement:
+    mode: replacement
+    namespace: phase1-ray-cancel-1d9da132c5
+    native_sql_checkouts:
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    pod_observations:
+    - 0
+    - 0
+    - 0
+    full_runtime_qualified: false
+    namespace_uid: b599b37a-2814-4ac7-92e6-3e291578e0bd
+    quota_uid: 64263b24-517d-49d3-a57e-5e033a649a4e
+    published_before_activation: true
+    original_uid: 7d710a88-dbc4-4f0d-8352-2146f51c34bf
+    entry_delivered: true
+    event_digests:
+      ray.create.intent: e05c8e8d16f52ec3f68ca8f3ad1823318d06b0198e2561f6eb47f428615bcd40
+      ray.service_account.started: 0ddfa841ed0ffa59e5b106d1dde72077542846ac75ecfb50822d4cfaff81c348
+      ray.service_account.result: cf3f42725e3cd6a6e547eb89174564269f396dab6ee2f18d8bcc44992e1966ee
+      ray.create.started: ed5fa63a73c015a5c493109d8c03d07aa4ea767a8e92e01768f8e3a6c96876a6
+      ray.create.result: 6fde86db0914c6ed83054f8ba0eea4d71c9ffa6414832e3f84982a1236e6b74e
+      ray.submitted: 330f4acc237f72c57ea74abe67813d393fef44cd51f12b42b14ef56c44a91344
+      ray.activate.started:7cd5ef2f-ed4b-45be-af75-5c5cb87bba7d: 7706469344ca0c67f838e7a9c5ea7afa016621bb1a7607d225f9b513a9d4f0da
+      ray.activate.result:7cd5ef2f-ed4b-45be-af75-5c5cb87bba7d: 9d8e690d63b31a7cb140dce1162f68a03381b8a99fab54a219b035ba509224bc
+    active_confirmed: true
+    replacement_uid: 795b8255-922c-442d-b08e-8ed2f1898810
+    delete_uids: []
+    replacement_rejected: true
+    namespace_removed: true
+preflight:
+  read_only: true
+  schema_differences: []
+  revision: 0019_deletion_stage_custody
+  tables: 44
+  namespace_uid: 4b9c2852-06f3-47ed-b24d-9601a70056f8
+  service_uid: 365dd74f-551c-4fb3-8d9b-fe4026273558
+  coverage_sha256: d792c123302dd8d1f8e740a767df6d37a53ba739fb3368172644cb316bdf9bf9
+  free_bytes: 45142949888
+  reserve_bytes: 43500000000
+acceptance:
+  scoped_raw_oracles_passed: 5
+  scoped_gates_met: 0
+  scoped_gates_unmet: 5
+  phase_verified: 2
+  phase_open: 34
+  note: Raw scoped qualification only; automatic gate certification and full Phase
+    1 acceptance are not claimed.
+remaining:
+- Ray observers still require original published UID binding; Session-native analysis
+  producers and all-stage worker credential isolation remain required.
+- Unknown native histories remain quarantined pending original native qualification;
+  no guessed UID or operator bypass was introduced.
+- Current maintained images, full running workloads, cloud/IAM, mixed-version and
+  full release/branch coverage remain unqualified.
+- 45,000,000,000-byte migration target remains physically unqualified; largest-table
+  row counts and sufficient capacity alongside reserve/WAL are missing. Deferred 15
+  users x 10 GiB load remains unqualified.
+- 'Original deletion G7 still requires seven missing historical objects: two models
+  and five signed results. None were reconstructed or re-signed.'
+evidence_hashes:
+  PLAN.md: 2d8712c90310cc52b6b4bfceb7a5e537799bcefdf00b8dc3dbe2f5d75519d2ec
+  GATES.md: 800a2afbe27ee89414bacfe3b90cb435ff93fcbfa07848ac050fb6ad9ad9deb9
+  source-sha256.json: a3b7ed70c4de4962b97902cd4981ee4c18390fed42156a70540e9579e4d9d438
+  immutable-helper-inputs.json: 8e7b0fb84eb93483bcf78924332afc8d8103b7de50947e080e1c635f2bf88bab
+  baseline-source-sha256.json: 5e264713a56d90daeb6522802bf9727ad51e244403cfd765e383de96d90f6c4b
+  before-reconciler.py: a0b7ee457ccf667fd375bef1b9f063e01fae0d2e5b2264b5099dd5b453c406c5
+  before-worker.py: 893dbf7e691ed9c39b36891d9a66d4386f52a4f258eb34b5faf55c9b902f38c3
+  baseline-state.json: 1da295c513bd0fd6838adad0a146ff4943af6b788c7026798dfb057be9c865b7
+  baseline.xml: 6ceacea006d4d78ff4a5210fc8d9c4c0ee8b055e25de2dd8102142dab5969c7f
+  baseline.log: 32d1169581062f7e0018a996f3246503f7edfc527df0997a30ef85c5c03595f2
+  run.py: 1488d5e59c1eb33e26b1406a5a8499ba8610a6b891da3152e4bb8ea8f0ce84fc
+  run_native.py: e3c54d5426bdcf02d24d73f72900e49584c2d82349b4438d6ab7ed1a3591a685
+  process_child.py: 899052dd8bd3c36f1e768c109b8a2c85406b4dc468718ef2ca36cdbd14ead3ca
+  native_probe.py: 3195f72eea99a91cb096be1d8581b542b931e12376a8eabf88626b04904a09aa
+  preflight.py: f523791a493ef121835ce4423a6355b94bc09b335d2fd61ddf667316e365751d
+  preflight.json: 41daa2208c42560b78657c39eedf7572ff93d100e85ab1b19edd31421fe1bffe
+  audit.py: e1bc95ae19819c6510d7077a80e4b4f17a861dc0ced374fec14327f0853580c1
+  control.py: b5bef69359481d95e0056dd0abc71096dc1905a1e7357ea5eeb4a20905395001
+  auditor-control.json: 399b0103030f5857a3b05ea4a4752b2cd1f49de80e5be73bf4a084c60df460c3
+  report.py: 302c99bfb2ae68c20f78bc83494c020d15f6b6faff561abf7b377e12fdfe05a3
+  campaign.py: a2c377305076e72c8a7812adb35d204e40ad6faa8557aebf48eeb7c4b9891aa8
+  activation_probe.py: 487359b81aa837b2993a0e9e94f67c37133f8f3a660819feec651a617b8e650e
+  run_activation.py: ab39b8be0d9414a9e3bce2adb9171fdb35d2e59d03b8ecde2e1929f03e9ccae0
+  activation-state.json: dcdc5ad3b7062a34468b5670f3e06de58a2dfd8d23dfddafd2739bd07d89df92
+  activation.xml: ed8425dccca0a9d40016a8871052e1800fca9242e98d55b51e0a99c691c82792
+  activation.log: 645441fd6e0f3e830300510df82b5289fed5ea40d5a67bd7699b55f83713677f
+  api_probe.py: 90b071bda52318433eb566c83f6b7efe4dc44cc87375c59b93cdd50953998309
+  run_api.py: 7420825ea7543a7ddf6217596f876c7fef9070cdb088d1253c2b7fcfca44545e
+  api-state.json: 6beaa9c29bc259d3c4dc0efd9128def1a5be806c848c73b56d00141574a13d41
+  api.xml: 51e24e27b67a9d6814405a9215a38d1bff7125c293873f5d3149e4df12e93bf5
+  api.log: 4c2560c956c6128af65ac435c1c07e179c58b22aca33ddc7d3fc810825b795db
+  observer-followup.json: c555407b6d405c7ad1884c76f0cfbcf116592a756eb32118066d37efef5d5707
+  components-initial/components-state.json: ad4464b44f804e12f3c05bd1d4fa0b02f6949c96f88b86cab91bbfcb0f93928a
+  components-initial/components.log: 0a5a369937b66e8065f3c69a6eb350b84d5ba6f9e9dd41621c19cd7e3545b5a4
+  components-initial/components.xml: f9fad6ad8e3ab685b360fb11d8eee3ed9b1492e5a58b7a4ed5f33125bf807a36
+  components-missing-sequence/components-state.json: ab877d5ca3d84196d262ecd7cd85be560bee2068795c735ca6a39deb8fe12724
+  components-missing-sequence/components.log: 029d5886fd5d411e330e4043c7afe97b00fe3bffdaf483d888f51b6e3da7bfa3
+  components-missing-sequence/components.xml: 3e7398a64fa3756da5ab9a8ad83deffb9e53bdb9078fea3bacd5d42c2fd6dd54
+  activation-initial/activation-state.json: 8623db4aab2adb075fc0b8bd7222b3f6b67efd757dbadf07843cebdf006debf1
+  activation-initial/activation.log: 175f7d177b9525a2298dd0fb1b9fccacf974d542aa0afcb56fbc3ab37aff93eb
+  activation-initial/activation.xml: 72eed29d21faab7837ede855bb295f5ff9fa06e0e7c54f56d5cd677c33e86b62
+  activation-initial/activation_probe.py: 65344992feb2da3a3844bbeade0afc97aad3962ef785284481be2317ec208c19
+  activation-pilot-initial/activation-pilot-state.json: 94d596c4f4db5ad4ca3083af8b07ce055c997781c3de56a790dfb5b49d80652f
+  activation-pilot-initial/activation-pilot.log: e7bd1d96ba5b0c86f156c91ffec4f48a8ff62c382eeace2a7b8147c680cba21e
+  activation-pilot-initial/activation-pilot.xml: e1847b7095ed808a0517fc31605a7f9d248c37265c292a9e8896373f204ab399
+  activation-pilot-initial/activation_probe.py: 08b0cb75f7130fd1da665ba5789d55c109548c91191cd77fac7feacb777838f0
+  focused-state.json: bf332ca199a46970df9a5c828baca9af7b0b09b987ec0dcca7f105b25eb6ba52
+  focused.xml: 7db8ded879edef1f122837db8991dadbec415ab7a0bb098ef00256cfedae78a8
+  focused.log: e109950f718cc341d08f7f512ef99cbd22f87a5d14f2d2a8849a634208bb8f25
+  process-state.json: fca3bcc746ba386a56712ff01145e78443d065bcc86ba876f151dc2ae2edcdd7
+  process.xml: 99f9b134bbe8328ffd15597be1d394767e8bdf3009d86a92acfaf5de595a0566
+  process.log: 8b358f55ee94a2c4ab94aab072cf44da461d11f81a379a3e8078fe24f4ef6be6
+  components-state.json: bc51ce055a850b7b2e19dfe20499a75418d39c44ae94a2fdcfdae3f9aa4eb525
+  components.xml: edfcebb2365b96b0d53f79a5403cc7be75a997a6554fb4a0c561a1fd842fd71c
+  components.log: 2d9a5b5c8be8462b3e403b4860af24ef68b9a1504002db5718548b45027d5e41
+  connected-state.json: 4ec2c23bdc3cdea1be8f0881792586d94bfc4f993b1094ffeb6695be29a05fb5
+  connected.xml: 5736dcf2b30dba1e878bd95b157f8d6e8215691521bb278a5ffc7f272e52952e
+  connected.log: 702dde225d5a8af9d65479e50d7370f88decda1e2a3d54df6df99189b82e8f8a
+  native-normal-state.json: c00fb178b01061a87ad4a3210cca96356660671ab7090957b144c1b6e871cfc1
+  native-normal.log: cdcf10632d68631e923408a485d9c51d46aefa30e6b3133204ee9da49897b29c
+  native-witness-normal.json: 30df02c0854f6a9ea03e1e54f22f1629732b1ba9ed82b881287a7cc9af6cb4e0
+  native-replacement-state.json: 44189afe5d58907e5ae85514d06aaae5c2deb1e143eb65b317a50c67c3d0a2f7
+  native-replacement.log: 767f3ba13f439564cecb718b039dd2742f93577452a8b811bc1d84d32abdaadc
+  native-witness-replacement.json: 95076ab64ce904f2272782f7d3b1c8b25dba0e1d729f182a2fb7a360e6ee966e

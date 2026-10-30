@@ -8,9 +8,9 @@ import ray_observer_fixture
 from automl_api.models.datasets import ProfilingJob
 from automl_api.models.enums import AttemptStatus, OutboxStatus, WorkflowStage
 from automl_api.models.workflows import OutboxEntry, WorkflowAttempt, WorkflowCommand
-from automl_api.services import reconciler
 from automl_api.services.workflow_state import StaleFence
 from kubernetes.client import ApiException
+from ray_cancellation_helpers import cancel_dataset_ray_job
 from ray_submission_helpers import submit_dataset_ray_job
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -59,6 +59,7 @@ def labeled_job(attempt, profile_id):
     return {
         "metadata": {
             "uid": "physical-job-uid",
+            "name": attempt.ray_job_name,
             "namespace": "dataset-expiry-test",
             "labels": {
                 "automl.platform/project-id": str(attempt.project_id),
@@ -242,7 +243,7 @@ def test_cancel_rejects_wrong_scope_before_deletion(expired_dataset, invalid):
                 uuid.uuid4()
             )
         with db.no_autoflush, pytest.raises(StaleFence):
-            reconciler.cancel_dataset_ray_job(db, entry, k8s)
+            cancel_dataset_ray_job(db, entry, k8s)
         k8s.delete_ray_job.assert_not_called()
         if invalid != "labels":
             k8s.ray_job.assert_not_called()
@@ -259,7 +260,7 @@ def test_cancellation_delivery_replays_after_lost_delete_ack(expired_dataset):
         name = old.ray_job_name
     k8s.delete_ray_job.side_effect = RuntimeError("delete committed; response lost")
     with Session(engine) as db, pytest.raises(RuntimeError):
-        reconciler.cancel_dataset_ray_job(db, cancellation(db, profile_id), k8s)
+        cancel_dataset_ray_job(db, cancellation(db, profile_id), k8s)
     k8s.delete_ray_job.assert_called_once_with(
         name, namespace="dataset-expiry-test", uid="physical-job-uid"
     )
@@ -269,8 +270,53 @@ def test_cancellation_delivery_replays_after_lost_delete_ack(expired_dataset):
         entry.status, entry.lease_owner = OutboxStatus.CLAIMED, "cleanup-worker"
         entry.lease_expires_at = datetime.now(UTC) + timedelta(seconds=90)
         entry_id = entry.id
+        from automl_api.services.evaluation_publication import _append
+        from automl_api.services.ray_cancellation import reconcile_ray_cancellation
+        from automl_api.services.workflow_state import canonical_request_hash
+        from sqlalchemy.orm import sessionmaker
+
+        old = db.get(WorkflowAttempt, old_id)
+        command = db.get(WorkflowCommand, entry.command_id)
+        command.request_hash = canonical_request_hash(command.request_payload)
+        source = OutboxEntry(
+            project_id=old.project_id,
+            command_id=command.id,
+            event_key=uuid.uuid4().hex,
+            topic="ray.dataset.split.submit"
+            if old.stage == WorkflowStage.SPLITTER
+            else "ray.dataset.prepare.submit",
+            aggregate_type="profiling_job",
+            aggregate_id=profile_id,
+            payload={"attempt_id": str(old.id), "fencing_token": old.fencing_token},
+            status=OutboxStatus.DELIVERED,
+        )
+        db.add(source)
         db.flush()
-        reconciler.reconcile_entry(db, entry, worker_id="cleanup-worker", k8s=k8s)
+        identity = dict(
+            uid="physical-job-uid",
+            namespace="dataset-expiry-test",
+            job_name=old.ray_job_name,
+            outbox_id=str(source.id),
+            request_sha256=canonical_request_hash(source.payload),
+            manifest_sha256="a" * 64,
+        )
+        _append(db, old, "ray.submitted", identity)
+
+    k8s.custom.api_client.configuration = SimpleNamespace(
+        host="https://owned.invalid", verify_ssl=True, ssl_ca_cert=None, retries=0
+    )
+    for reader in (
+        k8s.core.list_namespaced_pod,
+        k8s.batch.list_namespaced_job,
+        k8s.custom.list_namespaced_custom_object,
+    ):
+        reader.return_value = {"items": [], "metadata": {}}
+    reconcile_ray_cancellation(
+        sessionmaker(engine, expire_on_commit=False),
+        entry_id,
+        "cleanup-worker",
+        k8s_factory=lambda: k8s,
+    )
     with Session(engine) as db:
         assert db.get(OutboxEntry, entry_id).status == OutboxStatus.DELIVERED
         old = db.get(WorkflowAttempt, old_id)
@@ -283,7 +329,7 @@ def test_dataset_cancel_rejects_training_attempt_before_external_effect():
     db.scalar.return_value = SimpleNamespace(stage=WorkflowStage.TRAINING_RUN)
     entry = SimpleNamespace(payload={"attempt_id": str(uuid.uuid4()), "fencing_token": "f"})
     with pytest.raises(StaleFence):
-        reconciler.cancel_dataset_ray_job(db, entry, k8s)
+        cancel_dataset_ray_job(db, entry, k8s)
     k8s.ray_job.assert_not_called()
     k8s.delete_ray_job.assert_not_called()
 
@@ -340,7 +386,7 @@ def test_delete_uid_conflict_keeps_cleanup_pending(expired_dataset):
         k8s.ray_job.return_value = labeled_job(old, profile_id)
         k8s.delete_ray_job.side_effect = ApiException(status=409)
         with pytest.raises(ApiException):
-            reconciler.cancel_dataset_ray_job(db, cancellation(db, profile_id), k8s)
+            cancel_dataset_ray_job(db, cancellation(db, profile_id), k8s)
         assert old.cleanup_state == "pending"
 
 

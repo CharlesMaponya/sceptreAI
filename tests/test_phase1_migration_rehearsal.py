@@ -151,8 +151,9 @@ def test_seed_batches_cover_requested_count(migrated_case, monkeypatch):
             "final_test_authority_receipts": 1,
             "datasets": 1,
             "dataset_versions": 1,
-            "workflow_commands": 1,
+            "workflow_commands": 2,
             "dataset_provider_imports": 1,
+            "buffered_upload_inputs": 1,
         }
         rehearsal._verify_seeded_rows(target, expected)
         with engine.connect() as connection:

@@ -1,0 +1,90 @@
+recorded_on: '2026-10-29'
+status: in_progress
+phase_complete: false
+scope: Per-row analysis run/report scope holds preserve observation progress
+source_inputs: 715
+source_manifest_sha256: c806b4802ee51ef68150657abebf745c08b105fbf8b35fd2011708293e06345f
+changes:
+- Current run kind/project, tag-container and report/attempt consistency validation
+  now runs inside the existing per-row source hold path.
+- Invalid kinds, malformed tags and inconsistent report states stay held while same-batch
+  and later bounded fresh-session valid work receives its observation.
+- Cancellation retains its prior cleanup precedence over a late inconsistent report;
+  terminal-state decisions and native operations are unchanged.
+checks:
+  focused: 39
+  connected: 602
+distinct_passing_cases: 641
+baseline:
+  failed: 36
+  passed: 3
+  errors: 0
+controls:
+  all_analysis_kinds: true
+  bounded_batches:
+  - 1
+  - 2
+  fresh_sessions: true
+  actual_dispatcher: true
+  held_workflows_unchanged: true
+  sql_checkouts_during_native_read: 0
+  original_cancellation_cleanup: true
+  injected_xml_failure_rejected: true
+previous_artifact_hashes_verified: 787
+schema:
+  head: 0021_legacy_observer_clock
+  tables: 44
+  strict_differences: []
+raw_oracles_passed:
+- isolation
+- integration
+formal_gates:
+  met: 0
+  unmet: 2
+  abandoned: 0
+phase_requirements:
+  verified: 2
+  open: 34
+limitations:
+- This scope changes SQL validation/selection only. Native observations use service
+  doubles; no new native or process-failure campaign is claimed. The preceding source
+  scope retains its 93 process/backend controls and zero-Pod k3d probe.
+- Complete actor/project policy, native-context and legacy original-outcome qualification,
+  all-stage credentials/capacity and other workflow families remain open.
+- "Physical 45,000,000,000-byte migration cannot fit alongside the preserved 43,500,000,000-byte\
+  \ reserve and WAL; largest-table cardinalities remain unknown. The 15 users \xD7\
+  \ 10 GiB campaign is deferred."
+- Representative complete workflow histories, maintained prior binaries/mixed-version
+  startup, full workloads/images, cloud IAM and full remote CI/branch/release coverage
+  remain unqualified.
+- Original deletion G7 still needs seven missing historical objects; none were rebuilt
+  or re-signed.
+- Formal automatic gate approval/evidence remains pending; raw oracle success does
+  not replace it.
+evidence_hashes:
+  GATES.md: c6685d0a9c6efebdcbf03c71f9867fec7d4a6bfa4996ad0d48c0332c197baaa1
+  run.py: ac12d93bebcff62facd46360f8c65addd0407044d3d657eeca599c083c2eac0a
+  campaign.py: 45e2b9111c4ddc8ad5c454ec708d9b20028899bc548506e2102683808ec23271
+  audit.py: 80fdda3f7745c22de9fe40d3fbb7c92c104e12344b6eb4e4f91bda679b8411c5
+  control.py: 453ce9d0516aa71de8ee1b838c890a6263333609c3bca8c27c924cff4f81faba
+  report.py: 539da1578fbac343ee2d061a3f8ffb6359bb764bbdc12e316c15d950fa981c7f
+  preflight.py: 2ba42335a09f02658400a6af09655276054aae170f883a3c5ea1ca6f91d30035
+  preflight.json: 1f63c81a8bfd47e47b264047efec11a4d2ede5dda2da137caaf7070abf96ec78
+  before-reconciler.py: 3f0fb2d099ba704d68abd1781ea03c14e07a789535dd3e9740238a49f31a5111
+  baseline-source-sha256.json: a4ae51c19f962721ebcd71e13bdb41f2740fdf38cd8938e0bc9e2f917371ef7f
+  source-sha256.json: c806b4802ee51ef68150657abebf745c08b105fbf8b35fd2011708293e06345f
+  prior-artifacts.json: d68ebb11bb330198200ecbbfecd9b15f8470ab8eaa47d9d5754da3a5b71172c1
+  auditor-control.json: 35bc1d8f425fea93d574a54f10fd3d320b92ad59443977619fa5d3bb7bce85b8
+  initial-focused.log: 04bc4364fa2a148407b96c137454f1d179ae66c0c0cc4525d2898cf812b35181
+  initial-focused.xml: 7dffa091f8d96b21bca9ea25aa4afb63e047acac8e1d7b07ac6c760625c69baf
+  initial-focused-state.json: 9303732d6df8382007c0e38691df26073a43ae56876df4b4d5e8b6facc628278
+  initial-source-sha256.json: f1214c5fd5c2f756f0de25aa47ce767c73a22f0eff9d1829e8760f95c13a33d3
+  baseline.log: 38547e1b807f04761cd1107015048382e8495f2a18021374ab93ccfd9ca5d4e7
+  baseline.xml: 34dd45b90ebf383f1ea2ef7fd31ada0e29032ed54bd1b38a938e685091ef4942
+  baseline-state.json: be45b01a9cf28779217983e18096cf0eff77d9c0fbb23a85b1ee3fa0f8f75de1
+  focused.log: 80da170e88be581735a3ea68910db49dedee6aa5fa7fc0e60709d35dfc4d1b8b
+  focused.xml: 7d0d1d41233e8f7cbaff1dd1c674fe701bf58fcddb0ff2ab018c55c7371433f2
+  focused-state.json: 9eea095e22abed90db4eb1b74541033987c735a78ceb25a43a2700162e765b45
+  connected.log: aacba5e8c965eebd74ad0c16ec4ecbb2dfefcf391406ac42e282b4948af979d7
+  connected.xml: 7a635a6a8ab4e358e19e2834fde58b7299c0132601fd2292f4a79fcdcff1ad05
+  connected-state.json: 1cc4b1a5135d02c7370738a169f649525c8b8a88f930e63d5e09b5fe4fb9488e

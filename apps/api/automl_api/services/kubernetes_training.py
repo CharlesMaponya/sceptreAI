@@ -1027,33 +1027,97 @@ class KubernetesTrainingClient:
         return manifest
 
     def create_job(self, manifest: dict[str, Any]):
-        namespace = (
-            manifest.get("metadata", {}).get("namespace") or self.settings.training_namespace
-        )
-        try:
-            return self.batch.create_namespaced_job(
-                namespace=namespace, body=manifest, _request_timeout=5
-            )
-        except ApiException as exc:
-            if exc.status != 409:
-                raise
-            if not manifest.get("metadata", {}).get("labels", {}).get("automl.platform/attempt-id"):
-                return None
-            from automl_api.services.workflow_state import StaleFence
+        from automl_api.services.workflow_state import StaleFence
 
-            existing = self.batch.read_namespaced_job(
-                name=manifest["metadata"]["name"],
-                namespace=namespace,
-            )
-            labels = existing.metadata.labels or {}
-            required = ("project-id", "run-id", "attempt-id", "generation", "workflow-stage")
-            if any(
-                labels.get(f"automl.platform/{key}")
-                != manifest["metadata"]["labels"].get(f"automl.platform/{key}")
+        metadata = manifest.get("metadata") or {}
+        labels = metadata.get("labels") or {}
+        bound = "automl.platform/attempt-id" in labels
+        namespace = metadata.get("namespace") or self.settings.training_namespace
+        required = ("project-id", "run-id", "attempt-id", "generation", "workflow-stage")
+        if bound and (
+            not isinstance(metadata.get("name"), str)
+            or not metadata["name"].strip()
+            or not isinstance(metadata.get("namespace"), str)
+            or not metadata["namespace"].strip()
+            or any(
+                not isinstance(labels.get(f"automl.platform/{key}"), str)
+                or not labels[f"automl.platform/{key}"].strip()
                 for key in required
+            )
+        ):
+            raise StaleFence("The bound analysis Job scope is incomplete.")
+        # A name conflict cannot attest the original UID after an unknown create outcome.
+        created = self.batch.create_namespaced_job(
+            namespace=namespace, body=manifest, _request_timeout=5
+        )
+        if bound:
+            reply = getattr(created, "metadata", None)
+            uid = getattr(reply, "uid", None)
+            actual_labels = getattr(reply, "labels", None)
+            if (
+                not isinstance(uid, str)
+                or not uid.strip()
+                or getattr(reply, "name", None) != metadata["name"]
+                or getattr(reply, "namespace", None) != namespace
+                or not isinstance(actual_labels, dict)
+                or any(actual_labels.get(key) != value for key, value in labels.items())
             ):
-                raise StaleFence("The existing analysis Job belongs to another scope.") from exc
-            return existing
+                raise StaleFence("The original analysis Job identity differs from its command.")
+        return created
+
+    def activate_job(self, original: dict[str, Any]) -> dict[str, Any]:
+        """Activate only the original suspended server specification and UID."""
+        metadata = original["metadata"]
+        name, namespace, uid = (metadata[key] for key in ("name", "namespace", "uid"))
+        if (
+            not isinstance(uid, str)
+            or not uid.strip()
+            or original["spec"].get("suspend") is not True
+        ):
+            raise ValueError("Original analysis activation identity/specification is incomplete.")
+
+        def verify(value):
+            meta = value.get("metadata", {})
+            wanted = deepcopy(original["spec"])
+            suspended = value.get("spec", {}).get("suspend")
+            wanted["suspend"] = suspended
+            if (
+                any(meta.get(k) != metadata[k] for k in ("uid", "name", "namespace"))
+                or not isinstance(meta.get("resourceVersion"), str)
+                or not meta["resourceVersion"]
+                or type(suspended) is not bool
+                or value.get("spec") != wanted
+                or any(meta.get("labels", {}).get(k) != v for k, v in metadata["labels"].items())
+            ):
+                raise ValueError("Original analysis activation target or specification changed.")
+            return suspended
+
+        observed = self.batch.read_namespaced_job(
+            name=name, namespace=namespace, _request_timeout=5
+        )
+        observed = self.batch.api_client.sanitize_for_serialization(observed)
+        if not verify(observed):
+            return observed
+        active = self.batch.patch_namespaced_job(
+            name=name,
+            namespace=namespace,
+            body=[
+                {"op": "test", "path": "/metadata/uid", "value": uid},
+                {
+                    "op": "test",
+                    "path": "/metadata/resourceVersion",
+                    "value": observed["metadata"]["resourceVersion"],
+                },
+                {"op": "test", "path": "/spec", "value": observed["spec"]},
+                {"op": "replace", "path": "/spec/suspend", "value": False},
+            ],
+            _content_type="application/json-patch+json",
+            _request_timeout=5,
+        )
+        active = self.batch.api_client.sanitize_for_serialization(active)
+        if verify(active):
+            raise ValueError("Original analysis Job remains suspended after activation.")
+        return active
 
     def ensure_service_account(self, name: str, namespace: str | None = None) -> None:
         namespace = namespace or self.settings.training_namespace

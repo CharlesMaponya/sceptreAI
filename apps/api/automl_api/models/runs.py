@@ -89,6 +89,7 @@ class ModelRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     zenml_run_id: Mapped[str | None] = mapped_column(String(255))
     k8s_namespace: Mapped[str | None] = mapped_column(String(255))
     k8s_job_name: Mapped[str | None] = mapped_column(String(255))
+    last_observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     gpu_requested: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )

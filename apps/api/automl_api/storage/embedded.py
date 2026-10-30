@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import errno
 import io
 import os
 import tempfile
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 
 from automl_api.storage.contracts import (
@@ -18,17 +20,97 @@ from automl_api.storage.contracts import (
     TransferReceipt,
     UploadCapabilities,
     UploadCapabilityUnavailable,
+    UploadContractError,
     UploadInstruction,
     UploadProgress,
+    embedded_object_version,
 )
 
 
 class EmbeddedObjectStoreDriver:
     driver_name = "embedded"
+    _identity_attribute = "user.sceptre_incarnation"
 
     def __init__(self, *, root: Path, bucket: str) -> None:
+        if not bucket or bucket in {".", ".."} or Path(bucket).name != bucket:
+            raise ValueError("Embedded bucket must be one directory name.")
         self.root = root
         self.bucket = bucket
+
+    @contextmanager
+    def _locked(self):
+        # Conditional unlink and every managed replacement share one process-safe lock.
+        self.root.mkdir(parents=True, exist_ok=True)
+        if os.name == "nt":
+            import msvcrt
+
+            with (self.root / ".sceptre-store.lock").open("a+b") as lock:
+                if lock.tell() == 0:
+                    lock.write(b"0")
+                    lock.flush()
+                lock.seek(0)
+                msvcrt.locking(lock.fileno(), msvcrt.LK_LOCK, 1)
+                try:
+                    yield
+                finally:
+                    lock.seek(0)
+                    msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            descriptor = os.open(self.root, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX)
+                yield
+            finally:
+                os.close(descriptor)
+
+    def _stamp(self, descriptor, *, required):
+        version = "embedded-v1:" + uuid.uuid4().hex
+        try:
+            os.setxattr(descriptor, self._identity_attribute, version.encode("ascii"))
+        except (AttributeError, OSError) as exc:
+            if isinstance(exc, OSError) and exc.errno not in {errno.ENOTSUP, errno.EOPNOTSUPP}:
+                raise
+            if required:
+                raise UploadCapabilityUnavailable(
+                    "Qualified local creation requires durable file incarnation attributes."
+                ) from exc
+            return None
+        return version
+
+    def _incarnation(self, descriptor):
+        try:
+            version = os.getxattr(descriptor, self._identity_attribute).decode("ascii")
+            return embedded_object_version(version)
+        except (AttributeError, OSError, UnicodeError) as exc:
+            raise UploadContractError("Local file lost its original incarnation evidence.") from exc
+
+    def _original(self, uri, version):
+        source = self._path_from_uri(uri).open("rb")
+        try:
+            if version is not None:
+                embedded_object_version(version)
+                if self._incarnation(source.fileno()) != version:
+                    raise FileNotFoundError("Original embedded incarnation is absent.")
+            return source
+        except BaseException:
+            source.close()
+            raise
+
+    def _sync_directory(self, path):
+        if os.name != "nt":
+            root = self.root.absolute()
+            path = path.absolute()
+            for directory in (path, *path.parents):
+                if directory.exists():
+                    descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+                    try:
+                        os.fsync(descriptor)
+                    finally:
+                        os.close(descriptor)
+                if directory == root.parent:
+                    break
 
     def capabilities(self) -> UploadCapabilities:
         return UploadCapabilities(
@@ -83,51 +165,80 @@ class EmbeddedObjectStoreDriver:
         return self._uri(object_key)
 
     def stat(self, uri: str, *, version: str | None = None) -> ObjectMetadata:
-        if version is not None:
-            raise UploadCapabilityUnavailable(
-                "Embedded storage has no immutable provider versions."
-            )
         path = self._path_from_uri(uri)
-        return ObjectMetadata(
-            uri=self._canonical_uri(path), byte_size=path.stat().st_size, storage_path=path
-        )
+        with self._original(uri, version) as source:
+            return ObjectMetadata(
+                uri=self._canonical_uri(path),
+                byte_size=os.fstat(source.fileno()).st_size,
+                storage_path=path,
+                provider_headers={"version_id": version} if version else {},
+            )
 
     def open_stream(
         self, uri: str, byte_range: ByteRange | None = None, *, version: str | None = None
     ):
-        if version is not None:
-            raise UploadCapabilityUnavailable(
-                "Embedded storage has no immutable provider versions."
-            )
-        path = self._path_from_uri(uri)
-        if byte_range is None:
-            return path.open("rb")
-        with path.open("rb") as source:
+        source = self._original(uri, version)
+        try:
+            if byte_range is None:
+                return source
             source.seek(byte_range.start)
             value = source.read(byte_range.end_inclusive - byte_range.start + 1)
+        except BaseException:
+            source.close()
+            raise
+        source.close()
         return io.BytesIO(value)
 
     def put_stream(self, uri: str, source) -> ObjectMetadata:
-        path = self._path_from_uri(uri)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = None
-        try:
-            with tempfile.NamedTemporaryFile(
-                dir=path.parent, prefix=".upload-", delete=False
-            ) as destination:
-                temporary = Path(destination.name)
-                while chunk := source.read(1024 * 1024):
-                    destination.write(chunk)
-                destination.flush()
-                os.fsync(destination.fileno())
-            os.replace(temporary, path)
-        finally:
-            if temporary is not None:
-                temporary.unlink(missing_ok=True)
-        return self.stat(uri)
+        with self._locked():
+            path = self._path_from_uri(uri)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = None
+            try:
+                with tempfile.NamedTemporaryFile(
+                    dir=path.parent, prefix=".upload-", delete=False
+                ) as destination:
+                    temporary = Path(destination.name)
+                    while chunk := source.read(1024 * 1024):
+                        destination.write(chunk)
+                    destination.flush()
+                    self._stamp(destination.fileno(), required=False)
+                    os.fsync(destination.fileno())
+                os.replace(temporary, path)
+                self._sync_directory(path.parent)
+            finally:
+                if temporary is not None:
+                    temporary.unlink(missing_ok=True)
+            return self.stat(uri)
 
     def put_bytes(self, key: str, value: bytes) -> ObjectMetadata:
         return self.put_stream(self._uri(key), io.BytesIO(value))
+
+    def create_bytes(self, key: str, value: bytes) -> ObjectMetadata:
+        with self._locked():
+            path = self._path(self._key(key))
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = None
+            try:
+                with tempfile.NamedTemporaryFile(
+                    dir=path.parent, prefix=".upload-", delete=False
+                ) as destination:
+                    temporary = Path(destination.name)
+                    destination.write(value)
+                    destination.flush()
+                    version = self._stamp(destination.fileno(), required=True)
+                    os.fsync(destination.fileno())
+                os.link(temporary, path)
+                self._sync_directory(path.parent)
+                return ObjectMetadata(
+                    uri=self._canonical_uri(path),
+                    byte_size=len(value),
+                    storage_path=path,
+                    provider_headers={"version_id": version},
+                )
+            finally:
+                if temporary is not None:
+                    temporary.unlink(missing_ok=True)
 
     def read_bytes(self, uri: str) -> bytes:
         return self._path_from_uri(uri).read_bytes()
@@ -164,30 +275,46 @@ class EmbeddedObjectStoreDriver:
         return not path.exists()
 
     def delete_prefix(self, prefix: str) -> None:
-        import shutil
+        with self._locked():
+            import shutil
 
-        path = self._path(self._key(prefix)).resolve()
-        root = (self.root / self.bucket).resolve()
-        if path == root or not path.is_relative_to(root):
-            raise ValueError("Cleanup must stay within a resource prefix.")
-        if path.is_dir():
-            shutil.rmtree(path)
+            path = self._path(self._key(prefix)).resolve()
+            root = (self.root / self.bucket).resolve()
+            if path == root or not path.is_relative_to(root):
+                raise ValueError("Cleanup must stay within a resource prefix.")
+            if path.is_dir():
+                shutil.rmtree(path)
+                self._sync_directory(path.parent)
 
     def delete(self, uri: str, *, version: str | None = None) -> None:
         if version is not None:
-            raise UploadCapabilityUnavailable(
-                "Embedded storage has no immutable provider versions."
-            )
-        self._path_from_uri(uri).unlink(missing_ok=True)
+            embedded_object_version(version)
+        with self._locked():
+            path = self._path_from_uri(uri)
+            if version is not None:
+                try:
+                    with path.open("rb") as source:
+                        if self._incarnation(source.fileno()) != version:
+                            self._sync_directory(path.parent)
+                            return
+                except FileNotFoundError:
+                    self._sync_directory(path.parent)
+                    return
+            path.unlink(missing_ok=True)
+            if path.parent.exists():
+                self._sync_directory(path.parent)
 
     def _key(self, value: str) -> str:
         key = value.strip("/")
-        if not key or key.startswith("../") or "/../" in key:
+        if not key or ".." in key.split("/") or "\x00" in key or Path(key).drive:
             raise ValueError("Object keys must remain inside the configured bucket.")
         return key
 
     def _path(self, key: str) -> Path:
-        return self.root / self.bucket / self._key(key)
+        path = self.root / self.bucket / self._key(key)
+        if path.resolve() != self.root.resolve() / self.bucket / self._key(key):
+            raise ValueError("Object keys must remain inside the configured bucket.")
+        return path
 
     def _uri(self, key: str) -> str:
         return f"embedded://{self.bucket}/{self._key(key)}"

@@ -666,6 +666,7 @@ class WorkflowAttempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     lease_owner: Mapped[str | None] = mapped_column(String(255))
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     retry_budget: Mapped[int] = mapped_column(
         Integer, nullable=False, default=5, server_default="5"

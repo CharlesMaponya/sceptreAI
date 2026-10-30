@@ -236,6 +236,15 @@ def _foreign_key_options(options) -> tuple:
 
 def _trial_parent_trigger_differences(connection):
     functions = {
+        "preserve_buffered_chunk_custody": (
+            "34d6a5fa2272a024e839bb4cea4a3e41e85e22f944df0d8ade1030b69ffca4d4"
+        ),
+        "validate_buffered_chunk_layout": (
+            "43b91b762591c9a0f3aaef1ca7caa5832945db04df2aed894ccdd6adf0af6cd2"
+        ),
+        "preserve_buffered_input_custody": (
+            "a516555daa4e711e87d2f851764ac1f072766f4701f7699123a0f20da1311902"
+        ),
         "validate_trial_attempt_run_parent": (
             "5add3220cf4dd5c5d5bafaeb701cee69ca9d0fc3866c08eda24b4a479ee12698"
         ),
@@ -247,6 +256,24 @@ def _trial_parent_trigger_differences(connection):
         ),
     }
     expected = {
+        "trg_preserve_buffered_chunk_custody": (
+            "buffered_upload_chunks",
+            31,
+            set(),
+            "preserve_buffered_chunk_custody",
+        ),
+        "trg_validate_buffered_chunk_layout": (
+            "buffered_upload_inputs",
+            21,
+            set(),
+            "validate_buffered_chunk_layout",
+        ),
+        "trg_preserve_buffered_input_custody": (
+            "buffered_upload_inputs",
+            31,
+            set(),
+            "preserve_buffered_input_custody",
+        ),
         "trg_validate_attempt_predecessor": (
             "workflow_attempts",
             21,
@@ -288,6 +315,7 @@ def _trial_parent_trigger_differences(connection):
         connection.execute(
             text("""
         SELECT t.tgname, r.relname, t.tgtype, t.tgenabled, t.tgnargs,
+               t.tgdeferrable, t.tginitdeferred, t.tgconstraint <> 0 AS constraint_trigger,
                t.tgqual IS NULL AS unconditional, p.proname, p.prosrc,
                p.prosecdef, p.proconfig, p.pronargs, p.provolatile, l.lanname,
                p.prorettype = 'pg_catalog.trigger'::regtype AS returns_trigger,
@@ -316,6 +344,9 @@ def _trial_parent_trigger_differences(connection):
             or row["tgtype"] != events
             or row["tgenabled"] != "O"
             or row["tgnargs"] != 0
+            or bool(row["tgdeferrable"]) != (name == "trg_validate_buffered_chunk_layout")
+            or bool(row["tginitdeferred"]) != (name == "trg_validate_buffered_chunk_layout")
+            or bool(row["constraint_trigger"]) != (name == "trg_validate_buffered_chunk_layout")
             or not row["unconditional"]
             or set(row["columns"]) != columns
             or row["proname"] != function
@@ -382,7 +413,16 @@ def schema_differences(engine) -> list[str]:
         for (relation, name), state in constraint_state.items():
             if relation == table_name and not state["convalidated"]:
                 differences.append(f"{table_name}: constraint {name} is not validated")
-            if relation == table_name and state["contype"] not in {"c", "f", "p", "u"}:
+            known_trigger = (
+                relation == "buffered_upload_inputs"
+                and name == "trg_validate_buffered_chunk_layout"
+                and state["contype"] == "t"
+            )
+            if (
+                relation == table_name
+                and state["contype"] not in {"c", "f", "p", "u"}
+                and not known_trigger
+            ):
                 differences.append(
                     f"{table_name}: unmodeled constraint {name} ({state['contype']})"
                 )

@@ -14,6 +14,8 @@ from automl_api.db.session import get_db, get_session_factory
 from automl_api.models.iam import User
 from automl_api.schemas.datasets import (
     AbortUploadRead,
+    BufferedReplayRead,
+    BufferedRetirementRead,
     CompleteUploadRequest,
     DatasetRead,
     DatasetUploadRequest,
@@ -165,6 +167,53 @@ def complete_resumable_upload(
         raise HTTPException(409, str(exc)) from exc
 
 
+@router.post("/buffered/{input_id}/replay", response_model=BufferedReplayRead, status_code=202)
+def replay_buffered_upload(
+    project_id: uuid.UUID,
+    input_id: uuid.UUID,
+    payload: UploadCleanupReplayRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    idempotency_key: Annotated[
+        str, Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S")
+    ],
+    factory: Annotated[sessionmaker, Depends(get_session_factory)],
+) -> BufferedReplayRead:
+    from automl_api.services.buffered_quarantine import replay
+
+    actor_id, token_version = current_user.id, current_user.token_version
+    db.commit()
+    try:
+        return replay(
+            factory, actor_id, token_version, project_id, input_id, idempotency_key, payload
+        )
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@router.post("/buffered/{input_id}/abort", response_model=BufferedRetirementRead)
+def abort_buffered_upload(
+    project_id: uuid.UUID,
+    input_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    idempotency_key: Annotated[
+        str, Header(alias="Idempotency-Key", min_length=1, max_length=255, pattern=r"\S")
+    ],
+    factory: Annotated[sessionmaker, Depends(get_session_factory)],
+) -> BufferedRetirementRead:
+    from automl_api.services.buffered_retirement import retire_input
+
+    actor_id, token_version = current_user.id, current_user.token_version
+    db.commit()
+    try:
+        return BufferedRetirementRead.model_validate(
+            retire_input(factory, actor_id, token_version, project_id, input_id, idempotency_key)
+        )
+    except (DeletionPending, ValueError) as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
 @router.post("/uploads/{session_id}/abort", response_model=AbortUploadRead)
 def abort_resumable_upload(
     project_id: uuid.UUID,
@@ -289,6 +338,7 @@ def upload_dataset(
             execute=lambda: _upload_response(db, current_user, project_id, payload, content),
             response_model=DatasetUploadResponse,
             response_status=status.HTTP_201_CREATED,
+            serialize_project=True,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

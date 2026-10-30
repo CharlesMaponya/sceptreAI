@@ -1,0 +1,91 @@
+recorded_on: '2026-10-29'
+status: in_progress
+phase_complete: false
+scope: Managed analysis observer fairness and malformed receipt isolation
+source_inputs: 710
+source_manifest_sha256: 7df6858ef6dc6dc83e2f48d74d511f459cf8f1730cab784dc56d308522232da0
+changes:
+- Validation, explainability and drift scans reuse the existing durable last_observed_at
+  clock and rotate held rows without changing worker clocks or terminal CAS.
+- Invalid submission evidence is held per attempt; valid rows in the same batch or
+  a later bounded fresh-session scan continue.
+- Malformed receipt/source payload containers fail validation before field access;
+  malformed outbox identifiers stay held.
+- The shared test delivery helper uses attempt-specific event keys so two submitted
+  runs can coexist in one project.
+checks:
+  focused: 30
+  connected: 386
+  submission: 204
+distinct_passing_cases: 620
+baseline:
+  failed: 27
+  passed: 3
+  errors: 0
+  fixture_setup_errors_retained: 24
+controls:
+  fresh_sessions: true
+  bounded_batches:
+  - 1
+  - 2
+  sql_checkouts_during_native_read: 0
+  worker_clocks_preserved: true
+  targeted_publication_does_not_rescan: true
+  rollback: true
+  concurrent_skip_locked: true
+  negative_xml_failure_rejected: true
+previous_artifact_hashes_verified: 454
+raw_oracles_passed:
+- fairness
+- integration
+formal_gates:
+  met: 0
+  unmet: 2
+  abandoned: 0
+phase_requirements:
+  verified: 2
+  open: 34
+limitations:
+- 'No new native workload probe: the change is SQL selection/evidence isolation; SDK
+  observations use service doubles. The preceding submission qualification retains
+  three real zero-Pod k3d probes.'
+- Legacy observer fairness, complete source/actor/context recovery, all-stage credentials/capacity
+  and remaining workflow families remain open.
+- 'Physical migration target is 45,000,000,000 bytes. It has not been rehearsed: present
+  free disk cannot hold that dataset alongside the preserved 43,500,000,000-byte reserve
+  and WAL. Largest-table cardinalities are unknown.'
+- "The 15 users \xD7 10 GiB campaign, full running images/workloads, cloud IAM, previous-release\
+  \ startup, mixed-version deployment and full branch/release coverage remain unqualified."
+- Original deletion G7 still requires seven missing historical objects; none were
+  reconstructed or re-signed.
+- Formal automatic skill gates remain pending; successful raw oracles do not supply
+  missing gate approval/evidence.
+evidence_hashes:
+  GATES.md: 6e62b717b9668a3fa23aa26583087f4ee63045968308c82a956d78423d35269e
+  run.py: da6a8e19c970e007d0259e68b127ddf967a50802f37de57c13a5a123597c15ad
+  audit.py: 8314579f3d4bba9cd91127ff06129afb5fcaec7e47274317cd6a526bed5b0a94
+  control.py: 26ff358d7d9609b5eabceea841df931925d2e767445c962298d37539b8411f46
+  report.py: 8576af7d4971a4058c695ff8803638dbb666c226a6cabc48673c0cdcc48e4124
+  preflight.py: 22b5934eee1fb5efcec4a86363dcd666d95e96417f0e2cce14e512d049f19959
+  preflight.json: 9b06c6a632cce7c425e4993e4e0056dfc941184f4ccb06e37078a000a38cdd69
+  before-reconciler.py: 3116adc2d899100a7b4a96866d386b8ddd1c15cd6bf85d88c6f8fcfcd523d258
+  source-sha256.json: 7df6858ef6dc6dc83e2f48d74d511f459cf8f1730cab784dc56d308522232da0
+  baseline-source-sha256.json: a1bab4a604ffc424f8a5648efa7d0229e41305804221b87beffdecfe7fc62cd3
+  prior-artifacts.json: 872ed9ed99f03620d345afda16d33be4ef2c0244d73753deb935297b166fefbc
+  auditor-control.json: c144c7679ab970883a747430a15806be2690d9c93b8267994f32fbf56b329e06
+  fixture-error-baseline.log: 67e6512e805fe84f0e16ba25a7200d7207451958613ecffb375daa5d5beb1cfd
+  fixture-error-baseline.xml: cc947c57ac7e4746de3248edb9ab443b09d80270103bb2a342ccf030459bda2e
+  fixture-error-baseline-state.json: 0208a09030ff0f8079fee726054a77fa217bfb066cfc8e28ecaa439509e5f03f
+  fixture-error-source-sha256.json: 466a499d9a9b9960a78ec14087107a8848b8bbd6f2b9ec572d3cfb5e8e72d58b
+  baseline.log: eec312c9cc1f5a5b2b2044e36901968d5bde5ad93983bd60bef61f009a23ab4f
+  baseline.xml: b893898ec1917635c08bc460559fd9fa6dc9861c5abebc4e22e5ea2af90486e0
+  baseline-state.json: af5ce63712c759f4a0aee4aad3e596c2c55ef93717d3326ed7aa3283d014a016
+  focused.log: 5a5a3f7f7631490faaf8a6dcf2ca613cc24e4d7187a82c3247c59a56d19a0f43
+  focused.xml: 7e3996f0ba201080f586a143c7a72843703ebe19dbece0c1e6990796b1dcacc9
+  focused-state.json: db9db10e80b23e8aa92a7e5939675edb50d71de9ad0afdc45d745ee8ea518b5f
+  connected.log: aa7450111e0110f0682f074c73c11f7327a890306a941d9a02d665cd385c0f7f
+  connected.xml: 1d8f68d364953c679be75905da6cb6da56babbefb0ba35bf046eb2857a231fc5
+  connected-state.json: fe590acdc4868884752da0ad8b8e633718da7c340b1ef3537162ee4f48e8aca6
+  submission.log: 323eabe7885cf59126fb345d72cc0f1873754989b9dd01c107c0163ae5f865b3
+  submission.xml: 715c3715534aedab51992871310bf9e093cd8f2153984f30f00e89227ca78d4c
+  submission-state.json: 78d101d2b6f3f01f60c0bf6aa47cbb6535ba96c77193e7139e41597b91a60759

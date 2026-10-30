@@ -64,15 +64,40 @@ class MinioObjectStore(S3ObjectStoreDriver):
         )
 
 
-def get_object_store(settings: Settings | None = None) -> ObjectStoreDriver:
-    settings = settings or get_settings()
+def validate_object_store_settings(settings: Settings) -> str:
+    """Validate the configured backend without constructing a credential-refreshing SDK."""
     driver = settings.object_store_type.strip().lower()
     if driver == "minio":
         driver = "s3_compatible"
+    if driver == "embedded" and settings.environment.lower() in {"production", "staging"}:
+        raise ValueError("Embedded storage is forbidden in staging and production.")
+    if driver == "s3_compatible" and (
+        not settings.object_store_endpoint
+        or not settings.object_store_access_key
+        or not settings.object_store_secret_key
+    ):
+        raise ValueError(
+            "S3-compatible storage requires OBJECT_STORE_ENDPOINT, "
+            "OBJECT_STORE_ACCESS_KEY, and OBJECT_STORE_SECRET_KEY."
+        )
+    if driver == "azure_blob" and (
+        not settings.azure_storage_account or not settings.object_store_endpoint
+    ):
+        raise ValueError(
+            "Azure Blob storage requires AZURE_STORAGE_ACCOUNT and OBJECT_STORE_ENDPOINT."
+        )
+    if driver not in {"embedded", "s3_compatible", "aws_s3", "gcs", "azure_blob"}:
+        raise ValueError(
+            f"Unknown object-store driver '{settings.object_store_type}'. "
+            "Expected embedded, s3_compatible, aws_s3, gcs, or azure_blob."
+        )
+    return driver
 
+
+def get_object_store(settings: Settings | None = None) -> ObjectStoreDriver:
+    settings = settings or get_settings()
+    driver = validate_object_store_settings(settings)
     if driver == "embedded":
-        if settings.environment.lower() in {"production", "staging"}:
-            raise ValueError("Embedded storage is forbidden in staging and production.")
         return EmbeddedObjectStoreDriver(
             root=settings.local_object_store_path,
             bucket=settings.object_store_bucket,
@@ -99,10 +124,6 @@ def get_object_store(settings: Settings | None = None) -> ObjectStoreDriver:
             project=settings.gcs_project,
         )
     if driver == "azure_blob":
-        if not settings.azure_storage_account or not settings.object_store_endpoint:
-            raise ValueError(
-                "Azure Blob storage requires AZURE_STORAGE_ACCOUNT and OBJECT_STORE_ENDPOINT."
-            )
         return AzureBlobObjectStoreDriver(
             account_url=settings.object_store_endpoint,
             account_name=settings.azure_storage_account,

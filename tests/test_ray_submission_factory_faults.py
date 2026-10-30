@@ -12,6 +12,7 @@ import pytest
 from automl_api.models.enums import OutboxStatus
 from automl_api.models.workflows import OutboxEntry
 from automl_api.services import ray_submission
+from fault_worker_environment import environment as fault_environment
 from sqlalchemy import text
 from test_local_profiling_delivery import profile_source as profile_source
 from test_phase1_postgres_contracts import committed_tenant as committed_tenant
@@ -50,12 +51,13 @@ def test_real_process_and_backend_loss_preserve_original_ray_history(
         child = subprocess.Popen(
             [
                 sys.executable,
-                str(Path(".unlazy/phase1-ray-submission-factory/process_child.py").resolve()),
+                str(Path(__file__).resolve().parent / "support" / "ray_submission_fault_worker.py"),
                 str(c.entry_id),
                 str(c.project_id),
                 str(tmp_path),
                 mode,
             ],
+            env=fault_environment(c.engine),
             stdin=subprocess.PIPE,
             stdout=log,
             stderr=log,
@@ -78,7 +80,7 @@ def test_real_process_and_backend_loss_preserve_original_ray_history(
                         ),
                         dict(
                             pid=witness["backend_pid"],
-                            database="automl_branch_0e6a232bc7_tests",
+                            database=c.engine.url.database,
                             application=f"phase1_ray_fault_{child.pid}",
                         ),
                     )

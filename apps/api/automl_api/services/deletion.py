@@ -75,10 +75,13 @@ def _project_uploads_retained(db: Session, project_id: uuid.UUID) -> bool:
     return False
 
 
-def _project_uploads_unsettled(db, project_id):
+def _project_uploads_unsettled(db, project_id, buffered_inputs=None, *, transferred=False):
+    from automl_api.services import buffered_deletion
     from automl_api.services.upload_deletion import OPERATIONS, require_retired
 
     db.flush()
+    if buffered_deletion.unsettled(db, project_id, buffered_inputs, transferred=transferred):
+        return True
     if (
         db.scalar(
             select(DatasetUploadSession.id)
@@ -330,6 +333,7 @@ def request_deletion(
             status_code=409,
             detail="Shut down and clean up all deployments before deleting this project.",
         )
+    buffered_inputs = []
     if run_id is None:
         if db.scalar(
             select(DatasetProviderImport.id)
@@ -358,21 +362,33 @@ def request_deletion(
             raise HTTPException(
                 status_code=409, detail="Wait for dataset preparation to finish before deletion."
             )
-        if _project_uploads_unsettled(db, project_id):
-            raise HTTPException(
-                status_code=409,
-                detail="Finish active uploads and pending upload cleanup first.",
-            )
         if _project_uploads_retained(db, project_id):
             raise HTTPException(
                 status_code=409,
                 detail="Upload retention or legal hold prevents project deletion.",
+            )
+        from automl_api.services import buffered_deletion
+        from automl_api.services.workflow_state import StaleFence
+        from automl_api.storage.contracts import UploadContractError
+
+        try:
+            buffered_inputs = buffered_deletion.plan(db, project_id)
+        except (UploadContractError, StaleFence, ValueError) as exc:
+            raise HTTPException(409, "Original buffered upload custody prevents deletion.") from exc
+        if _project_uploads_unsettled(db, project_id, buffered_inputs):
+            raise HTTPException(
+                status_code=409,
+                detail="Finish active uploads and pending upload cleanup first.",
             )
     # Never race an already submitted command that can still write to this resource.
     pending = select(OutboxEntry.id).where(
         OutboxEntry.project_id == project_id,
         OutboxEntry.status.in_([OutboxStatus.PENDING, OutboxStatus.CLAIMED]),
     )
+    if buffered_inputs:
+        pending = pending.where(
+            OutboxEntry.id.not_in([uuid.UUID(item["delivery_id"]) for item in buffered_inputs])
+        )
     if run_id:
         pending = pending.where(OutboxEntry.aggregate_id.in_([run.id for run in selected]))
     if db.scalar(pending.limit(1)):
@@ -401,6 +417,8 @@ def request_deletion(
     project.settings = {**project.settings, "deletion_in_progress": True}
     for run in selected:
         run.tags = {**run.tags, "deletion_requested": True}
+    if buffered_inputs:
+        buffered_deletion.transfer(db, project_id, buffered_inputs)
     command, _ = begin_command(
         db,
         project_id=project_id,
@@ -417,7 +435,11 @@ def request_deletion(
         topic=f"{kind}.delete",
         aggregate_type=kind,
         aggregate_id=resource_id,
-        payload={"run_ids": [str(run.id) for run in selected], "tombstone_id": str(tombstone.id)},
+        payload={
+            "run_ids": [str(run.id) for run in selected],
+            "tombstone_id": str(tombstone.id),
+            **({"buffered_inputs": buffered_inputs} if buffered_inputs else {}),
+        },
     )
     db.flush()
     return {"status": "pending", "id": str(tombstone.id)}
@@ -449,14 +471,21 @@ def deletion_context(db: Session, entry: OutboxEntry):
         raise RuntimeError("Deployments must be shut down and cleaned up before deletion.")
     if any(run.status not in TERMINAL_RUNS for run in runs):
         raise RuntimeError("An active run still needs to stop before deletion.")
-    if entry.topic == "project.delete" and _project_uploads_unsettled(db, project_id):
+    if entry.topic == "project.delete" and _project_uploads_unsettled(
+        db, project_id, entry.payload.get("buffered_inputs", []), transferred=True
+    ):
         raise DeletionPending("Active uploads or pending upload cleanup prevent project deletion.")
     if has_unretired_deployment_writes(
         db, project_id, run_ids if entry.topic == "run.delete" else None
     ):
         raise DeletionPending("Deployment native object writes require verified retirement.")
     _require_stopped_workflows(db, project_id, run_ids if entry.topic == "run.delete" else None)
-    tombstone = db.get(DeletionTombstone, uuid.UUID(entry.payload["tombstone_id"]))
+    tombstone = db.get(
+        DeletionTombstone,
+        uuid.UUID(entry.payload["tombstone_id"]),
+        with_for_update=True,
+        populate_existing=True,
+    )
     if tombstone is None or tombstone.project_id != project_id:
         raise LookupError("The project-scoped deletion tombstone is missing.")
     if tombstone.legal_hold:
